@@ -1,0 +1,200 @@
+{
+  "project_name": "OurRealm",
+  "theme": "Multi-mode Theme System",
+  "archetype": "Hybrid (Archetype 7: Cypher, Archetype 5: Business, Archetype 3: Millennium, Archetype 2/4: Stealth)",
+  "logo_concept": {
+    "description": "Original OurRealm logo featuring a sleek, futuristic wordmark and an iconic emblem. The emblem is an 'Orbital Glyph' - an intersecting dynamic dual-ring surrounding a stylized, sharp-angled 'R'. The logo's stroke and glow adapt seamlessly to each mode's aesthetic.",
+    "svg_structure_idea": "<svg viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='currentColor' stroke-width='4' class='mode-glow' /><path d='M35 30 H55 A15 15 0 0 1 55 60 H45 V75 M45 60 L60 75' fill='none' stroke='currentColor' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/></svg>",
+    "mode_adaptations": {
+      "cypher": "Neon blue/purple glow via SVG filters (drop-shadow).",
+      "business": "Metallic champagne gold gradient fill.",
+      "millennium": "Glossy rounded 3D effect with soft blue gradient.",
+      "stealth": "Tactical dark green stroke, matte finish, slight radar pulse animation."
+    }
+  },
+  "global_design_rules": {
+    "spacing": "Generous spacing. Use p-6, p-8, p-12 for containers. Gap-6 or gap-8 for bento grids.",
+    "border_radius": "Varies heavily by mode. Global structure supports scalable components.",
+    "animation": "Framer Motion for all mode transitions and widget dragging.",
+    "accessibility": "Always ensure > 4.5:1 text contrast. Include data-testid on all interactive elements.",
+    "layout_strategy": "Widget-based bento grids for profiles. Netflix-style horizontal scroll rows for Discover page. Fluid masonry or standard list for Feed."
+  },
+  "modes": {
+    "cypher": {
+      "name": "Cypher Mode",
+      "aesthetic": "Cyberpunk future, holographic, electric, digital grids.",
+      "colors": {
+        "background": "#05050A",
+        "surface": "rgba(20, 10, 35, 0.6)",
+        "primary": "#B026FF",
+        "secondary": "#00F0FF",
+        "accent": "#FF00E4",
+        "text_main": "#E0E0FF",
+        "text_muted": "#8A8AAA",
+        "border": "rgba(0, 240, 255, 0.3)"
+      },
+      "typography": {
+        "headings": {
+          "family": "Unbounded, display",
+          "weight": "font-black",
+          "tracking": "tracking-tighter",
+          "case": "uppercase"
+        },
+        "body": {
+          "family": "Chivo, sans-serif",
+          "weight": "font-light"
+        }
+      },
+      "surfaces": "Glassmorphism with heavy blur (backdrop-blur-2xl), 1px solid neon borders, inner glows (box-shadow: inset 0 0 20px rgba(176,38,255,0.2)). Floating holographic panels.",
+      "motion": "Fast, elastic spring animations. Particle effects on hover. Neon borders trace around cards."
+    },
+    "business": {
+      "name": "Business Mode",
+      "aesthetic": "Executive luxury, bright, premium, metallic accents, elegant.",
+      "colors": {
+        "background": "#FDFCFB",
+        "surface": "rgba(255, 255, 255, 0.8)",
+        "primary": "#D4AF37",
+        "secondary": "#A9A9A9",
+        "accent": "#8C7A3E",
+        "text_main": "#1A1A1A",
+        "text_muted": "#6E6E6E",
+        "border": "rgba(212, 175, 55, 0.2)"
+      },
+      "typography": {
+        "headings": {
+          "family": "Playfair Display, serif",
+          "weight": "font-semibold",
+          "tracking": "tracking-tight",
+          "case": "normal-case"
+        },
+        "body": {
+          "family": "Manrope, sans-serif",
+          "weight": "font-normal"
+        }
+      },
+      "surfaces": "Frosted crystal glass (bg-white/80 backdrop-blur-xl), subtle gold shimmer gradients, very soft ambient drop shadows (shadow-[0_8px_32px_rgba(0,0,0,0.04)]), no harsh borders.",
+      "motion": "Smooth, ease-in-out, slow and deliberate. Elegant fades."
+    },
+    "millennium": {
+      "name": "Millennium Mode",
+      "aesthetic": "Early internet nostalgia (Y2K), glossy, optimistic, soft blue gradients, friendly.",
+      "colors": {
+        "background": "#E8F0FE",
+        "surface": "#FFFFFF",
+        "primary": "#4A90E2",
+        "secondary": "#50E3C2",
+        "accent": "#F5A623",
+        "text_main": "#333333",
+        "text_muted": "#777777",
+        "border": "#A4C8F0"
+      },
+      "typography": {
+        "headings": {
+          "family": "Fredoka, sans-serif",
+          "weight": "font-bold",
+          "tracking": "tracking-normal",
+          "case": "normal-case"
+        },
+        "body": {
+          "family": "Work Sans, sans-serif",
+          "weight": "font-medium"
+        }
+      },
+      "surfaces": "Glossy panels, highly rounded corners (rounded-3xl), linear gradients simulating 3D bevels, strong distinct box-shadows.",
+      "motion": "Bouncy, playful. Buttons press down physically (translate-y-1)."
+    },
+    "stealth": {
+      "name": "Stealth Mode",
+      "aesthetic": "Tactical intelligence, encrypted, secure, radar, terminal, deep black.",
+      "colors": {
+        "background": "#080808",
+        "surface": "#121212",
+        "primary": "#00FF41",
+        "secondary": "#303030",
+        "accent": "#008F11",
+        "text_main": "#E0E0E0",
+        "text_muted": "#555555",
+        "border": "#1A4020"
+      },
+      "typography": {
+        "headings": {
+          "family": "Share Tech Mono, monospace",
+          "weight": "font-normal",
+          "tracking": "tracking-widest",
+          "case": "uppercase"
+        },
+        "body": {
+          "family": "JetBrains Mono, monospace",
+          "weight": "font-normal"
+        }
+      },
+      "surfaces": "Completely flat, square edges (rounded-none), 1px solid green borders, scanline background overlays, terminal-style layout.",
+      "motion": "Instant, zero-delay transitions. Glitch effects on load. Blinking cursors."
+    }
+  },
+  "layout_and_components": {
+    "landing_page": {
+      "structure": "Center floating logo panel with 'Live. Connect. Experience.' and 3 buttons (SIGN UP, SIGN IN, BROWSE AS GUEST). Background divided into 4 interactive quadrants representing the modes.",
+      "quadrants": "Top Left (Cypher), Top Right (Business), Bottom Left (Millennium), Bottom Right (Stealth). Hovering expands quadrant, clicking locks the app into that mode theme."
+    },
+    "navigation_and_header": {
+      "global_mode_switcher": "A highly prominent pill-shaped toggle or badge near the logo. Displays the current mode and allows switching. Switches entire CSS/Tailwind variables instantly.",
+      "upload_button": "Center prominent '+' button. Opens a highly styled radial or bento menu for (Live Stream, Video, Photo Album, Thought, Link).",
+      "media_filter_bar": "Horizontal scrollable pills on the feed (Images / Videos / Lives / Sounds / Posts)."
+    },
+    "profile_widget_system": {
+      "description": "Bento-box style draggable grid.",
+      "sizes": {
+        "small": "col-span-1 row-span-1 (e.g., Stats, Weather)",
+        "medium": "col-span-2 row-span-1 (e.g., Photos, Audio Player)",
+        "large": "col-span-2 row-span-2 (e.g., Live Stream, Video)",
+        "full_width": "col-span-4 row-span-1 (e.g., Banner, Merch Carousel)"
+      }
+    },
+    "discover_page": {
+      "structure": "Netflix-style horizontal scrolling rows categorized by Trending, Music, Videos, Lives, News, Crypto, etc."
+    },
+    "wallet_page": {
+      "structure": "Uses Shadcn Charts (recharts) for Creator Rewards, Shop Commissions, Royalties. Data visualization styling adapts to the active mode (e.g., neon lines for Cypher, gold bars for Business)."
+    }
+  },
+  "testing_guidelines": {
+    "attributes": "All buttons, inputs, mode switchers, and widgets MUST have a 'data-testid' attribute (e.g., 'data-testid=\"mode-switcher-cypher\"', 'data-testid=\"nav-upload-button\"')."
+  },
+  "image_urls": {
+    "landing_quadrant_cypher": {
+      "url": "https://images.pexels.com/photos/28122495/pexels-photo-28122495.jpeg",
+      "description": "Vibrant cyberpunk neon alleyway for Cypher mode background."
+    },
+    "landing_quadrant_business": {
+      "url": "https://images.unsplash.com/photo-1763940018489-12e722c40bab",
+      "description": "Luxury white marble interior for Business mode background."
+    },
+    "landing_quadrant_millennium": {
+      "url": "https://images.unsplash.com/photo-1679269241012-f7640862d242",
+      "description": "Nostalgic retro blue sky aesthetic for Millennium mode background."
+    },
+    "landing_quadrant_stealth": {
+      "url": "https://images.unsplash.com/photo-1650043996692-a51e3d749766",
+      "description": "Dark tactical radar array for Stealth mode background."
+    },
+    "user_avatar_placeholder": {
+      "url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb",
+      "description": "High quality portrait for user profiles."
+    },
+    "music_cover_placeholder": {
+      "url": "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17",
+      "description": "Abstract colorful shapes for music widget cover art."
+    }
+  },
+  "instructions_to_main_agent": [
+    "Implement a robust Theme Context using React Context or Zustand that swaps Tailwind classes/CSS variables across the entire app.",
+    "Do NOT use 'Inter' for headings. Install and use the specific fonts listed per mode.",
+    "For the Landing Page, construct a full-screen CSS Grid (2x2) for the mode quadrants. Place the Main Action Panel (Logo + auth buttons) fixed in the center.",
+    "For the Profile Widget system, use a library like 'react-grid-layout' or implement a custom CSS Grid with Framer Motion for drag-and-drop if requested, otherwise rely on a strict CSS Grid bento layout.",
+    "Ensure the Custom SVG Logo is implemented as an inline React component so its stroke and fill can react to the active theme.",
+    "Use Shadcn UI for core components but heavily override their default styling based on the active mode.",
+    "Include data-testid on every interactive element."
+  ]
+}
