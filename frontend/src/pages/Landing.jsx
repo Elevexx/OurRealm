@@ -121,10 +121,10 @@ export default function Landing() {
         })}
       </div>
 
-      {/* Center floating panel */}
-      <div className="relative z-10 min-h-screen flex items-center justify-center px-4">
+      {/* Center floating panel — wrapper must NOT intercept clicks on the quadrants beneath */}
+      <div className="pointer-events-none relative z-10 min-h-screen flex items-center justify-center px-4">
         <div
-          className="or-surface w-full max-w-md p-8 sm:p-10 text-center grain"
+          className="pointer-events-auto or-surface w-full max-w-md p-8 sm:p-10 text-center grain"
           style={{
             background: "color-mix(in srgb, var(--surface-2) 92%, transparent)",
             backdropFilter: "blur(28px)",
