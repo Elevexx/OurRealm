@@ -58,6 +58,15 @@ class RegisterPayload(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6, max_length=128)
     name: str = Field(min_length=1, max_length=80)
+    username: str = Field(min_length=3, max_length=24, pattern=r"^[a-zA-Z0-9_.]+$")
+
+
+class UsernameCheck(BaseModel):
+    username: str = Field(min_length=3, max_length=24, pattern=r"^[a-zA-Z0-9_.]+$")
+
+
+class FriendActionPayload(BaseModel):
+    username: str
 
 
 class LoginPayload(BaseModel):
@@ -166,13 +175,18 @@ def serialize_user(doc: dict) -> dict:
     return {
         "id": doc["id"],
         "email": doc["email"],
+        "username": doc.get("username"),
         "name": doc.get("name", ""),
         "role": doc.get("role", "user"),
         "avatar_url": doc.get("avatar_url"),
         "bio": doc.get("bio", ""),
         "interests": doc.get("interests", []),
-        "mode": doc.get("mode", "cypher"),
+        "mode": doc.get("mode", "neon"),
         "widgets": doc.get("widgets", []),
+        "is_founder": bool(doc.get("is_founder")),
+        "is_verified": bool(doc.get("is_verified")),
+        "social": doc.get("social", {}),
+        "friends": doc.get("friends", []),
         "created_at": doc.get("created_at") if isinstance(doc.get("created_at"), datetime)
         else datetime.fromisoformat(doc["created_at"]) if doc.get("created_at") else datetime.now(timezone.utc),
     }
@@ -240,28 +254,151 @@ async def clear_attempts(identifier: str) -> None:
 @auth_router.post("/register")
 async def register(payload: RegisterPayload, response: Response):
     email = payload.email.lower().strip()
-    existing = await db.users.find_one({"email": email})
-    if existing:
+    username = payload.username.lower().strip()
+    if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
+    if await db.users.find_one({"username": username}):
+        raise HTTPException(status_code=400, detail="Username already taken")
     user_id = str(uuid.uuid4())
     doc = {
         "id": user_id,
         "email": email,
+        "username": username,
         "password_hash": hash_password(payload.password),
         "name": payload.name.strip(),
         "role": "user",
         "avatar_url": None,
         "bio": "",
         "interests": [],
-        "mode": "cypher",
+        "mode": "neon",
         "widgets": [],
+        "friends": [],
+        "friend_requests_in": [],
+        "friend_requests_out": [],
+        "social": {},
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(doc)
     access = create_access_token(user_id, email)
     refresh = create_refresh_token(user_id)
     set_auth_cookies(response, access, refresh)
-    return {"user": serialize_user(doc), "access_token": access}
+    out = serialize_user(doc)
+    out["username"] = username
+    return {"user": out, "access_token": access}
+
+
+@auth_router.post("/username/check")
+async def username_check(payload: UsernameCheck):
+    u = payload.username.lower().strip()
+    reserved = {"admin", "support", "ourrealm", "realm", "founder", "system"}
+    if u in reserved:
+        return {"available": False, "reason": "reserved", "suggestions": [f"{u}_x", f"the.{u}", f"{u}.hq"]}
+    existing = await db.users.find_one({"username": u})
+    if not existing:
+        return {"available": True}
+    # suggest alternatives
+    import random as _r
+    suggestions = [f"{u}{_r.randint(10,99)}", f"{u}_hq", f"the.{u}", f"{u}.realm"]
+    return {"available": False, "suggestions": suggestions}
+
+
+# ----- Friend system -----
+async def _user_by_username(username: str):
+    return await db.users.find_one({"username": username.lower().strip()})
+
+
+@api.get("/friends/list")
+async def friends_list(current: CurrentUser):
+    friends_usernames = current.get("friends", [])
+    incoming = current.get("friend_requests_in", [])
+    outgoing = current.get("friend_requests_out", [])
+    async def _hydrate(usernames):
+        out = []
+        async for u in db.users.find({"username": {"$in": usernames}}, {"_id": 0, "username": 1, "name": 1, "avatar_url": 1, "bio": 1}):
+            out.append(u)
+        return out
+    return {
+        "friends": await _hydrate(friends_usernames),
+        "incoming": await _hydrate(incoming),
+        "outgoing": await _hydrate(outgoing),
+    }
+
+
+@api.get("/friends/status/{username}")
+async def friend_status(username: str, current: CurrentUser):
+    me = current
+    target = username.lower().strip()
+    if target == me.get("username"):
+        return {"status": "self"}
+    if target in (me.get("friends") or []):
+        return {"status": "friends"}
+    if target in (me.get("friend_requests_out") or []):
+        return {"status": "outgoing"}
+    if target in (me.get("friend_requests_in") or []):
+        return {"status": "incoming"}
+    return {"status": "none"}
+
+
+@api.post("/friends/request")
+async def friend_request(payload: FriendActionPayload, current: CurrentUser):
+    target_user = await _user_by_username(payload.username)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target_user["id"] == current["id"]:
+        raise HTTPException(status_code=400, detail="Cannot friend yourself")
+    me_un = current.get("username")
+    tg_un = target_user["username"]
+    if tg_un in (current.get("friends") or []):
+        return {"status": "friends"}
+    if tg_un in (current.get("friend_requests_out") or []):
+        return {"status": "outgoing"}
+    await db.users.update_one({"id": current["id"]}, {"$addToSet": {"friend_requests_out": tg_un}})
+    await db.users.update_one({"id": target_user["id"]}, {"$addToSet": {"friend_requests_in": me_un}})
+    return {"status": "outgoing"}
+
+
+@api.post("/friends/accept")
+async def friend_accept(payload: FriendActionPayload, current: CurrentUser):
+    target_user = await _user_by_username(payload.username)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    me_un = current.get("username")
+    tg_un = target_user["username"]
+    if tg_un not in (current.get("friend_requests_in") or []):
+        raise HTTPException(status_code=400, detail="No pending request")
+    await db.users.update_one({"id": current["id"]},
+        {"$pull": {"friend_requests_in": tg_un}, "$addToSet": {"friends": tg_un}})
+    await db.users.update_one({"id": target_user["id"]},
+        {"$pull": {"friend_requests_out": me_un}, "$addToSet": {"friends": me_un}})
+    return {"status": "friends"}
+
+
+@api.post("/friends/decline")
+async def friend_decline(payload: FriendActionPayload, current: CurrentUser):
+    target_user = await _user_by_username(payload.username)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    me_un = current.get("username")
+    tg_un = target_user["username"]
+    await db.users.update_one({"id": current["id"]}, {"$pull": {"friend_requests_in": tg_un, "friends": tg_un}})
+    await db.users.update_one({"id": target_user["id"]}, {"$pull": {"friend_requests_out": me_un, "friends": me_un}})
+    return {"status": "none"}
+
+
+@api.get("/users/search")
+async def users_search(q: str = ""):
+    if not q or len(q) < 1:
+        return {"users": []}
+    qre = {"$regex": q, "$options": "i"}
+    cursor = db.users.find(
+        {"$or": [{"username": qre}, {"name": qre}]},
+        {"_id": 0, "username": 1, "name": 1, "avatar_url": 1, "bio": 1, "is_founder": 1, "is_verified": 1}
+    ).limit(20)
+    users = []
+    async for u in cursor:
+        if u.get("username"):
+            users.append(u)
+    return {"users": users}
 
 
 @auth_router.post("/login")
