@@ -164,13 +164,22 @@ export const DISCOVER_ROWS = [
 
 // ---- Notifications, Friends, Wallet, Marketplace, Widgets ----
 export const NOTIFICATIONS = [
-  { id: 1, type: "like",           actor: "LunaX",   target: "your post 'Phase Shift'",   when: "2m" },
-  { id: 2, type: "comment",        actor: "Jaxon",   target: "your reel",                 when: "12m" },
-  { id: 3, type: "follow",         actor: "Nova",    target: null,                        when: "1h" },
-  { id: 4, type: "mention",        actor: "Striker", target: "in a community post",       when: "3h" },
-  { id: 5, type: "message",        actor: "Zara",    target: "sent you a voice note",     when: "5h" },
-  { id: 6, type: "friend_request", actor: "Kai",     target: null,                        when: "1d" },
-  { id: 7, type: "share",          actor: "Milo",    target: "your live stream",          when: "1d" },
+  { id: 1,  category: "Likes",        type: "like",           actor: "LunaX",   target: "your post 'Phase Shift'",   when: "2m",  unread: true },
+  { id: 2,  category: "Comments",     type: "comment",        actor: "Jaxon",   target: "your reel",                 when: "12m", unread: true },
+  { id: 3,  category: "Followers",    type: "follow",         actor: "Nova",    target: null,                        when: "1h",  unread: true },
+  { id: 4,  category: "Comments",     type: "mention",        actor: "Striker", target: "in a community post",       when: "3h",  unread: false },
+  { id: 5,  category: "Messages",     type: "message",        actor: "Zara",    target: "sent you a voice note",     when: "5h",  unread: true },
+  { id: 6,  category: "Followers",    type: "friend_request", actor: "Kai",     target: null,                        when: "1d",  unread: false },
+  { id: 7,  category: "Shares",       type: "share",          actor: "Milo",    target: "your live stream",          when: "1d",  unread: false },
+  { id: 8,  category: "Realm Activity", type: "realm_post",   actor: "DJ Realm", target: "posted in your community", when: "1d",  unread: true },
+  { id: 9,  category: "Events",       type: "event_reminder", actor: "Realm Festival", target: "starts in 2 hours",  when: "2d",  unread: false },
+  { id: 10, category: "Marketplace",  type: "ad_payout",      actor: "Brand X", target: "ad payout +$86.20",         when: "2d",  unread: false },
+  { id: 11, category: "Wallet",       type: "tip",            actor: "Striker", target: "tipped you $12.00",         when: "3d",  unread: false },
+  { id: 12, category: "Realm Activity", type: "realm_join",   actor: "Gaming Realm", target: "you joined a new realm",when: "5d",  unread: false },
+];
+
+export const NOTIFICATION_CATEGORIES = [
+  "All", "Likes", "Comments", "Shares", "Followers", "Messages", "Realm Activity", "Events", "Marketplace", "Wallet",
 ];
 
 export const FRIENDS = CHARACTERS.map((c, i) => ({
@@ -208,21 +217,37 @@ export const FOLLOWERS = CHARACTERS.slice(2, 7).map((c, i) => ({
 
 export const WALLET = {
   balance: 14820.42,
+  pending: 2480.55,
   monthly_change_pct: 12.4,
+  thirty_day: 5240.10,
+  lifetime: 86420.18,
   rows: [
-    { id: "rewards",   label: "Creator Rewards", amount: 6240.12 },
-    { id: "ads",       label: "Ad Revenue",      amount: 959.00  },
-    { id: "royalties", label: "Royalties",       amount: 3120.55 },
-    { id: "sales",     label: "Sales",           amount: 2860.00 },
-    { id: "tips",      label: "Tips",            amount: 1640.75 },
-    { id: "affiliate", label: "Affiliate Revenue", amount: 815.00 },
+    { id: "creator",      label: "Creator Revenue",      amount: 6240.12, color: "#2EA0FF" },
+    { id: "ads",          label: "Ad Revenue",            amount: 959.00,  color: "#F4C84A" },
+    { id: "merch",        label: "Merch Revenue",         amount: 2860.00, color: "#10E670" },
+    { id: "music",        label: "Music Revenue",         amount: 1820.55, color: "#C26BFF" },
+    { id: "subscription", label: "Subscription Revenue", amount: 1840.75, color: "#FF8AC2" },
+    { id: "tips",         label: "Tips",                  amount: 640.75,  color: "#FFB72E" },
+    { id: "affiliate",    label: "Affiliate Revenue",     amount: 815.00,  color: "#6BD3FF" },
+    { id: "referral",     label: "Referral Revenue",      amount: 320.00,  color: "#16C16C" },
   ],
   history: Array.from({ length: 12 }).map((_, i) => ({
     month: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i],
-    rewards: 400 + ((i * 73) % 900),
-    sales:   200 + ((i * 41) % 600),
-    royalties: 300 + ((i * 53) % 700),
+    creator:      400 + ((i * 73) % 900),
+    ads:          120 + ((i * 31) % 250),
+    merch:        200 + ((i * 41) % 600),
+    music:        180 + ((i * 53) % 500),
+    subscription: 240 + ((i * 47) % 400),
+    tips:         60  + ((i * 19) % 200),
   })),
+  transactions: [
+    { id: "t1", who: "Striker", what: "Tipped your set",      amount:  12.00, when: "2m",  type: "tips"     },
+    { id: "t2", who: "LunaX",   what: "Bought 'Phase Shift'", amount:   3.50, when: "1h",  type: "music"    },
+    { id: "t3", who: "Brand X", what: "Ad placement payout",  amount:  86.20, when: "4h",  type: "ads"      },
+    { id: "t4", who: "Realm Subs", what: "Monthly sub",       amount:   9.99, when: "1d",  type: "subscription" },
+    { id: "t5", who: "Zara",    what: "Bought Tour Tee",      amount:  42.00, when: "2d",  type: "merch"    },
+    { id: "t6", who: "Affiliate", what: "Realm Pass referral",amount:  18.40, when: "3d",  type: "affiliate"},
+  ],
 };
 
 export const MARKETPLACE_ADS = Array.from({ length: 8 }).map((_, i) => ({
@@ -235,26 +260,63 @@ export const MARKETPLACE_ADS = Array.from({ length: 8 }).map((_, i) => ({
 }));
 
 export const WIDGET_TYPES = [
-  { id: "live",     label: "Live Stream",     icon: "Radio",       default_size: "large" },
-  { id: "videos",   label: "Videos",          icon: "PlayCircle",  default_size: "medium" },
-  { id: "music",    label: "Music",           icon: "Music",       default_size: "medium" },
-  { id: "podcasts", label: "Podcasts",        icon: "Mic",         default_size: "medium" },
-  { id: "photos",   label: "Photos",          icon: "Image",       default_size: "medium" },
-  { id: "merch",    label: "Merch",           icon: "ShoppingBag", default_size: "full" },
-  { id: "events",   label: "Events",          icon: "Calendar",    default_size: "small" },
-  { id: "tour",     label: "Tour Dates",      icon: "MapPin",      default_size: "medium" },
-  { id: "weather",  label: "Weather",         icon: "CloudSun",    default_size: "small" },
-  { id: "news",     label: "News",            icon: "Newspaper",   default_size: "medium" },
-  { id: "crypto",   label: "Crypto",          icon: "Bitcoin",     default_size: "small" },
-  { id: "stocks",   label: "Stocks",          icon: "TrendingUp",  default_size: "small" },
-  { id: "calendar", label: "Calendar",        icon: "CalendarDays",default_size: "small" },
-  { id: "notes",    label: "Notes",           icon: "StickyNote",  default_size: "small" },
-  { id: "polls",    label: "Polls",           icon: "BarChart3",   default_size: "medium" },
-  { id: "friends",  label: "Friends",         icon: "Users",       default_size: "small" },
-  { id: "wallet",   label: "Wallet",          icon: "Wallet",      default_size: "small" },
-  { id: "ads",      label: "Marketplace Ads", icon: "Megaphone",   default_size: "medium" },
-  { id: "radar",    label: "Stealth Radar",   icon: "Radar",       default_size: "medium" },
-  { id: "custom",   label: "Custom",          icon: "Sparkles",    default_size: "small" },
+  // Core content widgets
+  { id: "live",     label: "Live Stream",     icon: "Radio",       default_size: "large",  cat: "content" },
+  { id: "videos",   label: "Videos",          icon: "PlayCircle",  default_size: "medium", cat: "content" },
+  { id: "music",    label: "Music",           icon: "Music",       default_size: "medium", cat: "content" },
+  { id: "podcasts", label: "Podcasts",        icon: "Mic",         default_size: "medium", cat: "content" },
+  { id: "photos",   label: "Photos",          icon: "Image",       default_size: "medium", cat: "content" },
+  { id: "merch",    label: "Merch",           icon: "ShoppingBag", default_size: "full",   cat: "commerce" },
+  { id: "events",   label: "Events",          icon: "Calendar",    default_size: "small",  cat: "schedule" },
+  { id: "tour",     label: "Tour Dates",      icon: "MapPin",      default_size: "medium", cat: "schedule" },
+  // Personal / utility
+  { id: "weather",  label: "Weather",         icon: "CloudSun",    default_size: "small",  cat: "utility" },
+  { id: "weatherRadar", label: "Weather Radar", icon: "CloudRain", default_size: "medium", cat: "utility" },
+  { id: "calendar", label: "Calendar",        icon: "CalendarDays",default_size: "small",  cat: "utility" },
+  { id: "countdown",label: "Countdown",       icon: "Timer",       default_size: "small",  cat: "utility" },
+  { id: "notes",    label: "Notes",           icon: "StickyNote",  default_size: "small",  cat: "utility" },
+  // Engagement
+  { id: "polls",    label: "Polls",           icon: "BarChart3",   default_size: "medium", cat: "engagement" },
+  { id: "survey",   label: "Survey",          icon: "ClipboardList", default_size: "medium", cat: "engagement" },
+  { id: "leaderboard", label: "Leaderboard",  icon: "Trophy",      default_size: "medium", cat: "engagement" },
+  { id: "goal",     label: "Goal Tracker",    icon: "Target",      default_size: "small",  cat: "engagement" },
+  { id: "habit",    label: "Habit Tracker",   icon: "CheckSquare", default_size: "small",  cat: "engagement" },
+  // News / data
+  { id: "news",     label: "News",            icon: "Newspaper",   default_size: "medium", cat: "info" },
+  { id: "sports",   label: "Sports Scores",   icon: "Trophy",      default_size: "medium", cat: "info" },
+  { id: "crypto",   label: "Crypto",          icon: "Bitcoin",     default_size: "small",  cat: "finance" },
+  { id: "cryptoPortfolio", label: "Crypto Portfolio", icon: "PieChart", default_size: "medium", cat: "finance" },
+  { id: "stocks",   label: "Stocks",          icon: "TrendingUp",  default_size: "small",  cat: "finance" },
+  { id: "stockPortfolio",  label: "Stock Portfolio",  icon: "LineChart", default_size: "medium", cat: "finance" },
+  { id: "nft",      label: "NFT Showcase",    icon: "Sparkle",     default_size: "medium", cat: "finance" },
+  // Social
+  { id: "friends",  label: "Friends",         icon: "Users",       default_size: "small",  cat: "social" },
+  { id: "wallet",   label: "Wallet",          icon: "Wallet",      default_size: "small",  cat: "finance" },
+  // Monetization / store
+  { id: "ads",      label: "Marketplace Ads", icon: "Megaphone",   default_size: "medium", cat: "commerce" },
+  { id: "store",    label: "Store",           icon: "Store",       default_size: "medium", cat: "commerce" },
+  { id: "course",   label: "Course",          icon: "GraduationCap", default_size: "medium", cat: "commerce" },
+  { id: "blog",     label: "Blog",            icon: "BookOpen",    default_size: "medium", cat: "content" },
+  { id: "forum",    label: "Forum",           icon: "MessagesSquare", default_size: "medium", cat: "social" },
+  { id: "affiliate",label: "Affiliate",       icon: "Link2",       default_size: "small",  cat: "commerce" },
+  { id: "donation", label: "Donation",        icon: "HeartHandshake", default_size: "small", cat: "commerce" },
+  // Payments
+  { id: "cashapp",  label: "CashApp",         icon: "DollarSign",  default_size: "small",  cat: "payments" },
+  { id: "paypal",   label: "PayPal",          icon: "DollarSign",  default_size: "small",  cat: "payments" },
+  { id: "venmo",    label: "Venmo",           icon: "DollarSign",  default_size: "small",  cat: "payments" },
+  { id: "patreon",  label: "Patreon",         icon: "Heart",       default_size: "small",  cat: "payments" },
+  // External (link previews — never embed without explicit user opt-in)
+  { id: "youtube",  label: "YouTube",         icon: "Youtube",     default_size: "medium", cat: "external" },
+  { id: "spotify",  label: "Spotify",         icon: "Music",       default_size: "medium", cat: "external" },
+  { id: "tiktok",   label: "TikTok",          icon: "Video",       default_size: "small",  cat: "external" },
+  { id: "instagram",label: "Instagram",       icon: "Camera",      default_size: "small",  cat: "external" },
+  { id: "x",        label: "X",               icon: "Twitter",     default_size: "small",  cat: "external" },
+  { id: "facebook", label: "Facebook",        icon: "Facebook",    default_size: "small",  cat: "external" },
+  { id: "discord",  label: "Discord",         icon: "MessageCircle", default_size: "small", cat: "external" },
+  { id: "telegram", label: "Telegram",        icon: "Send",        default_size: "small",  cat: "external" },
+  // Modes / signature
+  { id: "radar",    label: "Stealth Radar",   icon: "Radar",       default_size: "medium", cat: "signature" },
+  { id: "custom",   label: "Custom",          icon: "Sparkles",    default_size: "small",  cat: "signature" },
 ];
 
 export const DEFAULT_WIDGETS = [
@@ -275,3 +337,36 @@ export const MODE_PREVIEW_IMG = {
   stealth:    "https://images.unsplash.com/photo-1650043996692-a51e3d749766",
   music:      "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17",
 };
+
+// ----- Realms (Community System) -----
+export const REALMS = [
+  { id: "dj",        name: "DJ Realm",        emoji: "🎧", members: 18420, online: 824, banner: "https://images.unsplash.com/photo-1493676304819-0d7a8d026dcf?w=900", desc: "For decks, sets, and after-hours.",        accent: "#C26BFF", tags: ["DJ Culture","House","Psytrance"] },
+  { id: "gaming",    name: "Gaming Realm",    emoji: "🎮", members: 32140, online: 1820,banner: "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=900", desc: "Squad up, climb ranks, share clips.",        accent: "#10E670", tags: ["Esports","FPS","MMO"] },
+  { id: "crypto",    name: "Crypto Realm",    emoji: "₿",  members: 21560, online: 612, banner: "https://images.unsplash.com/photo-1518972559570-7cc1309f3229?w=900", desc: "On-chain culture, alpha, and signals.",     accent: "#F4C84A", tags: ["Crypto","DeFi","NFT"] },
+  { id: "festival",  name: "Festival Realm",  emoji: "✨", members: 9820,  online: 312, banner: "https://images.unsplash.com/photo-1493676304819-0d7a8d026dcf?w=900", desc: "Lineups, plans, lights, friends found.",     accent: "#FF8AC2", tags: ["Festivals","Live Music"] },
+  { id: "sports",    name: "Sports Realm",    emoji: "🏆", members: 14380, online: 540, banner: "https://images.unsplash.com/photo-1517649763962-0c623066013b?w=900", desc: "Plays, takes, predictions, fandom.",         accent: "#FF3F5A", tags: ["NBA","NFL","Football"] },
+  { id: "tech",      name: "Tech Realm",      emoji: "💻", members: 11020, online: 388, banner: "https://images.unsplash.com/photo-1488972685288-c3fd157d7c7a?w=900", desc: "Builders, indie hackers, and frontier AI.",  accent: "#2EA0FF", tags: ["AI","Open Source","Hardware"] },
+  { id: "fashion",   name: "Fashion Realm",   emoji: "👗", members: 7920,  online: 244, banner: "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=900", desc: "Drops, fits, runways, vintage finds.",       accent: "#C26BFF", tags: ["Streetwear","Vintage","Luxury"] },
+  { id: "creators",  name: "Creator Realm",   emoji: "🎬", members: 28640, online: 1024,banner: "https://images.unsplash.com/photo-1483721310020-03333e577078?w=900", desc: "Tools, tactics, and the new economy.",       accent: "#6BD3FF", tags: ["Creators","Business","Growth"] },
+];
+
+// ----- Trending creators (Discover 2.0) -----
+export const TRENDING_CREATORS = CHARACTERS.map((c, i) => ({
+  id: c.id,
+  name: c.name,
+  avatar: c.avatar,
+  followers: 8200 + ((i * 1873) % 92000),
+  category: ["Music","Gaming","Crypto","Tech","DJ Culture","Sports","Fashion","Creators"][i % 8],
+  isLive: c.status === "live",
+  ringColor: c.ringColor,
+}));
+
+// ----- Theme Marketplace -----
+export const PROFILE_THEMES = [
+  { id: "cyber-dj",     name: "Cyber DJ",            mode: "neon",       creator: "LunaX",   downloads: 8420,  preview: "https://images.unsplash.com/photo-1493676304819-0d7a8d026dcf?w=600" },
+  { id: "executive",    name: "Business Executive",  mode: "business",   creator: "Striker", downloads: 5610,  preview: "https://images.unsplash.com/photo-1488972685288-c3fd157d7c7a?w=600" },
+  { id: "y2k-creator",  name: "Millennium Creator",  mode: "millennium", creator: "Nova",    downloads: 12420, preview: "https://images.unsplash.com/photo-1679269241012-f7640862d242?w=600" },
+  { id: "blackhat",     name: "Stealth Hacker",      mode: "stealth",    creator: "Jaxon",   downloads: 3320,  preview: "https://images.unsplash.com/photo-1650043996692-a51e3d749766?w=600" },
+  { id: "festival",     name: "Festival Aesthetic",  mode: "neon",       creator: "Zara",    downloads: 6240,  preview: "https://images.unsplash.com/photo-1518972559570-7cc1309f3229?w=600" },
+  { id: "minimal-luxe", name: "Minimal Luxe",        mode: "business",   creator: "Milo",    downloads: 4180,  preview: "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=600" },
+];

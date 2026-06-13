@@ -3,9 +3,10 @@
   "name": "OurRealm — Live. Connect. Experience.",
   "icons": [
     {
-      "src": "https://customer-assets.emergentagent.com/job_realm-deploy/artifacts/4ivnshz0_B1C6C04B-2956-4B67-A6C4-7D5A87E77D8A.png",
+      "src": "https://customer-assets.emergentagent.com/job_realm-deploy/artifacts/qhblvgwh_611A8E38-9034-4C15-971D-2D72ACCDDB54.png",
       "type": "image/png",
-      "sizes": "1024x1024"
+      "sizes": "192x192 512x512 1024x1024",
+      "purpose": "any"
     }
   ],
   "start_url": "/",
