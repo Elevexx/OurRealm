@@ -315,6 +315,91 @@ async def refresh_token(request: Request, response: Response):
     return {"access_token": access}
 
 
+FOUNDER_EMAIL = "slopestyle2022@gmail.com"
+FOUNDER_USERNAME = "stealth"
+FOUNDER_AVATAR = "https://customer-assets.emergentagent.com/job_realm-deploy/artifacts/qnqnnlzv_IMG_0993.jpeg"
+FOUNDER_WIDGETS = [
+    {"id": "fw-live",    "type": "live",     "size": "large",  "title": "Stealth Live"},
+    {"id": "fw-merch",   "type": "merch",    "size": "full",   "title": "Stealth Merch"},
+    {"id": "fw-tracks",  "type": "music",    "size": "large",  "title": "Stealth Tracks"},
+    {"id": "fw-events",  "type": "events",   "size": "medium", "title": "Upcoming Events"},
+    {"id": "fw-fans",    "type": "polls",    "size": "medium", "title": "Fan Wall"},
+    {"id": "fw-social",  "type": "custom",   "size": "small",  "title": "Connect with Stealth"},
+]
+
+
+# ----- OTP (founder displayed-OTP login) -----
+class OtpRequest(BaseModel):
+    email: EmailStr
+
+
+class OtpVerify(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=10)
+
+
+@auth_router.post("/otp/request")
+async def otp_request(payload: OtpRequest):
+    email = payload.email.lower().strip()
+    user = await db.users.find_one({"email": email})
+    if not user:
+        raise HTTPException(status_code=404, detail="No account for this email")
+    code = "".join(secrets.choice("0123456789") for _ in range(6))
+    await db.otp_codes.update_one(
+        {"email": email},
+        {"$set": {
+            "email": email,
+            "code": code,
+            "used": False,
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+        }},
+        upsert=True,
+    )
+    logger.info(f"[OTP] {email} -> {code}")
+    # For founder/dev: displayed OTP returned to client (matches existing "OTP system")
+    return {"ok": True, "displayed_otp": code, "expires_in": 600}
+
+
+@auth_router.post("/otp/verify")
+async def otp_verify(payload: OtpVerify, response: Response):
+    email = payload.email.lower().strip()
+    rec = await db.otp_codes.find_one({"email": email})
+    if not rec or rec.get("used"):
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+    exp = rec.get("expires_at")
+    if isinstance(exp, str):
+        exp = datetime.fromisoformat(exp)
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Code expired")
+    if rec.get("code") != payload.code.strip():
+        raise HTTPException(status_code=400, detail="Invalid code")
+    await db.otp_codes.update_one({"email": email}, {"$set": {"used": True}})
+    user = await db.users.find_one({"email": email})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    access = create_access_token(user["id"], email)
+    refresh = create_refresh_token(user["id"])
+    set_auth_cookies(response, access, refresh)
+    return {"user": serialize_user(user), "access_token": access}
+
+
+# ----- Public profile lookup by username -----
+@profile_router.get("/by-username/{username}")
+async def get_public_profile_by_username(username: str):
+    user = await db.users.find_one({"username": username.lower()}, {"_id": 0, "password_hash": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    out = serialize_user(user)
+    out["username"] = user.get("username")
+    out["is_founder"] = bool(user.get("is_founder"))
+    out["is_verified"] = bool(user.get("is_verified"))
+    out["social"] = user.get("social", {})
+    out["widgets"] = user.get("widgets") or []
+    return {"user": out}
+
+
 @auth_router.post("/forgot-password")
 async def forgot_password(payload: ForgotPayload):
     email = payload.email.lower().strip()
@@ -484,6 +569,39 @@ async def on_startup():
             {"$set": {"password_hash": hash_password(admin_password)}},
         )
         logger.info(f"Updated admin password for: {admin_email}")
+
+    # ----- Seed founder account -----
+    founder = await db.users.find_one({"email": FOUNDER_EMAIL})
+    founder_doc = {
+        "email": FOUNDER_EMAIL,
+        "username": FOUNDER_USERNAME,
+        "name": "Stealth",
+        "role": "founder",
+        "is_founder": True,
+        "is_verified": True,
+        "featured_creator": True,
+        "avatar_url": FOUNDER_AVATAR,
+        "bio": "OurRealm Founder",
+        "mode": "stealth",
+        "interests": ["dj","music","tech","festivals"],
+        "widgets": FOUNDER_WIDGETS,
+        "social": {"tiktok": "stealth.hq", "instagram": "djstealthx"},
+    }
+    if founder is None:
+        await db.users.insert_one({
+            "id": str(uuid.uuid4()),
+            "password_hash": hash_password(secrets.token_urlsafe(20)),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            **founder_doc,
+        })
+        await db.users.create_index("username", unique=True, sparse=True)
+        logger.info(f"Seeded founder: {FOUNDER_EMAIL} @{FOUNDER_USERNAME}")
+    else:
+        await db.users.update_one(
+            {"email": FOUNDER_EMAIL},
+            {"$set": founder_doc},
+        )
+        logger.info(f"Refreshed founder profile: {FOUNDER_EMAIL}")
 
 
 @app.on_event("shutdown")
