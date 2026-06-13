@@ -11,7 +11,7 @@ import React from "react";
  * tagline — already baked in. Do not add a separate wordmark anywhere.
  */
 const LOGO_URL =
-  "https://customer-assets.emergentagent.com/job_realm-deploy/artifacts/qhblvgwh_611A8E38-9034-4C15-971D-2D72ACCDDB54.png";
+  "https://customer-assets.emergentagent.com/job_realm-deploy/artifacts/s123exdm_4AA21A20-23F6-4B58-A5C1-C58EAD942F36.png";
 
 export default function Logo({
   size = 44,
