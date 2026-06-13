@@ -1,11 +1,9 @@
-import React, { useState } from "react";
+import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Star, Music2, Bell, MessageSquare, DollarSign, User } from "lucide-react";
 import Logo from "@/components/Logo";
-import ModeSwitcher from "@/components/ModeSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
-import GuestPrompt from "@/components/GuestPrompt";
 
 const ITEMS = [
   { to: "/featured",     label: "Featured",      Icon: Star,         testid: "star-featured",      color: "#F4C84A", badge: null },
@@ -16,20 +14,20 @@ const ITEMS = [
   { to: "/profile?edit=1", label: "Profile (edit)", Icon: User,       testid: "star-profile",       color: "var(--brand-green)", badge: null },
 ];
 
-const MODE_LABEL = {
-  neon: "NEON",
-  business: "BUSINESS",
-  millennium: "Millennium",
-  stealth: "STEALTH",
+const MODE_LABEL = { neon: "NEON", business: "BUSINESS", millennium: "MILLENNIUM", stealth: "STEALTH" };
+const MODE_GRADIENT = {
+  neon:       "linear-gradient(135deg, #2EA0FF 0%, #10E670 100%)",
+  business:   "linear-gradient(135deg, #D5B05A 0%, #8C7A3E 100%)",
+  millennium: "linear-gradient(180deg, #6CC4FF 0%, #2E78D6 100%)",
+  stealth:    "linear-gradient(135deg, #00FF66 0%, #00B23E 100%)",
 };
+const MODE_FG = { neon: "#0a0a0a", business: "#fff", millennium: "#fff", stealth: "#0a0a0a" };
 
 export default function TopStarBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
   const { mode } = useTheme();
-  const [showModes, setShowModes] = useState(false);
-  const [guestPrompt, setGuestPrompt] = useState(null);
 
   return (
     <header
@@ -41,42 +39,48 @@ export default function TopStarBar() {
       }}
       data-testid="topstar-bar"
     >
-      <div className="flex items-center gap-2 sm:gap-4">
-        {/* Logo + wordmark */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Logo — no box, clean */}
         <button
-          className="flex items-center gap-3 shrink-0"
+          className="flex items-center shrink-0"
           onClick={() => navigate("/home")}
           data-testid="header-logo"
+          aria-label="OurRealm home"
+          style={{ background: "transparent", padding: 0 }}
         >
-          <Logo size={52} withWordmark />
+          <Logo size={48} />
         </button>
 
-        <span
-          className="hidden sm:inline-flex items-center px-2.5 py-1 text-[10px] tracking-[0.22em] uppercase"
+        {/* Mode button — full named button → /modes */}
+        <button
+          onClick={() => navigate("/modes")}
+          data-testid="topbar-mode-button"
+          aria-label={`Current mode: ${MODE_LABEL[mode]}. Tap to switch.`}
+          className="shrink-0 transition-transform active:scale-95"
           style={{
-            fontFamily: "var(--font-display)",
-            fontWeight: 700,
-            color: "var(--primary)",
-            border: "1px solid var(--primary)",
+            background: MODE_GRADIENT[mode],
+            color: MODE_FG[mode],
+            padding: "0.4rem 0.85rem",
             borderRadius: 999,
-            background: "color-mix(in srgb, var(--primary) 10%, transparent)",
+            fontFamily: "var(--font-display)",
+            fontWeight: 800,
+            fontSize: "0.7rem",
+            letterSpacing: "0.18em",
+            border: "none",
+            boxShadow: `0 0 16px color-mix(in srgb, var(--primary) 55%, transparent)`,
+            whiteSpace: "nowrap",
+            minHeight: 36,
           }}
         >
-          {MODE_LABEL[mode] || "Mode"} Mode
-        </span>
-
-        <button
-          className="hidden md:inline-flex starbar-icon"
-          onClick={() => setShowModes((v) => !v)}
-          data-testid="topbar-mode-toggle"
-          aria-label="Switch mode"
-          style={{ width: 36, height: 36 }}
-        >
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em" }}>M</span>
+          {MODE_LABEL[mode]}
         </button>
 
-        {/* Star Bar */}
-        <nav className="ml-auto flex items-center gap-1.5 sm:gap-2" data-testid="star-bar">
+        {/* Star Bar — horizontally scrollable on mobile to prevent crowding */}
+        <nav
+          className="ml-auto flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar min-w-0"
+          data-testid="star-bar"
+          style={{ scrollSnapType: "x mandatory" }}
+        >
           {ITEMS.map(({ to, label, Icon, testid, color, badge }) => {
             const pathOnly = to.split("?")[0];
             const active = location.pathname === pathOnly;
@@ -86,10 +90,10 @@ export default function TopStarBar() {
                 data-testid={testid}
                 data-active={active}
                 onClick={() => navigate(to)}
-                className="starbar-icon"
+                className="starbar-icon shrink-0"
                 aria-label={label}
                 title={label}
-                style={{ color: active ? "var(--primary)" : color }}
+                style={{ color: active ? "var(--primary)" : color, scrollSnapAlign: "end" }}
               >
                 <Icon size={20} />
                 {badge && <span className="starbar-badge">{badge}</span>}
@@ -98,12 +102,17 @@ export default function TopStarBar() {
             );
           })}
 
-          {/* Profile avatar (replaces last icon visually) */}
+          {/* Profile avatar */}
           <button
             data-testid="star-avatar"
-            onClick={() => user ? navigate("/profile") : setGuestPrompt("open your profile")}
-            className="rounded-full overflow-hidden ml-1"
-            style={{ width: 44, height: 44, border: "2px solid var(--primary)", boxShadow: "0 0 12px color-mix(in srgb, var(--primary) 50%, transparent)" }}
+            onClick={() => user ? navigate("/profile") : navigate("/signin")}
+            className="rounded-full overflow-hidden ml-1 shrink-0"
+            style={{
+              width: 44, height: 44,
+              border: "2px solid var(--primary)",
+              boxShadow: "0 0 12px color-mix(in srgb, var(--primary) 50%, transparent)",
+              scrollSnapAlign: "end",
+            }}
             aria-label="My profile"
           >
             <img
@@ -114,18 +123,6 @@ export default function TopStarBar() {
           </button>
         </nav>
       </div>
-
-      {showModes && (
-        <div
-          className="absolute right-3 mt-2 p-2 or-surface"
-          style={{ top: "100%", zIndex: 50 }}
-          data-testid="mode-popover"
-        >
-          <ModeSwitcher />
-        </div>
-      )}
-
-      <GuestPrompt open={!!guestPrompt} onClose={() => setGuestPrompt(null)} action={guestPrompt || "do this"} />
     </header>
   );
 }

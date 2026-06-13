@@ -13,6 +13,7 @@ import Sounds from "@/pages/Sounds";
 import Featured from "@/pages/Featured";
 import Realms from "@/pages/Realms";
 import RealmDetail from "@/pages/RealmDetail";
+import ModesPage from "@/pages/ModesPage";
 import Friends from "@/pages/Friends";
 import Messages from "@/pages/Messages";
 import Notifications from "@/pages/Notifications";
@@ -47,6 +48,7 @@ function App() {
             <Route path="/featured" element={<ShellRoute><Featured /></ShellRoute>} />
             <Route path="/realms" element={<ShellRoute><Realms /></ShellRoute>} />
             <Route path="/realms/:id" element={<ShellRoute><RealmDetail /></ShellRoute>} />
+            <Route path="/modes" element={<ShellRoute><ModesPage /></ShellRoute>} />
             <Route path="/feed" element={<ShellRoute><Feed /></ShellRoute>} />
             <Route path="/discover" element={<ShellRoute><Discover /></ShellRoute>} />
             <Route path="/sounds" element={<ShellRoute><Sounds /></ShellRoute>} />
