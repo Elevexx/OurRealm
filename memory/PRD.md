@@ -40,6 +40,16 @@ Landing, SignUp (with username availability + suggestions), SignIn, Founder OTP,
 - Pytest backend suite: 17/17 Phase-2 tests + 20/20 prior tests pass.
 - Playwright frontend: all requested user flows verified (`/app/test_reports/iteration_2.json`).
 
+**Phase 4 — App-wide Responsive Design Audit (Feb 2026)**
+- Global foundation in `index.css`: `box-sizing: border-box`, `html/body/#root { max-width: 100%; overflow-x: hidden }`, responsive `img/video/iframe { max-width: 100%; height: auto }`, fluid clamp-based typography (`.or-text-h1/h2/h3/body/small`), `.or-hscroll` utility for horizontal-scroll rows, `:where(main,section,article) > * { min-width: 0 }` to fix flex/grid blowouts, dedicated 640-1023px tablet hooks, iPhone-SE (≤380px) sizing for nav.
+- `index.html` viewport meta now uses `viewport-fit=cover` for proper notch/home-indicator handling.
+- `Layout.jsx`, `TopStarBar.jsx`, `BottomNav.jsx` all consume `env(safe-area-inset-*)`.
+- `BottomNav` rewrite — flex items use `flex: 1 1 0%; min-width: 0` + ellipsizing labels so all 7 buttons (Home/Discover/For You/+/Wallet/Friends/Profile) fit cleanly at 320px.
+- Messages page grid: `md:grid-cols-[180px_minmax(0,1fr)]` + `min-w-0` on aside & main panel to prevent the 234px content blowout previously seen at 320px.
+- Friends featured 8-circle row converted from fixed 80×80 px to `aspect-square w-full` so they shrink on tiny screens.
+- ModeSwitcher pills are now `overflow-x: auto` with snap so all 4 mode chips remain accessible.
+- Result: **0 horizontal overflow** at 320 / 375 / 390 / 414 / 430 / 768 / 1024 / 1440 across all 15 routes, verified via Playwright probes and full testing_agent_v3_fork sweep.
+
 ## Data Models
 - users `{id, email, username (unique), password_hash, name, bio, avatar_url, is_founder, is_verified, widgets[], friends[], friend_requests_in[], friend_requests_out[], created_at}`
 - otp_codes `{email, code, expires_at}`

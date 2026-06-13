@@ -63,9 +63,8 @@ img, video { display: block; }
 
 /* Mobile-first nav sizing tweaks (iPhone SE 320px) */
 @media (max-width: 380px) {
-  .bottomnav-btn { font-size: 9.5px; padding: 6px 1px; gap: 2px; letter-spacing: 0; }
-  .bottomnav-btn span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  .bottomnav-btn svg { width: 18px; height: 18px; }
+  .bottomnav-btn { font-size: 9px; padding: 6px 1px; gap: 2px; letter-spacing: 0; }
+  .bottomnav-btn svg { width: 17px; height: 17px; }
   .starbar-icon { width: 38px; height: 38px; border-radius: 12px; }
   .starbar-icon svg { width: 16px; height: 16px; }
   .or-btn  { padding: 0.55rem 0.85rem; font-size: 0.82rem; }
@@ -492,11 +491,19 @@ html[data-mode="stealth"] .starbar-icon { border-radius: 2px; }
   gap: 4px;
   padding: 8px 6px;
   color: var(--text-muted);
-  flex: 1;
+  flex: 1 1 0%;
+  min-width: 0;
   font-size: 11px;
   letter-spacing: 0.02em;
   transition: color 0.18s ease, transform 0.18s ease;
   font-family: var(--font-body);
+}
+.bottomnav-btn span {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
 }
 .bottomnav-btn[data-active="true"] {
   color: var(--primary);
