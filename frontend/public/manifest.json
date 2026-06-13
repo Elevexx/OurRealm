@@ -1,0 +1,15 @@
+{
+  "short_name": "OurRealm",
+  "name": "OurRealm — Live. Connect. Experience.",
+  "icons": [
+    {
+      "src": "https://customer-assets.emergentagent.com/job_realm-deploy/artifacts/fdizcj4w_IMG_1211.jpeg",
+      "type": "image/jpeg",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#06121F",
+  "background_color": "#06121F"
+}

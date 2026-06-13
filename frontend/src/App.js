@@ -9,7 +9,8 @@ import SignIn from "@/pages/SignIn";
 import Home from "@/pages/Home";
 import Feed from "@/pages/Feed";
 import Discover from "@/pages/Discover";
-import Music from "@/pages/Music";
+import Sounds from "@/pages/Sounds";
+import Featured from "@/pages/Featured";
 import Friends from "@/pages/Friends";
 import Messages from "@/pages/Messages";
 import Notifications from "@/pages/Notifications";
@@ -41,9 +42,11 @@ function App() {
             <Route path="/signup" element={<SignUp />} />
             <Route path="/signin" element={<SignIn />} />
             <Route path="/home" element={<ShellRoute><Home /></ShellRoute>} />
+            <Route path="/featured" element={<ShellRoute><Featured /></ShellRoute>} />
             <Route path="/feed" element={<ShellRoute><Feed /></ShellRoute>} />
             <Route path="/discover" element={<ShellRoute><Discover /></ShellRoute>} />
-            <Route path="/music" element={<ShellRoute><Music /></ShellRoute>} />
+            <Route path="/sounds" element={<ShellRoute><Sounds /></ShellRoute>} />
+            <Route path="/music" element={<Navigate to="/sounds" replace />} />
             <Route path="/friends" element={<ShellRoute><Friends /></ShellRoute>} />
             <Route path="/messages" element={<ShellRoute><Messages /></ShellRoute>} />
             <Route path="/notifications" element={<ShellRoute><Notifications /></ShellRoute>} />

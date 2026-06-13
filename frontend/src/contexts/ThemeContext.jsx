@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 
-const MODES = ["cypher", "business", "millennium", "stealth"];
+const MODES = ["neon", "business", "millennium", "stealth"];
 const STORAGE_KEY = "ourrealm.mode";
 
 const ThemeContext = createContext({
-  mode: "cypher",
+  mode: "neon",
   setMode: () => {},
   modes: MODES,
 });
@@ -12,10 +12,11 @@ const ThemeContext = createContext({
 export function ThemeProvider({ children }) {
   const [mode, setModeState] = useState(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      return MODES.includes(stored) ? stored : "cypher";
+      let stored = localStorage.getItem(STORAGE_KEY);
+      if (stored === "cypher") stored = "neon"; // migration
+      return MODES.includes(stored) ? stored : "neon";
     } catch {
-      return "cypher";
+      return "neon";
     }
   });
 
@@ -25,6 +26,7 @@ export function ThemeProvider({ children }) {
   }, [mode]);
 
   const setMode = useCallback((next) => {
+    if (next === "cypher") next = "neon";
     if (MODES.includes(next)) setModeState(next);
   }, []);
 

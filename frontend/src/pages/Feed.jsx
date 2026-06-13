@@ -1,20 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Heart, MessageCircle, Share2, Bookmark, Radio, Volume2, PlayCircle, Image as ImageIcon, Type } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { makeMockPosts } from "@/data/mockData";
 import GuestPrompt from "@/components/GuestPrompt";
+import MediaTypeBar from "@/components/MediaTypeBar";
 
-const FILTERS = [
-  { id: "all", label: "All", icon: null },
-  { id: "image", label: "Images", icon: ImageIcon },
-  { id: "video", label: "Videos", icon: PlayCircle },
-  { id: "live", label: "Lives", icon: Radio },
-  { id: "sound", label: "Sounds", icon: Volume2 },
-  { id: "post", label: "Posts", icon: Type },
-];
-
-const FILTER_KEY = "ourrealm.feedFilter";
+const FILTER_KEY = "ourrealm.feedMedia";
 
 function timeAgo(iso) {
   const d = new Date(iso); const s = Math.floor((Date.now() - d.getTime()) / 1000);
@@ -26,30 +18,30 @@ function timeAgo(iso) {
 
 export default function Feed() {
   const { user, isGuest } = useAuth();
-  const [filter, setFilter] = useState(() => {
-    try { return localStorage.getItem(FILTER_KEY) || "all"; } catch { return "all"; }
+  const [media, setMedia] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(FILTER_KEY) || "[]"); } catch { return []; }
   });
   const [serverPosts, setServerPosts] = useState([]);
   const [composeText, setComposeText] = useState("");
   const [guestPrompt, setGuestPrompt] = useState(null);
   const [posting, setPosting] = useState(false);
 
-  useEffect(() => { try { localStorage.setItem(FILTER_KEY, filter); } catch { /* ignore */ } }, [filter]);
+  useEffect(() => { try { localStorage.setItem(FILTER_KEY, JSON.stringify(media)); } catch { /* ignore */ } }, [media]);
 
   const loadPosts = async () => {
     try {
-      const { data } = await apiClient.get("/posts", { params: filter === "all" ? {} : { media_type: filter } });
+      const { data } = await apiClient.get("/posts");
       setServerPosts(data.posts || []);
     } catch { setServerPosts([]); }
   };
-
-  useEffect(() => { loadPosts(); /* eslint-disable-next-line */ }, [filter]);
+  useEffect(() => { loadPosts(); }, []);
 
   const mockPosts = useMemo(() => makeMockPosts(24), []);
   const allPosts = useMemo(() => {
     const merged = [...serverPosts, ...mockPosts];
-    return filter === "all" ? merged : merged.filter((p) => p.media_type === filter);
-  }, [serverPosts, mockPosts, filter]);
+    if (media.length === 0) return merged;
+    return merged.filter((p) => media.includes(p.media_type));
+  }, [serverPosts, mockPosts, media]);
 
   const submitPost = async () => {
     if (!user || isGuest) { setGuestPrompt("post a thought"); return; }
@@ -61,39 +53,24 @@ export default function Feed() {
       await loadPosts();
     } finally { setPosting(false); }
   };
-
-  const onAction = (label) => {
-    if (!user || isGuest) setGuestPrompt(label);
-  };
+  const onAction = (label) => { if (!user || isGuest) setGuestPrompt(label); };
 
   return (
     <div className="max-w-3xl mx-auto" data-testid="feed-page">
-      <div className="mb-5 flex items-baseline justify-between">
+      <div className="mb-4 flex items-baseline justify-between">
         <div>
-          <div className="text-xs uppercase tracking-[0.25em]" style={{ color: "var(--text-muted)" }}>For you</div>
-          <h1 className="text-3xl sm:text-4xl" style={{ fontFamily: "var(--font-display)" }}>The Feed</h1>
+          <div className="text-xs uppercase tracking-[0.25em]" style={{ color: "var(--text-muted)" }}>Personalized stream</div>
+          <h1 className="text-3xl sm:text-4xl" style={{ fontFamily: "var(--font-display)" }}>
+            For <span style={{ color: "var(--brand-green)" }}>You</span>
+          </h1>
         </div>
-        <span className="mode-badge">{filter === "all" ? "All media" : FILTERS.find(f => f.id === filter)?.label}</span>
+        <button className="or-chip" data-testid="feed-customize">
+          <Sliders size={14} /> Customize
+        </button>
       </div>
 
-      {/* Media filter bar */}
-      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-3 -mx-1 px-1" data-testid="feed-filter-bar">
-        {FILTERS.map((f) => {
-          const Icon = f.icon;
-          return (
-            <button
-              key={f.id}
-              data-testid={`feed-filter-${f.id}`}
-              data-active={filter === f.id}
-              className="or-chip shrink-0"
-              onClick={() => setFilter(f.id)}
-            >
-              {Icon && <Icon size={14} />} {f.label}
-            </button>
-          );
-        })}
-        <button className="or-chip shrink-0 ml-2" data-testid="feed-filter-next">→ Next</button>
-      </div>
+      {/* Media type bar (matches uploaded design) */}
+      <MediaTypeBar value={media} onChange={setMedia} onNext={() => {}} />
 
       {/* Composer */}
       <div className="or-surface p-4 mt-4" data-testid="feed-composer">
@@ -130,11 +107,10 @@ export default function Feed() {
         </div>
       </div>
 
-      {/* Posts */}
       <div className="mt-5 space-y-4">
         {allPosts.length === 0 && (
           <div className="or-surface p-6 text-center" style={{ color: "var(--text-muted)" }}>
-            No posts in this stream yet. Try switching filters or share something first.
+            Nothing matches these media types. Toggle some off to widen the feed.
           </div>
         )}
         {allPosts.map((p) => (
@@ -155,28 +131,22 @@ export default function Feed() {
               <button onClick={() => onAction("follow")} className="or-chip" data-testid={`feed-follow-${p.id}`}>+ Follow</button>
             </header>
             {p.content && <p className="mb-3 text-[15px] leading-relaxed" style={{ color: "var(--text-main)" }}>{p.content}</p>}
-            {p.media_url && p.media_type !== "post" && (
+            {p.media_url && p.media_type !== "post" && p.media_type !== "thought" && (
               <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
                 <img src={p.media_url} alt="" className="w-full h-72 sm:h-96 object-cover" />
-                {p.media_type === "live" && (
-                  <div className="absolute mt-[-3rem] ml-3 px-2 py-1 text-xs font-bold uppercase tracking-widest"
-                    style={{ background: "#FF3344", color: "#fff", borderRadius: 4 }}>
-                    ● Live · {Math.floor(p.likes / 10)} watching
-                  </div>
-                )}
               </div>
             )}
             <footer className="flex gap-5 text-sm" style={{ color: "var(--text-muted)" }}>
               <button data-testid={`feed-like-${p.id}`} onClick={() => onAction("like a post")} className="flex items-center gap-1.5 hover:text-pink-400">
                 <Heart size={16} /> {p.likes}
               </button>
-              <button data-testid={`feed-comment-${p.id}`} onClick={() => onAction("comment")} className="flex items-center gap-1.5 hover:opacity-80">
+              <button data-testid={`feed-comment-${p.id}`} onClick={() => onAction("comment")} className="flex items-center gap-1.5">
                 <MessageCircle size={16} /> {p.comments}
               </button>
-              <button data-testid={`feed-share-${p.id}`} onClick={() => onAction("share")} className="flex items-center gap-1.5 hover:opacity-80">
+              <button data-testid={`feed-share-${p.id}`} onClick={() => onAction("share")} className="flex items-center gap-1.5">
                 <Share2 size={16} /> Share
               </button>
-              <button data-testid={`feed-save-${p.id}`} onClick={() => onAction("save")} className="flex items-center gap-1.5 hover:opacity-80 ml-auto">
+              <button data-testid={`feed-save-${p.id}`} onClick={() => onAction("save")} className="flex items-center gap-1.5 ml-auto">
                 <Bookmark size={16} />
               </button>
             </footer>

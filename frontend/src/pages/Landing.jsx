@@ -7,12 +7,12 @@ import { MODE_PREVIEW_IMG } from "@/data/mockData";
 
 const QUADRANTS = [
   {
-    mode: "cypher",
-    label: "Cypher",
+    mode: "neon",
+    label: "Neon",
     sub: "Cyberpunk Future",
-    img: MODE_PREVIEW_IMG.cypher,
-    overlay: "radial-gradient(ellipse at center, rgba(176,38,255,0.35), rgba(5,5,10,0.92))",
-    accent: "#B026FF",
+    img: MODE_PREVIEW_IMG.neon,
+    overlay: "radial-gradient(ellipse at center, rgba(46,160,255,0.42), rgba(6,18,31,0.92))",
+    accent: "#2EA0FF",
     pos: "tl",
   },
   {
@@ -29,8 +29,8 @@ const QUADRANTS = [
     label: "Millennium",
     sub: "Y2K Nostalgia",
     img: MODE_PREVIEW_IMG.millennium,
-    overlay: "linear-gradient(180deg, rgba(108,168,240,0.45), rgba(46,109,211,0.65))",
-    accent: "#2E6DD3",
+    overlay: "linear-gradient(180deg, rgba(108,196,255,0.45), rgba(46,109,211,0.65))",
+    accent: "#2EA0FF",
     pos: "bl",
   },
   {
@@ -38,7 +38,7 @@ const QUADRANTS = [
     label: "Stealth",
     sub: "Tactical Intel",
     img: MODE_PREVIEW_IMG.stealth,
-    overlay: "radial-gradient(ellipse at center, rgba(0,255,102,0.18), rgba(5,8,7,0.95))",
+    overlay: "radial-gradient(ellipse at center, rgba(0,255,102,0.22), rgba(5,8,7,0.95))",
     accent: "#00FF66",
     pos: "br",
   },
@@ -64,7 +64,7 @@ export default function Landing() {
               onClick={() => setMode(q.mode)}
               onMouseEnter={() => setHover(q.mode)}
               onMouseLeave={() => setHover(null)}
-              className="relative overflow-hidden text-left transition-all duration-500 group"
+              className="relative overflow-hidden text-left transition-all duration-500"
               style={{
                 outline: active ? `2px solid ${q.accent}` : "none",
                 outlineOffset: -2,
@@ -81,7 +81,6 @@ export default function Landing() {
                 }}
               />
               <div className="absolute inset-0" style={{ background: q.overlay }} />
-              {/* Mode label */}
               <div
                 className={`absolute p-6 sm:p-10 ${
                   q.pos === "tl" ? "top-0 left-0" :
@@ -90,10 +89,7 @@ export default function Landing() {
                 }`}
                 style={{ color: q.mode === "business" ? "#1A1A1A" : "#fff" }}
               >
-                <div
-                  className="text-[10px] sm:text-xs uppercase tracking-[0.3em] opacity-80 mb-2"
-                  style={{ fontFamily: "'Chivo', sans-serif" }}
-                >
+                <div className="text-[10px] sm:text-xs uppercase tracking-[0.3em] opacity-80 mb-2" style={{ fontFamily: "'Chivo', sans-serif" }}>
                   {q.sub}
                 </div>
                 <div
@@ -110,8 +106,7 @@ export default function Landing() {
                   {q.label}
                 </div>
                 {active && (
-                  <div className="mt-2 inline-block text-[10px] tracking-[0.25em] uppercase px-2 py-1"
-                    style={{ border: `1px solid ${q.accent}`, color: q.accent }}>
+                  <div className="mt-2 inline-block text-[10px] tracking-[0.25em] uppercase px-2 py-1" style={{ border: `1px solid ${q.accent}`, color: q.accent }}>
                     Active mode
                   </div>
                 )}
@@ -121,7 +116,7 @@ export default function Landing() {
         })}
       </div>
 
-      {/* Center floating panel — wrapper must NOT intercept clicks on the quadrants beneath */}
+      {/* Center floating panel */}
       <div className="pointer-events-none relative z-10 min-h-screen flex items-center justify-center px-4">
         <div
           className="pointer-events-auto or-surface w-full max-w-md p-8 sm:p-10 text-center grain"
@@ -133,40 +128,23 @@ export default function Landing() {
           data-testid="landing-center-panel"
         >
           <div className="flex justify-center mb-4 animate-float">
-            <Logo size={80} />
+            <Logo size={96} />
           </div>
-          <h1
-            className="text-4xl sm:text-5xl mb-2"
-            style={{ fontFamily: "var(--font-display)", color: "var(--text-main)", letterSpacing: "-0.02em" }}
-          >
-            Our<span style={{ color: "var(--primary)" }}>Realm</span>
+          <h1 className="text-4xl sm:text-5xl mb-2" style={{ fontFamily: "var(--font-display)", letterSpacing: "-0.02em" }}>
+            <span style={{ color: "var(--brand-blue)" }}>Our</span>
+            <span style={{ color: "var(--brand-green)" }}>Realm</span>
           </h1>
-          <p
-            className="text-sm sm:text-base mb-7 tracking-widest uppercase"
-            style={{ color: "var(--text-muted)", fontFamily: "var(--font-body)" }}
-          >
+          <p className="text-sm sm:text-base mb-7 tracking-widest uppercase" style={{ color: "var(--text-muted)", fontFamily: "var(--font-body)" }}>
             Live. Connect. Experience.
           </p>
           <div className="flex flex-col gap-3">
-            <button
-              data-testid="landing-signup-button"
-              className="or-btn w-full"
-              onClick={() => navigate("/signup")}
-            >
-              Sign up
-            </button>
-            <button
-              data-testid="landing-signin-button"
-              className="or-btn or-btn-ghost w-full"
-              onClick={() => navigate("/signin")}
-            >
-              Sign in
-            </button>
+            <button data-testid="landing-signup-button" className="or-btn w-full" onClick={() => navigate("/signup")}>Sign up</button>
+            <button data-testid="landing-signin-button" className="or-btn or-btn-ghost w-full" onClick={() => navigate("/signin")}>Sign in</button>
             <button
               data-testid="landing-guest-button"
               className="w-full text-sm py-2.5"
               style={{ color: "var(--text-muted)", textDecoration: "underline", textUnderlineOffset: 4 }}
-              onClick={() => { setGuest(true); navigate("/feed"); }}
+              onClick={() => { setGuest(true); navigate("/home"); }}
             >
               Browse as guest
             </button>

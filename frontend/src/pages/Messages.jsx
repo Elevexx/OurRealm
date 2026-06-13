@@ -1,115 +1,339 @@
-import React, { useState, useRef, useEffect } from "react";
-import { Send, Mic, Paperclip, Phone, Video } from "lucide-react";
-import { MESSAGES_THREADS } from "@/data/mockData";
+import React, { useState, useEffect, useRef } from "react";
+import { Search, Sliders, Pin, MessagesSquare, Users, Radio, Users2, Phone, Settings as SettingsIcon, Plus, Send, Mic, Paperclip, X, ChevronRight, Crown } from "lucide-react";
+import { CHARACTERS, PINNED_CONVERSATIONS, GROUP_CHATS, DIRECT_MESSAGES, CURRENT_PERSONA } from "@/data/mockData";
+
+const SIDEBAR = [
+  { id: "chats",    label: "Chats",    Icon: MessagesSquare, badge: null },
+  { id: "groups",   label: "Groups",   Icon: Users,           badge: null },
+  { id: "lives",    label: "Lives",    Icon: Radio,           badge: 12 },
+  { id: "people",   label: "People",   Icon: Users2,          badge: null },
+  { id: "calls",    label: "Calls",    Icon: Phone,           badge: null },
+  { id: "settings", label: "Settings", Icon: SettingsIcon,    badge: null },
+];
+
+function StatusRing({ character, size = 76 }) {
+  const isLive = character.status === "live";
+  const ringColor = character.ringColor;
+  return (
+    <div
+      className="rounded-full p-[3px] relative"
+      style={{
+        background: ringColor,
+        boxShadow: `0 0 14px ${ringColor}55`,
+        width: size, height: size,
+      }}
+    >
+      <img
+        src={character.avatar}
+        alt={character.name}
+        className="w-full h-full rounded-full object-cover"
+        style={{ border: "3px solid var(--bgc)" }}
+      />
+      {isLive && (
+        <span
+          className="absolute -top-1 left-1/2 -translate-x-1/2 px-2 py-0.5 text-[9px] font-extrabold rounded-full"
+          style={{ background: "#FF3F5A", color: "#fff", letterSpacing: "0.08em" }}
+        >
+          LIVE
+        </span>
+      )}
+      {character.status === "in-app" && (
+        <span
+          className="absolute top-0 right-0 w-5 h-5 rounded-full flex items-center justify-center"
+          style={{ background: "#2EA0FF", border: "2px solid var(--bgc)" }}
+        >
+          <span className="text-white text-[10px]">···</span>
+        </span>
+      )}
+      {character.status === "online" && (
+        <span
+          className="absolute bottom-1 right-1 w-3.5 h-3.5 rounded-full"
+          style={{ background: "#10E670", border: "2px solid var(--bgc)" }}
+        />
+      )}
+    </div>
+  );
+}
 
 export default function Messages() {
-  const [activeId, setActiveId] = useState(MESSAGES_THREADS[0]?.id);
+  const [tab, setTab] = useState("chats");
+  const [activeChat, setActiveChat] = useState(null); // null = list view, else thread id
   const [draft, setDraft] = useState("");
-  const [threads, setThreads] = useState(MESSAGES_THREADS);
+  const [messages, setMessages] = useState({
+    "dm-1": [
+      { from: "them", text: "Going live in 5 mins! 🔥", t: "9:48 PM" },
+      { from: "me",   text: "🔥🔥 see you there",      t: "9:49 PM" },
+    ],
+  });
   const endRef = useRef(null);
-  const active = threads.find((t) => t.id === activeId);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeChat, messages]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeId, threads]);
+  const activeThread = activeChat ? DIRECT_MESSAGES.find((d) => d.id === activeChat) : null;
 
   const send = () => {
-    if (!draft.trim() || !active) return;
-    const newMsg = { from: "me", text: draft.trim(), t: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
-    setThreads((arr) => arr.map((t) => t.id === active.id ? { ...t, messages: [...t.messages, newMsg], last: newMsg.text, when: "now" } : t));
+    if (!draft.trim() || !activeChat) return;
+    const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    setMessages((m) => ({
+      ...m,
+      [activeChat]: [...(m[activeChat] || []), { from: "me", text: draft.trim(), t }],
+    }));
     setDraft("");
   };
 
   return (
-    <div className="max-w-6xl mx-auto" data-testid="messages-page">
-      <div className="mb-5">
-        <div className="text-xs uppercase tracking-[0.25em]" style={{ color: "var(--text-muted)" }}>Direct</div>
-        <h1 className="text-3xl sm:text-4xl" style={{ fontFamily: "var(--font-display)" }}>Messages</h1>
+    <div className="max-w-7xl mx-auto" data-testid="messages-page">
+      <div className="mb-4 flex items-baseline justify-between">
+        <h1 className="text-3xl sm:text-4xl flex items-center gap-3" style={{ fontFamily: "var(--font-display)" }}>
+          OurRealm <span style={{ color: "var(--brand-green)" }}>Messenger</span>
+        </h1>
+        <span className="mode-badge hidden sm:inline-flex">Messenger</span>
       </div>
-      <div className="grid md:grid-cols-[300px_1fr] gap-4" style={{ height: "calc(100vh - 220px)" }}>
-        {/* Threads */}
-        <div className="or-surface overflow-y-auto" data-testid="messages-thread-list">
-          {threads.map((t) => (
+
+      <div className="grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 sm:gap-4">
+        {/* Vertical sidebar */}
+        <aside className="or-surface p-3 flex md:flex-col gap-2 overflow-x-auto md:overflow-visible" data-testid="messenger-sidebar">
+          {SIDEBAR.map(({ id, label, Icon, badge }) => (
             <button
-              key={t.id}
-              onClick={() => setActiveId(t.id)}
-              data-testid={`messages-thread-${t.id}`}
-              className="w-full flex items-center gap-3 p-3 text-left transition-colors"
+              key={id}
+              data-testid={`messenger-tab-${id}`}
+              data-active={tab === id}
+              onClick={() => setTab(id)}
+              className="flex flex-col md:flex-row items-center md:items-center gap-1.5 md:gap-2.5 px-3 py-3 transition-colors shrink-0"
               style={{
-                background: activeId === t.id ? "color-mix(in srgb, var(--primary) 14%, transparent)" : "transparent",
-                borderBottom: "1px solid var(--border-col)",
+                borderRadius: "calc(var(--radius) - 4px)",
+                background: tab === id ? "color-mix(in srgb, var(--primary) 18%, transparent)" : "transparent",
+                color: tab === id ? "var(--primary)" : "var(--text-muted)",
+                fontWeight: tab === id ? 700 : 500,
+                outline: tab === id ? "1px solid var(--primary)" : "1px solid transparent",
+                minWidth: 70,
               }}
             >
-              <div className="relative shrink-0">
-                <img src={t.friend.avatar} alt="" className="rounded-full object-cover" style={{ width: 44, height: 44 }} />
-                {t.friend.is_online && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full" style={{ background: "#10E670", border: "2px solid var(--surface)" }} />}
+              <div className="relative">
+                <Icon size={20} />
+                {badge && (
+                  <span className="starbar-badge" style={{ top: -6, right: -8 }}>{badge}</span>
+                )}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between text-sm">
-                  <span className="font-semibold truncate" style={{ color: "var(--text-main)" }}>@{t.friend.handle}</span>
-                  <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{t.when}</span>
-                </div>
-                <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{t.last}</div>
-              </div>
-              {t.unread > 0 && (
-                <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5" style={{ background: "var(--primary)", color: "var(--primary-fg)" }}>
-                  {t.unread}
-                </span>
-              )}
+              <span className="text-xs sm:text-sm">{label}</span>
             </button>
           ))}
-        </div>
 
-        {/* Active conversation */}
-        <div className="or-surface flex flex-col">
-          {active ? (
-            <>
-              <div className="flex items-center gap-3 p-3" style={{ borderBottom: "1px solid var(--border-col)" }}>
-                <img src={active.friend.avatar} alt="" className="rounded-full object-cover" style={{ width: 40, height: 40 }} />
-                <div className="flex-1">
-                  <div className="font-semibold" style={{ color: "var(--text-main)" }}>@{active.friend.handle}</div>
-                  <div className="text-[11px]" style={{ color: active.friend.is_online ? "#10E670" : "var(--text-muted)" }}>
-                    {active.friend.is_online ? "online · typing…" : "offline"}
+          <div className="mt-auto pt-3 hidden md:flex flex-col items-center gap-1.5" data-testid="messenger-persona">
+            <div className="relative">
+              <img
+                src={CURRENT_PERSONA.avatar}
+                alt={CURRENT_PERSONA.name}
+                className="rounded-full object-cover"
+                style={{ width: 64, height: 64, border: "3px solid var(--primary)" }}
+              />
+              <span className="absolute bottom-1 right-1 w-3.5 h-3.5 rounded-full" style={{ background: "#10E670", border: "2px solid var(--bgc)" }} />
+            </div>
+            <div className="text-xs font-semibold text-center" style={{ color: "var(--text-main)" }}>{CURRENT_PERSONA.name}</div>
+            <div className="px-2 py-0.5 text-[10px] font-bold rounded-full" style={{ background: "color-mix(in srgb, var(--primary) 20%, transparent)", color: "var(--primary)" }}>
+              LVL {CURRENT_PERSONA.level}
+            </div>
+            <div className="text-[11px]" style={{ color: "var(--brand-green)" }}>
+              {CURRENT_PERSONA.rp.toLocaleString()} RP <ChevronRight size={10} className="inline" />
+            </div>
+          </div>
+        </aside>
+
+        {/* Main panel */}
+        <section className="or-surface p-3 sm:p-5">
+          {/* Live users row */}
+          <div className="flex gap-3 sm:gap-5 overflow-x-auto no-scrollbar pb-2" data-testid="messenger-live-users">
+            {CHARACTERS.map((c) => (
+              <button
+                key={c.id}
+                className="flex flex-col items-center gap-1.5 shrink-0"
+                data-testid={`messenger-live-${c.id}`}
+                onClick={() => setActiveChat(`dm-${CHARACTERS.indexOf(c) + 1}`)}
+              >
+                <StatusRing character={c} size={72} />
+                <div className="text-xs font-semibold" style={{ color: "var(--text-main)" }}>{c.name}</div>
+                <div className="text-[10px]" style={{ color: c.ringColor }}>{c.label}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div className="or-surface mt-4 p-2.5 flex items-center gap-2" style={{ background: "var(--surface-2)" }}>
+            <Search size={16} style={{ color: "var(--text-muted)" }} />
+            <input
+              placeholder="Search for friends, groups, or messages…"
+              className="bg-transparent flex-1 outline-none border-none text-sm"
+              style={{ color: "var(--text-main)" }}
+              data-testid="messenger-search"
+            />
+            <Sliders size={16} style={{ color: "var(--text-muted)" }} />
+          </div>
+
+          {/* Pinned */}
+          <div className="mt-5">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-base sm:text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>Pinned Conversations</h3>
+              <button className="text-xs flex items-center gap-1" style={{ color: "var(--text-muted)" }}>View All <ChevronRight size={12} /></button>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" data-testid="messenger-pinned">
+              {PINNED_CONVERSATIONS.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setActiveChat(`dm-${PINNED_CONVERSATIONS.indexOf(p) + 1}`)}
+                  className="or-surface p-3 text-left"
+                  style={{ background: "var(--surface-2)", borderColor: p.badgeColor, outline: `1px solid ${p.badgeColor}33` }}
+                  data-testid={`pinned-${p.id}`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <img src={p.character.avatar} alt="" className="rounded-full object-cover" style={{ width: 36, height: 36, border: `2px solid ${p.badgeColor}` }} />
+                    <div>
+                      <div className="text-sm font-bold" style={{ color: "var(--text-main)" }}>{p.character.name}</div>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: p.badgeColor, color: "#fff" }}>{p.badge}</span>
+                    </div>
+                    <Pin size={12} style={{ color: "var(--text-muted)", marginLeft: "auto" }} />
                   </div>
-                </div>
-                <button className="or-btn or-btn-ghost" style={{ padding: "0.4rem 0.6rem" }} data-testid="messages-call"><Phone size={16} /></button>
-                <button className="or-btn or-btn-ghost" style={{ padding: "0.4rem 0.6rem" }} data-testid="messages-video"><Video size={16} /></button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-3" data-testid="messages-conversation">
-                {active.messages.map((m, i) => (
-                  <div key={i} className={`flex ${m.from === "me" ? "justify-end" : "justify-start"}`}>
-                    <div className="max-w-[75%] px-3 py-2 text-sm"
-                      style={{
-                        background: m.from === "me" ? "var(--primary)" : "var(--surface-2)",
-                        color: m.from === "me" ? "var(--primary-fg)" : "var(--text-main)",
-                        borderRadius: "var(--radius)",
-                      }}>
-                      <div>{m.text}</div>
-                      <div className="text-[10px] mt-1 opacity-70 text-right">{m.t} {m.from === "me" && "✓✓"}</div>
+                  <div className="text-xs line-clamp-2" style={{ color: "var(--text-muted)" }}>{p.text}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Group Chats */}
+          <div className="mt-5">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-base sm:text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>Group Chats</h3>
+              <button className="text-xs flex items-center gap-1" style={{ color: "var(--brand-green)" }} data-testid="messenger-new-group">New Group <Plus size={12} /></button>
+            </div>
+            <div className="space-y-2" data-testid="messenger-groups">
+              {GROUP_CHATS.map((g) => (
+                <button
+                  key={g.id}
+                  className="w-full or-surface p-3 text-left flex items-center gap-3"
+                  style={{ background: "var(--surface-2)", outline: `1px solid ${g.accent}33` }}
+                  data-testid={`group-${g.id}`}
+                >
+                  <div
+                    className="rounded-full flex items-center justify-center shrink-0"
+                    style={{ width: 52, height: 52, background: `linear-gradient(135deg, ${g.accent}33, ${g.accent}11)`, border: `1px solid ${g.accent}` }}
+                  >
+                    <span style={{ color: g.accent, fontSize: 22 }}>{g.emoji || "💬"}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <div className="font-bold flex items-center gap-1" style={{ color: "var(--text-main)" }}>
+                        {g.name} {g.name === "Realm Raiders" && <Crown size={14} style={{ color: "#F4C84A" }} />}
+                      </div>
+                      <div className="text-xs whitespace-nowrap" style={{ color: "var(--text-muted)" }}>{g.time}</div>
+                    </div>
+                    <div className="text-xs line-clamp-1" style={{ color: "var(--text-muted)" }}>{g.preview}</div>
+                    <div className="flex items-center mt-1.5 gap-1">
+                      {CHARACTERS.slice(0, 5).map((c) => (
+                        <img key={c.id} src={c.avatar} alt="" className="rounded-full" style={{ width: 18, height: 18, border: "1px solid var(--bgc)", marginLeft: -4 }} />
+                      ))}
+                      <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded-full" style={{ background: "var(--surface)", color: "var(--text-muted)" }}>+5</span>
                     </div>
                   </div>
-                ))}
-                <div ref={endRef} />
-              </div>
-              <div className="p-3 flex items-center gap-2" style={{ borderTop: "1px solid var(--border-col)" }}>
-                <button className="or-btn or-btn-ghost" style={{ padding: "0.4rem 0.5rem" }} data-testid="messages-attach"><Paperclip size={16} /></button>
-                <button className="or-btn or-btn-ghost" style={{ padding: "0.4rem 0.5rem" }} data-testid="messages-voice"><Mic size={16} /></button>
-                <input
-                  className="or-input flex-1"
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && send()}
-                  placeholder="Message…"
-                  data-testid="messages-input"
-                />
-                <button className="or-btn" onClick={send} data-testid="messages-send"><Send size={16} /></button>
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-sm" style={{ color: "var(--text-muted)" }}>
-              Select a conversation
+                  <div
+                    className="text-xs font-bold rounded-full px-2 py-0.5 shrink-0"
+                    style={{ background: `${g.accent}33`, color: g.accent, minWidth: 28, textAlign: "center" }}
+                  >
+                    {g.count}
+                  </div>
+                </button>
+              ))}
             </div>
-          )}
-        </div>
+          </div>
+
+          {/* Direct Messages */}
+          <div className="mt-5">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-base sm:text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>Direct Messages</h3>
+              <button className="text-xs flex items-center gap-1" style={{ color: "var(--text-muted)" }}>View All <ChevronRight size={12} /></button>
+            </div>
+            <div data-testid="messenger-dms">
+              {DIRECT_MESSAGES.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => setActiveChat(d.id)}
+                  className="w-full flex items-center gap-3 py-2.5 px-2 text-left transition-colors"
+                  style={{ borderBottom: "1px solid var(--border-col)" }}
+                  data-testid={`dm-${d.id}`}
+                >
+                  <img src={d.character.avatar} alt="" className="rounded-full object-cover shrink-0" style={{ width: 40, height: 40 }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="font-semibold text-sm" style={{ color: "var(--text-main)" }}>{d.character.name}</div>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: d.badgeColor, color: "#fff" }}>{d.badge}</span>
+                    </div>
+                    <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{d.preview}</div>
+                  </div>
+                  <div className="text-xs whitespace-nowrap shrink-0" style={{ color: "var(--text-muted)" }}>{d.time}</div>
+                  {d.unread > 0 ? (
+                    <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 shrink-0" style={{ background: "var(--primary)", color: "var(--primary-fg)" }}>
+                      {d.unread}
+                    </span>
+                  ) : d.pinned ? (
+                    <Pin size={12} style={{ color: "var(--primary)" }} />
+                  ) : (
+                    <span className="w-2 h-2 rounded-full" style={{ background: d.badgeColor }} />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
       </div>
+
+      {/* Chat overlay */}
+      {activeChat && activeThread && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center px-2 pb-24 sm:pb-0"
+          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }}
+          onClick={() => setActiveChat(null)}
+          data-testid="chat-overlay"
+        >
+          <div className="or-surface w-full max-w-2xl h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 p-3" style={{ borderBottom: "1px solid var(--border-col)" }}>
+              <img src={activeThread.character.avatar} alt="" className="rounded-full" style={{ width: 40, height: 40 }} />
+              <div className="flex-1">
+                <div className="font-semibold" style={{ color: "var(--text-main)" }}>{activeThread.character.name}</div>
+                <div className="text-[11px]" style={{ color: activeThread.badgeColor }}>{activeThread.badge}</div>
+              </div>
+              <button className="starbar-icon" style={{ width: 36, height: 36 }} onClick={() => setActiveChat(null)} data-testid="chat-close">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2" data-testid="chat-conversation">
+              {(messages[activeChat] || []).map((m, i) => (
+                <div key={i} className={`flex ${m.from === "me" ? "justify-end" : "justify-start"}`}>
+                  <div className="max-w-[75%] px-3 py-2 text-sm"
+                    style={{
+                      background: m.from === "me" ? "var(--primary)" : "var(--surface-2)",
+                      color: m.from === "me" ? "var(--primary-fg)" : "var(--text-main)",
+                      borderRadius: "var(--radius)",
+                    }}>
+                    <div>{m.text}</div>
+                    <div className="text-[10px] mt-1 opacity-70 text-right">{m.t} {m.from === "me" && "✓✓"}</div>
+                  </div>
+                </div>
+              ))}
+              <div ref={endRef} />
+            </div>
+            <div className="p-3 flex items-center gap-2" style={{ borderTop: "1px solid var(--border-col)" }}>
+              <button className="starbar-icon" style={{ width: 36, height: 36 }} data-testid="chat-attach"><Paperclip size={16} /></button>
+              <button className="starbar-icon" style={{ width: 36, height: 36 }} data-testid="chat-voice"><Mic size={16} /></button>
+              <input
+                className="or-input flex-1"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && send()}
+                placeholder="Message…"
+                data-testid="chat-input"
+              />
+              <button className="or-btn" style={{ padding: "0.55rem 0.9rem" }} onClick={send} data-testid="chat-send"><Send size={16} /></button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

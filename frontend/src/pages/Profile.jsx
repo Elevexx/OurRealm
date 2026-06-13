@@ -16,7 +16,7 @@ function WidgetBody({ w }) {
     case "live":
       return (
         <div className="relative h-full overflow-hidden" style={{ borderRadius: "var(--radius)" }}>
-          <img src={MODE_PREVIEW_IMG.cypher} alt="live" className="w-full h-full object-cover" />
+          <img src={MODE_PREVIEW_IMG.neon} alt="live" className="w-full h-full object-cover" />
           <div className="absolute top-3 left-3 px-2 py-1 text-[10px] tracking-widest uppercase font-bold"
             style={{ background: "#FF3344", color: "#fff", borderRadius: 4 }}>● Live · 482 watching</div>
           <div className="absolute bottom-3 left-3 right-3 text-sm font-semibold" style={{ color: "#fff", textShadow: "0 2px 6px rgba(0,0,0,0.5)" }}>

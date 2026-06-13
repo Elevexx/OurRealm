@@ -2,25 +2,25 @@ import React from "react";
 import { useTheme, MODES } from "@/contexts/ThemeContext";
 
 const MODE_STYLES = {
-  cypher: {
-    bg: "linear-gradient(135deg, #B026FF, #00F0FF)",
-    color: "#fff",
-    border: "1px solid rgba(0,240,255,0.5)",
-    shadow: "0 0 18px rgba(176,38,255,0.6)",
+  neon: {
+    bg: "linear-gradient(135deg, #2EA0FF, #10E670)",
+    color: "#07111E",
+    border: "1px solid rgba(46,160,255,0.55)",
+    shadow: "0 0 18px rgba(46,160,255,0.55), 0 0 12px rgba(16,230,112,0.4)",
     family: "'Unbounded', sans-serif",
   },
   business: {
-    bg: "linear-gradient(135deg, #C5A24A, #8C7A3E)",
+    bg: "linear-gradient(135deg, #D5B05A, #8C7A3E)",
     color: "#fff",
     border: "1px solid rgba(181,147,59,0.5)",
     shadow: "0 6px 16px rgba(140,122,62,0.35)",
     family: "'Playfair Display', serif",
   },
   millennium: {
-    bg: "linear-gradient(180deg, #6CA8F0, #2E6DD3)",
+    bg: "linear-gradient(180deg, #6CC4FF, #2EA0FF)",
     color: "#fff",
-    border: "2px solid #2E6DD3",
-    shadow: "0 4px 0 rgba(46,109,211,0.45)",
+    border: "2px solid #2EA0FF",
+    shadow: "0 4px 0 rgba(7,17,38,0.45)",
     family: "'Fredoka', sans-serif",
   },
   stealth: {
@@ -31,6 +31,8 @@ const MODE_STYLES = {
     family: "'Share Tech Mono', monospace",
   },
 };
+
+const LABEL = { neon: "Neon", business: "Business", millennium: "Mill.", stealth: "Stealth" };
 
 export default function ModeSwitcher({ compact = false }) {
   const { mode, setMode } = useTheme();
@@ -61,7 +63,7 @@ export default function ModeSwitcher({ compact = false }) {
               whiteSpace: "nowrap",
             }}
           >
-            {m === "millennium" ? "Mill." : m.slice(0, compact ? 4 : 10)}
+            {LABEL[m]}
           </button>
         );
       })}
