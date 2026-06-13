@@ -25,27 +25,35 @@ export default function MediaTypeBar({ value = [], onChange, onNext, embedded = 
   };
   return (
     <div
-      className={`flex items-center gap-2 overflow-x-auto no-scrollbar ${embedded ? "" : "or-surface p-2.5"}`}
+      className={`flex items-center gap-2 ${embedded ? "" : "or-surface p-2.5"}`}
       data-testid="media-type-bar"
+      style={{ minWidth: 0 }}
     >
-      {TYPES.map(({ id, label, Icon, color }) => {
-        const active = value.includes(id);
-        return (
-          <button
-            key={id}
-            className="or-chip shrink-0"
-            data-active={active}
-            onClick={() => toggle(id)}
-            data-testid={`media-type-${id}`}
-            style={active ? undefined : { color }}
-            aria-pressed={active}
-          >
-            <Icon size={14} /> {label}
-          </button>
-        );
-      })}
+      {/* Scrollable chip row — Next button stays pinned to the right (sibling, not inside) */}
+      <div
+        className="flex items-center gap-2 overflow-x-auto no-scrollbar flex-1 min-w-0"
+        data-testid="media-type-chips"
+        style={{ scrollSnapType: "x proximity" }}
+      >
+        {TYPES.map(({ id, label, Icon, color }) => {
+          const active = value.includes(id);
+          return (
+            <button
+              key={id}
+              className="or-chip shrink-0"
+              data-active={active}
+              onClick={() => toggle(id)}
+              data-testid={`media-type-${id}`}
+              style={active ? { scrollSnapAlign: "start" } : { color, scrollSnapAlign: "start" }}
+              aria-pressed={active}
+            >
+              <Icon size={14} /> {label}
+            </button>
+          );
+        })}
+      </div>
       <button
-        className="or-chip shrink-0 ml-auto"
+        className="or-chip shrink-0"
         onClick={() => onNext?.()}
         data-testid="media-type-next"
         title="Next"

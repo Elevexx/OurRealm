@@ -87,7 +87,17 @@ export default function Home() {
   const deeper      = INTERESTS.slice(8, 12);
 
   return (
-    <div className="max-w-7xl mx-auto" data-testid="home-page">
+    <div
+      className="max-w-7xl mx-auto"
+      data-testid="home-page"
+      style={{
+        /* Reserve space so the bottom-most cards aren't hidden behind the
+           fixed Media Selection Bar + Bottom Navigation stack.
+           Layout.jsx already reserves ~110px for the nav; we add the
+           media bar height (~64px) on top of that. */
+        paddingBottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
+      }}
+    >
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div>
@@ -159,16 +169,44 @@ export default function Home() {
       <Section title="Explore more"        testid="explore"     items={explore}     selected={selected} toggle={toggle} />
       <Section title="Dive deeper"         testid="deeper"      items={deeper}      selected={selected} toggle={toggle} />
 
-      {/* Sticky media bar — the "Next" arrow inside the bar routes to /feed */}
-      <div className="sticky bottom-[78px] sm:bottom-[88px] mt-6 z-30">
-        <div className="or-surface p-2.5">
-          <MediaTypeBar value={media} onChange={onMediaChange} onNext={continueToFeed} embedded />
-        </div>
-        {selected.size > 0 && (
-          <div className="text-center mt-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
-            {selected.size} interests · {media.length === 0 ? "all media" : `${media.length} media type${media.length > 1 ? "s" : ""}`}
+      {/* Floating Media Selection Bar — fixed above the Bottom Navigation.
+          Stays visible while scrolling, hovers/glows above the nav,
+          and respects iPhone safe-area-inset-bottom. */}
+      <div
+        className="fixed left-0 right-0 z-30 pointer-events-none"
+        style={{
+          /* BottomNav height (~76px) + safe-area inset.
+             Place the bar directly on top of the nav. */
+          bottom: "calc(76px + env(safe-area-inset-bottom, 0px))",
+          paddingLeft: "max(0.75rem, env(safe-area-inset-left, 0px))",
+          paddingRight: "max(0.75rem, env(safe-area-inset-right, 0px))",
+        }}
+        data-testid="home-media-bar-fixed"
+      >
+        <div className="max-w-3xl mx-auto pointer-events-auto">
+          <div
+            className="or-surface p-2.5"
+            style={{
+              boxShadow: "0 12px 32px rgba(0,0,0,0.35), 0 0 18px color-mix(in srgb, var(--primary) 35%, transparent)",
+              backdropFilter: "blur(14px)",
+              background: "color-mix(in srgb, var(--surface) 88%, transparent)",
+            }}
+          >
+            <MediaTypeBar value={media} onChange={onMediaChange} onNext={continueToFeed} embedded />
           </div>
-        )}
+          {selected.size > 0 && (
+            <div
+              className="text-center mt-1.5 text-[11px]"
+              style={{
+                color: "var(--text-muted)",
+                textShadow: "0 1px 6px rgba(0,0,0,0.5)",
+              }}
+              data-testid="home-media-bar-summary"
+            >
+              {selected.size} interests · {media.length === 0 ? "all media" : `${media.length} media type${media.length > 1 ? "s" : ""}`}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
