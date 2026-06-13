@@ -11,6 +11,8 @@ import Feed from "@/pages/Feed";
 import Discover from "@/pages/Discover";
 import Sounds from "@/pages/Sounds";
 import Featured from "@/pages/Featured";
+import Realms from "@/pages/Realms";
+import RealmDetail from "@/pages/RealmDetail";
 import Friends from "@/pages/Friends";
 import Messages from "@/pages/Messages";
 import Notifications from "@/pages/Notifications";
@@ -43,6 +45,8 @@ function App() {
             <Route path="/signin" element={<SignIn />} />
             <Route path="/home" element={<ShellRoute><Home /></ShellRoute>} />
             <Route path="/featured" element={<ShellRoute><Featured /></ShellRoute>} />
+            <Route path="/realms" element={<ShellRoute><Realms /></ShellRoute>} />
+            <Route path="/realms/:id" element={<ShellRoute><RealmDetail /></ShellRoute>} />
             <Route path="/feed" element={<ShellRoute><Feed /></ShellRoute>} />
             <Route path="/discover" element={<ShellRoute><Discover /></ShellRoute>} />
             <Route path="/sounds" element={<ShellRoute><Sounds /></ShellRoute>} />
