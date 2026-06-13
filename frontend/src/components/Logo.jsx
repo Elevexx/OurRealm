@@ -1,60 +1,39 @@
 import React from "react";
 
 /**
- * OurRealm logo — uses the uploaded asset directly with no cropping,
- * clipping, recoloring, or distortion.
- *
- * The asset is a wide banner ("OurRealm MESSENGER") so we render it
- * height-based with auto width to preserve aspect ratio. No additional
- * wordmark text is added because the wordmark is baked into the image.
+ * OurRealm — official square logo (Image 1).
+ * Uses the uploaded asset directly with no cropping, recoloring, or distortion.
+ * The square format has the wordmark "OurRealm — LIVE. CONNECT. EXPERIENCE."
+ * baked into the bottom portion of the image.
  */
 const LOGO_URL =
-  "https://customer-assets.emergentagent.com/job_realm-deploy/artifacts/fdizcj4w_IMG_1211.jpeg";
-
-// Intrinsic aspect ratio of the uploaded logo (width / height)
-const LOGO_ASPECT = 344 / 120;
+  "https://customer-assets.emergentagent.com/job_realm-deploy/artifacts/4ivnshz0_B1C6C04B-2956-4B67-A6C4-7D5A87E77D8A.png";
 
 export default function Logo({
-  size = 44,           // interpreted as HEIGHT in px
-  withWordmark = true, // kept for API compat; the banner image always includes the wordmark
+  size = 44,
   className = "",
-  tagline = false,     // when true, renders the "Live · Connect · Experience" line below
+  // kept for API compat — the wordmark is part of the asset
+  withWordmark = true, // eslint-disable-line no-unused-vars
+  tagline = false,     // eslint-disable-line no-unused-vars
 }) {
-  /* eslint-disable no-unused-vars */
-  const _wm = withWordmark; // intentionally unused (always part of the asset)
-  /* eslint-enable no-unused-vars */
-  const height = size;
-  const width = Math.round(height * LOGO_ASPECT);
   return (
-    <div className={`inline-flex flex-col items-start gap-0.5 ${className}`} data-testid="ourrealm-logo">
-      <img
-        src={LOGO_URL}
-        alt="OurRealm"
-        width={width}
-        height={height}
-        draggable={false}
-        style={{
-          height,
-          width: "auto",
-          display: "block",
-          objectFit: "contain",
-        }}
-      />
-      {tagline && (
-        <div
-          style={{
-            fontSize: height * 0.16,
-            letterSpacing: "0.25em",
-            textTransform: "uppercase",
-            color: "var(--text-muted)",
-            fontFamily: "var(--font-body)",
-          }}
-        >
-          Live · Connect · Experience
-        </div>
-      )}
-    </div>
+    <img
+      src={LOGO_URL}
+      alt="OurRealm"
+      width={size}
+      height={size}
+      draggable={false}
+      data-testid="ourrealm-logo"
+      className={className}
+      style={{
+        width: size,
+        height: size,
+        display: "block",
+        objectFit: "contain",
+        flexShrink: 0,
+      }}
+    />
   );
 }
 
-export { LOGO_URL, LOGO_ASPECT };
+export { LOGO_URL };

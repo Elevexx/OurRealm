@@ -13,7 +13,7 @@ const ITEMS = [
   { to: "/notifications",label: "Notifications", Icon: Bell,         testid: "star-notifications", color: "#FF8AC2", badge: "99+" },
   { to: "/messages",     label: "Messages",      Icon: MessageSquare,testid: "star-messages",      color: "var(--brand-blue)", badge: "1" },
   { to: "/marketplace",  label: "Ads",           Icon: DollarSign,   testid: "star-ads",           color: "var(--brand-green)", badge: null },
-  { to: "/profile",      label: "Profile",       Icon: User,         testid: "star-profile",       color: "var(--brand-green)", badge: null },
+  { to: "/profile?edit=1", label: "Profile (edit)", Icon: User,       testid: "star-profile",       color: "var(--brand-green)", badge: null },
 ];
 
 const MODE_LABEL = {
@@ -78,7 +78,8 @@ export default function TopStarBar() {
         {/* Star Bar */}
         <nav className="ml-auto flex items-center gap-1.5 sm:gap-2" data-testid="star-bar">
           {ITEMS.map(({ to, label, Icon, testid, color, badge }) => {
-            const active = location.pathname.startsWith(to);
+            const pathOnly = to.split("?")[0];
+            const active = location.pathname === pathOnly;
             return (
               <button
                 key={to}

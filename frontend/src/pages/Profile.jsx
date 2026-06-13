@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
 import { DEFAULT_WIDGETS, WIDGET_TYPES, MODE_PREVIEW_IMG, TRENDING_TRACKS, FRIENDS } from "@/data/mockData";
 import { useAuth } from "@/contexts/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const SIZE_TO_CLASS = {
   small: "col-span-2 sm:col-span-1 row-span-1",
@@ -105,9 +105,14 @@ function WidgetBody({ w }) {
 export default function Profile() {
   const { user, isGuest, updateProfile } = useAuth();
   const navigate = useNavigate();
-  const [editing, setEditing] = useState(false);
+  const [searchParams] = useSearchParams();
+  const [editing, setEditing] = useState(searchParams.get("edit") === "1");
   const [form, setForm] = useState({ name: "", bio: "" });
   const [widgets, setWidgets] = useState(user?.widgets?.length ? user.widgets : DEFAULT_WIDGETS);
+
+  useEffect(() => {
+    if (searchParams.get("edit") === "1") setEditing(true);
+  }, [searchParams]);
 
   useEffect(() => {
     if (user) setForm({ name: user.name || "", bio: user.bio || "" });

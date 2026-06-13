@@ -1,20 +1,21 @@
 import React from "react";
-import { Image as ImageIcon, Video, Radio, Music2, FileText, Lightbulb, ArrowRight } from "lucide-react";
+import { Radio, Video, Image as ImageIcon, Music2, Lightbulb, ArrowRight } from "lucide-react";
 
+// Exact order from the design spec:
+// Lives → Videos → Images → Sounds → Thoughts → Next →
 const TYPES = [
-  { id: "image",    label: "Images",   Icon: ImageIcon },
-  { id: "video",    label: "Videos",   Icon: Video },
-  { id: "live",     label: "Lives",    Icon: Radio },
-  { id: "sound",    label: "Sounds",   Icon: Music2 },
-  { id: "post",     label: "Posts",    Icon: FileText },
-  { id: "thought",  label: "Thoughts", Icon: Lightbulb },
+  { id: "live",    label: "Lives",    Icon: Radio,     color: "#FF3F5A" },
+  { id: "video",   label: "Videos",   Icon: Video,     color: "var(--brand-blue)" },
+  { id: "image",   label: "Images",   Icon: ImageIcon, color: "var(--brand-green)" },
+  { id: "sound",   label: "Sounds",   Icon: Music2,    color: "#C26BFF" },
+  { id: "thought", label: "Thoughts", Icon: Lightbulb, color: "#F4C84A" },
 ];
 
 /**
- * Persistent Media Type bar (Images / Videos / Lives / Sounds / Posts / Thoughts → )
- * `value` is an array of selected type ids (multi-select toggle).
- * `onChange(nextArray)` is the controlled setter.
- * `onNext` is invoked when the user presses the arrow.
+ * Persistent Media Selection bar (Lives / Videos / Images / Sounds / Thoughts → )
+ * - Each chip toggles on/off and affects the parent's feed
+ * - Empty array = "all" (no filter)
+ * - `onNext()` fires when the arrow is clicked
  */
 export default function MediaTypeBar({ value = [], onChange, onNext, embedded = false }) {
   const toggle = (id) => {
@@ -22,39 +23,35 @@ export default function MediaTypeBar({ value = [], onChange, onNext, embedded = 
     if (set.has(id)) set.delete(id); else set.add(id);
     onChange?.([...set]);
   };
-  const isAll = value.length === 0;
-
   return (
     <div
       className={`flex items-center gap-2 overflow-x-auto no-scrollbar ${embedded ? "" : "or-surface p-2.5"}`}
       data-testid="media-type-bar"
     >
-      <button
-        className="or-chip shrink-0"
-        data-active={isAll}
-        onClick={() => onChange?.([])}
-        data-testid="media-type-all"
-      >
-        All
-      </button>
-      {TYPES.map(({ id, label, Icon }) => (
-        <button
-          key={id}
-          className="or-chip shrink-0"
-          data-active={value.includes(id)}
-          onClick={() => toggle(id)}
-          data-testid={`media-type-${id}`}
-        >
-          <Icon size={14} /> {label}
-        </button>
-      ))}
+      {TYPES.map(({ id, label, Icon, color }) => {
+        const active = value.includes(id);
+        return (
+          <button
+            key={id}
+            className="or-chip shrink-0"
+            data-active={active}
+            onClick={() => toggle(id)}
+            data-testid={`media-type-${id}`}
+            style={active ? undefined : { color }}
+            aria-pressed={active}
+          >
+            <Icon size={14} /> {label}
+          </button>
+        );
+      })}
       <button
         className="or-chip shrink-0 ml-auto"
         onClick={() => onNext?.()}
         data-testid="media-type-next"
         title="Next"
+        aria-label="Next"
       >
-        <ArrowRight size={14} />
+        Next <ArrowRight size={14} />
       </button>
     </div>
   );

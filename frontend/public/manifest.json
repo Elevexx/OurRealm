@@ -3,13 +3,13 @@
   "name": "OurRealm — Live. Connect. Experience.",
   "icons": [
     {
-      "src": "https://customer-assets.emergentagent.com/job_realm-deploy/artifacts/fdizcj4w_IMG_1211.jpeg",
-      "type": "image/jpeg",
-      "sizes": "512x512"
+      "src": "https://customer-assets.emergentagent.com/job_realm-deploy/artifacts/4ivnshz0_B1C6C04B-2956-4B67-A6C4-7D5A87E77D8A.png",
+      "type": "image/png",
+      "sizes": "1024x1024"
     }
   ],
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#06121F",
-  "background_color": "#06121F"
+  "theme_color": "#04060A",
+  "background_color": "#04060A"
 }
