@@ -349,7 +349,7 @@ export default function Profile() {
   const { mode } = useTheme();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [editing, setEditing] = useState(searchParams.get("edit") === "1");
+  const [editing, setEditing] = useState(searchParams.get("edit") !== "0");
   const [form, setForm] = useState({ name: "", bio: "" });
   const [widgets, setWidgets] = useState(user?.widgets?.length ? user.widgets : DEFAULT_WIDGETS);
   const [addOpen, setAddOpen] = useState(false);
