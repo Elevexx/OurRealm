@@ -182,6 +182,30 @@ export const FRIENDS = CHARACTERS.map((c, i) => ({
   mutuals: 3 + ((i * 7) % 14),
 }));
 
+// Featured/close friends — used for the 8 circle row at top of Friends page
+export const FEATURED_FRIENDS = [
+  ...CHARACTERS.map((c) => ({ id: c.id, name: c.name, avatar: c.avatar, ringColor: c.ringColor, label: c.label })),
+  { id: "rio",  name: "Rio",  avatar: "https://images.unsplash.com/photo-1546961342-1c5e4f0?w=200", ringColor: "#FFB72E", label: "Online" },
+].slice(0, 8).map((f, i) => ({
+  ...f,
+  avatar: f.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.name)}`,
+  ringColor: f.ringColor || ["#2EA0FF","#10E670","#C26BFF","#FF8AC2","#F4C84A","#FF3F5A","#6BD3FF","#FFB72E"][i % 8],
+  label: f.label || "Online",
+}));
+
+export const FRIEND_REQUESTS = [
+  { id: "req-1", name: "Echo",    handle: "echo.fm",     avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200", mutuals: 4, when: "2h" },
+  { id: "req-2", name: "Vela",    handle: "vela.dust",   avatar: "https://images.unsplash.com/photo-1530785602389-07594beb8b73?w=200", mutuals: 8, when: "1d" },
+  { id: "req-3", name: "Polaris", handle: "polar_eve",   avatar: "https://images.unsplash.com/photo-1463453091185-61582044d556?w=200", mutuals: 2, when: "2d" },
+];
+
+export const FOLLOWING = CHARACTERS.slice(0, 5).map((c, i) => ({
+  id: `fol-${c.id}`, handle: c.handle, name: c.name, avatar: c.avatar, since: ["2 days","1 week","3 weeks","2 months","6 months"][i],
+}));
+export const FOLLOWERS = CHARACTERS.slice(2, 7).map((c, i) => ({
+  id: `flw-${c.id}`, handle: c.handle, name: c.name, avatar: c.avatar, mutuals: 2 + i, since: ["3 days","2 weeks","1 month","2 months","4 months"][i],
+}));
+
 export const WALLET = {
   balance: 14820.42,
   monthly_change_pct: 12.4,
@@ -217,17 +241,19 @@ export const WIDGET_TYPES = [
   { id: "podcasts", label: "Podcasts",        icon: "Mic",         default_size: "medium" },
   { id: "photos",   label: "Photos",          icon: "Image",       default_size: "medium" },
   { id: "merch",    label: "Merch",           icon: "ShoppingBag", default_size: "full" },
-  { id: "tour",     label: "Tour Dates",      icon: "MapPin",      default_size: "medium" },
-  { id: "friends",  label: "Friends",         icon: "Users",       default_size: "small" },
-  { id: "wallet",   label: "Wallet",          icon: "Wallet",      default_size: "small" },
-  { id: "weather",  label: "Weather",         icon: "Cloud",       default_size: "small" },
   { id: "events",   label: "Events",          icon: "Calendar",    default_size: "small" },
+  { id: "tour",     label: "Tour Dates",      icon: "MapPin",      default_size: "medium" },
+  { id: "weather",  label: "Weather",         icon: "CloudSun",    default_size: "small" },
   { id: "news",     label: "News",            icon: "Newspaper",   default_size: "medium" },
   { id: "crypto",   label: "Crypto",          icon: "Bitcoin",     default_size: "small" },
   { id: "stocks",   label: "Stocks",          icon: "TrendingUp",  default_size: "small" },
+  { id: "calendar", label: "Calendar",        icon: "CalendarDays",default_size: "small" },
   { id: "notes",    label: "Notes",           icon: "StickyNote",  default_size: "small" },
   { id: "polls",    label: "Polls",           icon: "BarChart3",   default_size: "medium" },
+  { id: "friends",  label: "Friends",         icon: "Users",       default_size: "small" },
+  { id: "wallet",   label: "Wallet",          icon: "Wallet",      default_size: "small" },
   { id: "ads",      label: "Marketplace Ads", icon: "Megaphone",   default_size: "medium" },
+  { id: "radar",    label: "Stealth Radar",   icon: "Radar",       default_size: "medium" },
   { id: "custom",   label: "Custom",          icon: "Sparkles",    default_size: "small" },
 ];
 
