@@ -57,9 +57,9 @@ export function AuthProvider({ children }) {
     }
   }, [setGuest]);
 
-  const register = useCallback(async (email, password, name) => {
+  const register = useCallback(async (email, password, name, username) => {
     try {
-      const { data } = await apiClient.post("/auth/register", { email, password, name });
+      const { data } = await apiClient.post("/auth/register", { email, password, name, username });
       persistToken(data.access_token);
       setUser(data.user);
       setGuest(false);

@@ -1,6 +1,8 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
+import apiClient from "@/api/client";
+import MiniWidget from "@/components/MiniWidget";
 import { DISCOVER_ROWS, makeMockPosts, TRENDING_CREATORS, REALMS } from "@/data/mockData";
 
 const FILTERS = [
@@ -104,6 +106,17 @@ export default function Discover() {
   const pool = useMemo(() => makeMockPosts(60), []);
   const pickByType = (type, n = 10) => pool.filter((p) => p.media_type === type).slice(0, n);
 
+  // Featured users with their actual saved widgets (live from backend)
+  const [featured, setFeatured] = useState([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await apiClient.get("/users/featured?limit=12");
+        setFeatured(data.users || []);
+      } catch { /* */ }
+    })();
+  }, []);
+
   // Multi-filter chips — currently informational; expand filtering later
   return (
     <div className="max-w-7xl mx-auto" data-testid="discover-page">
@@ -130,6 +143,50 @@ export default function Discover() {
           </button>
         ))}
       </div>
+
+      {/* Profile Widget Swiper — live, functional widget previews per user */}
+      {featured.length > 0 && (
+        <HRow id="widget-swiper" title="Profiles & Their Widgets" Icon={Icons.LayoutGrid} accent="var(--primary)">
+          {featured.map((u) => {
+            const previewWidgets = (u.widgets || []).slice(0, 4);
+            return (
+              <button
+                key={u.username}
+                onClick={() => navigate(`/public/${u.username}`)}
+                className="or-surface shrink-0 snap-start text-left p-3"
+                style={{ width: 280 }}
+                data-testid={`discover-profile-widget-${u.username}`}
+              >
+                <div className="flex items-center gap-2 mb-2.5">
+                  <img
+                    src={u.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.name || u.username)}`}
+                    alt={u.username}
+                    className="rounded-full object-cover"
+                    style={{ width: 40, height: 40, border: "2px solid var(--primary)" }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1">
+                      <div className="text-sm font-bold truncate" style={{ color: "var(--text-main)" }}>@{u.username}</div>
+                      {u.is_founder && <Icons.BadgeCheck size={12} style={{ color: "var(--brand-green)" }} />}
+                    </div>
+                    <div className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{u.name}</div>
+                  </div>
+                  <Icons.ArrowRight size={14} style={{ color: "var(--text-muted)" }} />
+                </div>
+                {previewWidgets.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {previewWidgets.map((w) => <MiniWidget key={w.id || w.type} w={w} />)}
+                  </div>
+                ) : (
+                  <div className="or-surface p-3 text-center text-[11px]" style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+                    No widgets yet
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </HRow>
+      )}
 
       {/* Realms row (community feature) */}
       <HRow id="realms" title="Top Realms" Icon={Icons.Crown} accent="#F4C84A">

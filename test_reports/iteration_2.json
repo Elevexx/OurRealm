@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 2 — Phase 2 OurRealm social features QA. Backend: 17/17 new Phase-2 tests pass (test_phase2_social.py) covering username availability (available/reserved/taken/invalid), register with username + auto-friend stealth, /api/users/search, /api/users/featured (incl. stealth widgets), public profile by-username (no auth + 404), full friend lifecycle (request→accept, status transitions, /friends/list hydration), and messaging friends-only (403 for non-friends on POST and thread GET, 200 with persistence once friends, can-message endpoint). Frontend: end-to-end Playwright verified — /signup username field + debounced check (stealth → 'taken' with suggestion chips: stealth90, stealth_hq, the.stealth, stealth.realm), TopStarBar logo navigates to /signup, /home sticky bar has 0 standalone 'Continue' buttons, Friends page renders 3 tabs (Friends/Requests/Find People) with real backend search (stealth result shows Friends badge for newly-registered user thanks to auto-friend), /public/stealth shows FOUNDER + Verified badges and renders 6 widgets, friend-status auto-friended → Message button opens /messages?to=stealth with real-chat-overlay (no blocked state), Profile page shows 'View as Public' button → /public/{me} → 'Switch to Edit' returns to /profile?edit=1, Discover page renders 'Profiles & Their Widgets' swiper with 12 cards (discover-profile-widget-stealth first; mini-widget renders present for stealth's widgets).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/register & /api/friends/*", "issue": "get_current_user prefers cookie over Authorization header. With shared HTTP sessions in tests (and potentially in browsers with mixed cookie/Bearer flows), the cookie from the last auth call always wins, which can silently authenticate the wrong user in multi-account testing or cross-tab scenarios. Not a production bug but worth knowing for QA."},
+      {"endpoint": "/api/messages/thread/{username}", "issue": "Returns 403 for non-friends without a JSON body matching POST /api/messages — both use detail string, which is fine, but the wording 'Send a friend request first.' is identical (good consistency)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Discover swiper 'Profiles & Their Widgets'", "issues": ["Newly-registered users with no widgets show an empty 'No widgets yet' card that still takes up a full widget slot — looks visually thin next to stealth's rich 4-widget card. Consider sorting users with widgets first (currently sorted by is_founder/is_verified/created_at which is acceptable)."]},
+      {"screen": "/profile default mode", "issues": ["Default own-profile view is currently VIEW mode (editing=false unless ?edit=1). The spec line 'Editing default = Edit mode (toggleable)' is ambiguous; if literal, this is a deviation. Verified flow: 'Edit profile' button toggles into edit mode and 'Save layout' commits; coming from /public via 'Switch to Edit' correctly lands on /profile?edit=1 which DOES open in edit mode. Recommend confirming with PM whether plain /profile should default to editing=true."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase2_social.py",
+    "/app/backend/tests/test_ourrealm_api.py",
+    "/app/test_reports/pytest/phase2_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Confirm with PM whether bare /profile should default to edit mode; if yes, change Profile.jsx line 352 to `useState(searchParams.get('edit') !== '0')` or similar.",
+    "(Optional) In Discover swiper, sort users with non-empty widgets first so empty 'No widgets yet' cards appear after richer cards."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 850+ lines — split into routers/ (auth.py, friends.py, messages.py, profile.py, posts.py) for maintainability.",
+    "get_current_user prefers cookie over Authorization header — consider Bearer-first when both are present, OR document the precedence in the API.",
+    "Friend system stores usernames (not user ids) in friends/friend_requests_in/out arrays. If a user is ever renamed (no endpoint today but possible), every friend list across the DB breaks. Use user_id instead for relationships.",
+    "POST /api/friends/accept does not validate that the corresponding entry exists in target's friend_requests_out (only checks current.friend_requests_in). Edge case if state goes out of sync.",
+    "Startup backfill that adds every existing user with a username to stealth.friends will scale badly (O(N) updates on every boot). Move to a one-time migration script or guard with a 'backfill_done' flag.",
+    "/api/users/featured does not exclude soft-deleted/blocked users (no such concept yet, but worth planning).",
+    "RegisterPayload username regex `^[a-zA-Z0-9_.]+$` allows starting/ending with '.' which is unusual on social platforms — consider disallowing leading/trailing dot and consecutive dots.",
+    "Username 'check' suggestions use random ints inside the handler (`import random as _r` inside function) — move import to module top.",
+    "Messaging endpoint lacks pagination (limit 200 hardcoded) — fine for now but document."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase2_social.py"
+  ],
+  "success_rate": {"backend": "100% (17/17 Phase-2 + 20/20 prior)", "frontend": "100% of requested flows verified"},
+  "test_credentials": "Admin: admin@ourrealm.app / admin123. Founder OTP: slopestyle2022@gmail.com (displayed_otp returned). Phase-2 tests register fresh TEST_-prefixed users each run.",
+  "seed_data_creation": "Each pytest run registers ~12 disposable users with TEST_-prefixed emails and random usernames; these are not cleaned up but use uuid suffix so no collision. Stealth founder is upserted on backend startup.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Re-run all backend tests with: `cd /app && python -m pytest backend/tests/ -v`. Phase-2 file: /app/backend/tests/test_phase2_social.py uses fresh requests.Session() per user via the `_fresh_user()` helper because the backend prefers cookies over Bearer headers in get_current_user (don't share api_client across multiple authenticated users in the same test). All requested Phase-1+2 features verified working end-to-end against https://realm-deploy.preview.emergentagent.com. Frontend data-testids that proved reliable: signup-username, signup-username-suggestions, signup-suggest-{name}, signup-submit, header-logo, friends-tab-friends/requests/search, public-status-friends, public-message, public-switch-edit, profile-view-public, profile-edit, real-chat-overlay, discover-profile-widget-{username}, mini-widget-*. The 'View as Public' button requires user?.username to be set (so admin@ourrealm.app, which has no username, doesn't see it — use a registered user or pre-seeded tfone/tftwo).",
+  "rca_of_the_issue": "Initial 4 backend test failures were a test-setup bug (not a backend bug): the shared `api_client` requests.Session() retained cookies from the most-recent register call, and the backend's get_current_user reads cookies BEFORE the Authorization header, so all calls authenticated as the last-registered user instead of the Bearer-token holder. Fix: introduced a `_fresh_user()` helper that creates a fresh Session per user and explicitly clears cookies, then attaches the Bearer header. All 17 Phase-2 tests pass after the fix."
+}

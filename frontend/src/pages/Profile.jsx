@@ -444,6 +444,16 @@ export default function Profile() {
                 ? <button className="or-btn" onClick={saveLayout} data-testid="profile-save">Save layout</button>
                 : <button className="or-btn or-btn-ghost" onClick={() => setEditing(true)} data-testid="profile-edit">Edit profile</button>
             )}
+            {!isGuest && user?.username && (
+              <button
+                className="or-btn or-btn-ghost"
+                onClick={() => navigate(`/public/${user.username}`)}
+                data-testid="profile-view-public"
+                title="See how others see your profile"
+              >
+                <Icons.Eye size={14} /> View as Public
+              </button>
+            )}
             <button className="or-btn" onClick={() => setAddOpen(true)} data-testid="profile-add-widget"><Icons.Plus size={14} /> Add widget</button>
             <button className="or-btn or-btn-ghost" onClick={() => navigate("/widgets")} data-testid="profile-open-library"><Icons.LayoutGrid size={14} /> Library</button>
           </div>

@@ -51,6 +51,7 @@ function App() {
             <Route path="/realms/:id" element={<ShellRoute><RealmDetail /></ShellRoute>} />
             <Route path="/modes" element={<ShellRoute><ModesPage /></ShellRoute>} />
             <Route path="/profile/:username" element={<ShellRoute><FounderProfile /></ShellRoute>} />
+            <Route path="/public/:username" element={<ShellRoute><FounderProfile /></ShellRoute>} />
             <Route path="/feed" element={<ShellRoute><Feed /></ShellRoute>} />
             <Route path="/discover" element={<ShellRoute><Discover /></ShellRoute>} />
             <Route path="/sounds" element={<ShellRoute><Sounds /></ShellRoute>} />

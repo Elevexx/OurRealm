@@ -69,6 +69,11 @@ class FriendActionPayload(BaseModel):
     username: str
 
 
+class MessageCreate(BaseModel):
+    to_username: str
+    text: str = Field(min_length=1, max_length=2000)
+
+
 class LoginPayload(BaseModel):
     email: EmailStr
     password: str
@@ -279,6 +284,12 @@ async def register(payload: RegisterPayload, response: Response):
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(doc)
+    # Auto-friend the founder ("stealth") for every new user
+    founder = await db.users.find_one({"username": FOUNDER_USERNAME})
+    if founder and founder["id"] != user_id:
+        await db.users.update_one({"id": user_id}, {"$addToSet": {"friends": FOUNDER_USERNAME}})
+        await db.users.update_one({"id": founder["id"]}, {"$addToSet": {"friends": username}})
+        doc["friends"] = list(set((doc.get("friends") or []) + [FOUNDER_USERNAME]))
     access = create_access_token(user_id, email)
     refresh = create_refresh_token(user_id)
     set_auth_cookies(response, access, refresh)
@@ -399,6 +410,80 @@ async def users_search(q: str = ""):
         if u.get("username"):
             users.append(u)
     return {"users": users}
+
+
+@api.get("/users/featured")
+async def users_featured(limit: int = 12):
+    """Return a list of users with their public widgets for the Discover swiper."""
+    cursor = db.users.find(
+        {"username": {"$ne": None}},
+        {"_id": 0, "password_hash": 0}
+    ).sort([("is_founder", -1), ("is_verified", -1), ("created_at", -1)]).limit(limit)
+    users = []
+    async for u in cursor:
+        users.append({
+            "username": u.get("username"),
+            "name": u.get("name"),
+            "avatar_url": u.get("avatar_url"),
+            "bio": u.get("bio"),
+            "is_founder": bool(u.get("is_founder")),
+            "is_verified": bool(u.get("is_verified")),
+            "widgets": u.get("widgets") or [],
+        })
+    return {"users": users}
+
+
+# ----- Direct messaging (friend-only) -----
+def _conv_id(a: str, b: str) -> str:
+    return ":".join(sorted([a, b]))
+
+
+@api.get("/messages/can-message/{username}")
+async def can_message(username: str, current: CurrentUser):
+    target = username.lower().strip()
+    if target == current.get("username"):
+        return {"allowed": False, "reason": "self"}
+    if target in (current.get("friends") or []):
+        return {"allowed": True}
+    return {"allowed": False, "reason": "not_friends"}
+
+
+@api.get("/messages/thread/{username}")
+async def get_thread(username: str, current: CurrentUser):
+    target = username.lower().strip()
+    if target == current.get("username"):
+        raise HTTPException(status_code=400, detail="Cannot message yourself")
+    if target not in (current.get("friends") or []):
+        raise HTTPException(status_code=403, detail="You can only message friends. Send a friend request first.")
+    cid = _conv_id(current.get("username"), target)
+    cursor = db.messages.find({"conv_id": cid}, {"_id": 0}).sort("created_at", 1).limit(200)
+    items = []
+    async for m in cursor:
+        items.append(m)
+    return {"messages": items}
+
+
+@api.post("/messages")
+async def send_message(payload: MessageCreate, current: CurrentUser):
+    target = payload.to_username.lower().strip()
+    if target == current.get("username"):
+        raise HTTPException(status_code=400, detail="Cannot message yourself")
+    target_user = await _user_by_username(target)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    if target not in (current.get("friends") or []):
+        raise HTTPException(status_code=403, detail="You can only message friends. Send a friend request first.")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "conv_id": _conv_id(current.get("username"), target),
+        "from_username": current.get("username"),
+        "to_username": target,
+        "text": payload.text,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.messages.insert_one(doc)
+    doc.pop("_id", None)
+    return {"message": doc}
 
 
 @auth_router.post("/login")
@@ -681,6 +766,7 @@ async def on_startup():
     await db.login_attempts.create_index("identifier")
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.posts.create_index("created_at")
+    await db.messages.create_index([("conv_id", 1), ("created_at", 1)])
 
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@ourrealm.app").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
@@ -739,6 +825,27 @@ async def on_startup():
             {"$set": founder_doc},
         )
         logger.info(f"Refreshed founder profile: {FOUNDER_EMAIL}")
+
+    # ----- Backfill: every existing user should have `stealth` as a friend -----
+    founder_doc_db = await db.users.find_one({"username": FOUNDER_USERNAME})
+    if founder_doc_db:
+        await db.users.update_many(
+            {"id": {"$ne": founder_doc_db["id"]}, "username": {"$ne": None}},
+            {"$addToSet": {"friends": FOUNDER_USERNAME}},
+        )
+        # Also add every user with a username to founder's friends list
+        cursor = db.users.find(
+            {"id": {"$ne": founder_doc_db["id"]}, "username": {"$ne": None}},
+            {"_id": 0, "username": 1},
+        )
+        async for u in cursor:
+            un = u.get("username")
+            if un:
+                await db.users.update_one(
+                    {"id": founder_doc_db["id"]},
+                    {"$addToSet": {"friends": un}},
+                )
+        logger.info("Backfill: ensured 'stealth' is a default friend for all users")
 
 
 @app.on_event("shutdown")

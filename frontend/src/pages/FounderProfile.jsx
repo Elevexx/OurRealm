@@ -184,9 +184,13 @@ export default function FounderProfile() {
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [friendStatus, setFriendStatus] = useState("none"); // none|outgoing|incoming|friends|self
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [chatErr, setChatErr] = useState("");
 
   useEffect(() => {
     (async () => {
+      setLoading(true); setErr("");
       try {
         const { data } = await apiClient.get(`/profile/by-username/${username}`);
         setProfile(data.user);
@@ -197,11 +201,23 @@ export default function FounderProfile() {
     })();
   }, [username]);
 
+  // Load friend status if logged in & not self
+  useEffect(() => {
+    (async () => {
+      if (!user || !profile) return;
+      if (user.username === profile.username) { setFriendStatus("self"); return; }
+      try {
+        const { data } = await apiClient.get(`/friends/status/${profile.username}`);
+        setFriendStatus(data.status || "none");
+      } catch { /* */ }
+    })();
+  }, [user, profile]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
-  const isOwner = useMemo(() => user && profile && user.email === profile.email, [user, profile]);
+  const isOwner = useMemo(() => user && profile && user.username === profile.username, [user, profile]);
 
   const onDragEnd = ({ active, over }) => {
     if (!over || active.id === over.id) return;
@@ -212,7 +228,29 @@ export default function FounderProfile() {
     setWidgets((arr) => arr.map((x) => x.id === id ? { ...x, size: sizes[(sizes.indexOf(x.size) + 1) % sizes.length] } : x));
   };
 
-  if (loading) return <div className="text-center py-12" style={{ color: "var(--text-muted)" }}>Loading founder profile…</div>;
+  const addFriend = async () => {
+    if (!user) { navigate("/signin"); return; }
+    setStatusBusy(true);
+    try { await apiClient.post("/friends/request", { username: profile.username }); setFriendStatus("outgoing"); }
+    finally { setStatusBusy(false); }
+  };
+  const acceptFriend = async () => {
+    setStatusBusy(true);
+    try { await apiClient.post("/friends/accept", { username: profile.username }); setFriendStatus("friends"); }
+    finally { setStatusBusy(false); }
+  };
+
+  const onMessage = () => {
+    setChatErr("");
+    if (!user) { navigate("/signin"); return; }
+    if (friendStatus !== "friends" && friendStatus !== "self") {
+      setChatErr("You can only message friends. Send a friend request first.");
+      return;
+    }
+    navigate(`/messages?to=${profile.username}`);
+  };
+
+  if (loading) return <div className="text-center py-12" style={{ color: "var(--text-muted)" }}>Loading profile…</div>;
   if (err)     return <div className="max-w-md mx-auto or-surface p-8 text-center"><p>{err}</p><button className="or-btn mt-4" onClick={() => navigate("/home")}>← Home</button></div>;
   if (!profile) return null;
 
@@ -266,15 +304,46 @@ export default function FounderProfile() {
             </div>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button className="or-btn" data-testid="founder-follow"><Icons.UserPlus size={14} /> Follow</button>
-            <button className="or-btn or-btn-ghost" data-testid="founder-message" onClick={() => navigate("/messages")}><Icons.MessageCircle size={14} /> Message</button>
-            {isOwner && (
-              <button className="or-btn or-btn-ghost" onClick={() => setEditing(!editing)} data-testid="founder-edit">
-                {editing ? "Done" : "Edit layout"}
+            {friendStatus === "friends" ? (
+              <span className="or-chip" style={{ color: "var(--brand-green)" }} data-testid="public-status-friends"><Icons.UserCheck size={14} /> Friends</span>
+            ) : friendStatus === "outgoing" ? (
+              <span className="or-chip" style={{ color: "var(--text-muted)" }} data-testid="public-status-pending"><Icons.Clock size={14} /> Pending</span>
+            ) : friendStatus === "incoming" ? (
+              <button className="or-btn" disabled={statusBusy} onClick={acceptFriend} data-testid="public-accept-friend">
+                <Icons.Check size={14} /> Accept request
               </button>
+            ) : friendStatus === "self" ? null : (
+              <button className="or-btn" disabled={statusBusy} onClick={addFriend} data-testid="public-add-friend">
+                <Icons.UserPlus size={14} /> Add friend
+              </button>
+            )}
+            <button
+              className="or-btn or-btn-ghost"
+              data-testid="public-message"
+              onClick={onMessage}
+              disabled={friendStatus !== "friends" && friendStatus !== "self"}
+              title={friendStatus !== "friends" && friendStatus !== "self" ? "Add as friend to message" : "Send a message"}
+            >
+              <Icons.MessageCircle size={14} /> Message
+            </button>
+            {isOwner && (
+              <>
+                <button className="or-btn or-btn-ghost" onClick={() => setEditing(!editing)} data-testid="public-toggle-layout">
+                  {editing ? "Done" : "Edit layout"}
+                </button>
+                <button className="or-btn" onClick={() => navigate("/profile?edit=1")} data-testid="public-switch-edit">
+                  <Icons.Pencil size={14} /> Switch to Edit
+                </button>
+              </>
             )}
           </div>
         </div>
+        {chatErr && (
+          <div className="mx-5 sm:mx-8 mb-5 text-sm px-3 py-2" data-testid="public-chat-err"
+            style={{ background: "rgba(255,80,80,0.1)", border: "1px solid rgba(255,80,80,0.4)", color: "#ff8080", borderRadius: "var(--radius)" }}>
+            {chatErr}
+          </div>
+        )}
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>

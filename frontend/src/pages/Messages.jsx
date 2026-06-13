@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Search, Sliders, Pin, MessagesSquare, Users, Radio, Users2, Phone, Settings as SettingsIcon, Plus, Send, Mic, Paperclip, X, ChevronRight, Crown } from "lucide-react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { Search, Sliders, Pin, MessagesSquare, Users, Radio, Users2, Phone, Settings as SettingsIcon, Plus, Send, Mic, Paperclip, X, ChevronRight, Crown, UserPlus, AlertTriangle } from "lucide-react";
+import apiClient from "@/api/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { CHARACTERS, PINNED_CONVERSATIONS, GROUP_CHATS, DIRECT_MESSAGES, CURRENT_PERSONA } from "@/data/mockData";
 
 const SIDEBAR = [
@@ -65,6 +68,58 @@ export default function Messages() {
       { from: "me",   text: "🔥🔥 see you there",      t: "9:49 PM" },
     ],
   });
+
+  // Real friends-only DM overlay (?to=username)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const toUsername = searchParams.get("to");
+  const [realThread, setRealThread] = useState(null); // {messages: [], target, allowed, reason}
+  const [realDraft, setRealDraft] = useState("");
+  const [realErr, setRealErr] = useState("");
+  const [realBusy, setRealBusy] = useState(false);
+  const realEndRef = useRef(null);
+
+  const loadRealThread = async (username) => {
+    setRealErr("");
+    try {
+      const can = await apiClient.get(`/messages/can-message/${username}`);
+      if (!can.data.allowed) {
+        setRealThread({ target: username, allowed: false, reason: can.data.reason, messages: [] });
+        return;
+      }
+      const t = await apiClient.get(`/messages/thread/${username}`);
+      setRealThread({ target: username, allowed: true, messages: t.data.messages || [] });
+    } catch (e) {
+      setRealThread({ target: username, allowed: false, reason: "error", messages: [] });
+      setRealErr(e.response?.data?.detail || "Could not open chat");
+    }
+  };
+
+  useEffect(() => {
+    if (toUsername && user) loadRealThread(toUsername);
+    if (!toUsername) setRealThread(null);
+  }, [toUsername, user]);
+
+  useEffect(() => { realEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [realThread?.messages?.length]);
+
+  const sendReal = async () => {
+    if (!realThread?.allowed || !realDraft.trim()) return;
+    setRealBusy(true);
+    try {
+      const { data } = await apiClient.post("/messages", { to_username: realThread.target, text: realDraft.trim() });
+      setRealThread((rt) => ({ ...rt, messages: [...(rt.messages || []), data.message] }));
+      setRealDraft("");
+    } catch (e) {
+      setRealErr(e.response?.data?.detail || "Failed to send");
+    } finally { setRealBusy(false); }
+  };
+
+  const closeRealChat = () => {
+    setSearchParams({});
+    setRealThread(null);
+  };
+
   const endRef = useRef(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeChat, messages]);
 
@@ -331,6 +386,101 @@ export default function Messages() {
               />
               <button className="or-btn" style={{ padding: "0.55rem 0.9rem" }} onClick={send} data-testid="chat-send"><Send size={16} /></button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Real friends-only DM overlay (opened via ?to=username) */}
+      {realThread && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center px-2 pb-24 sm:pb-0"
+          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)" }}
+          onClick={closeRealChat}
+          data-testid="real-chat-overlay"
+        >
+          <div className="or-surface w-full max-w-2xl h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 p-3" style={{ borderBottom: "1px solid var(--border-col)" }}>
+              <div className="rounded-full w-10 h-10 flex items-center justify-center" style={{ background: "var(--surface-2)", border: "1px solid var(--border-col)", color: "var(--primary)", fontWeight: 700 }}>
+                {realThread.target?.[0]?.toUpperCase()}
+              </div>
+              <div className="flex-1">
+                <div className="font-semibold" style={{ color: "var(--text-main)" }} data-testid="real-chat-target">@{realThread.target}</div>
+                <div className="text-[11px]" style={{ color: realThread.allowed ? "var(--brand-green)" : "#FF8080" }}>
+                  {realThread.allowed ? "Friends · secure DM" : "Locked — friends only"}
+                </div>
+              </div>
+              <button className="starbar-icon" style={{ width: 36, height: 36 }} onClick={closeRealChat} data-testid="real-chat-close">
+                <X size={16} />
+              </button>
+            </div>
+
+            {!realThread.allowed ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-3" data-testid="real-chat-blocked">
+                <AlertTriangle size={32} style={{ color: "#FFB72E" }} />
+                <div className="text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--text-main)" }}>
+                  Messaging is friends-only
+                </div>
+                <p className="text-sm max-w-sm" style={{ color: "var(--text-muted)" }}>
+                  To start a private conversation with <b style={{ color: "var(--text-main)" }}>@{realThread.target}</b>, send them a friend request first.
+                </p>
+                {realErr && <div className="text-xs" style={{ color: "#FF8080" }}>{realErr}</div>}
+                <div className="flex gap-2 mt-2">
+                  <button
+                    className="or-btn"
+                    onClick={() => navigate(`/public/${realThread.target}`)}
+                    data-testid="real-chat-open-profile"
+                  >
+                    <UserPlus size={14} /> Open profile
+                  </button>
+                  <button className="or-btn or-btn-ghost" onClick={closeRealChat} data-testid="real-chat-dismiss">Close</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex-1 overflow-y-auto p-4 space-y-2" data-testid="real-chat-conversation">
+                  {(realThread.messages || []).length === 0 && (
+                    <div className="text-center text-sm" style={{ color: "var(--text-muted)" }}>
+                      Say hi to @{realThread.target} 👋
+                    </div>
+                  )}
+                  {(realThread.messages || []).map((m) => {
+                    const mine = m.from_username === user?.username;
+                    return (
+                      <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                        <div className="max-w-[75%] px-3 py-2 text-sm"
+                          style={{
+                            background: mine ? "var(--primary)" : "var(--surface-2)",
+                            color: mine ? "var(--primary-fg)" : "var(--text-main)",
+                            borderRadius: "var(--radius)",
+                          }}>
+                          <div>{m.text}</div>
+                          <div className="text-[10px] mt-1 opacity-70 text-right">
+                            {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={realEndRef} />
+                </div>
+                {realErr && (
+                  <div className="text-xs px-4 py-1.5" style={{ color: "#FF8080" }}>{realErr}</div>
+                )}
+                <div className="p-3 flex items-center gap-2" style={{ borderTop: "1px solid var(--border-col)" }}>
+                  <input
+                    className="or-input flex-1"
+                    value={realDraft}
+                    onChange={(e) => setRealDraft(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && sendReal()}
+                    placeholder={`Message @${realThread.target}…`}
+                    data-testid="real-chat-input"
+                  />
+                  <button className="or-btn" style={{ padding: "0.55rem 0.9rem" }} disabled={realBusy || !realDraft.trim()} onClick={sendReal} data-testid="real-chat-send">
+                    <Send size={16} />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

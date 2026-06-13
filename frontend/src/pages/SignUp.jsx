@@ -1,25 +1,60 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Logo from "@/components/Logo";
 import ModeSwitcher from "@/components/ModeSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
+import apiClient from "@/api/client";
+import { Check, X, Loader2 } from "lucide-react";
 
 export default function SignUp() {
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [unCheck, setUnCheck] = useState({ status: "idle", suggestions: [] }); // idle | checking | ok | taken
   const { register } = useAuth();
   const navigate = useNavigate();
 
+  // Debounced username availability check
+  useEffect(() => {
+    if (!username || username.length < 3) {
+      setUnCheck({ status: "idle", suggestions: [] });
+      return;
+    }
+    setUnCheck({ status: "checking", suggestions: [] });
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await apiClient.post("/auth/username/check", { username });
+        if (data.available) setUnCheck({ status: "ok", suggestions: [] });
+        else setUnCheck({ status: "taken", suggestions: data.suggestions || [] });
+      } catch {
+        setUnCheck({ status: "idle", suggestions: [] });
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [username]);
+
   const onSubmit = async (e) => {
     e.preventDefault();
-    setError(""); setLoading(true);
-    const res = await register(email, password, name);
+    setError("");
+    if (unCheck.status === "taken") {
+      setError("That username is taken — try a suggestion below.");
+      return;
+    }
+    setLoading(true);
+    const res = await register(email, password, name, username);
     setLoading(false);
     if (res.ok) navigate("/home");
     else setError(res.error);
+  };
+
+  const StatusIcon = () => {
+    if (unCheck.status === "checking") return <Loader2 size={16} className="animate-spin" style={{ color: "var(--text-muted)" }} />;
+    if (unCheck.status === "ok") return <Check size={16} style={{ color: "var(--brand-green)" }} />;
+    if (unCheck.status === "taken") return <X size={16} style={{ color: "#FF3F5A" }} />;
+    return null;
   };
 
   return (
@@ -38,6 +73,35 @@ export default function SignUp() {
               value={name} onChange={(e) => setName(e.target.value)}
               className="or-input" data-testid="signup-name"
             />
+            <div className="relative">
+              <input
+                type="text" placeholder="Username (a–z, 0–9, . or _)" required minLength={3} maxLength={24}
+                pattern="^[a-zA-Z0-9_.]+$"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, ""))}
+                className="or-input pr-9"
+                data-testid="signup-username"
+                autoComplete="username"
+              />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                <StatusIcon />
+              </div>
+            </div>
+            {unCheck.status === "taken" && unCheck.suggestions?.length > 0 && (
+              <div className="flex flex-wrap gap-1.5" data-testid="signup-username-suggestions">
+                {unCheck.suggestions.slice(0, 4).map((s) => (
+                  <button
+                    type="button"
+                    key={s}
+                    className="or-chip"
+                    onClick={() => setUsername(s)}
+                    data-testid={`signup-suggest-${s}`}
+                  >
+                    @{s}
+                  </button>
+                ))}
+              </div>
+            )}
             <input
               type="email" placeholder="Email" required
               value={email} onChange={(e) => setEmail(e.target.value)}
@@ -54,7 +118,7 @@ export default function SignUp() {
                 {error}
               </div>
             )}
-            <button type="submit" disabled={loading} className="or-btn w-full" data-testid="signup-submit">
+            <button type="submit" disabled={loading || unCheck.status === "taken"} className="or-btn w-full" data-testid="signup-submit">
               {loading ? "Creating account…" : "Join OurRealm"}
             </button>
           </form>

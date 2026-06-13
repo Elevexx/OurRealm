@@ -40,12 +40,12 @@ export default function TopStarBar() {
       data-testid="topstar-bar"
     >
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Logo — no box, clean */}
+        {/* Logo — clicking the logo always routes to /signup (joining OurRealm) */}
         <button
           className="flex items-center shrink-0"
-          onClick={() => navigate("/home")}
+          onClick={() => navigate("/signup")}
           data-testid="header-logo"
-          aria-label="OurRealm home"
+          aria-label="Sign up for OurRealm"
           style={{ background: "transparent", padding: 0 }}
         >
           <Logo size={48} />

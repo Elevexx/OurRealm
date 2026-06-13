@@ -159,22 +159,10 @@ export default function Home() {
       <Section title="Explore more"        testid="explore"     items={explore}     selected={selected} toggle={toggle} />
       <Section title="Dive deeper"         testid="deeper"      items={deeper}      selected={selected} toggle={toggle} />
 
-      {/* Sticky media bar + continue */}
+      {/* Sticky media bar — the "Next" arrow inside the bar routes to /feed */}
       <div className="sticky bottom-[78px] sm:bottom-[88px] mt-6 z-30">
-        <div className="or-surface p-2.5 flex items-center gap-2">
-          <div className="flex-1 overflow-hidden">
-            <MediaTypeBar value={media} onChange={onMediaChange} onNext={continueToFeed} embedded />
-          </div>
-          <button
-            data-testid="home-continue"
-            onClick={continueToFeed}
-            className="or-btn shrink-0"
-            style={{ padding: "0.55rem 0.9rem" }}
-            disabled={selected.size === 0}
-            title={selected.size === 0 ? "Pick at least one interest" : "Continue"}
-          >
-            <Sparkles size={14} /> Continue
-          </button>
+        <div className="or-surface p-2.5">
+          <MediaTypeBar value={media} onChange={onMediaChange} onNext={continueToFeed} embedded />
         </div>
         {selected.size > 0 && (
           <div className="text-center mt-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
