@@ -144,9 +144,9 @@ export default function Messages() {
         <span className="mode-badge hidden sm:inline-flex">Messenger</span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[180px_1fr] gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-[180px_minmax(0,1fr)] gap-3 sm:gap-4">
         {/* Vertical sidebar */}
-        <aside className="or-surface p-3 flex md:flex-col gap-2 overflow-x-auto md:overflow-visible" data-testid="messenger-sidebar">
+        <aside className="or-surface p-3 flex md:flex-col gap-2 overflow-x-auto md:overflow-visible no-scrollbar min-w-0" data-testid="messenger-sidebar">
           {SIDEBAR.map(({ id, label, Icon, badge }) => (
             <button
               key={id}
@@ -194,7 +194,7 @@ export default function Messages() {
         </aside>
 
         {/* Main panel */}
-        <section className="or-surface p-3 sm:p-5">
+        <section className="or-surface p-3 sm:p-5 min-w-0">
           {/* Live users row */}
           <div className="flex gap-3 sm:gap-5 overflow-x-auto no-scrollbar pb-2" data-testid="messenger-live-users">
             {CHARACTERS.map((c) => (

@@ -31,15 +31,19 @@ export default function TopStarBar() {
 
   return (
     <header
-      className="sticky top-0 z-40 px-3 sm:px-5 py-2.5"
+      className="sticky top-0 z-40 px-2.5 sm:px-5 py-2"
       style={{
         background: "color-mix(in srgb, var(--bgc) 82%, transparent)",
         backdropFilter: "blur(18px)",
         borderBottom: "1px solid var(--border-col)",
+        paddingTop: "max(0.5rem, env(safe-area-inset-top, 0px))",
+        paddingLeft: "max(0.625rem, env(safe-area-inset-left, 0px))",
+        paddingRight: "max(0.625rem, env(safe-area-inset-right, 0px))",
+        maxWidth: "100vw",
       }}
       data-testid="topstar-bar"
     >
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 max-w-full">
         {/* Logo — clicking the logo always routes to /signup (joining OurRealm) */}
         <button
           className="flex items-center shrink-0"
@@ -48,7 +52,7 @@ export default function TopStarBar() {
           aria-label="Sign up for OurRealm"
           style={{ background: "transparent", padding: 0 }}
         >
-          <Logo size={48} />
+          <Logo size={44} />
         </button>
 
         {/* Mode button — full named button → /modes */}

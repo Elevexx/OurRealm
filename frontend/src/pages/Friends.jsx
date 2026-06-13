@@ -104,21 +104,21 @@ export default function Friends() {
           </h3>
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>Your inner 8</span>
         </div>
-        <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 sm:gap-4 place-items-center">
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-4 place-items-center">
           {FEATURED_FRIENDS.map((f, i) => (
             <button
               key={f.id}
-              className="flex flex-col items-center gap-1.5"
+              className="flex flex-col items-center gap-1.5 min-w-0 w-full"
               data-testid={`featured-friend-${i}`}
               onClick={() => navigate("/messages")}
             >
-              <div className="rounded-full p-[3px] relative"
-                style={{ background: f.ringColor, boxShadow: `0 0 14px ${f.ringColor}66`, width: 80, height: 80 }}>
+              <div className="rounded-full p-[3px] relative aspect-square w-full"
+                style={{ background: f.ringColor, boxShadow: `0 0 14px ${f.ringColor}66`, maxWidth: 80 }}>
                 <img src={f.avatar} alt="" className="w-full h-full rounded-full object-cover" style={{ border: "3px solid var(--bgc)" }} />
                 <span className="absolute -top-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[8px] font-extrabold"
                   style={{ background: f.ringColor, color: "#fff", letterSpacing: "0.06em" }}>#{i + 1}</span>
               </div>
-              <div className="text-xs font-semibold text-center" style={{ color: "var(--text-main)" }}>{f.name}</div>
+              <div className="text-[11px] sm:text-xs font-semibold text-center truncate w-full" style={{ color: "var(--text-main)" }}>{f.name}</div>
               <div className="text-[10px]" style={{ color: f.ringColor }}>{f.label}</div>
             </button>
           ))}

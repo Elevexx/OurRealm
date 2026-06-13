@@ -175,10 +175,13 @@ export default function BottomNav() {
           backdropFilter: "blur(20px)",
           borderTop: "1px solid var(--border-col)",
           paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          paddingLeft: "env(safe-area-inset-left, 0px)",
+          paddingRight: "env(safe-area-inset-right, 0px)",
+          maxWidth: "100vw",
         }}
         data-testid="bottom-nav"
       >
-        <div className="max-w-5xl mx-auto flex items-end px-2 sm:px-4 py-1.5">
+        <div className="max-w-5xl mx-auto flex items-end px-1 sm:px-4 py-1.5 max-w-full">
           {ITEMS_LEFT.map(({ to, label, Icon, testid }) => {
             const active = location.pathname === to || location.pathname.startsWith(to + "/");
             return (
@@ -189,13 +192,13 @@ export default function BottomNav() {
             );
           })}
 
-          <div className="flex-[0_0_72px] flex justify-center -translate-y-3">
+          <div className="flex-[0_0_56px] sm:flex-[0_0_72px] flex justify-center -translate-y-3">
             <button
               data-testid="bottom-create"
               onClick={onCreateClick}
               className="flex items-center justify-center"
               style={{
-                width: 58, height: 58, borderRadius: 999,
+                width: 52, height: 52, borderRadius: 999,
                 background: "linear-gradient(135deg, var(--primary), var(--secondary))",
                 color: "var(--primary-fg)",
                 border: "3px solid var(--bgc)",
@@ -203,7 +206,7 @@ export default function BottomNav() {
               }}
               aria-label="Create"
             >
-              <Plus size={26} />
+              <Plus size={24} />
             </button>
           </div>
 

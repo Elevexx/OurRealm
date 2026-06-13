@@ -37,7 +37,16 @@ const LABEL = { neon: "Neon", business: "Business", millennium: "Mill.", stealth
 export default function ModeSwitcher({ compact = false }) {
   const { mode, setMode } = useTheme();
   return (
-    <div className="flex items-center gap-1.5 p-1 or-surface" data-testid="mode-switcher" style={{ borderRadius: 999 }}>
+    <div
+      className="flex items-center gap-1 p-1 or-surface no-scrollbar"
+      data-testid="mode-switcher"
+      style={{
+        borderRadius: 999,
+        maxWidth: "100%",
+        overflowX: "auto",
+        scrollSnapType: "x mandatory",
+      }}
+    >
       {MODES.map((m) => {
         const s = MODE_STYLES[m];
         const active = mode === m;
@@ -46,12 +55,12 @@ export default function ModeSwitcher({ compact = false }) {
             key={m}
             data-testid={`mode-switcher-${m}`}
             onClick={() => setMode(m)}
-            className="transition-all duration-200"
+            className="transition-all duration-200 shrink-0"
             style={{
-              padding: compact ? "0.3rem 0.7rem" : "0.45rem 0.95rem",
+              padding: compact ? "0.3rem 0.65rem" : "0.4rem 0.8rem",
               borderRadius: 999,
-              fontSize: compact ? "0.65rem" : "0.72rem",
-              letterSpacing: "0.16em",
+              fontSize: compact ? "0.62rem" : "0.7rem",
+              letterSpacing: "0.14em",
               textTransform: "uppercase",
               fontFamily: s.family,
               fontWeight: 700,
@@ -61,6 +70,7 @@ export default function ModeSwitcher({ compact = false }) {
               boxShadow: active ? s.shadow : "none",
               cursor: "pointer",
               whiteSpace: "nowrap",
+              scrollSnapAlign: "start",
             }}
           >
             {LABEL[m]}
