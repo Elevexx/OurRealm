@@ -110,6 +110,8 @@ export default function Messages() {
       const { data } = await apiClient.post("/messages", { to_username: realThread.target, text: realDraft.trim() });
       setRealThread((rt) => ({ ...rt, messages: [...(rt.messages || []), data.message] }));
       setRealDraft("");
+      // refresh the DM list preview/timestamp
+      loadThreads();
     } catch (e) {
       setRealErr(e.response?.data?.detail || "Failed to send");
     } finally { setRealBusy(false); }
@@ -122,6 +124,47 @@ export default function Messages() {
 
   const endRef = useRef(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeChat, messages]);
+
+  // --- Real thread list (Pinned + DMs) -----------------------------------
+  const [threads, setThreads] = useState([]);
+  const loadThreads = async () => {
+    if (!user) return;
+    try {
+      const { data } = await apiClient.get("/messages/threads");
+      setThreads(data.threads || []);
+    } catch { setThreads([]); }
+  };
+  useEffect(() => { loadThreads(); }, [user]);
+
+  const togglePin = async (peerUsername, isPinned) => {
+    try {
+      await apiClient.post(
+        isPinned ? "/messages/threads/unpin" : "/messages/threads/pin",
+        { peer_username: peerUsername }
+      );
+      loadThreads();
+    } catch { /* silent */ }
+  };
+
+  const realPinned = threads.filter((t) => t.is_pinned).slice(0, 4);
+  const realDMs = threads;
+
+  const openRealChat = (username) => {
+    setSearchParams({ to: username });
+  };
+
+  const formatTimeShort = (iso) => {
+    if (!iso) return "—";
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      if (d.toDateString() === now.toDateString())
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return d.toLocaleDateString([], { month: "short", day: "numeric" });
+    } catch { return ""; }
+  };
+
+  // ----------------------------------------------------------------------
 
   const activeThread = activeChat ? DIRECT_MESSAGES.find((d) => d.id === activeChat) : null;
 
@@ -223,14 +266,46 @@ export default function Messages() {
             <Sliders size={16} style={{ color: "var(--text-muted)" }} />
           </div>
 
-          {/* Pinned */}
+          {/* Pinned — REAL threads (fall back to design mocks while no real pins exist
+              so the visual layout is preserved). */}
           <div className="mt-5">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-base sm:text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>Pinned Conversations</h3>
               <button className="text-xs flex items-center gap-1" style={{ color: "var(--text-muted)" }}>View All <ChevronRight size={12} /></button>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" data-testid="messenger-pinned">
-              {PINNED_CONVERSATIONS.map((p) => (
+              {realPinned.length > 0 ? realPinned.map((t) => {
+                const badgeColor = t.peer.is_founder ? "#10E670" : "#2EA0FF";
+                const badge = t.peer.is_founder ? "FOUNDER" : "FRIEND";
+                const avatar = t.peer.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(t.peer.name || t.peer.username)}`;
+                return (
+                  <button
+                    key={t.conv_id}
+                    onClick={() => openRealChat(t.peer.username)}
+                    className="or-surface p-3 text-left"
+                    style={{ background: "var(--surface-2)", borderColor: badgeColor, outline: `1px solid ${badgeColor}33` }}
+                    data-testid={`pinned-${t.peer.username}`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <img src={avatar} alt="" className="rounded-full object-cover" style={{ width: 36, height: 36, border: `2px solid ${badgeColor}` }} />
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold truncate" style={{ color: "var(--text-main)" }}>{t.peer.name || `@${t.peer.username}`}</div>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: badgeColor, color: "#fff" }}>{badge}</span>
+                      </div>
+                      <button
+                        className="ml-auto p-0"
+                        style={{ background: "transparent" }}
+                        onClick={(e) => { e.stopPropagation(); togglePin(t.peer.username, t.is_pinned); }}
+                        title="Unpin"
+                        data-testid={`pinned-unpin-${t.peer.username}`}
+                      >
+                        <Pin size={12} style={{ color: "var(--primary)" }} />
+                      </button>
+                    </div>
+                    <div className="text-xs line-clamp-2" style={{ color: "var(--text-muted)" }}>{t.last_text || "Tap to start a conversation"}</div>
+                  </button>
+                );
+              }) : PINNED_CONVERSATIONS.map((p) => (
                 <button
                   key={p.id}
                   onClick={() => setActiveChat(`dm-${PINNED_CONVERSATIONS.indexOf(p) + 1}`)}
@@ -298,41 +373,90 @@ export default function Messages() {
             </div>
           </div>
 
-          {/* Direct Messages */}
+          {/* Direct Messages — REAL threads from /api/messages/threads */}
           <div className="mt-5">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-base sm:text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>Direct Messages</h3>
-              <button className="text-xs flex items-center gap-1" style={{ color: "var(--text-muted)" }}>View All <ChevronRight size={12} /></button>
+              <button className="text-xs flex items-center gap-1" style={{ color: "var(--text-muted)" }} onClick={loadThreads} data-testid="messenger-dm-refresh">Refresh <ChevronRight size={12} /></button>
             </div>
             <div data-testid="messenger-dms">
-              {DIRECT_MESSAGES.map((d) => (
-                <button
-                  key={d.id}
-                  onClick={() => setActiveChat(d.id)}
-                  className="w-full flex items-center gap-3 py-2.5 px-2 text-left transition-colors"
-                  style={{ borderBottom: "1px solid var(--border-col)" }}
-                  data-testid={`dm-${d.id}`}
-                >
-                  <img src={d.character.avatar} alt="" className="rounded-full object-cover shrink-0" style={{ width: 40, height: 40 }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <div className="font-semibold text-sm" style={{ color: "var(--text-main)" }}>{d.character.name}</div>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: d.badgeColor, color: "#fff" }}>{d.badge}</span>
+              {realDMs.length === 0 ? (
+                DIRECT_MESSAGES.map((d) => (
+                  <button
+                    key={d.id}
+                    onClick={() => setActiveChat(d.id)}
+                    className="w-full flex items-center gap-3 py-2.5 px-2 text-left transition-colors"
+                    style={{ borderBottom: "1px solid var(--border-col)" }}
+                    data-testid={`dm-${d.id}`}
+                  >
+                    <img src={d.character.avatar} alt="" className="rounded-full object-cover shrink-0" style={{ width: 40, height: 40 }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="font-semibold text-sm" style={{ color: "var(--text-main)" }}>{d.character.name}</div>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: d.badgeColor, color: "#fff" }}>{d.badge}</span>
+                      </div>
+                      <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{d.preview}</div>
                     </div>
-                    <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{d.preview}</div>
-                  </div>
-                  <div className="text-xs whitespace-nowrap shrink-0" style={{ color: "var(--text-muted)" }}>{d.time}</div>
-                  {d.unread > 0 ? (
-                    <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 shrink-0" style={{ background: "var(--primary)", color: "var(--primary-fg)" }}>
-                      {d.unread}
-                    </span>
-                  ) : d.pinned ? (
-                    <Pin size={12} style={{ color: "var(--primary)" }} />
-                  ) : (
-                    <span className="w-2 h-2 rounded-full" style={{ background: d.badgeColor }} />
-                  )}
-                </button>
-              ))}
+                    <div className="text-xs whitespace-nowrap shrink-0" style={{ color: "var(--text-muted)" }}>{d.time}</div>
+                    {d.unread > 0 ? (
+                      <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 shrink-0" style={{ background: "var(--primary)", color: "var(--primary-fg)" }}>
+                        {d.unread}
+                      </span>
+                    ) : d.pinned ? (
+                      <Pin size={12} style={{ color: "var(--primary)" }} />
+                    ) : (
+                      <span className="w-2 h-2 rounded-full" style={{ background: d.badgeColor }} />
+                    )}
+                  </button>
+                ))
+              ) : realDMs.map((t) => {
+                const badgeColor = t.peer.is_founder ? "#10E670" : "#2EA0FF";
+                const badge = t.peer.is_founder ? "FOUNDER" : "FRIEND";
+                const avatar = t.peer.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(t.peer.name || t.peer.username)}`;
+                const preview = t.last_text
+                  ? (t.last_from_me ? `You: ${t.last_text}` : t.last_text)
+                  : "Tap to start a conversation";
+                return (
+                  <button
+                    key={t.conv_id}
+                    onClick={() => openRealChat(t.peer.username)}
+                    className="w-full flex items-center gap-3 py-2.5 px-2 text-left transition-colors"
+                    style={{ borderBottom: "1px solid var(--border-col)" }}
+                    data-testid={`dm-${t.peer.username}`}
+                  >
+                    <img src={avatar} alt="" className="rounded-full object-cover shrink-0" style={{ width: 40, height: 40 }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="font-semibold text-sm truncate" style={{ color: "var(--text-main)" }}>{t.peer.name || `@${t.peer.username}`}</div>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: badgeColor, color: "#fff" }}>{badge}</span>
+                      </div>
+                      <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{preview}</div>
+                    </div>
+                    <div className="text-xs whitespace-nowrap shrink-0" style={{ color: "var(--text-muted)" }}>{formatTimeShort(t.last_at)}</div>
+                    {t.is_pinned ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); togglePin(t.peer.username, true); }}
+                        title="Unpin"
+                        data-testid={`dm-unpin-${t.peer.username}`}
+                        className="p-0"
+                        style={{ background: "transparent" }}
+                      >
+                        <Pin size={12} style={{ color: "var(--primary)" }} />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); togglePin(t.peer.username, false); }}
+                        title="Pin"
+                        data-testid={`dm-pin-${t.peer.username}`}
+                        className="p-0 opacity-50 hover:opacity-100"
+                        style={{ background: "transparent" }}
+                      >
+                        <Pin size={12} style={{ color: "var(--text-muted)" }} />
+                      </button>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </section>

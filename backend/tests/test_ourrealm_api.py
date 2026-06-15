@@ -230,8 +230,8 @@ class TestPosts:
             "content": "TEST_like", "media_type": "post"
         })
         pid = c.json()["post"]["id"]
-        l = admin_client.post(f"{BASE_URL}/api/posts/{pid}/like")
-        assert l.status_code == 200
+        like_resp = admin_client.post(f"{BASE_URL}/api/posts/{pid}/like")
+        assert like_resp.status_code == 200
         # verify via list
         r = admin_client.get(f"{BASE_URL}/api/posts")
         target = next(p for p in r.json()["posts"] if p["id"] == pid)

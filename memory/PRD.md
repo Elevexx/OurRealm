@@ -40,6 +40,21 @@ Landing, SignUp (with username availability + suggestions), SignIn, Founder OTP,
 - Pytest backend suite: 17/17 Phase-2 tests + 20/20 prior tests pass.
 - Playwright frontend: all requested user flows verified (`/app/test_reports/iteration_2.json`).
 
+**Phase 5 — Backend refactor + ID-based friend graph + real Pinned/DMs (Feb 2026)**
+- Split monolithic `server.py` into routers:
+  - `backend/core/{config.py, db.py, security.py, deps.py, seed.py}` (env, mongo, bcrypt + JWT + cookies, current-user dep + lockout, startup seed/migration).
+  - `backend/models/schemas.py` (Pydantic request/response models + `serialize_user`).
+  - `backend/routers/{auth.py, friends.py, messages.py, profile.py, posts.py}`.
+  - `server.py` is now ~60 lines of wiring (app factory, CORS, router mount, startup/shutdown).
+- **Friend graph migrated from usernames → user_ids** for rename safety. All `friends / friend_requests_in / friend_requests_out / pinned_threads` arrays on user docs store user_ids; `messages.conv_id` is now `min(uid):max(uid)`; each message stores `from_user_id` + `to_user_id` (with username snapshots for display).
+- Idempotent startup migration converts legacy username-based docs to id-based — verified migrating 42 users + 4 legacy messages on first boot.
+- Backwards-compatible API surface: clients still address friends and message targets by `username`; routers translate to id internally.
+- New `GET /api/messages/threads` returns `[{conv_id, peer:{id,username,name,avatar_url,is_founder}, last_text, last_at, last_from_me, is_pinned}]` sorted pinned-first then by recency.
+- New `POST /api/messages/threads/pin` & `/unpin` (body `{peer_username}`).
+- Messages.jsx Pinned + DM lists now driven by real `/api/messages/threads`. Pinned section falls back to mock cards only when the user has zero pins (preserves visual design). Clicking a real DM opens the existing friends-only real-chat overlay via `?to=username`. Pin/unpin icons inline on each DM row. Group Chats section remains mocked (no group infra yet) — keeping the UI intact per user instruction.
+
+**Verification** (manual + automated curl): friend-request lifecycle (none → outgoing → incoming → friends → decline → none), 403 enforcement, message persistence with id-based conv_id, thread aggregation, pin sorting, refresh-on-send.
+
 **Phase 4 — App-wide Responsive Design Audit (Feb 2026)**
 - Global foundation in `index.css`: `box-sizing: border-box`, `html/body/#root { max-width: 100%; overflow-x: hidden }`, responsive `img/video/iframe { max-width: 100%; height: auto }`, fluid clamp-based typography (`.or-text-h1/h2/h3/body/small`), `.or-hscroll` utility for horizontal-scroll rows, `:where(main,section,article) > * { min-width: 0 }` to fix flex/grid blowouts, dedicated 640-1023px tablet hooks, iPhone-SE (≤380px) sizing for nav.
 - `index.html` viewport meta now uses `viewport-fit=cover` for proper notch/home-indicator handling.
