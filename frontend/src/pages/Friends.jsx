@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { UserPlus, MessageCircle, UserCheck, Search, Check, X, Sparkles, Users as UsersIcon, Loader2, Clock } from "lucide-react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { UserPlus, MessageCircle, UserCheck, Search, Check, X, Sparkles, Users as UsersIcon, Loader2, Clock, Edit3, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { FEATURED_FRIENDS } from "@/data/mockData";
 
 const TABS = [
   { id: "friends",   label: "Friends" },
@@ -138,34 +137,8 @@ export default function Friends() {
         <span className="mode-badge hidden sm:inline-flex">{friends.length} connections</span>
       </div>
 
-      {/* Featured 8 circles (Close Realm) — kept as mock per design */}
-      <div className="or-surface p-4 sm:p-5 mb-5" data-testid="friends-featured-circles">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-base sm:text-lg flex items-center gap-2" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>
-            <Sparkles size={16} /> Close Realm
-          </h3>
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>Your inner 8</span>
-        </div>
-        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-4 place-items-center">
-          {FEATURED_FRIENDS.map((f, i) => (
-            <button
-              key={f.id}
-              className="flex flex-col items-center gap-1.5 min-w-0 w-full"
-              data-testid={`featured-friend-${i}`}
-              onClick={() => navigate("/messages")}
-            >
-              <div className="rounded-full p-[3px] relative aspect-square w-full"
-                style={{ background: f.ringColor, boxShadow: `0 0 14px ${f.ringColor}66`, maxWidth: 80 }}>
-                <img src={f.avatar} alt="" className="w-full h-full rounded-full object-cover" style={{ border: "3px solid var(--bgc)" }} />
-                <span className="absolute -top-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[8px] font-extrabold"
-                  style={{ background: f.ringColor, color: "#fff", letterSpacing: "0.06em" }}>#{i + 1}</span>
-              </div>
-              <div className="text-[11px] sm:text-xs font-semibold text-center truncate w-full" style={{ color: "var(--text-main)" }}>{f.name}</div>
-              <div className="text-[10px]" style={{ color: f.ringColor }}>{f.label}</div>
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Close Realm / Inner 8 — backed by /api/profile/me { inner_8 } */}
+      <InnerEight friends={friends} onChange={loadFriends} />
 
       {/* Tabs */}
       <div className="flex items-center gap-2 mb-4 overflow-x-auto no-scrollbar">
@@ -352,3 +325,125 @@ export default function Friends() {
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Inner 8 — editable Close Realm widget (max 8 friends, ordered).
+// ─────────────────────────────────────────────────────────────────────
+function InnerEight({ friends, onChange }) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const idToFriend = new Map(friends.map((f) => [f.id, f]));
+  const ids = (user?.inner_8 || []).filter((id) => idToFriend.has(id)).slice(0, 8);
+  const ringColors = ["#10E670", "#2EA0FF", "#FF8AC2", "#FFD24A", "#FF3F5A", "#B26BFF", "#22D3EE", "#9EE800"];
+
+  const save = async (next) => {
+    setBusy(true); setErr("");
+    try {
+      await apiClient.patch("/profile/me", { inner_8: next });
+      if (onChange) await onChange();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Could not save Inner 8");
+    } finally { setBusy(false); }
+  };
+  const remove = (id) => save(ids.filter((x) => x !== id));
+  const add = (id) => {
+    if (ids.length >= 8) { setErr("Remove a friend from Inner 8 to add a new one"); return; }
+    save([...ids, id]);
+    setPickerOpen(false);
+  };
+  const move = (id, dir) => {
+    const i = ids.indexOf(id); const j = i + dir;
+    if (j < 0 || j >= ids.length) return;
+    const next = [...ids]; [next[i], next[j]] = [next[j], next[i]];
+    save(next);
+  };
+  const pressTimer = useRef(null);
+  const onPressDown = (id) => { if (!editing) return; pressTimer.current = setTimeout(() => remove(id), 600); };
+  const onPressUp = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
+
+  const slots = Array.from({ length: 8 }, (_, i) => ids[i] || null);
+  const candidates = friends.filter((f) => !ids.includes(f.id));
+
+  return (
+    <div className="or-surface p-4 sm:p-5 mb-5" data-testid="friends-inner-eight">
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <h3 className="text-base sm:text-lg flex items-center gap-2" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>
+          <Sparkles size={16} /> Close Realm <span className="text-xs" style={{ color: "var(--text-muted)" }}>Your inner 8</span>
+        </h3>
+        <button className="or-chip" onClick={() => setEditing((v) => !v)} data-active={editing} data-testid="inner8-edit-toggle">
+          <Edit3 size={12} /> {editing ? "Done" : "Edit"}
+        </button>
+      </div>
+      {err && <div className="text-[11px] mb-2" data-testid="inner8-err" style={{ color: "#FF8080" }}>{err}</div>}
+      <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-4 place-items-center">
+        {slots.map((id, i) => {
+          const ring = ringColors[i];
+          if (!id) {
+            return (
+              <button key={`empty-${i}`} onClick={() => setPickerOpen(true)} className="flex flex-col items-center gap-1.5 min-w-0 w-full" data-testid={`inner8-add-slot-${i}`} style={{ opacity: 0.85 }}>
+                <div className="rounded-full aspect-square w-full flex items-center justify-center" style={{ border: `2px dashed ${ring}`, maxWidth: 80, color: ring }}>
+                  <Plus size={20} />
+                </div>
+                <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>Add Friend</div>
+              </button>
+            );
+          }
+          const f = idToFriend.get(id);
+          const avatar = f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.name || f.username)}`;
+          return (
+            <div key={id} className="flex flex-col items-center gap-1.5 min-w-0 w-full" data-testid={`inner8-slot-${f.username}`} onPointerDown={() => onPressDown(id)} onPointerUp={onPressUp} onPointerLeave={onPressUp}>
+              <button onClick={() => editing ? null : navigate(`/messages?to=${f.username}`)} className="rounded-full p-[3px] relative aspect-square w-full" style={{ background: ring, boxShadow: `0 0 14px ${ring}66`, maxWidth: 80 }} aria-label={`Inner 8 #${i + 1}: @${f.username}`}>
+                <img src={avatar} alt="" className="w-full h-full rounded-full object-cover" style={{ border: "3px solid var(--bgc)" }} />
+                <span className="absolute -top-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[8px] font-extrabold" style={{ background: ring, color: "#fff", letterSpacing: "0.06em" }}>#{i + 1}</span>
+                {editing && (
+                  <button className="absolute -top-1 -right-1 rounded-full w-5 h-5 flex items-center justify-center" style={{ background: "#FF3F5A", color: "#fff", border: "2px solid var(--bgc)" }} onClick={(e) => { e.stopPropagation(); remove(id); }} data-testid={`inner8-remove-${f.username}`} aria-label={`Remove @${f.username}`}>
+                    <X size={10} />
+                  </button>
+                )}
+              </button>
+              <div className="text-[11px] sm:text-xs font-semibold text-center truncate w-full" style={{ color: "var(--text-main)" }}>{f.name || `@${f.username}`}</div>
+              {editing && (
+                <div className="flex gap-1">
+                  <button className="text-[10px] px-1" onClick={() => move(id, -1)} data-testid={`inner8-up-${f.username}`} style={{ color: "var(--text-muted)" }}>◀</button>
+                  <button className="text-[10px] px-1" onClick={() => move(id, +1)} data-testid={`inner8-down-${f.username}`} style={{ color: "var(--text-muted)" }}>▶</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {busy && <div className="text-[11px] mt-2 text-center" style={{ color: "var(--text-muted)" }}>Saving…</div>}
+
+      {pickerOpen && (
+        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center px-3 pb-24 sm:pb-0" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)" }} onClick={() => setPickerOpen(false)} data-testid="inner8-picker">
+          <div className="or-surface w-full max-w-md max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3" style={{ borderBottom: "1px solid var(--border-col)" }}>
+              <h3 className="text-base" style={{ fontFamily: "var(--font-display)" }}>Add to Inner 8</h3>
+              <button className="starbar-icon" style={{ width: 32, height: 32 }} onClick={() => setPickerOpen(false)} data-testid="inner8-picker-close"><X size={14} /></button>
+            </div>
+            <div className="p-3 flex-1 overflow-y-auto">
+              {candidates.length === 0 ? (
+                <div className="text-sm text-center" style={{ color: "var(--text-muted)" }}>All your friends are already in Inner 8.</div>
+              ) : candidates.map((f) => (
+                <button key={f.id} onClick={() => add(f.id)} className="w-full flex items-center gap-3 p-2 text-left" data-testid={`inner8-pick-${f.username}`} style={{ borderBottom: "1px solid var(--border-col)" }}>
+                  <img src={f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.name || f.username)}`} alt="" className="rounded-full" style={{ width: 36, height: 36 }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm truncate" style={{ color: "var(--text-main)" }}>@{f.username}</div>
+                    <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{f.name}</div>
+                  </div>
+                  <Plus size={14} style={{ color: "var(--primary)" }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

@@ -64,6 +64,21 @@ class ProfileUpdate(BaseModel):
     interests: Optional[List[str]] = None
     mode: Optional[str] = None
     widgets: Optional[List[dict]] = None
+    # Privacy visibility: public | friends | private
+    profile_visibility: Optional[str] = None
+    # Wallet payment placeholders (stored as-is, no real ACH)
+    wallet: Optional[dict] = None
+    # Inner-8 friends ordered list of user_ids (max 8)
+    inner_8: Optional[List[str]] = None
+
+
+class UsernameChangePayload(BaseModel):
+    username: str = Field(min_length=3, max_length=24, pattern=r"^[a-zA-Z0-9_.]+$")
+
+
+class PasswordChangePayload(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=6, max_length=128)
 
 
 # ----- Posts -----
@@ -120,6 +135,10 @@ def serialize_user(doc: dict) -> dict:
         "is_verified": bool(doc.get("is_verified")),
         "is_vip": bool(doc.get("is_vip")),
         "vip_joined_at": doc.get("vip_joined_at") or doc.get("created_at"),
+        "username_changed_at": doc.get("username_changed_at"),
+        "profile_visibility": doc.get("profile_visibility", "public"),
+        "wallet": doc.get("wallet", {}),
+        "inner_8": doc.get("inner_8", []),
         "social": doc.get("social", {}),
         # `friends` is a list of user_ids internally — UI can resolve via /friends/list
         "friends": doc.get("friends", []),

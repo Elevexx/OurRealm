@@ -78,6 +78,11 @@ export default function Messages() {
   const [realDraft, setRealDraft] = useState("");
   const [realErr, setRealErr] = useState("");
   const [realBusy, setRealBusy] = useState(false);
+  // Edit + long-press delete state
+  const [msgMenu, setMsgMenu] = useState(null);      // {id, text, x, y}
+  const [editingMsg, setEditingMsg] = useState(null); // {id, text}
+  const [editDraft, setEditDraft] = useState("");
+  const longPressTimer = useRef(null);
   const realEndRef = useRef(null);
 
   const loadRealThread = async (username) => {
@@ -115,6 +120,79 @@ export default function Messages() {
     } catch (e) {
       setRealErr(e.response?.data?.detail || "Failed to send");
     } finally { setRealBusy(false); }
+  };
+
+  // ----- Edit + delete handlers -----
+  const beginEdit = (m) => {
+    setEditingMsg({ id: m.id, text: m.text });
+    setEditDraft(m.text);
+    setMsgMenu(null);
+  };
+  const saveEdit = async () => {
+    if (!editingMsg || !editDraft.trim()) return;
+    try {
+      const { data } = await apiClient.patch(`/messages/${editingMsg.id}`, { text: editDraft.trim() });
+      setRealThread((rt) => ({
+        ...rt,
+        messages: rt.messages.map((m) => m.id === editingMsg.id ? data.message : m),
+      }));
+      setEditingMsg(null); setEditDraft("");
+      loadThreads();
+    } catch (e) {
+      setRealErr(e.response?.data?.detail || "Failed to edit");
+    }
+  };
+  const cancelEdit = () => { setEditingMsg(null); setEditDraft(""); };
+
+  const deleteMsg = async (mid) => {
+    setMsgMenu(null);
+    try {
+      await apiClient.delete(`/messages/${mid}`);
+      setRealThread((rt) => ({ ...rt, messages: rt.messages.filter((m) => m.id !== mid) }));
+      loadThreads();
+    } catch (e) {
+      setRealErr(e.response?.data?.detail || "Failed to delete");
+    }
+  };
+
+  const onMsgPointerDown = (m, e) => {
+    // Long-press (500ms) opens the menu — only for own messages
+    if (m.from_username !== user?.username) return;
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    longPressTimer.current = setTimeout(() => {
+      setMsgMenu({ id: m.id, text: m.text, x: rect.right - 140, y: rect.top - 6 });
+    }, 480);
+  };
+  const onMsgPointerUp = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  };
+
+  // Linkify text — turn http(s)://... and image extensions into rich content
+  const renderText = (text) => {
+    const parts = [];
+    const urlRe = /(https?:\/\/[^\s]+)/g;
+    let last = 0; let m; let i = 0;
+    while ((m = urlRe.exec(text)) !== null) {
+      if (m.index > last) parts.push(<span key={`t${i++}`}>{text.slice(last, m.index)}</span>);
+      const url = m[0];
+      const isImg = /\.(png|jpe?g|gif|webp|avif)(\?.*)?$/i.test(url);
+      if (isImg) {
+        parts.push(
+          <a key={`img${i++}`} href={url} target="_blank" rel="noopener noreferrer" className="block mt-1 mb-1">
+            <img src={url} alt="" className="rounded" style={{ maxHeight: 200, maxWidth: "100%" }} />
+          </a>
+        );
+      } else {
+        parts.push(
+          <a key={`u${i++}`} href={url} target="_blank" rel="noopener noreferrer"
+            style={{ color: "inherit", textDecoration: "underline" }}>{url}</a>
+        );
+      }
+      last = m.index + url.length;
+    }
+    if (last < text.length) parts.push(<span key={`t${i++}`}>{text.slice(last)}</span>);
+    return parts;
   };
 
   const closeRealChat = () => {
@@ -567,26 +645,95 @@ export default function Messages() {
                       Say hi to @{realThread.target} 👋
                     </div>
                   )}
-                  {(realThread.messages || []).map((m) => {
+                  {(realThread.messages || []).map((m, idx) => {
                     const mine = m.from_username === user?.username;
+                    const isLastMine = mine && idx === (realThread.messages.length - 1);
+                    const isEditing = editingMsg?.id === m.id;
+                    let status = "Sent";
+                    if (mine) {
+                      if (m.read_at) status = "Read";
+                      else if (m.delivered_at) status = "Delivered";
+                    }
                     return (
                       <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                        <div className="max-w-[75%] px-3 py-2 text-sm"
+                        <div
+                          className="max-w-[75%] px-3 py-2 text-sm select-none"
                           style={{
                             background: mine ? "var(--primary)" : "var(--surface-2)",
                             color: mine ? "var(--primary-fg)" : "var(--text-main)",
                             borderRadius: "var(--radius)",
-                          }}>
-                          <div>{m.text}</div>
-                          <div className="text-[10px] mt-1 opacity-70 text-right">
-                            {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          </div>
+                            position: "relative",
+                          }}
+                          data-testid={`real-msg-${m.id}`}
+                          onPointerDown={(e) => onMsgPointerDown(m, e)}
+                          onPointerUp={onMsgPointerUp}
+                          onPointerLeave={onMsgPointerUp}
+                        >
+                          {isEditing ? (
+                            <div className="flex flex-col gap-1">
+                              <input
+                                autoFocus
+                                value={editDraft}
+                                onChange={(e) => setEditDraft(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") saveEdit();
+                                  if (e.key === "Escape") cancelEdit();
+                                }}
+                                className="or-input"
+                                style={{ color: "var(--text-main)" }}
+                                data-testid={`real-msg-edit-input-${m.id}`}
+                              />
+                              <div className="flex gap-1 justify-end">
+                                <button className="or-chip" onClick={cancelEdit} data-testid={`real-msg-edit-cancel-${m.id}`}>Cancel</button>
+                                <button className="or-chip" onClick={saveEdit} data-testid={`real-msg-edit-save-${m.id}`}>Save</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="or-wrap">{renderText(m.text)}</div>
+                              <div className="text-[10px] mt-1 opacity-70 text-right flex items-center justify-end gap-1.5">
+                                {m.edited_at && <span data-testid={`real-msg-edited-${m.id}`}>edited</span>}
+                                <span>{new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                                {isLastMine && (
+                                  <span data-testid={`real-msg-status-${m.id}`}>· {status}</span>
+                                )}
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     );
                   })}
                   <div ref={realEndRef} />
                 </div>
+
+                {/* Long-press action menu */}
+                {msgMenu && (
+                  <div
+                    className="fixed z-[90] or-surface p-1"
+                    style={{ left: Math.max(8, msgMenu.x), top: msgMenu.y, background: "var(--surface-2)" }}
+                    onClick={(e) => e.stopPropagation()}
+                    data-testid="real-msg-menu"
+                  >
+                    <button
+                      className="block w-full text-left px-3 py-2 text-sm"
+                      onClick={() => beginEdit(realThread.messages.find((m) => m.id === msgMenu.id))}
+                      data-testid="real-msg-menu-edit"
+                      style={{ color: "var(--text-main)" }}
+                    >Edit</button>
+                    <button
+                      className="block w-full text-left px-3 py-2 text-sm"
+                      onClick={() => deleteMsg(msgMenu.id)}
+                      data-testid="real-msg-menu-delete"
+                      style={{ color: "#FF8080" }}
+                    >Delete for everyone</button>
+                    <button
+                      className="block w-full text-left px-3 py-2 text-[11px]"
+                      onClick={() => setMsgMenu(null)}
+                      style={{ color: "var(--text-muted)" }}
+                    >Cancel</button>
+                  </div>
+                )}
                 {realErr && (
                   <div className="text-xs px-4 py-1.5" style={{ color: "#FF8080" }}>{realErr}</div>
                 )}

@@ -6,12 +6,33 @@ display convenience) the snapshotted usernames at send time.
 """
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from core.db import db
 from core.deps import CurrentUser
 from models.schemas import MessageCreate, PinThreadPayload
+from routers.notifications import emit_notification
+
+
+class MessageEditPayload(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+
+
+class MessageMediaPayload(BaseModel):
+    kind: str = Field(default="image")  # image | link
+    url: str
+    preview: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+
+class MessageCreatePlus(MessageCreate):
+    """Extends MessageCreate with an optional inline media payload."""
+    media: Optional[MessageMediaPayload] = None
+
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
 
@@ -53,6 +74,20 @@ async def get_thread(username: str, current: CurrentUser):
     items = []
     async for m in cursor:
         items.append(m)
+
+    # ── READ RECEIPTS ── mark every message FROM the peer TO me as read.
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.messages.update_many(
+        {"conv_id": cid, "to_user_id": current["id"], "read_at": None},
+        {"$set": {"read_at": now_iso, "delivered_at": now_iso}},
+    )
+    # Mirror onto the snapshot we just fetched so the response is consistent
+    for m in items:
+        if m.get("to_user_id") == current["id"] and not m.get("read_at"):
+            m["read_at"] = now_iso
+            if not m.get("delivered_at"):
+                m["delivered_at"] = now_iso
+
     return {"messages": items, "peer": {
         "id": target["id"], "username": target.get("username"),
         "name": target.get("name"), "avatar_url": target.get("avatar_url"),
@@ -61,7 +96,7 @@ async def get_thread(username: str, current: CurrentUser):
 
 
 @router.post("")
-async def send_message(payload: MessageCreate, current: CurrentUser):
+async def send_message(payload: MessageCreatePlus, current: CurrentUser):
     target = await _user_by_username(payload.to_username)
     if not target:
         raise HTTPException(status_code=404, detail="Recipient not found")
@@ -72,6 +107,7 @@ async def send_message(payload: MessageCreate, current: CurrentUser):
             status_code=403,
             detail="You can only message friends. Send a friend request first.",
         )
+    now_iso = datetime.now(timezone.utc).isoformat()
     doc = {
         "id": str(uuid.uuid4()),
         "conv_id": conv_id(current["id"], target["id"]),
@@ -81,11 +117,67 @@ async def send_message(payload: MessageCreate, current: CurrentUser):
         "from_username": current.get("username"),
         "to_username": target.get("username"),
         "text": payload.text,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "media": payload.media.model_dump() if payload.media else None,
+        "created_at": now_iso,
+        "edited_at": None,
+        "delivered_at": now_iso,   # delivered as soon as server accepts
+        "read_at": None,
     }
     await db.messages.insert_one(doc)
     doc.pop("_id", None)
+
+    # Notify recipient
+    await emit_notification(
+        target["id"], "message",
+        actor_username=current.get("username"),
+        payload={"preview": payload.text[:80], "conv_id": doc["conv_id"]},
+    )
     return {"message": doc}
+
+
+@router.patch("/{message_id}")
+async def edit_message(message_id: str, payload: MessageEditPayload, current: CurrentUser):
+    msg = await db.messages.find_one({"id": message_id}, {"_id": 0})
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if msg.get("from_user_id") != current["id"]:
+        raise HTTPException(status_code=403, detail="You can only edit your own messages")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.messages.update_one(
+        {"id": message_id},
+        {"$set": {"text": payload.text, "edited_at": now_iso}},
+    )
+    msg["text"] = payload.text
+    msg["edited_at"] = now_iso
+    return {"message": msg}
+
+
+@router.delete("/{message_id}")
+async def delete_message(message_id: str, current: CurrentUser):
+    """Hard-delete the message for BOTH sender and receiver. The spec
+    requires that no placeholder remains — so we simply remove the row."""
+    msg = await db.messages.find_one({"id": message_id}, {"_id": 0, "from_user_id": 1})
+    if not msg:
+        return {"ok": True}
+    if msg.get("from_user_id") != current["id"]:
+        raise HTTPException(status_code=403, detail="You can only delete your own messages")
+    await db.messages.delete_one({"id": message_id})
+    return {"ok": True}
+
+
+@router.post("/{message_id}/read")
+async def mark_read(message_id: str, current: CurrentUser):
+    msg = await db.messages.find_one({"id": message_id}, {"_id": 0})
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    if msg.get("to_user_id") != current["id"]:
+        return {"ok": True}
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.messages.update_one(
+        {"id": message_id},
+        {"$set": {"read_at": now_iso, "delivered_at": msg.get("delivered_at") or now_iso}},
+    )
+    return {"ok": True, "read_at": now_iso}
 
 
 # ----- Threads list (Pinned + DMs) -----

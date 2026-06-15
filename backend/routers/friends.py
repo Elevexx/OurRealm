@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from core.db import db
 from core.deps import CurrentUser
 from models.schemas import FriendActionPayload
+from routers.notifications import emit_notification
 
 router = APIRouter(prefix="/api", tags=["friends"])
 
@@ -72,6 +73,12 @@ async def friend_request(payload: FriendActionPayload, current: CurrentUser):
         return {"status": "outgoing"}
     await db.users.update_one({"id": me_id}, {"$addToSet": {"friend_requests_out": tg_id}})
     await db.users.update_one({"id": tg_id}, {"$addToSet": {"friend_requests_in": me_id}})
+    # Notify recipient
+    await emit_notification(
+        tg_id, "friend_request",
+        actor_username=current.get("username"),
+        payload={"preview": "wants to connect with you"},
+    )
     return {"status": "outgoing"}
 
 
@@ -117,6 +124,12 @@ async def friend_accept(payload: FriendActionPayload, current: CurrentUser):
         raise HTTPException(status_code=500, detail="Friendship not persisted — please retry")
 
     log.info(f"[accept] friendship created {current.get('username')} ↔ {target_user.get('username')}")
+    # Notify the original requester that their request was accepted
+    await emit_notification(
+        tg_id, "follow",  # use 'follow' kind so UI shows it under "Friends"
+        actor_username=current.get("username"),
+        payload={"preview": "accepted your friend request"},
+    )
     return {
         "status": "friends",
         "peer": {
