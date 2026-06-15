@@ -1,5 +1,7 @@
-import React, { useMemo, useState } from "react";
-import { Heart, MessageCircle, UserPlus, AtSign, Mail, Share2, Users, Bell, Calendar, Megaphone, Wallet as WalletIcon, Check, CheckCheck } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Heart, MessageCircle, UserPlus, AtSign, Mail, Share2, Users, Bell, Calendar, Megaphone, Wallet as WalletIcon, Check, CheckCheck, Bookmark } from "lucide-react";
+import apiClient from "@/api/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { NOTIFICATIONS, NOTIFICATION_CATEGORIES } from "@/data/mockData";
 
 const ICONS = {
@@ -9,6 +11,7 @@ const ICONS = {
   mention: AtSign,
   message: Mail,
   share: Share2,
+  save: Bookmark,
   friend_request: Users,
   realm_post: Users,
   realm_join: Users,
@@ -18,13 +21,56 @@ const ICONS = {
 };
 
 export default function Notifications() {
+  const { user } = useAuth();
   const [cat, setCat] = useState("All");
   const [items, setItems] = useState(NOTIFICATIONS);
-  const unreadCount = items.filter((n) => n.unread).length;
+  const [serverItems, setServerItems] = useState([]);
+
+  // Load real notifications + mark all as seen as soon as the page opens
+  // (this is what clears the red badge in the top bar).
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await apiClient.get("/notifications/list");
+        if (!cancelled) setServerItems(data?.notifications || []);
+        await apiClient.post("/notifications/mark-seen");
+      } catch { /* */ }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // Merge real + mock and sort by created_at desc (most recent first).
+  const merged = useMemo(() => {
+    const mapped = serverItems.map((n) => ({
+      id: n.id,
+      type: n.kind,
+      category: n.kind === "friend_request" ? "Friends" :
+                n.kind === "message" ? "Messages" :
+                n.kind === "like" ? "Likes" :
+                n.kind === "comment" ? "Comments" :
+                n.kind === "share" ? "Shares" :
+                n.kind === "save" ? "Saves" : "All",
+      title: n.actor_username ? `@${n.actor_username}` : "Someone",
+      body: n.payload?.preview || "",
+      unread: !n.seen,
+      created_at: n.created_at,
+    }));
+    const all = [...mapped, ...items];
+    all.sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+    return all;
+  }, [serverItems, items]);
+
+  const unreadCount = merged.filter((n) => n.unread).length;
 
   const filtered = useMemo(
-    () => cat === "All" ? items : items.filter((n) => n.category === cat),
-    [cat, items]
+    () => cat === "All" ? merged : merged.filter((n) => n.category === cat),
+    [cat, merged]
   );
 
   const markAllRead = () => setItems((arr) => arr.map((n) => ({ ...n, unread: false })));

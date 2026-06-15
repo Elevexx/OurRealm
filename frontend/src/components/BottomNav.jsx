@@ -214,9 +214,14 @@ export default function BottomNav() {
           </div>
 
           {ITEMS_RIGHT.map(({ to, label, Icon, testid }) => {
-            const active = location.pathname === to || location.pathname.startsWith(to + "/");
+            // The Profile tab opens the *Public* view of the logged-in
+            // user's profile (the top-bar profile icon opens the Edit view).
+            const target = testid === "bottom-profile" && user?.username
+              ? `/public/${user.username}`
+              : to;
+            const active = location.pathname === target || location.pathname === to || location.pathname.startsWith(to + "/");
             return (
-              <button key={to} className="bottomnav-btn" data-active={active} data-testid={testid} onClick={() => navigate(to)}>
+              <button key={testid} className="bottomnav-btn" data-active={active} data-testid={testid} onClick={() => navigate(target)}>
                 <Icon size={22} />
                 <span>{label}</span>
               </button>

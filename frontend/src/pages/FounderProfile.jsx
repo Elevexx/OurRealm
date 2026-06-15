@@ -342,14 +342,9 @@ export default function FounderProfile() {
               <Icons.MessageCircle size={14} /> Message
             </button>
             {isOwner && (
-              <>
-                <button className="or-btn or-btn-ghost" onClick={() => setEditing(!editing)} data-testid="public-toggle-layout">
-                  {editing ? "Done" : "Edit layout"}
-                </button>
-                <button className="or-btn" onClick={() => navigate("/profile?edit=1")} data-testid="public-switch-edit">
-                  <Icons.Pencil size={14} /> Switch to Edit
-                </button>
-              </>
+              <button className="or-btn" onClick={() => navigate("/profile")} data-testid="public-switch-edit">
+                <Icons.Pencil size={14} /> Switch to Edit
+              </button>
             )}
           </div>
         </div>

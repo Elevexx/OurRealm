@@ -123,7 +123,7 @@ async def migrate_friend_graph_to_ids():
     n_users = 0
     async for u in db.users.find({}, {"_id": 0, "id": 1, "username": 1,
                                        "friends": 1, "friend_requests_in": 1,
-                                       "friend_requests_out": 1}):
+                                       "friend_requests_out": 1, "pinned_threads": 1}):
         updates: dict = {}
         for field in ("friends", "friend_requests_in", "friend_requests_out"):
             cur = u.get(field) or []

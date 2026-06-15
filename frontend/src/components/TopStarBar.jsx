@@ -1,17 +1,19 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Star, Music2, Bell, MessageSquare, DollarSign, User } from "lucide-react";
+import { Star, Music2, Bell, MessageSquare, User } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import apiClient from "@/api/client";
 
+// Top-right star bar — $ (ads) shortcut + profile avatar removed per spec.
+// Profile access lives on the dedicated edit-profile icon (right-most),
+// and the Ads page is still reachable from the bottom-nav Wallet flow.
 const ITEMS = [
-  { to: "/featured",     label: "Featured",      Icon: Star,         testid: "star-featured",      color: "#F4C84A", badge: null },
-  { to: "/sounds",       label: "Sounds",        Icon: Music2,       testid: "star-sounds",        color: "var(--brand-blue)", badge: null },
-  { to: "/notifications",label: "Notifications", Icon: Bell,         testid: "star-notifications", color: "#FF8AC2", badge: "99+" },
-  { to: "/messages",     label: "Messages",      Icon: MessageSquare,testid: "star-messages",      color: "var(--brand-blue)", badge: "1" },
-  { to: "/marketplace",  label: "Ads",           Icon: DollarSign,   testid: "star-ads",           color: "var(--brand-green)", badge: null },
-  { to: "/profile?edit=1", label: "Profile (edit)", Icon: User,       testid: "star-profile",       color: "var(--brand-green)", badge: null },
+  { to: "/featured",      label: "Featured",      Icon: Star,         testid: "star-featured",      color: "#F4C84A" },
+  { to: "/sounds",        label: "Sounds",        Icon: Music2,       testid: "star-sounds",        color: "var(--brand-blue)" },
+  { to: "/notifications", label: "Notifications", Icon: Bell,         testid: "star-notifications", color: "#FF8AC2", isNotif: true },
+  { to: "/messages",      label: "Messages",      Icon: MessageSquare,testid: "star-messages",      color: "var(--brand-blue)" },
 ];
 
 const MODE_LABEL = { neon: "NEON", business: "BUSINESS", millennium: "MILLENNIUM", stealth: "STEALTH" };
@@ -28,6 +30,21 @@ export default function TopStarBar() {
   const location = useLocation();
   const { user } = useAuth();
   const { mode } = useTheme();
+
+  // ── Notifications badge: ONLY unread count, refreshed on route change.
+  // Mark-as-seen happens when the user opens /notifications.
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) { setUnread(0); return; }
+    (async () => {
+      try {
+        const { data } = await apiClient.get("/notifications/unread-count");
+        if (!cancelled) setUnread(Number(data?.count || 0));
+      } catch { /* */ }
+    })();
+    return () => { cancelled = true; };
+  }, [user, location.pathname]);
 
   return (
     <header
@@ -87,9 +104,10 @@ export default function TopStarBar() {
           data-testid="star-bar"
           style={{ scrollSnapType: "x mandatory" }}
         >
-          {ITEMS.map(({ to, label, Icon, testid, color, badge }) => {
+          {ITEMS.map(({ to, label, Icon, testid, color, isNotif }) => {
             const pathOnly = to.split("?")[0];
             const active = location.pathname === pathOnly;
+            const badgeText = isNotif && unread > 0 ? (unread > 99 ? "99+" : String(unread)) : null;
             return (
               <button
                 key={to}
@@ -102,30 +120,23 @@ export default function TopStarBar() {
                 style={{ color: active ? "var(--primary)" : color, scrollSnapAlign: "end" }}
               >
                 <Icon size={20} />
-                {badge && <span className="starbar-badge">{badge}</span>}
+                {badgeText && <span className="starbar-badge" data-testid={`${testid}-badge`}>{badgeText}</span>}
                 <span className="sr-only">{label}</span>
               </button>
             );
           })}
 
-          {/* Profile avatar */}
+          {/* Sole profile-access icon on the top bar — opens the Edit
+              profile view. Bottom-nav Profile opens the Public view. */}
           <button
-            data-testid="star-avatar"
+            data-testid="star-profile-edit"
             onClick={() => user ? navigate("/profile") : navigate("/signin")}
-            className="rounded-full overflow-hidden ml-1 shrink-0"
-            style={{
-              width: 44, height: 44,
-              border: "2px solid var(--primary)",
-              boxShadow: "0 0 12px color-mix(in srgb, var(--primary) 50%, transparent)",
-              scrollSnapAlign: "end",
-            }}
-            aria-label="My profile"
+            className="starbar-icon shrink-0"
+            aria-label="Edit my profile"
+            title="Edit my profile"
+            style={{ color: "var(--brand-green)", scrollSnapAlign: "end" }}
           >
-            <img
-              src={user?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || "Guest")}`}
-              alt={user?.name || "Guest"}
-              className="w-full h-full object-cover"
-            />
+            <User size={20} />
           </button>
         </nav>
       </div>

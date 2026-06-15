@@ -460,24 +460,26 @@ export default function Profile() {
               </>
             )}
           </div>
+          {/* Only "Edit" and "Edit Widgets" remain per Phase A spec.
+              "View as Public", "+ Add widget", and "Library" were removed. */}
           <div className="flex gap-2 flex-wrap">
             {!isGuest && user && (
               editing
-                ? <button className="or-btn" onClick={saveLayout} data-testid="profile-save">Save layout</button>
-                : <button className="or-btn or-btn-ghost" onClick={() => setEditing(true)} data-testid="profile-edit">Edit profile</button>
+                ? <button className="or-btn" onClick={saveLayout} data-testid="profile-save">Save</button>
+                : <button className="or-btn or-btn-ghost" onClick={() => setEditing(true)} data-testid="profile-edit">
+                    <Icons.Edit3 size={14} /> Edit
+                  </button>
             )}
-            {!isGuest && user?.username && (
+            {!isGuest && user && (
               <button
                 className="or-btn or-btn-ghost"
-                onClick={() => navigate(`/public/${user.username}`)}
-                data-testid="profile-view-public"
-                title="See how others see your profile"
+                onClick={() => { setEditing(true); setAddOpen(true); }}
+                data-testid="profile-edit-widgets"
+                title="Manage widgets"
               >
-                <Icons.Eye size={14} /> View as Public
+                <Icons.LayoutGrid size={14} /> Edit Widgets
               </button>
             )}
-            <button className="or-btn" onClick={() => setAddOpen(true)} data-testid="profile-add-widget"><Icons.Plus size={14} /> Add widget</button>
-            <button className="or-btn or-btn-ghost" onClick={() => navigate("/widgets")} data-testid="profile-open-library"><Icons.LayoutGrid size={14} /> Library</button>
           </div>
         </div>
       </div>
