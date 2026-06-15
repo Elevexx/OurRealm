@@ -77,15 +77,38 @@ export default function Friends() {
   };
   const accept = async (username) => {
     setActionId(username); setActionErr("");
+    // Snapshot for rollback if the server call fails
+    const prevIncoming = incoming;
+    const prevFriends = friends;
+    const requesterUser = incoming.find((u) => u.username === username);
     try {
-      await apiClient.post("/friends/accept", { username });
-      await loadFriends();
-      // Switch to the Friends tab so the user immediately sees the
-      // newly-accepted friend appear in the list.
-      setTab("friends");
+      // ── Call backend FIRST and verify DB write succeeded ──
+      const { data } = await apiClient.post("/friends/accept", { username });
+      console.log("[Friends] accept response:", data);
+      if (data?.status !== "friends") {
+        throw new Error(`Unexpected response status: ${data?.status}`);
+      }
+      // ── Now update local state (no navigation, no redirect, no tab change) ──
+      setIncoming((arr) => arr.filter((u) => u.username !== username));
+      if (requesterUser && !friends.some((f) => f.username === username)) {
+        // Use the hydrated peer payload from the server if available, else
+        // reuse the request card data.
+        const peer = data.peer ? { ...requesterUser, ...data.peer } : requesterUser;
+        setFriends((arr) => [...arr, peer]);
+      }
+      // Background reconciliation — make absolutely sure UI matches DB
+      loadFriends();
     } catch (e) {
-      setActionErr(e.response?.data?.detail || `Could not accept @${username}`);
-    } finally { setActionId(""); }
+      console.error("[Friends] accept failed:", e?.response?.data || e?.message || e);
+      setIncoming(prevIncoming);
+      setFriends(prevFriends);
+      setActionErr(
+        e?.response?.data?.detail ||
+        `Could not accept @${username}. Please try again.`
+      );
+    } finally {
+      setActionId("");
+    }
   };
   const decline = async (username) => {
     setActionId(username); setActionErr("");

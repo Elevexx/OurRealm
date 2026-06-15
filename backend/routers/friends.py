@@ -77,21 +77,55 @@ async def friend_request(payload: FriendActionPayload, current: CurrentUser):
 
 @router.post("/friends/accept")
 async def friend_accept(payload: FriendActionPayload, current: CurrentUser):
+    import logging
+    log = logging.getLogger("ourrealm.friends")
+
     target_user = await _user_by_username(payload.username)
     if not target_user:
+        log.warning(f"[accept] target user not found: {payload.username}")
         raise HTTPException(status_code=404, detail="User not found")
     me_id, tg_id = current["id"], target_user["id"]
     if tg_id not in (current.get("friend_requests_in") or []):
+        log.warning(f"[accept] no pending request from {target_user.get('username')} for {current.get('username')}")
         raise HTTPException(status_code=400, detail="No pending request")
-    await db.users.update_one(
+
+    # ── DB writes ──
+    r1 = await db.users.update_one(
         {"id": me_id},
         {"$pull": {"friend_requests_in": tg_id}, "$addToSet": {"friends": tg_id}},
     )
-    await db.users.update_one(
+    r2 = await db.users.update_one(
         {"id": tg_id},
         {"$pull": {"friend_requests_out": me_id}, "$addToSet": {"friends": me_id}},
     )
-    return {"status": "friends"}
+
+    # ── Verify writes succeeded on BOTH user documents ──
+    if r1.matched_count != 1 or r2.matched_count != 1:
+        log.error(
+            f"[accept] DB write failure — me={me_id} matched={r1.matched_count} "
+            f"target={tg_id} matched={r2.matched_count}"
+        )
+        raise HTTPException(status_code=500, detail="Failed to create friendship — please retry")
+
+    # Confirm friendship by re-reading the docs
+    me_doc = await db.users.find_one({"id": me_id}, {"_id": 0, "friends": 1})
+    tg_doc = await db.users.find_one({"id": tg_id}, {"_id": 0, "friends": 1})
+    me_ok = tg_id in (me_doc.get("friends") or [])
+    tg_ok = me_id in (tg_doc.get("friends") or [])
+    if not (me_ok and tg_ok):
+        log.error(f"[accept] post-write verification failed me_ok={me_ok} tg_ok={tg_ok}")
+        raise HTTPException(status_code=500, detail="Friendship not persisted — please retry")
+
+    log.info(f"[accept] friendship created {current.get('username')} ↔ {target_user.get('username')}")
+    return {
+        "status": "friends",
+        "peer": {
+            "id": target_user["id"],
+            "username": target_user.get("username"),
+            "name": target_user.get("name"),
+            "avatar_url": target_user.get("avatar_url"),
+        },
+    }
 
 
 @router.post("/friends/decline")
