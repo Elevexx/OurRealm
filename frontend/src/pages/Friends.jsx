@@ -32,6 +32,7 @@ export default function Friends() {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [actionId, setActionId] = useState("");
+  const [actionErr, setActionErr] = useState("");
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -42,7 +43,7 @@ export default function Friends() {
       setFriends(data.friends || []);
       setIncoming(data.incoming || []);
       setOutgoing(data.outgoing || []);
-    } catch { /* ignore */ }
+    } catch (e) { setActionErr(e.response?.data?.detail || "Could not load friends"); }
   }, [user]);
 
   useEffect(() => { loadFriends(); }, [loadFriends]);
@@ -66,16 +67,34 @@ export default function Friends() {
   const incomingUsernames = new Set(incoming.map((f) => f.username));
 
   const sendRequest = async (username) => {
-    setActionId(username);
-    try { await apiClient.post("/friends/request", { username }); await loadFriends(); } catch { /* */ } finally { setActionId(""); }
+    setActionId(username); setActionErr("");
+    try {
+      await apiClient.post("/friends/request", { username });
+      await loadFriends();
+    } catch (e) {
+      setActionErr(e.response?.data?.detail || `Could not send request to @${username}`);
+    } finally { setActionId(""); }
   };
   const accept = async (username) => {
-    setActionId(username);
-    try { await apiClient.post("/friends/accept", { username }); await loadFriends(); } catch { /* */ } finally { setActionId(""); }
+    setActionId(username); setActionErr("");
+    try {
+      await apiClient.post("/friends/accept", { username });
+      await loadFriends();
+      // Switch to the Friends tab so the user immediately sees the
+      // newly-accepted friend appear in the list.
+      setTab("friends");
+    } catch (e) {
+      setActionErr(e.response?.data?.detail || `Could not accept @${username}`);
+    } finally { setActionId(""); }
   };
   const decline = async (username) => {
-    setActionId(username);
-    try { await apiClient.post("/friends/decline", { username }); await loadFriends(); } catch { /* */ } finally { setActionId(""); }
+    setActionId(username); setActionErr("");
+    try {
+      await apiClient.post("/friends/decline", { username });
+      await loadFriends();
+    } catch (e) {
+      setActionErr(e.response?.data?.detail || `Could not decline @${username}`);
+    } finally { setActionId(""); }
   };
 
   const filteredFriends = friends.filter((f) =>
@@ -145,6 +164,22 @@ export default function Friends() {
           );
         })}
       </div>
+
+      {actionErr && (
+        <div
+          className="mb-3 px-3 py-2 text-sm flex items-start justify-between gap-3"
+          style={{
+            background: "rgba(255,80,80,0.1)",
+            border: "1px solid rgba(255,80,80,0.4)",
+            color: "#ff8080",
+            borderRadius: "var(--radius)",
+          }}
+          data-testid="friends-action-err"
+        >
+          <span>{actionErr}</span>
+          <button onClick={() => setActionErr("")} style={{ background: "transparent", color: "inherit" }}>×</button>
+        </div>
+      )}
 
       {/* Search */}
       <div className="or-surface p-3 mb-5 flex items-center gap-2">

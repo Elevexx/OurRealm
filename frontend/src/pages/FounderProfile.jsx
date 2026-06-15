@@ -230,13 +230,15 @@ export default function FounderProfile() {
 
   const addFriend = async () => {
     if (!user) { navigate("/signin"); return; }
-    setStatusBusy(true);
+    setStatusBusy(true); setChatErr("");
     try { await apiClient.post("/friends/request", { username: profile.username }); setFriendStatus("outgoing"); }
+    catch (e) { setChatErr(e.response?.data?.detail || "Could not send request"); }
     finally { setStatusBusy(false); }
   };
   const acceptFriend = async () => {
-    setStatusBusy(true);
+    setStatusBusy(true); setChatErr("");
     try { await apiClient.post("/friends/accept", { username: profile.username }); setFriendStatus("friends"); }
+    catch (e) { setChatErr(e.response?.data?.detail || "Could not accept request"); }
     finally { setStatusBusy(false); }
   };
 
