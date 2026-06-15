@@ -23,6 +23,7 @@ import Marketplace from "@/pages/Marketplace";
 import WidgetLibrary from "@/pages/WidgetLibrary";
 import Profile from "@/pages/Profile";
 import Settings from "@/pages/Settings";
+import AccountSettings from "@/pages/AccountSettings";
 
 function ShellRoute({ children }) {
   const { isLoading } = useAuth();
@@ -64,6 +65,7 @@ function App() {
             <Route path="/widgets" element={<ShellRoute><WidgetLibrary /></ShellRoute>} />
             <Route path="/profile" element={<ShellRoute><Profile /></ShellRoute>} />
             <Route path="/settings" element={<ShellRoute><Settings /></ShellRoute>} />
+            <Route path="/settings/account" element={<ShellRoute><AccountSettings /></ShellRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

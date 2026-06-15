@@ -8,6 +8,8 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStr
 import { CSS } from "@dnd-kit/utilities";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import MyFeedWidget from "@/components/MyFeedWidget";
+import VipBadge from "@/components/VipBadge";
 
 const SIZE_TO_CLASS = {
   small:  "col-span-2 sm:col-span-1 row-span-1",
@@ -55,8 +57,10 @@ function MerchItem({ m }) {
   );
 }
 
-function WidgetBody({ w }) {
+function WidgetBody({ w, ownerUsername, isOwner }) {
   switch (w.type) {
+    case "myfeed":
+      return <MyFeedWidget username={ownerUsername} isOwner={isOwner} />;
     case "live":
       return (
         <div className="h-full flex flex-col">
@@ -148,7 +152,7 @@ function WidgetBody({ w }) {
   }
 }
 
-function SortableWidget({ w, editing, onCycleSize }) {
+function SortableWidget({ w, editing, onCycleSize, ownerUsername, isOwner }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: w.id });
   return (
     <div
@@ -170,7 +174,7 @@ function SortableWidget({ w, editing, onCycleSize }) {
           </div>
         )}
       </div>
-      <div className="h-[calc(100%-2rem)]"><WidgetBody w={w} /></div>
+      <div className="h-[calc(100%-2rem)]"><WidgetBody w={w} ownerUsername={ownerUsername} isOwner={isOwner} /></div>
     </div>
   );
 }
@@ -293,9 +297,18 @@ export default function FounderProfile() {
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl sm:text-3xl" style={{ fontFamily: "var(--font-display)" }} data-testid="founder-name">{profile.name}</h1>
-              <span className="text-xs font-bold uppercase tracking-widest px-2 py-1 rounded" style={{ background: "linear-gradient(135deg, #00FF66, #2EA0FF)", color: "#0a0a0a" }} data-testid="founder-badge">FOUNDER</span>
-              <span className="text-xs uppercase tracking-widest px-2 py-1 rounded" style={{ background: "color-mix(in srgb, var(--primary) 18%, transparent)", color: "var(--primary)", border: "1px solid var(--primary)" }}>Verified</span>
-              <span className="text-xs uppercase tracking-widest px-2 py-1 rounded" style={{ background: "rgba(244,200,74,0.18)", color: "#F4C84A", border: "1px solid #F4C84A" }}>Featured</span>
+              {/* Founder badge ONLY for the actual @stealth account */}
+              {profile.is_founder && (
+                <span className="text-xs font-bold uppercase tracking-widest px-2 py-1 rounded" style={{ background: "linear-gradient(135deg, #00FF66, #2EA0FF)", color: "#0a0a0a" }} data-testid="founder-badge">FOUNDER</span>
+              )}
+              {/* VIP badge for early-adopter accounts */}
+              {profile.is_vip && <VipBadge joinedAt={profile.vip_joined_at} size="lg" testid="public-vip-badge" />}
+              {profile.is_verified && (
+                <span className="text-xs uppercase tracking-widest px-2 py-1 rounded" style={{ background: "color-mix(in srgb, var(--primary) 18%, transparent)", color: "var(--primary)", border: "1px solid var(--primary)" }}>Verified</span>
+              )}
+              {profile.featured_creator && (
+                <span className="text-xs uppercase tracking-widest px-2 py-1 rounded" style={{ background: "rgba(244,200,74,0.18)", color: "#F4C84A", border: "1px solid #F4C84A" }}>Featured</span>
+              )}
             </div>
             <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }} data-testid="founder-username">@{profile.username}</div>
             <div className="text-sm mt-1.5" data-testid="founder-bio">{profile.bio}</div>
@@ -351,7 +364,7 @@ export default function FounderProfile() {
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={widgets.map((w) => w.id)} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4" style={{ gridAutoRows: "minmax(160px, auto)" }} data-testid="founder-widget-grid">
-            {widgets.map((w) => <SortableWidget key={w.id} w={w} editing={editing} onCycleSize={cycleSize} />)}
+            {widgets.map((w) => <SortableWidget key={w.id} w={w} editing={editing} onCycleSize={cycleSize} ownerUsername={profile.username} isOwner={isOwner} />)}
           </div>
         </SortableContext>
       </DndContext>

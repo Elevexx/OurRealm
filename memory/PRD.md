@@ -1,5 +1,49 @@
 # OurRealm — Product Requirements Document
 
+## Phase 6 — Early Adopter, My Feed, Privacy & UX upgrades (Feb 2026)
+
+**Early Adopter / VIP system**
+- New `is_vip` + `vip_joined_at` fields on user docs. `VIP_CUTOFF=1000` enforced server-side at `/api/auth/register` — anyone joining while total users < 1000 receives a permanent VIP badge; once reached, no new grants.
+- Idempotent grandfather migration on startup: every pre-existing account inherits `is_vip=true` with `vip_joined_at = created_at`.
+- One-time migration strips `is_founder` / `role=founder` from every account except `@stealth`.
+- New `<VipBadge>` component with hover/tap tooltip "VIP Member · Joined {date}". Surfaced on own profile (Profile.jsx in both edit + view modes), public profiles (FounderProfile.jsx), and Account Settings header. Founder badge still renders for @stealth.
+
+**My Feed default widget**
+- New default widget type `myfeed`, auto-prepended on register via `default_myfeed_widget()` in `core/config.py`.
+- Idempotent startup migration injects My Feed at the top of every existing profile that doesn't already have one (preserves the user's saved custom layout).
+- New endpoint `GET /api/posts/feed/by-user/{username}` returns the owner's posts newest-first with audience filtering. Wired into `MyFeedWidget.jsx` which is rendered by both Profile.jsx and FounderProfile.jsx widget grids.
+- `WIDGET_TYPES` in `mockData.js` now lists My Feed first so the widget-library suggestion menu surfaces it as the top option.
+- Users can move / resize / remove via the existing drag-and-drop infrastructure; deletions are not auto-restored.
+
+**Post privacy controls (Public / Friends / Private / Custom)**
+- New `audience` Pydantic schema on `PostCreate` with `visibility`, `user_ids`, and a reserved `friend_group_ids` field (accepted but unused — ready for the future Friend Groups release without a migration).
+- Backend `_visibility_query` enforces: public is global, friends-only requires authorship by a friend, private is author-only, custom requires viewer in `user_ids`.
+- New `<AudiencePicker>` modal (mobile-friendly bottom sheet on small screens) with friend multi-select + "Friend Groups — Coming Soon" placeholder.
+- Wired into the Feed composer; the selected audience is sent to `/api/posts` on submit.
+
+**Home page cleanup + interest persistence bug fix**
+- Removed the Top Categories pill row and the People/Lives carousel from `/home` as requested.
+- Categories now appear higher with a responsive grid (`grid-cols-3` mobile, `sm:grid-cols-4`, `lg:grid-cols-6`).
+- Header + star bar + media-selection bar untouched.
+- **Interest persistence bug fix**: previously the toggle's `setSelected` updater mutated a `Set` non-idempotently, which React 18 Strict Mode double-invoked in dev, undoing some selections. Rewrote the toggle to compute the next set from current closure state and pass a plain value to `setSelected`. Persistence is now reliable across refreshes and round-trips to the For You feed.
+- Server PATCH happens once on Next (avoids per-toggle request races).
+
+**Top-left logo + Signup logged-in behavior**
+- Top-left logo now routes to `/` (landing) in both states.
+- Landing, when logged in: replaces the Sign Up / Sign In pills with `CONTINUE AS @username` + `SIGN OUT` + `Browse as Guest`. Sign-out reloads the page.
+- `/signup` always shows the signup form + mode selector. If logged in, a small `signup-loggedin-strip` shows above the form with Continue / Sign Out actions. No automatic redirect away.
+
+**Bottom Nav routing**
+- Bottom-nav Home → `/feed`.
+- `/feed` got a "Customize Feed" CTA that routes back to `/home` (interest picker). The `/home` URL is unchanged so bookmarks keep working.
+
+**Account Settings**
+- New `/settings/account` page (linked from the gear icon visible top-right of own profile in edit mode).
+- Lists 8 future account sections (profile info, username, password, email, privacy defaults, notifications, blocked, delete) — each clearly tagged "Coming Soon". The header shows the user's name + VIP badge if applicable.
+- Existing `/settings` still owns appearance/mode preferences; there's a back-link between the two.
+
+## Earlier Phases
+
 ## Vision
 A premium social platform powered by:
 - A 4-mode visual system (Neon, Business, Millennium, Stealth) that re-themes the entire app.

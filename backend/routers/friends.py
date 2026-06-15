@@ -24,7 +24,7 @@ async def _hydrate_users(user_ids: list[str]) -> list[dict]:
     async for u in db.users.find(
         {"id": {"$in": user_ids}},
         {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1,
-         "bio": 1, "is_founder": 1, "is_verified": 1},
+         "bio": 1, "is_founder": 1, "is_verified": 1, "is_vip": 1, "vip_joined_at": 1},
     ):
         out.append(u)
     return out

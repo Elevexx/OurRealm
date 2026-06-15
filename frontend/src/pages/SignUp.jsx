@@ -4,7 +4,7 @@ import Logo from "@/components/Logo";
 import ModeSwitcher from "@/components/ModeSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
 import apiClient from "@/api/client";
-import { Check, X, Loader2 } from "lucide-react";
+import { Check, X, Loader2, ArrowRight, LogOut } from "lucide-react";
 
 export default function SignUp() {
   const [name, setName] = useState("");
@@ -14,8 +14,9 @@ export default function SignUp() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [unCheck, setUnCheck] = useState({ status: "idle", suggestions: [] }); // idle | checking | ok | taken
-  const { register } = useAuth();
+  const { register, user, isGuest, logout } = useAuth();
   const navigate = useNavigate();
+  const isLoggedIn = !!user && !isGuest;
 
   // Debounced username availability check
   useEffect(() => {
@@ -62,6 +63,35 @@ export default function SignUp() {
       <div className="w-full max-w-md">
         <div className="flex justify-center mb-4"><Logo size={56} withWordmark /></div>
         <div className="flex justify-center mb-6"><ModeSwitcher /></div>
+
+        {isLoggedIn && (
+          <div
+            className="or-surface p-3 mb-4 flex items-center gap-2 flex-wrap"
+            data-testid="signup-loggedin-strip"
+            style={{ borderColor: "var(--primary)", outline: "1px solid color-mix(in srgb, var(--primary) 32%, transparent)" }}
+          >
+            <span className="text-xs flex-1 min-w-0" style={{ color: "var(--text-muted)" }}>
+              You're signed in as <b style={{ color: "var(--text-main)" }}>@{user.username}</b>
+            </span>
+            <button
+              className="or-btn"
+              onClick={() => navigate("/feed")}
+              data-testid="signup-continue-as"
+              style={{ padding: "0.45rem 0.85rem", fontSize: "0.82rem" }}
+            >
+              Continue <ArrowRight size={14} />
+            </button>
+            <button
+              className="or-btn or-btn-ghost"
+              onClick={async () => { await logout(); window.location.reload(); }}
+              data-testid="signup-signout"
+              style={{ padding: "0.45rem 0.85rem", fontSize: "0.82rem" }}
+            >
+              <LogOut size={14} /> Sign Out
+            </button>
+          </div>
+        )}
+
         <div className="or-surface p-7 sm:p-8 grain">
           <h2 className="text-2xl mb-1" style={{ fontFamily: "var(--font-display)" }}>Create your Realm</h2>
           <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>

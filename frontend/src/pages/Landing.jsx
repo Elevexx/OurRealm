@@ -104,8 +104,9 @@ function NeonPill({ color, glow, Icon, title, subtitle, onClick, testid }) {
 export default function Landing() {
   const navigate = useNavigate();
   const { mode, setMode } = useTheme();
-  const { setGuest } = useAuth();
+  const { user, isGuest, setGuest, logout } = useAuth();
   const [hover, setHover] = useState(null);
+  const isLoggedIn = !!user && !isGuest;
 
   return (
     <div
@@ -247,33 +248,67 @@ export default function Landing() {
 
           {/* Three neon-outlined CTA pills (matches reference Image 2) */}
           <div className="w-full mt-7 sm:mt-8 flex flex-col gap-4">
-            <NeonPill
-              color="#10E670"
-              glow="rgba(16,230,112,0.45)"
-              Icon={UserPlus}
-              title="SIGN UP"
-              subtitle="Create your realm"
-              onClick={() => navigate("/signup")}
-              testid="landing-signup-button"
-            />
-            <NeonPill
-              color="#2EA0FF"
-              glow="rgba(46,160,255,0.45)"
-              Icon={LogIn}
-              title="SIGN IN"
-              subtitle="Welcome back"
-              onClick={() => navigate("/signin")}
-              testid="landing-signin-button"
-            />
-            <NeonPill
-              color="#B26BFF"
-              glow="rgba(178,107,255,0.45)"
-              Icon={VenetianMask}
-              title="BROWSE AS GUEST"
-              subtitle="Explore without limits"
-              onClick={() => { setGuest(true); navigate("/home"); }}
-              testid="landing-guest-button"
-            />
+            {isLoggedIn ? (
+              <>
+                <NeonPill
+                  color="#10E670"
+                  glow="rgba(16,230,112,0.45)"
+                  Icon={UserPlus}
+                  title={`CONTINUE AS @${(user.username || "you").toUpperCase()}`}
+                  subtitle="Return to your realm"
+                  onClick={() => navigate("/feed")}
+                  testid="landing-continue-user"
+                />
+                <NeonPill
+                  color="#FF3F5A"
+                  glow="rgba(255,63,90,0.4)"
+                  Icon={LogIn}
+                  title="SIGN OUT"
+                  subtitle="Leave this account"
+                  onClick={async () => { await logout(); window.location.reload(); }}
+                  testid="landing-signout"
+                />
+                <NeonPill
+                  color="#B26BFF"
+                  glow="rgba(178,107,255,0.45)"
+                  Icon={VenetianMask}
+                  title="BROWSE AS GUEST"
+                  subtitle="Explore without limits"
+                  onClick={() => { setGuest(true); navigate("/feed"); }}
+                  testid="landing-guest-button"
+                />
+              </>
+            ) : (
+              <>
+                <NeonPill
+                  color="#10E670"
+                  glow="rgba(16,230,112,0.45)"
+                  Icon={UserPlus}
+                  title="SIGN UP"
+                  subtitle="Create your realm"
+                  onClick={() => navigate("/signup")}
+                  testid="landing-signup-button"
+                />
+                <NeonPill
+                  color="#2EA0FF"
+                  glow="rgba(46,160,255,0.45)"
+                  Icon={LogIn}
+                  title="SIGN IN"
+                  subtitle="Welcome back"
+                  onClick={() => navigate("/signin")}
+                  testid="landing-signin-button"
+                />
+                <NeonPill
+                  color="#B26BFF"
+                  glow="rgba(178,107,255,0.45)"
+                  Icon={VenetianMask}
+                  title="BROWSE AS GUEST"
+                  subtitle="Explore without limits"
+                  onClick={() => { setGuest(true); navigate("/home"); }}
+                  testid="landing-guest-button"
+                />
+              </>
+            )}
           </div>
 
           {/* Footer trust strip */}

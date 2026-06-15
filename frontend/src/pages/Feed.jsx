@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, Users as UsersIcon, Lock, UserCheck } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { makeMockPosts } from "@/data/mockData";
 import GuestPrompt from "@/components/GuestPrompt";
 import MediaTypeBar from "@/components/MediaTypeBar";
+import AudiencePicker from "@/components/AudiencePicker";
 
 const FILTER_KEY = "ourrealm.feedMedia";
+const INTEREST_KEY = "ourrealm.interests";
 
 function timeAgo(iso) {
   const d = new Date(iso); const s = Math.floor((Date.now() - d.getTime()) / 1000);
@@ -18,11 +21,27 @@ function timeAgo(iso) {
 
 export default function Feed() {
   const { user, isGuest } = useAuth();
+  const navigate = useNavigate();
   const [media, setMedia] = useState(() => {
     try { return JSON.parse(localStorage.getItem(FILTER_KEY) || "[]"); } catch { return []; }
   });
+  // BUG FIX: load saved interests so the feed actually filters by them
+  const [interests, setInterests] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(INTEREST_KEY) || "[]")); } catch { return new Set(); }
+  });
+  // When user data loads, prefer server-persisted interests
+  useEffect(() => {
+    if (user?.interests?.length) {
+      const set = new Set(user.interests);
+      setInterests(set);
+      try { localStorage.setItem(INTEREST_KEY, JSON.stringify([...set])); } catch { /* */ }
+    }
+  }, [user]);
+
   const [serverPosts, setServerPosts] = useState([]);
   const [composeText, setComposeText] = useState("");
+  const [composeAudience, setComposeAudience] = useState({ visibility: "public", user_ids: [] });
+  const [audiencePickerOpen, setAudiencePickerOpen] = useState(false);
   const [guestPrompt, setGuestPrompt] = useState(null);
   const [posting, setPosting] = useState(false);
 
@@ -39,17 +58,33 @@ export default function Feed() {
   const mockPosts = useMemo(() => makeMockPosts(24), []);
   const allPosts = useMemo(() => {
     const merged = [...serverPosts, ...mockPosts];
-    if (media.length === 0) return merged;
-    return merged.filter((p) => media.includes(p.media_type));
-  }, [serverPosts, mockPosts, media]);
+    let filtered = merged;
+    if (media.length > 0) filtered = filtered.filter((p) => media.includes(p.media_type));
+    // Apply interest filter when at least one interest is selected so the
+    // For You feed actually reflects the user's saved preferences.
+    if (interests.size > 0) {
+      filtered = filtered.filter((p) => {
+        // Posts may not have tags; pass them through if untagged so the feed
+        // isn't empty. When tags exist, require at least one match.
+        if (!p.tags || p.tags.length === 0) return true;
+        return p.tags.some((t) => interests.has(t));
+      });
+    }
+    return filtered;
+  }, [serverPosts, mockPosts, media, interests]);
 
   const submitPost = async () => {
     if (!user || isGuest) { setGuestPrompt("post a thought"); return; }
     if (!composeText.trim()) return;
     setPosting(true);
     try {
-      await apiClient.post("/posts", { content: composeText.trim(), media_type: "post" });
+      await apiClient.post("/posts", {
+        content: composeText.trim(),
+        media_type: "post",
+        audience: composeAudience,
+      });
       setComposeText("");
+      setComposeAudience({ visibility: "public", user_ids: [] });
       await loadPosts();
     } finally { setPosting(false); }
   };
@@ -57,15 +92,20 @@ export default function Feed() {
 
   return (
     <div className="max-w-3xl mx-auto" data-testid="feed-page">
-      <div className="mb-4 flex items-baseline justify-between">
+      <div className="mb-4 flex items-baseline justify-between gap-3 flex-wrap">
         <div>
           <div className="text-xs uppercase tracking-[0.25em]" style={{ color: "var(--text-muted)" }}>Personalized stream</div>
           <h1 className="text-3xl sm:text-4xl" style={{ fontFamily: "var(--font-display)" }}>
             For <span style={{ color: "var(--brand-green)" }}>You</span>
           </h1>
         </div>
-        <button className="or-chip" data-testid="feed-customize">
-          <Sliders size={14} /> Customize
+        <button
+          className="or-btn"
+          onClick={() => navigate("/home")}
+          data-testid="feed-customize-feed"
+          title="Re-select interests"
+        >
+          <Sliders size={14} /> Customize Feed
         </button>
       </div>
 
@@ -92,7 +132,18 @@ export default function Feed() {
               className="or-input resize-none"
               style={{ background: "transparent" }}
             />
-            <div className="flex justify-end mt-2">
+            <div className="flex items-center justify-between mt-2 gap-2">
+              <button
+                className="or-chip"
+                onClick={() => setAudiencePickerOpen(true)}
+                data-testid="feed-composer-audience"
+                title="Who can see this post?"
+              >
+                {composeAudience.visibility === "public" && <><Globe2 size={12} /> Public</>}
+                {composeAudience.visibility === "friends" && <><UsersIcon size={12} /> Friends</>}
+                {composeAudience.visibility === "private" && <><Lock size={12} /> Private</>}
+                {composeAudience.visibility === "custom" && <><UserCheck size={12} /> Custom ({composeAudience.user_ids?.length || 0})</>}
+              </button>
               <button
                 data-testid="feed-composer-submit"
                 className="or-btn"
@@ -155,6 +206,12 @@ export default function Feed() {
       </div>
 
       <GuestPrompt open={!!guestPrompt} onClose={() => setGuestPrompt(null)} action={guestPrompt || "do this"} />
+      <AudiencePicker
+        open={audiencePickerOpen}
+        value={composeAudience}
+        onChange={setComposeAudience}
+        onClose={() => setAudiencePickerOpen(false)}
+      />
     </div>
   );
 }

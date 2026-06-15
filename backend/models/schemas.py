@@ -67,11 +67,23 @@ class ProfileUpdate(BaseModel):
 
 
 # ----- Posts -----
+class AudiencePayload(BaseModel):
+    """Audience for a post or widget. Designed so a future
+    `friend_group_ids` field can be added without a migration —
+    clients should only send fields they understand."""
+    visibility: str = Field(default="public")  # public | friends | private | custom
+    user_ids: List[str] = []
+    # `friend_group_ids` is reserved — accepted but ignored until the
+    # friend-groups feature ships.
+    friend_group_ids: Optional[List[str]] = None
+
+
 class PostCreate(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
     media_type: str = Field(default="post")
     media_url: Optional[str] = None
     tags: List[str] = []
+    audience: Optional[AudiencePayload] = None
 
 
 class UserOut(BaseModel):
@@ -106,6 +118,8 @@ def serialize_user(doc: dict) -> dict:
         "widgets": doc.get("widgets", []),
         "is_founder": bool(doc.get("is_founder")),
         "is_verified": bool(doc.get("is_verified")),
+        "is_vip": bool(doc.get("is_vip")),
+        "vip_joined_at": doc.get("vip_joined_at") or doc.get("created_at"),
         "social": doc.get("social", {}),
         # `friends` is a list of user_ids internally — UI can resolve via /friends/list
         "friends": doc.get("friends", []),

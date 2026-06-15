@@ -13,6 +13,8 @@ import {
 } from "@/data/mockData";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import MyFeedWidget from "@/components/MyFeedWidget";
+import VipBadge from "@/components/VipBadge";
 
 const SIZE_TO_CLASS = {
   small:  "col-span-2 sm:col-span-1 row-span-1",
@@ -22,8 +24,10 @@ const SIZE_TO_CLASS = {
 };
 
 /* -------------------------- widget renderers -------------------------- */
-function WidgetBody({ w, mode }) {
+function WidgetBody({ w, mode, ownerUsername, isOwner }) {
   switch (w.type) {
+    case "myfeed":
+      return <MyFeedWidget username={ownerUsername} isOwner={isOwner} />;
     case "live":
       return (
         <div className="relative h-full overflow-hidden" style={{ borderRadius: "calc(var(--radius) - 4px)" }}>
@@ -244,7 +248,7 @@ function WidgetBody({ w, mode }) {
 }
 
 /* -------------------------- sortable widget item -------------------------- */
-function SortableWidget({ w, mode, editing, onCycleSize, onRemove }) {
+function SortableWidget({ w, mode, editing, onCycleSize, onRemove, ownerUsername, isOwner }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: w.id });
   const def = WIDGET_TYPES.find((x) => x.id === w.type);
   const Icon = Icons[def?.icon || "Sparkles"] || Icons.Sparkles;
@@ -300,7 +304,7 @@ function SortableWidget({ w, mode, editing, onCycleSize, onRemove }) {
           </div>
         )}
       </div>
-      <div className="h-[calc(100%-2rem)]"><WidgetBody w={w} mode={mode} /></div>
+      <div className="h-[calc(100%-2rem)]"><WidgetBody w={w} mode={mode} ownerUsername={ownerUsername} isOwner={isOwner} /></div>
     </div>
   );
 }
@@ -402,7 +406,19 @@ export default function Profile() {
   return (
     <div className="max-w-7xl mx-auto" data-testid="profile-page">
       {/* Banner */}
-      <div className="or-surface overflow-hidden mb-5">
+      <div className="or-surface overflow-hidden mb-5 relative">
+        {editing && (
+          <button
+            className="starbar-icon absolute top-3 right-3 z-10"
+            style={{ width: 38, height: 38 }}
+            onClick={() => navigate("/settings/account")}
+            data-testid="profile-settings-gear"
+            title="Account settings"
+            aria-label="Account settings"
+          >
+            <Icons.Settings size={16} />
+          </button>
+        )}
         <div className="h-32 sm:h-48" style={{
           background: "linear-gradient(135deg, color-mix(in srgb, var(--primary) 50%, transparent), color-mix(in srgb, var(--secondary) 50%, transparent))",
         }} />
@@ -414,7 +430,13 @@ export default function Profile() {
             style={{ width: 110, height: 110, border: "4px solid var(--surface)", background: "var(--surface)" }}
             data-testid="profile-avatar"
           />
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
+            {/* VIP badge always rendered next to identity, including edit mode */}
+            {user?.is_vip && (
+              <div className="mb-1" data-testid="profile-vip-row">
+                <VipBadge joinedAt={user.vip_joined_at} testid="profile-vip-badge" />
+              </div>
+            )}
             {editing ? (
               <>
                 <input className="or-input mb-2 text-xl" data-testid="profile-edit-name"
@@ -424,7 +446,7 @@ export default function Profile() {
               </>
             ) : (
               <>
-                <h2 className="text-2xl sm:text-3xl" style={{ fontFamily: "var(--font-display)" }} data-testid="profile-name">
+                <h2 className="text-2xl sm:text-3xl flex items-center gap-2 flex-wrap" style={{ fontFamily: "var(--font-display)" }} data-testid="profile-name">
                   {user?.name || "Guest visitor"}
                 </h2>
                 <div className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }} data-testid="profile-bio">
@@ -476,6 +498,8 @@ export default function Profile() {
                 editing={editing}
                 onCycleSize={cycleSize}
                 onRemove={removeWidget}
+                ownerUsername={user?.username}
+                isOwner={true}
               />
             ))}
           </div>

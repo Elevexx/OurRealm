@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 
 from core.config import (
     JWT_ALGORITHM, ACCESS_TOKEN_MINUTES, get_jwt_secret, FOUNDER_USERNAME,
+    VIP_CUTOFF, default_myfeed_widget,
 )
 from core.db import db
 from core.deps import (
@@ -37,6 +38,14 @@ async def register(payload: RegisterPayload, response: Response):
         raise HTTPException(status_code=400, detail="Username already taken")
 
     user_id = str(uuid.uuid4())
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # ── VIP / Early-Adopter ──
+    # Anyone registered while total users < VIP_CUTOFF receives a
+    # permanent VIP badge. Once reached, no new VIP grants.
+    current_count = await db.users.count_documents({})
+    is_vip = current_count < VIP_CUTOFF
+
     doc = {
         "id": user_id,
         "email": email,
@@ -48,14 +57,20 @@ async def register(payload: RegisterPayload, response: Response):
         "bio": "",
         "interests": [],
         "mode": "neon",
-        "widgets": [],
+        # New accounts get the My Feed widget as the first/top widget.
+        "widgets": [default_myfeed_widget()],
         # ── ID-BASED FRIEND GRAPH ──
         "friends": [],
         "friend_requests_in": [],
         "friend_requests_out": [],
         "pinned_threads": [],
+        # ── VIP ──
+        "is_vip": is_vip,
+        "vip_joined_at": now_iso if is_vip else None,
+        # ── Friend groups (placeholder for future feature; safe no-op) ──
+        "friend_groups": [],
         "social": {},
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": now_iso,
     }
     await db.users.insert_one(doc)
 

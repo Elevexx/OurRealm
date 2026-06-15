@@ -8,7 +8,10 @@ import secrets
 import uuid
 from datetime import datetime, timezone
 
-from .config import FOUNDER_EMAIL, FOUNDER_USERNAME, FOUNDER_AVATAR, FOUNDER_WIDGETS
+from .config import (
+    FOUNDER_EMAIL, FOUNDER_USERNAME, FOUNDER_AVATAR, FOUNDER_WIDGETS,
+    VIP_CUTOFF, MYFEED_WIDGET_TYPE, default_myfeed_widget,
+)
 from .db import db
 from .security import hash_password, verify_password
 
@@ -207,3 +210,77 @@ async def run_startup():
     founder = await seed_founder()
     await migrate_friend_graph_to_ids()
     await backfill_founder_as_default_friend(founder)
+    await migrate_vip_and_strip_founder_badges(founder)
+    await migrate_inject_myfeed_widget()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# EARLY-ADOPTER / VIP + FOUNDER-BADGE CLEANUP
+# ─────────────────────────────────────────────────────────────────────
+async def migrate_vip_and_strip_founder_badges(founder: dict | None):
+    """One-time, idempotent migration.
+
+    1. Grandfather every existing account (created before the VIP system
+       launch) as VIP — sets is_vip=True and persists vip_joined_at.
+    2. Strips is_founder/role=founder from *every* user except @stealth
+       so the Founder badge only appears on the seeded founder.
+    """
+    # 1. VIP grandfather — fill vip_joined_at from created_at if missing.
+    # Only operates on docs that haven't been processed yet.
+    cursor = db.users.find(
+        {"is_vip": {"$exists": False}},
+        {"_id": 0, "id": 1, "created_at": 1},
+    )
+    n_vip = 0
+    async for u in cursor:
+        await db.users.update_one(
+            {"id": u["id"]},
+            {"$set": {
+                "is_vip": True,
+                "vip_joined_at": u.get("created_at"),
+            }},
+        )
+        n_vip += 1
+    if n_vip:
+        import logging
+        logging.getLogger("ourrealm.seed").info(
+            f"VIP backfill: grandfathered {n_vip} existing accounts"
+        )
+
+    # 2. Strip Founder badge from anyone who isn't @stealth.
+    founder_username = (founder or {}).get("username") or FOUNDER_USERNAME
+    res = await db.users.update_many(
+        {"username": {"$ne": founder_username}, "$or": [
+            {"is_founder": True}, {"role": "founder"},
+        ]},
+        {"$set": {"is_founder": False, "role": "user"}},
+    )
+    if res.modified_count:
+        import logging
+        logging.getLogger("ourrealm.seed").info(
+            f"Stripped Founder badge from {res.modified_count} non-stealth accounts"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# MY FEED WIDGET — auto-inject as the first widget for every account
+# that doesn't already have one. Idempotent.
+# ─────────────────────────────────────────────────────────────────────
+async def migrate_inject_myfeed_widget():
+    import logging
+    log = logging.getLogger("ourrealm.seed")
+    n = 0
+    async for u in db.users.find({}, {"_id": 0, "id": 1, "widgets": 1}):
+        widgets = u.get("widgets") or []
+        has_mf = any((w or {}).get("type") == MYFEED_WIDGET_TYPE for w in widgets)
+        if has_mf:
+            continue
+        # Insert My Feed at the TOP without disturbing the user's
+        # existing custom layout/order.
+        new_widgets = [default_myfeed_widget()] + widgets
+        await db.users.update_one(
+            {"id": u["id"]}, {"$set": {"widgets": new_widgets}}
+        )
+        n += 1
+    if n:
+        log.info(f"Injected My Feed widget into {n} existing profiles")

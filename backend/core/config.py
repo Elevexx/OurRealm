@@ -20,6 +20,21 @@ FOUNDER_WIDGETS = [
     {"id": "fw-social", "type": "custom", "size": "small",  "title": "Connect with Stealth"},
 ]
 
+# Early Adopter / VIP system: any account created while total
+# registered count < VIP_CUTOFF gets the badge permanently.
+VIP_CUTOFF = 1000
+MYFEED_WIDGET_TYPE = "myfeed"
+
+
+def default_myfeed_widget() -> dict:
+    return {
+        "id": "w-myfeed",
+        "type": MYFEED_WIDGET_TYPE,
+        "size": "large",
+        "title": "My Feed",
+        "audience": {"visibility": "public", "user_ids": []},
+    }
+
 
 def get_jwt_secret() -> str:
     return os.environ["JWT_SECRET"]
