@@ -1,270 +1,72 @@
-# OurRealm — Product Requirements Document
+# OurRealm — Product Requirements Document (PRD)
 
-## Phase 2 Completion Gate — Radius chips on Discover & Friends (Feb 2026, UI-only surfacing)
+## Mission
+Premium social platform rebranded from the original "widget-stage" / Orbit prototype.
+Multi-mode visual system + drag-and-drop widget profiles + unified messaging.
 
-Reused the existing `core/geo.radius_filter` helper (NO new filtering logic) by exposing optional `?radius=&viewer=` query params on the existing `/users/search` and `/users/featured` endpoints. New `<RadiusChips>` component (`5/10/25/50 mi`, exactly one active, re-click toggles off) rendered on:
-
-- **Discover** — `[data-testid=discover-radius-bar]` + chips `discover-radius-{5,10,25,50}` + `discover-zip-required` modal. Persists via `localStorage.ourrealm.discoverRadius`.
-- **Friends → Find People** — `[data-testid=friends-radius-bar]` + chips `friends-radius-{5,10,25,50}` + `friends-zip-required` modal. Persists via `localStorage.ourrealm.friendsRadius`.
-
-Selection survives in-app navigation; non-Any picks without a stored ZIP trigger the shared `<ZipRequiredModal>` with the exact spec text and a Settings CTA.
-
-## Phase 2.5 — Profiles, Local Discovery & Top 8 (Feb 2026)
-
-**Top 8 management inside Edit Profile**
-- New `<Top8Editor>` component (`/components/Top8Editor.jsx`) — self-contained: fetches viewer's friends, persists changes via `PATCH /api/profile/me {inner_8}`. Add / Remove / Reorder (◀ ▶) / Replace flows all auto-save with optimistic UI + rollback on error. Mounted in Profile editing mode. `inner_8` is the canonical field (existing); TopEightWidget on the public profile reads the same field, so changes appear instantly.
-- Friend-membership check + 8-cap enforced server-side.
-
-**Profile presence indicator**
-- New `<PresenceDot>` — pure CSS animated green radar dot. Placed in the new `[data-testid=profile-username-row]` (handle + dot).
-- `users.presence_visible` (default true). Toggle in Account Settings (`settings-presence-toggle`, auto-saves).
-
-**Private ZIP code storage**
-- `users.zip_code` + `zip_lat` / `zip_lng` (geocoded server-side via pgeocode at save time). PRIVATE: serialize_user exposes `zip_code` ONLY for owner-targeted endpoints; public `/profile/by-username/{u}` POPs the field.
-- Account Settings form (`settings-zip-input`, `settings-zip-save`, `settings-zip-msg`). Client-side prevalidation + backend regex `^\d{5}(-\d{4})?$`. Empty string CLEARS.
-
-**Local-discovery infrastructure**
-- `core/geo.py` — `resolve_zip`, `haversine_miles`, `parse_radius`, `radius_filter`. ALLOWED_RADII = {10,20,50,100,250,500}. "any" disables filtering. Items without coords are excluded from non-Any queries by design.
-- Posts snapshot `author_zip` + `author_lat` + `author_lng` at write time so changing a ZIP later doesn't retro-locate old posts. `_public_post` strips all three private fields from every response.
-- Reusable filter — same code path will power future user / community / event searches without modification.
-
-**For You Feed radius chips**
-- `[data-testid=feed-radius-bar]` with 7 chips (`feed-radius-{any,10,20,50,100,250,500}`). Default Any. Selection persists in `localStorage.ourrealm.feedRadius`. Backend gate: non-Any without ZIP → 400.
-
-**Sounds radius dropdown**
-- Spec radii applied to Sounds page Dropdown. Default Any. Mock data filtered client-side via existing `distance_miles` field.
-
-**ZIP-required modal**
-- New `<ZipRequiredModal>` mounted in Feed (`feed-zip-required`) and Sounds (`sounds-zip-required`). Exact spec text: "Radius Search requires a ZIP code in your Profile Settings." CTA `…-go` navigates to /settings/account; modal does NOT break the current page.
-
-**Polish from iteration_7 feedback**
-- AccountSettings ZIP input now surfaces spec error text "Please enter a valid 5-digit US ZIP code." via client-side regex pre-flight (input mask was hiding letters and bypassing the backend message).
-- Top8Editor outer wrapper switched to `<div role="button">` to eliminate the nested-`<button>` hydration warning while keeping click & keyboard support.
-
-## Phase 2 — Image Hosting + Profile Image System (Feb 2026)
-
-**Centralized image hosting**
-- `services/image_store.py` — local-disk backend at `/app/backend/uploads/images`, behind a small abstraction so it can be swapped for S3/R2/Cloudinary later without touching call sites. Pillow-based EXIF strip + resize-down original (max 2048×2048) + generated thumbnail (max 480×480). SHA256 + bytes + width + height stored on each `images` row.
-- `routers/images.py` — `POST /api/images/upload` (multipart), `POST /api/images/from-url` (server-side fetch + sniff + rehost), `GET /api/images/me/list`, `GET /api/images/{name}` (no auth, cache-control `public, max-age=31536000, immutable`, served via `FileResponse`).
-- Validation: 10 MB cap, MIME sniff (JPEG/PNG/WebP/GIF), filename allowlist `[a-z0-9_.]`, ext allowlist; per-user rate limit 12 uploads / 5 min.
-
-**Frontend `<ImageUploadPicker>`**
-- Reusable modal with two tabs: "Upload from device" (multipart) and "Upload via URL" (re-hosted). Returns `{url, thumbnailUrl, image}` — relative paths absolutized via `absoluteImageUrl()` against `REACT_APP_BACKEND_URL`.
-- Wired into: Account Settings (`account-avatar-edit` → `account-avatar-picker`), Feed composer (tapping `feed-composer-type-image` opens `feed-image-picker`), Messenger composer (`real-chat-attach-image` opens `real-chat-image-picker`).
-
-**Profile image**
-- `UserOut` serializer now exposes `profileImageUrl` (alias of `avatar_url`) so the spec field name works alongside the legacy field. Avatar updates flow `Picker → PATCH /api/profile/me → refreshMe()`.
-
-**Performance**
-- Feed and PostPopup images: `loading="lazy" decoding="async"`.
-- Cloudflare in front of preview/production handles edge caching; immutable cache-control set on file responses.
-
-**Out of scope (intentional)**:
-- No external CDN integration (S3/R2/Cloudinary) — local disk + Cloudflare edge is sufficient for current scale; swap is one file (`services/image_store.py`).
-- Multi-image arrays on posts (`imageUrls: string[]`) deferred — single `image_url` covers the current composer; arrays can be added without backend changes once the composer supports multi-pick.
-
-## Phase 1 — Platform Foundation (Feb 2026)
-
-**1. Password login for @stealth (coexists with OTP)**
-- `seed.py.seed_founder()` resets founder `password_hash` to `Password1$` on every boot unless `password_set_by_user=True`.
-- `LoginPayload.email` now accepts email OR username (string, validated at route).
-- `profile.change_password` marks the account `password_set_by_user=True` so the seed migration won't reset it.
-- `SignIn.jsx` input changed from `type="email"` to `type="text"` (label: "Email or username") so non-email identifiers are not blocked by browser validation.
-
-**2. Universal emoji support**
-- Verified end-to-end (UTF-8 default in JSON/Mongo). Round-trip tested for posts, comments, messages.
-
-**3. Universal `@username` clickable navigation**
-- New `<UsernameLink>` component (`/components/UsernameLink.jsx`). Already-existing nav in Friends, Top 8, Messages thread header preserved; added to Feed cards and PostPopup author + comment authors.
-
-**4. Full Like system**
-- Backend: `POST /api/posts/{id}/like` is now an idempotent toggle (`liked_by[]` array per post). Returns `{liked, likes}`.
-- Frontend: per-post live state via a tiny `postStore` (`lib/postStore.js`) + `usePostState(id)` hook. Optimistic toggle, rollback on failure.
-- One-source-of-truth across Feed, MyFeedWidget, and PostPopup (verified bidirectional sync without page reload).
-
-**5. Full Comment system**
-- Backend: `POST /api/posts/{id}/comment` persists into a new `comments` collection (no longer a no-op increment). `GET /api/posts/{id}/comments` lists them. Server enforces 178-char limit (400 otherwise).
-- Frontend: PostPopup comment composer with live remaining-char counter + emoji support. Counts sync via postStore.
-
-**6. PostPopup + Notification deep-linking**
-- New global `<PostPopup>` mounted once in `App.js`. Controller helpers: `openPostPopup(post)`, `openPostPopupById(id)`, `closePostPopup()`.
-- `Notifications.jsx.onSelect()` routes: like/comment/share/save/mention → `openPostPopupById(payload.post_id)`; friend_request → `/friends`; message → `/messages?user=<actor>`; follow → `/public/<actor>`.
-
-**7. Account-creation compliance**
-- `RegisterPayload` requires `accepted_terms`, `accepted_privacy`, `accepted_conditions`, `age_confirmed_13` (all true). Server stores them with timestamp + `policy_version` in `users.compliance`.
-- `SignUp.jsx` adds 4 checkboxes with links to `/terms`, `/privacy`, `/terms-conditions`. Submit disabled until all four are checked.
-- New `LegalPages.jsx` exports `TermsOfServicePage`, `TermsConditionsPage`, `PrivacyPolicyPage` — plain, mobile-responsive boilerplate covering COPPA/GDPR/CCPA basics; wired in App.js.
-
-**Extras delivered in the same batch**
-- Posts gained optional `image_url`, `video_url`, `link_url` fields (any combination, all additive — text-only posts unchanged). Feed + PostPopup render image/video/link previews accordingly.
-
-## Phase 7 — Top 8 Friends, Messenger anchored menu, Thoughts, Feed media composer (Feb 2026)
-
-**Top 8 Friends widget (drag-reorder)**
-- New `<TopEightWidget>` component renders on Profile via the WidgetBody `case 'top8'`.
-- `DEFAULT_WIDGETS` in `/app/frontend/src/data/mockData.js` now includes a Top 8 entry so new accounts always start with it.
-- `core/config.py` adds `TOP8_WIDGET_TYPE = "top8"` + `default_top8_widget()`; `core/seed.py` runs an idempotent startup migration (`migrate_inject_top8_widget`) that injects Top 8 into every existing user that doesn't already have one (positioned directly after My Feed).
-- Drag-and-drop reorder via existing `@dnd-kit` infrastructure; layout is persisted via the same Save flow as other widgets.
-
-**Messenger anchored long-press edit/delete menu**
-- Long-press (or right-click ~700ms) on a sent bubble opens `[data-testid=real-msg-menu]` anchored INSIDE the bubble (top:100% / right:0 for own messages).
-- Edit reveals an inline input with Save → bubble text updates and `[data-testid=real-msg-edited-{id}]` indicator appears.
-- Delete removes the bubble immediately; deletion persists after reload via `DELETE /api/messages/{msg_id}`.
-
-**Thoughts post classification (with backfill)**
-- Text-only posts from the Feed composer now save with `media_type='thought'`.
-- Startup migration `migrate_text_posts_to_thoughts` reclassifies any legacy posts with `media_type` in `{text, post}` → `thought`. Idempotent.
-
-**Feed composer media options**
-- Composer exposes Thought / Image / Video / Link chips with `data-testid=feed-composer-type-{id}`.
-- Selecting Image/Video/Link reveals a URL input; Image and Link show inline previews; Video shows a render hint.
-
-**Media Selection bar persistence**
-- Selection persists across SPA navigation via the `ourrealm.feedMedia` localStorage key (verified `aria-pressed=true` round-trip).
-
-**Iteration 4 polish — code-quality fixes**
-- Fixed React duplicate-key warning on `/feed`: `BottomNav.ITEMS_LEFT` had two entries with `to:"/feed"` (Home + For You) and was keyed by `to`. Re-keyed by `testid`.
-- Fixed three nested-`<button>` hydration violations by converting outer interactive container to `<div role="button" tabIndex={0} onKeyDown=…>` in:
-  - `Messages.jsx` real DM row (dm-{username}) which contained `dm-pin-*` button.
-  - `Discover.jsx` `CreatorCard` which contained an inner Follow button.
-  - `ModesPage.jsx` `modes-card-{m}` which contained `modes-apply-{m}` button.
-- Feed now de-dupes the merged server+mock post list by `id` to defensively avoid future key collisions.
-
-## Phase 6 — Early Adopter, My Feed, Privacy & UX upgrades (Feb 2026)
-
-**Early Adopter / VIP system**
-- New `is_vip` + `vip_joined_at` fields on user docs. `VIP_CUTOFF=1000` enforced server-side at `/api/auth/register` — anyone joining while total users < 1000 receives a permanent VIP badge; once reached, no new grants.
-- Idempotent grandfather migration on startup: every pre-existing account inherits `is_vip=true` with `vip_joined_at = created_at`.
-- One-time migration strips `is_founder` / `role=founder` from every account except `@stealth`.
-- New `<VipBadge>` component with hover/tap tooltip "VIP Member · Joined {date}". Surfaced on own profile (Profile.jsx in both edit + view modes), public profiles (FounderProfile.jsx), and Account Settings header. Founder badge still renders for @stealth.
-
-**My Feed default widget**
-- New default widget type `myfeed`, auto-prepended on register via `default_myfeed_widget()` in `core/config.py`.
-- Idempotent startup migration injects My Feed at the top of every existing profile that doesn't already have one (preserves the user's saved custom layout).
-- New endpoint `GET /api/posts/feed/by-user/{username}` returns the owner's posts newest-first with audience filtering. Wired into `MyFeedWidget.jsx` which is rendered by both Profile.jsx and FounderProfile.jsx widget grids.
-- `WIDGET_TYPES` in `mockData.js` now lists My Feed first so the widget-library suggestion menu surfaces it as the top option.
-- Users can move / resize / remove via the existing drag-and-drop infrastructure; deletions are not auto-restored.
-
-**Post privacy controls (Public / Friends / Private / Custom)**
-- New `audience` Pydantic schema on `PostCreate` with `visibility`, `user_ids`, and a reserved `friend_group_ids` field (accepted but unused — ready for the future Friend Groups release without a migration).
-- Backend `_visibility_query` enforces: public is global, friends-only requires authorship by a friend, private is author-only, custom requires viewer in `user_ids`.
-- New `<AudiencePicker>` modal (mobile-friendly bottom sheet on small screens) with friend multi-select + "Friend Groups — Coming Soon" placeholder.
-- Wired into the Feed composer; the selected audience is sent to `/api/posts` on submit.
-
-**Home page cleanup + interest persistence bug fix**
-- Removed the Top Categories pill row and the People/Lives carousel from `/home` as requested.
-- Categories now appear higher with a responsive grid (`grid-cols-3` mobile, `sm:grid-cols-4`, `lg:grid-cols-6`).
-- Header + star bar + media-selection bar untouched.
-- **Interest persistence bug fix**: previously the toggle's `setSelected` updater mutated a `Set` non-idempotently, which React 18 Strict Mode double-invoked in dev, undoing some selections. Rewrote the toggle to compute the next set from current closure state and pass a plain value to `setSelected`. Persistence is now reliable across refreshes and round-trips to the For You feed.
-- Server PATCH happens once on Next (avoids per-toggle request races).
-
-**Top-left logo + Signup logged-in behavior**
-- Top-left logo now routes to `/` (landing) in both states.
-- Landing, when logged in: replaces the Sign Up / Sign In pills with `CONTINUE AS @username` + `SIGN OUT` + `Browse as Guest`. Sign-out reloads the page.
-- `/signup` always shows the signup form + mode selector. If logged in, a small `signup-loggedin-strip` shows above the form with Continue / Sign Out actions. No automatic redirect away.
-
-**Bottom Nav routing**
-- Bottom-nav Home → `/feed`.
-- `/feed` got a "Customize Feed" CTA that routes back to `/home` (interest picker). The `/home` URL is unchanged so bookmarks keep working.
-
-**Account Settings**
-- New `/settings/account` page (linked from the gear icon visible top-right of own profile in edit mode).
-- Lists 8 future account sections (profile info, username, password, email, privacy defaults, notifications, blocked, delete) — each clearly tagged "Coming Soon". The header shows the user's name + VIP badge if applicable.
-- Existing `/settings` still owns appearance/mode preferences; there's a back-link between the two.
-
-## Earlier Phases
-
-## Vision
-A premium social platform powered by:
-- A 4-mode visual system (Neon, Business, Millennium, Stealth) that re-themes the entire app.
-- A drag-and-drop widget-based Profile system.
-- Public usernames, friend graph, friends-only DMs, communities ("Realms"), feeds, sounds and wallets.
-
-## Personas
-- **Founders/creators** showcase widgets (live, music, merch, polls, wallet, events) on a customisable canvas.
-- **Fans** discover creators, follow profiles, become friends and message each other.
-- **Stealth (founder)** — the official seeded account every user is automatically friended with.
+## Core Modes
+Neon, Business, Millennium, Stealth.
 
 ## Tech Stack
-- Frontend: React, TailwindCSS, React Router, @dnd-kit, lucide-react, axios.
-- Backend: FastAPI, MongoDB (motor), JWT cookie + Bearer auth, OTP flow for founder.
-- All third-party access via REACT_APP_BACKEND_URL → ingress → backend `/api/*`.
+- **Frontend**: React 19, TailwindCSS, lucide-react, framer-motion, @dnd-kit, @supabase/supabase-js v2
+- **Backend**: FastAPI + MongoDB (Motor) for users, profiles, posts, friends, images, geo
+- **Messaging (Phase 3)**: **Supabase** (Postgres + Realtime) — single unified system for Chats/Groups/Realms
+- **Geo**: `pgeocode` (offline ZIP → lat/long)
 
-## Core Pages (built)
-Landing, SignUp (with username availability + suggestions), SignIn, Founder OTP, Home (interest+media picker), For You Feed, Discover 2.0 (+ Profile Widget Swiper), Sounds, Realms, Messages (with friends-only real DM overlay), Wallet, Friends (Friends/Requests/Find People), Profile (drag-and-drop widgets, Public toggle), Public Profile (`/public/:username`), Modes.
+## Architecture: dual-store
+| Domain | Storage |
+|---|---|
+| Users, auth (JWT), profiles, widgets, friends, posts, comments, likes, notifications, images, ZIP/radius | MongoDB (FastAPI) |
+| Chats, Groups, Realms, Messages | **Supabase Postgres + Realtime** |
 
-## Implemented (latest session — Feb 2026)
-**Phase 1 — Public Profile & Friend system**
-- `/public/:username` dynamic route renders the public profile component.
-- Sign-up now collects username (3-24 chars, regex-validated, debounced live availability + smart suggestions).
-- `AuthContext.register()` accepts a `username` parameter.
-- Friends page rebuilt: real backend search (`/api/users/search`), three tabs (Friends/Requests/Find People), Add Friend / Accept / Decline / Cancel actions wired to `/api/friends/*`.
-- Public profile shows Friend status (none/outgoing/incoming/friends/self) with Add Friend / Accept / Pending / Friends chip.
-- Public profile Message button is friends-only with inline error UI.
+Existing OurRealm user ids are already UUID v4 strings — they map 1:1 into Supabase `uuid` columns. No user migration needed.
 
-**Phase 2 — New requirements (Message 170)**
-- Top-Star-Bar logo navigates to `/signup` instead of `/home`.
-- `Home.jsx` standalone "Continue" button removed; only the MediaTypeBar Next arrow remains and routes to `/feed`.
-- Every newly-registered user is auto-friended with `stealth`; startup migration backfills the same for existing users.
-- Messaging is restricted to friends: backend (`/api/messages` + `/api/messages/thread/{u}` + `/api/messages/can-message/{u}`) returns 403 "You can only message friends" for non-friends; UI shows a blocked overlay with "Open profile" CTA.
-- `Profile.jsx` defaults own-profile to Edit mode; "View as Public" button navigates to `/public/{me}`. On a self-public profile, a "Switch to Edit" button routes back to `/profile?edit=1`.
-- Discover page now has a "Profiles & Their Widgets" horizontal swiper using `/api/users/featured`; each card renders up to 4 `MiniWidget` mini-cards of the user's actual saved widgets.
+## Completed Phases (high level)
+- **Phase 1** — Stealth password login, emojis everywhere, universal username profile nav, full post like + comment system (178 char limit), notification deep linking, account creation compliance gate.
+- **Phase 2** — Centralized image hosting (`/api/images/*`), `ImageUploadPicker`, wired to profile avatar / feed composer / messenger.
+- **Phase 2.5** — `Top8Editor`, private ZIP storage (`pgeocode`), radius filters (5/10/25/50 mi) on Discover + Friends + Sounds, `PresenceDot`.
+- **Phase 3 (Feb 2026, current)** — **Supabase-only unified messaging**: 4 tabs (Chats, Groups, Realms, Calls placeholder), realtime via `messages` table publication, RLS policies written ready-to-enable.
 
-**Phase 3 — QA**
-- Pytest backend suite: 17/17 Phase-2 tests + 20/20 prior tests pass.
-- Playwright frontend: all requested user flows verified (`/app/test_reports/iteration_2.json`).
+## Phase 3 — Files of Reference
+- `/app/supabase/schema.sql` — paste into Supabase SQL editor (tables + indexes + realtime + commented RLS)
+- `/app/supabase/README.md` — setup instructions
+- `/app/frontend/src/lib/supabase.js` — client init (graceful when env vars are missing)
+- `/app/frontend/src/lib/messaging.js` — unified CRUD + realtime subscription
+- `/app/frontend/src/pages/Messages.jsx` — full UI with 4 tabs, friend picker, create-thread modal, conversation overlay
+- `/app/backend/routers/profile.py` — added `POST /api/profile/by-ids` for sender lookup
 
-**Phase 5 — Backend refactor + ID-based friend graph + real Pinned/DMs (Feb 2026)**
-- Split monolithic `server.py` into routers:
-  - `backend/core/{config.py, db.py, security.py, deps.py, seed.py}` (env, mongo, bcrypt + JWT + cookies, current-user dep + lockout, startup seed/migration).
-  - `backend/models/schemas.py` (Pydantic request/response models + `serialize_user`).
-  - `backend/routers/{auth.py, friends.py, messages.py, profile.py, posts.py}`.
-  - `server.py` is now ~60 lines of wiring (app factory, CORS, router mount, startup/shutdown).
-- **Friend graph migrated from usernames → user_ids** for rename safety. All `friends / friend_requests_in / friend_requests_out / pinned_threads` arrays on user docs store user_ids; `messages.conv_id` is now `min(uid):max(uid)`; each message stores `from_user_id` + `to_user_id` (with username snapshots for display).
-- Idempotent startup migration converts legacy username-based docs to id-based — verified migrating 42 users + 4 legacy messages on first boot.
-- Backwards-compatible API surface: clients still address friends and message targets by `username`; routers translate to id internally.
-- New `GET /api/messages/threads` returns `[{conv_id, peer:{id,username,name,avatar_url,is_founder}, last_text, last_at, last_from_me, is_pinned}]` sorted pinned-first then by recency.
-- New `POST /api/messages/threads/pin` & `/unpin` (body `{peer_username}`).
-- Messages.jsx Pinned + DM lists now driven by real `/api/messages/threads`. Pinned section falls back to mock cards only when the user has zero pins (preserves visual design). Clicking a real DM opens the existing friends-only real-chat overlay via `?to=username`. Pin/unpin icons inline on each DM row. Group Chats section remains mocked (no group infra yet) — keeping the UI intact per user instruction.
+## Phase 3 — Environment
+Add to `/app/frontend/.env`:
+```
+REACT_APP_SUPABASE_URL=https://xxxxxxxx.supabase.co
+REACT_APP_SUPABASE_ANON_KEY=eyJhbGciOi...
+```
+Until set, the Messenger renders a friendly "not configured" page — rest of the app works.
 
-**Verification** (manual + automated curl): friend-request lifecycle (none → outgoing → incoming → friends → decline → none), 403 enforcement, message persistence with id-based conv_id, thread aggregation, pin sorting, refresh-on-send.
+## Phase 3 — Auth bridging note
+The schema ships with **RLS commented out**. Reason: OurRealm users live in MongoDB with their own JWT; `auth.uid()` is empty without Supabase Auth. To enforce RLS later, either:
+- (A) Also sign users into Supabase Auth client-side, OR
+- (B) Mint custom Supabase JWTs on FastAPI signed with the Supabase project JWT secret (`sub=<ourrealm_user_id>`) and call `supabase.auth.setSession(...)`.
 
-**Phase 4 — App-wide Responsive Design Audit (Feb 2026)**
-- Global foundation in `index.css`: `box-sizing: border-box`, `html/body/#root { max-width: 100%; overflow-x: hidden }`, responsive `img/video/iframe { max-width: 100%; height: auto }`, fluid clamp-based typography (`.or-text-h1/h2/h3/body/small`), `.or-hscroll` utility for horizontal-scroll rows, `:where(main,section,article) > * { min-width: 0 }` to fix flex/grid blowouts, dedicated 640-1023px tablet hooks, iPhone-SE (≤380px) sizing for nav.
-- `index.html` viewport meta now uses `viewport-fit=cover` for proper notch/home-indicator handling.
-- `Layout.jsx`, `TopStarBar.jsx`, `BottomNav.jsx` all consume `env(safe-area-inset-*)`.
-- `BottomNav` rewrite — flex items use `flex: 1 1 0%; min-width: 0` + ellipsizing labels so all 7 buttons (Home/Discover/For You/+/Wallet/Friends/Profile) fit cleanly at 320px.
-- Messages page grid: `md:grid-cols-[180px_minmax(0,1fr)]` + `min-w-0` on aside & main panel to prevent the 234px content blowout previously seen at 320px.
-- Friends featured 8-circle row converted from fixed 80×80 px to `aspect-square w-full` so they shrink on tiny screens.
-- ModeSwitcher pills are now `overflow-x: auto` with snap so all 4 mode chips remain accessible.
-- Result: **0 horizontal overflow** at 320 / 375 / 390 / 414 / 430 / 768 / 1024 / 1440 across all 15 routes, verified via Playwright probes and full testing_agent_v3_fork sweep.
+Then uncomment the `ENABLE RLS LATER` block in `schema.sql` and re-run.
 
-## Data Models
-- users `{id, email, username (unique), password_hash, name, bio, avatar_url, is_founder, is_verified, widgets[], friends[], friend_requests_in[], friend_requests_out[], created_at}`
-- otp_codes `{email, code, expires_at}`
-- posts `{user_id, media_type, content, likes, created_at}`
-- messages `{id, conv_id, from_username, to_username, text, created_at}`
+## Roadmap (post Phase 3)
+| Priority | Item |
+|---|---|
+| P1 | Group/Realm Member Directory — "View All" popup with add-friend + view profile |
+| P1 | Pinned Chats (Supabase: optional `pinned_by uuid[]` on `chats`) |
+| P1 | RLS enforcement — pick auth bridge option (A or B) above |
+| P2 | Sender info denormalized into a Supabase `profiles` mirror table (drop the by-ids backend call) |
+| P2 | Sent/Delivered/Read indicators using `read_by uuid[]` (already in schema) |
+| P2 | Real Wallet integrations (Stripe / crypto) |
+| P3 | Voice/video Calls tab |
 
-## Key API Endpoints
-`/api/auth/{register,login,logout,me,refresh,otp/request,otp/verify,username/check}` ·
-`/api/users/{search,featured}` ·
-`/api/profile/by-username/{u}` ·
-`/api/friends/{list,status/{u},request,accept,decline}` ·
-`/api/messages/{can-message/{u},thread/{u}, POST /api/messages}`
+## Known Mocked
+- Calls tab — intentional placeholder ("coming soon")
+- Wallet payments — placeholders
 
-## Backlog
-**P1**
-- Block/Unblock users + reporting flow.
-- Soft-delete + privacy toggle on `/api/users/featured`.
-- Refactor `server.py` into routers (`auth.py`, `friends.py`, `messages.py`, `profile.py`).
-- Replace username-based friend storage with `user_id` foreign keys.
-- Replace the still-mocked Messages.jsx top sections with live data (recent threads from `/api/messages/threads`).
-
-**P2**
-- Username rename feature (with cascading update across friend lists).
-- Pagination on message threads.
-- Realm membership + community DM threads.
-- Notifications service driven by friend requests + messages.
-
-## Credentials
+## Test Credentials
 See `/app/memory/test_credentials.md`.
+
+---
+*Last updated: Feb 2026 — Phase 3 (Supabase) shipped structurally; credentials & SQL paste are user-side actions.*

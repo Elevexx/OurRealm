@@ -117,6 +117,37 @@ async def change_password(payload: PasswordChangePayload, current: CurrentUser):
     return {"ok": True}
 
 
+@router.post("/by-ids")
+async def get_profiles_by_ids(payload: dict):
+    """Resolve a list of user_ids → minimal public profile cards.
+
+    Used by the Supabase-powered messenger to display sender info
+    (username, name, avatar) for message rows. Accepts at most 200 ids.
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list):
+        raise HTTPException(status_code=400, detail="ids must be an array")
+    ids = [str(x) for x in ids if isinstance(x, str)][:200]
+    if not ids:
+        return {"users": []}
+    out = []
+    async for u in db.users.find(
+        {"id": {"$in": ids}},
+        {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1,
+         "is_founder": 1, "is_verified": 1, "is_vip": 1},
+    ):
+        out.append({
+            "id": u.get("id"),
+            "username": u.get("username"),
+            "name": u.get("name") or u.get("username") or "",
+            "avatar_url": u.get("avatar_url"),
+            "is_founder": bool(u.get("is_founder")),
+            "is_verified": bool(u.get("is_verified")),
+            "is_vip": bool(u.get("is_vip")),
+        })
+    return {"users": out}
+
+
 @router.get("/by-username/{username}")
 async def get_public_profile_by_username(username: str):
     user = await db.users.find_one(
