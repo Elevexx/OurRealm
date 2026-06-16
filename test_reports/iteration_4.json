@@ -1,0 +1,57 @@
+{
+  "summary": "Iteration 4 — Frontend-only verification of the 5 Message-637 features (Top 8 widget, Messenger long-press edit/delete, Thoughts classification, Feed composer media options, Media Selection bar persistence) plus regression smoke. 6/7 verified passing; 1 HIGH-priority bug found (Top 8 widget never auto-renders on /profile because it is not in DEFAULT_WIDGETS and the user has no Add-Widget UI affordance). Also surfaced several pre-existing console errors (duplicate React keys on /feed, nested <button> hydration errors in 3 components). All testing done at 1440x900 against https://realm-deploy.preview.emergentagent.com with seeded user testfriend1@example.com/pass1234.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Profile → Top 8 Friends widget",
+        "issue": "The Top 8 Friends widget DOES NOT render on /profile for an existing user (testfriend1). DEFAULT_WIDGETS in /app/frontend/src/data/mockData.js does NOT include any { type: 'top8' } entry — it lists [live, music, photos, friends, wallet, events, tour, merch]. testfriend1 has 1 saved widget (myfeed) so they are stuck with no Top 8. There is also no visible 'Add Widget' / '+' button when Edit-Widgets mode is opened (only an 'Edit Widgets' toggle button is present). On /public/stealth the Top 8 widget likewise does NOT render. Backend & component code (/app/frontend/src/components/TopEightWidget.jsx, Profile.jsx WidgetBody case 'top8') are wired correctly — the gap is purely the default layout + the missing Add-Widget UI affordance.",
+        "selector": "[data-testid=\"top8-widget\"]",
+        "priority": "HIGH"
+      },
+      {
+        "component": "Feed composer (Feed.jsx)",
+        "issue": "Console: 'Encountered two children with the same key' fires repeatedly when /feed is rendered. Indicates duplicate React keys in the posts list (likely after seed backfill produced two posts sharing the same id, or composer-preview uses non-unique keys). Functionally the feed still renders and submission works, but this is a real correctness bug that can cause posts to be duplicated/omitted across re-renders.",
+        "selector": "[data-testid=\"feed-page\"]",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "Messages.jsx / Discover.jsx / ModesPage.jsx — nested <button> hydration warnings",
+        "issue": "Three places have a <button> as a descendant of another <button>, which causes React hydration errors and is invalid HTML / breaks a11y: (1) Messages.jsx line 499 [data-testid=\"dm-tftwo\"] contains [data-testid=\"dm-pin-tftwo\"] at line 526; (2) Discover.jsx line 37 [data-testid=\"discover-creator-lunax\"] contains an inner button at line 53; (3) ModesPage.jsx line 74 [data-testid=\"modes-card-neon\"] contains [data-testid=\"modes-apply-neon\"] at line 131. Fix by converting the outer element to a <div role=\"button\" tabIndex={0} onClick=…> or making the inner an <a>/<span role=\"button\">.",
+        "selector": "[data-testid=\"dm-tftwo\"], [data-testid=\"discover-creator-lunax\"], [data-testid=\"modes-card-neon\"]",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "MediaTypeBar on /home",
+        "issue": "The bar is rendered with position:relative (parent), not as a floating sticky/fixed element above BottomNav as the spec describes ('floating Media Selection Bar should remain visible and sit ABOVE the BottomNav'). It is still visible/persistent at the bar's natural scroll-position and selection state DOES persist across SPA navigation (verified: aria-pressed=true on media-type-video after Home→Discover→Home round trip). Functional persistence ✅; floating-position behavior ❌. Re-confirm with product whether the inline placement is intentional.",
+        "selector": "[data-testid=\"media-type-bar\"]",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Add { id: 'w-top8', type: 'top8', size: 'medium' } to DEFAULT_WIDGETS in /app/frontend/src/data/mockData.js OR seed every existing user.widgets array to include a top8 entry; otherwise Top 8 will never render unless a user manually adds it.",
+    "Expose an 'Add Widget' UI control on /profile (e.g. a + chip in the widget grid when editing=true) so users can append the Top 8 widget. Currently only 'Edit Widgets' toggle exists; the addWidget() function in Profile.jsx is dead code without a visible affordance.",
+    "Fix duplicate React keys in /feed posts rendering (Feed.jsx around line 225 — `data-testid={`feed-post-${p.id}`}`). Inspect whether two posts share the same id after the 'thought' backfill, or de-dupe by id in the post list state.",
+    "Resolve the three nested-button violations: Messages.jsx (dm-tftwo > dm-pin-tftwo), Discover.jsx (discover-creator-lunax inner btn), ModesPage.jsx (modes-card-neon > modes-apply-neon). Convert outer to div role=button.",
+    "Confirm intended position behavior of MediaTypeBar on /home — spec says floating ABOVE BottomNav; current is inline. If floating is desired, wrap in a fixed/sticky container with bottom: var(--bottom-nav-height) + safe-area-inset-bottom."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/src/data/mockData.js DEFAULT_WIDGETS missing 'top8' entry — root cause of the failing Top 8 acceptance test.",
+    "/app/frontend/src/pages/Profile.jsx has addWidget() but no rendered UI to invoke it; result is silently broken UX.",
+    "Three nested-button hydration violations are real a11y bugs and should be fixed at the source (not just suppressed).",
+    "Feed.jsx post list has a duplicate-key React warning — strong indicator of state bug; high risk after backend backfill of legacy 'text' posts to 'thought'.",
+    "/app/frontend/src/components/MediaTypeBar.jsx data-testids use SINGULAR form (`media-type-video`, `media-type-image`, …). The previous iteration_3 testing agent looked for plural `media-type-videos` which doesn't exist — this is purely a doc/testing mismatch, the component is correct."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only)", "frontend": "6/7 features fully verified (~86%) — Top 8 widget rendering failed acceptance"},
+  "test_credentials": "testfriend1@example.com / pass1234 (used). Founder OTP not exercised this iteration; password login was sufficient for all 5 features.",
+  "seed_data_creation": "Created one ephemeral thought post and one DM (then edited+deleted) under testfriend1; the deleted DM was confirmed gone after reload.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "PROVEN-WORKING (do not re-test unless code changes): Feed composer Thought/Image/Video/Link buttons all present with data-testid=feed-composer-type-{thought|image|video|link}; text-only post yields media_type='thought' per /api/posts/feed/by-user/tfone (verified 200 with media_type='thought'); MediaTypeBar selection persists across SPA round-trip (testid is SINGULAR: media-type-video, NOT media-type-videos); Messenger long-press: bubble onPointerDown ~700ms opens [data-testid=real-msg-menu] anchored inside the bubble (top:100%, right:0 for mine=true). Edit shows [data-testid=real-msg-edit-input-{id}] then Save → bubble text updates and [data-testid=real-msg-edited-{id}] appears; Delete removes the bubble immediately and the deletion persists after page reload. STILL FAILING: Top 8 widget never auto-renders on /profile (testfriend1 OR public/stealth) because DEFAULT_WIDGETS lacks the top8 type and there is no Add-Widget button rendered. Theme switching via /modes correctly toggles document data-mode (verified neon→stealth). Login URL post-signin lands on /feed (not /home). Console error 'duplicate React keys' on /feed is pre-existing.",
+  "rca_of_the_issue": "TOP 8 BUG: Profile.jsx line 361 sets state to (user.widgets?.length ? user.widgets : DEFAULT_WIDGETS). For testfriend1 user.widgets has length 1 (just myfeed) so the saved layout is used as-is — and that saved layout was created BEFORE the top8 widget was implemented so it never contained top8. For brand-new users the fallback DEFAULT_WIDGETS is used but that constant ALSO has no top8 entry (mockData.js line 326-335). Result: top8 is unreachable by default. Fixes: (a) push { type:'top8', size:'medium' } into DEFAULT_WIDGETS, (b) migrate existing user.widgets on backend to include top8 if missing, AND (c) render a visible Add-Widget control on /profile when editing=true. All three fixes are small."
+}
