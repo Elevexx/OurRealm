@@ -97,6 +97,12 @@ class PostCreate(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
     media_type: str = Field(default="thought")
     media_url: Optional[str] = None
+    # Optional rich-media URLs. Any combination may be set in addition to
+    # (or instead of) the legacy media_url/media_type pair. Existing posts
+    # without these fields continue to render text-only.
+    image_url: Optional[str] = None
+    video_url: Optional[str] = None
+    link_url: Optional[str] = None
     tags: List[str] = []
     audience: Optional[AudiencePayload] = None
 
