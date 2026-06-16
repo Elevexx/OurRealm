@@ -57,9 +57,16 @@ export function AuthProvider({ children }) {
     }
   }, [setGuest]);
 
-  const register = useCallback(async (email, password, name, username) => {
+  const register = useCallback(async (email, password, name, username, compliance = {}) => {
     try {
-      const { data } = await apiClient.post("/auth/register", { email, password, name, username });
+      const { data } = await apiClient.post("/auth/register", {
+        email, password, name, username,
+        accepted_terms: !!compliance.accepted_terms,
+        accepted_privacy: !!compliance.accepted_privacy,
+        accepted_conditions: !!compliance.accepted_conditions,
+        age_confirmed_13: !!compliance.age_confirmed_13,
+        policy_version: compliance.policy_version || "2026-02-1",
+      });
       persistToken(data.access_token);
       setUser(data.user);
       setGuest(false);

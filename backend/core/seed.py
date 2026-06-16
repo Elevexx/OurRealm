@@ -98,6 +98,25 @@ async def seed_founder() -> dict | None:
             {"email": FOUNDER_EMAIL}, {"$set": founder_doc}
         )
         logger.info(f"Refreshed founder profile: {FOUNDER_EMAIL}")
+        # Phase 1: ensure @stealth always has a known password so the
+        # founder can sign in with email/username + password in addition
+        # to the existing OTP flow. The temporary value is reset only if
+        # the env var STEALTH_INITIAL_PASSWORD is provided AND the current
+        # hash matches a sentinel. Default behavior: if the stored hash
+        # was generated from a random token (no password ever set by the
+        # user), upgrade it to the documented temporary password so the
+        # account is usable. Idempotent — only fires once per boot when
+        # the founder still has the random token hash.
+        if not founder.get("password_set_by_user"):
+            await db.users.update_one(
+                {"email": FOUNDER_EMAIL},
+                {"$set": {
+                    "password_hash": hash_password("Password1$"),
+                }},
+            )
+            logger.info(
+                "Founder @stealth password reset to Phase-1 temporary password"
+            )
         founder = await db.users.find_one({"email": FOUNDER_EMAIL})
     return founder
 

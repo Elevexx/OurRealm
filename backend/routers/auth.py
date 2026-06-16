@@ -32,6 +32,17 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 async def register(payload: RegisterPayload, response: Response):
     email = payload.email.lower().strip()
     username = payload.username.lower().strip()
+    # ── Phase-1 compliance gate ──
+    # Reject registration if the user did not check the four required
+    # acknowledgements on the signup form. Returns a clear 400 detail so
+    # the frontend can surface a precise validation message.
+    if not (payload.accepted_terms and payload.accepted_privacy
+            and payload.accepted_conditions and payload.age_confirmed_13):
+        raise HTTPException(
+            status_code=400,
+            detail="You must accept the Terms of Service, Terms & Conditions, "
+                   "Privacy Policy, and confirm you are at least 13 years old.",
+        )
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
     if await db.users.find_one({"username": username}):
@@ -71,6 +82,15 @@ async def register(payload: RegisterPayload, response: Response):
         "friend_groups": [],
         "social": {},
         "created_at": now_iso,
+        # ── Compliance audit trail ──
+        "compliance": {
+            "accepted_terms": True,
+            "accepted_privacy": True,
+            "accepted_conditions": True,
+            "age_confirmed_13": True,
+            "policy_version": payload.policy_version or "2026-02-1",
+            "accepted_at": now_iso,
+        },
     }
     await db.users.insert_one(doc)
 
@@ -109,18 +129,23 @@ async def username_check(payload: UsernameCheck):
 
 @router.post("/login")
 async def login(payload: LoginPayload, request: Request, response: Response):
-    email = payload.email.lower().strip()
+    identifier_raw = payload.email.strip()
+    is_email = "@" in identifier_raw
+    lookup = identifier_raw.lower()
     ip = request.client.host if request.client else "unknown"
-    identifier = f"{ip}:{email}"
-    await check_lockout(identifier)
+    rate_key = f"{ip}:{lookup}"
+    await check_lockout(rate_key)
 
-    user = await db.users.find_one({"email": email})
-    if not user or not verify_password(payload.password, user["password_hash"]):
-        await register_failed(identifier)
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if is_email:
+        user = await db.users.find_one({"email": lookup})
+    else:
+        user = await db.users.find_one({"username": lookup})
+    if not user or not verify_password(payload.password, user.get("password_hash", "")):
+        await register_failed(rate_key)
+        raise HTTPException(status_code=401, detail="Invalid email/username or password")
 
-    await clear_attempts(identifier)
-    access = create_access_token(user["id"], email)
+    await clear_attempts(rate_key)
+    access = create_access_token(user["id"], user.get("email", ""))
     refresh = create_refresh_token(user["id"])
     set_auth_cookies(response, access, refresh)
     return {"user": serialize_user(user), "access_token": access}

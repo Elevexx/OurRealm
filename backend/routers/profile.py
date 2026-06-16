@@ -87,7 +87,12 @@ async def change_password(payload: PasswordChangePayload, current: CurrentUser):
         raise HTTPException(status_code=401, detail="Current password is incorrect")
     await db.users.update_one(
         {"id": current["id"]},
-        {"$set": {"password_hash": hash_password(payload.new_password)}},
+        {"$set": {
+            "password_hash": hash_password(payload.new_password),
+            # Marks the account so the founder-seed migration won't overwrite
+            # the password back to the temporary value on the next boot.
+            "password_set_by_user": True,
+        }},
     )
     return {"ok": True}
 

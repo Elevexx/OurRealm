@@ -14,6 +14,12 @@ export default function SignUp() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [unCheck, setUnCheck] = useState({ status: "idle", suggestions: [] }); // idle | checking | ok | taken
+  // ── Phase-1 compliance acknowledgements ──
+  const [acceptedTos, setAcceptedTos] = useState(false);
+  const [acceptedConditions, setAcceptedConditions] = useState(false);
+  const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const allAccepted = acceptedTos && acceptedConditions && acceptedPrivacy && ageConfirmed;
   const { register, user, isGuest, logout } = useAuth();
   const navigate = useNavigate();
   const isLoggedIn = !!user && !isGuest;
@@ -44,8 +50,18 @@ export default function SignUp() {
       setError("That username is taken — try a suggestion below.");
       return;
     }
+    if (!allAccepted) {
+      setError("Please accept the Terms, Conditions, Privacy Policy, and confirm you are 13+.");
+      return;
+    }
     setLoading(true);
-    const res = await register(email, password, name, username);
+    const res = await register(email, password, name, username, {
+      accepted_terms: acceptedTos,
+      accepted_conditions: acceptedConditions,
+      accepted_privacy: acceptedPrivacy,
+      age_confirmed_13: ageConfirmed,
+      policy_version: "2026-02-1",
+    });
     setLoading(false);
     if (res.ok) navigate("/home");
     else setError(res.error);
@@ -148,7 +164,55 @@ export default function SignUp() {
                 {error}
               </div>
             )}
-            <button type="submit" disabled={loading || unCheck.status === "taken"} className="or-btn w-full" data-testid="signup-submit">
+            {/* ── Compliance acknowledgements (Phase 1) ── */}
+            <div className="space-y-2 pt-1" data-testid="signup-compliance">
+              <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "var(--text-muted)" }}>
+                <input
+                  type="checkbox" checked={acceptedTos}
+                  onChange={(e) => setAcceptedTos(e.target.checked)}
+                  data-testid="signup-accept-tos"
+                  style={{ marginTop: 2, accentColor: "var(--primary)" }}
+                />
+                <span>
+                  I have read and agree to the {" "}
+                  <Link to="/terms" target="_blank" className="underline" style={{ color: "var(--primary)" }} data-testid="signup-link-terms">Terms of Service</Link>.
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "var(--text-muted)" }}>
+                <input
+                  type="checkbox" checked={acceptedConditions}
+                  onChange={(e) => setAcceptedConditions(e.target.checked)}
+                  data-testid="signup-accept-conditions"
+                  style={{ marginTop: 2, accentColor: "var(--primary)" }}
+                />
+                <span>
+                  I have read and agree to OurRealm's {" "}
+                  <Link to="/terms-conditions" target="_blank" className="underline" style={{ color: "var(--primary)" }} data-testid="signup-link-conditions">Terms &amp; Conditions</Link>.
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "var(--text-muted)" }}>
+                <input
+                  type="checkbox" checked={acceptedPrivacy}
+                  onChange={(e) => setAcceptedPrivacy(e.target.checked)}
+                  data-testid="signup-accept-privacy"
+                  style={{ marginTop: 2, accentColor: "var(--primary)" }}
+                />
+                <span>
+                  I have read and agree to the {" "}
+                  <Link to="/privacy" target="_blank" className="underline" style={{ color: "var(--primary)" }} data-testid="signup-link-privacy">Privacy Policy</Link>.
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "var(--text-muted)" }}>
+                <input
+                  type="checkbox" checked={ageConfirmed}
+                  onChange={(e) => setAgeConfirmed(e.target.checked)}
+                  data-testid="signup-accept-age"
+                  style={{ marginTop: 2, accentColor: "var(--primary)" }}
+                />
+                <span>I confirm I am at least <b style={{ color: "var(--text-main)" }}>13 years old</b> (COPPA).</span>
+              </label>
+            </div>
+            <button type="submit" disabled={loading || unCheck.status === "taken" || !allAccepted} className="or-btn w-full" data-testid="signup-submit">
               {loading ? "Creating account…" : "Join OurRealm"}
             </button>
           </form>

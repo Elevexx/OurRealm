@@ -69,11 +69,11 @@ export default function Messages() {
     ],
   });
 
-  // Real friends-only DM overlay (?to=username)
+  // Real friends-only DM overlay (?to=username or ?user=username from notifications)
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const toUsername = searchParams.get("to");
+  const toUsername = searchParams.get("to") || searchParams.get("user");
   const [realThread, setRealThread] = useState(null); // {messages: [], target, allowed, reason}
   const [realDraft, setRealDraft] = useState("");
   const [realErr, setRealErr] = useState("");

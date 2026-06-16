@@ -1,0 +1,42 @@
+{
+  "summary": "Phase-1 verification (backend + frontend). 17/17 new backend pytest cases pass covering: stealth password login (username + email), OTP coexistence, compliance gate, post media URLs (image+video+link any combo), like idempotent toggle with liked_by persistence, comment 178-char limit, emoji round-trip, and notification payloads carrying post_id. Frontend verified at 1440x900 against the preview URL: stealth-password login works and lands on /feed; like heart turns red (#FF3F5A / rgb(255,63,90)) and persists; PostPopup opens via comment button with 178-char input cap enforced (counter=0 after typing 200 chars); compliance gate disables signup-submit until all 4 boxes are checked, signup with all 4 + valid fields successfully lands on /home; /terms, /privacy, /terms-conditions all return 200 with H1 + Back link; signup page exposes all three signup-link-* and signup-accept-* testids; username links navigate to /public/<handle>. ONE HIGH-PRIORITY sync bug found: liking a post in Feed does NOT propagate to PostPopup of the same post in the same SPA session — popup opens with count=0 and unliked icon even after Feed shows the new (correct) count from server.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "PostPopup (/app/frontend/src/components/PostPopup.jsx) — like state not synced from Feed via postStore",
+        "issue": "Repro: log in as testfriend1, on /feed take any post (e.g. post_id ef933f27-…). Click [data-testid=feed-like-<id>] — Feed count goes 1 → 2 (confirmed server-side). Without reloading, click [data-testid=feed-comment-<id>] to open the global PostPopup. Result: [data-testid=post-popup-like-count] shows 0 (not 2) and [data-testid=post-popup-like] svg fill='none' with rgb(121,160,194) — i.e. popup acts as if the post has zero likes and is unliked by the viewer. Expected per spec: 'like sync across surfaces because both surfaces subscribe to postStore'. Either (a) PostPopup is not reading from usePostState(post_id), (b) postStore key mismatch (feed seeds by post.id, popup looks up by a different identifier), or (c) PostPopup is overwriting the store with a stale fetch using {likes:0, liked_by:[]} defaults. Spec explicitly says this should work without a reload.",
+        "selector": "[data-testid=post-popup-like-count], [data-testid=post-popup-like]",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase1_features.py",
+    "/app/test_reports/pytest/phase1_results.xml"
+  ],
+  "action_items": [
+    "Fix Feed↔PostPopup like-state sync. Verify PostPopup uses the same usePostState(postId) hook as FeedCard so that optimistic like updates broadcast to all subscribers. Also confirm popup's initial state hydrates from the existing store entry instead of overwriting it with defaults (or, if it must fetch fresh, merge rather than replace).",
+    "Same probably applies to comment count and 'liked' boolean — verify that liking inside PostPopup updates the Feed card immediately too (not tested in this iteration because the inverse direction was already broken).",
+    "Minor: PostPopup likely also needs to refresh after a successful POST /api/posts/{id}/like response so liked_by from server is honored."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/src/components/PostPopup.jsx is the suspected source: confirm it imports and uses the same postStore as FeedCard. Mismatched store keys (post.id vs post_id) is a common cause of this exact symptom.",
+    "Backend /api/posts/{id}/like already returns {liked, likes} — frontend should be reconciling popup state with that response, not the stale store default.",
+    "Compliance audit trail looks good in /app/backend/routers/auth.py (writes user.compliance with policy_version + timestamp).",
+    "Posts router properly excludes Mongo _id via projection — no _id leakage observed.",
+    "Stealth login by username works because backend auth.py login route detects '@' to switch between email vs username lookup — correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase1_features.py (new — 17 Phase-1 pytest cases, all passing)"
+  ],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "~92% — 12/13 acceptance flows pass; 1 HIGH bug (Feed→Popup like sync)"},
+  "test_credentials": "Used stealth/Password1$, slopestyle2022@gmail.com/Password1$, testfriend1@example.com/pass1234. All work as documented in /app/memory/test_credentials.md.",
+  "seed_data_creation": "Backend pytest creates ~10 TEST_* users + a handful of throwaway posts/comments. UI test left one new ui-signup user (TEST_ui<hex>@ourrealm.app) registered on the preview env.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "PROVEN-PASSING this iteration (skip unless code changes): (1) Stealth password login by username 'stealth' AND by email 'slopestyle2022@gmail.com' both lead to /feed and /auth/me returns username=stealth. (2) OTP /api/auth/otp/request returns displayed_otp; /verify succeeds. (3) Compliance gate is enforced on backend (400 if any of 4 flags false) and on UI (signup-submit disabled until all 4 testids signup-accept-tos/-privacy/-conditions/-age are checked). (4) Signup with valid fields + all 4 boxes -> /home. (5) /terms /privacy /terms-conditions all 200 with H1 + Back link; signup page has signup-link-terms, signup-link-privacy, signup-link-conditions. (6) POST /api/posts accepts image_url+video_url+link_url additively; GET /api/posts/{id} returns them. (7) POST /api/posts/{id}/like is idempotent toggle, persists liked_by[] per-user, increments/decrements likes, returns {liked, likes}. (8) Comments: 178 ok, 179 -> 400 'Comments are limited to 178 characters'; emoji round-trips intact. (9) /api/notifications/list returns items with payload.post_id for kind in {like, comment}. (10) UsernameLink (data-testid=username-link-<handle>) navigates to /public/<handle>. (11) PostPopup opens via feed-comment-<id>, has post-popup-* testids, 178-cap enforced on post-popup-comment-input, post-popup-comment-remaining displays remaining chars. (12) Like heart color = rgb(255,63,90) = #FF3F5A. STILL FAILING: PostPopup like state does NOT sync with Feed in the same SPA session (popup shows count=0 even when feed shows 2 — see ui_bugs[0]). The /api/notifications base path is /api/notifications/list (NOT bare /api/notifications which returns 404).",
+  "rca_of_the_issue": "Feed→Popup like sync failure: When FeedCard calls toggleLike, it updates the in-memory postStore via usePostState(post.id). When the user then clicks the comment button on that same card, PostPopup is mounted globally in App.js and opens for that post id. Expected: PostPopup subscribes to the SAME postStore entry and immediately reads the just-updated {likes, liked} values. Observed: popup shows likes=0 and liked=false, indicating either (a) PostPopup uses a fresh GET /api/posts/{id} and the store is bypassed/overwritten with the response, or (b) PostPopup uses a different store key, or (c) PostPopup initializes its local copy from {likes:0, liked:false} and never reconciles with the existing store entry. The backend is fine — repeated runs confirm the like is persisted (baseline count grew from 1 to 2 across attempts). Fix is purely in /app/frontend/src/components/PostPopup.jsx + /app/frontend/src/lib/postStore.js (ensure single source of truth)."
+}

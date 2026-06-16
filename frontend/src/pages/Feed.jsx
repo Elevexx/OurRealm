@@ -7,6 +7,9 @@ import { makeMockPosts } from "@/data/mockData";
 import GuestPrompt from "@/components/GuestPrompt";
 import MediaTypeBar from "@/components/MediaTypeBar";
 import AudiencePicker from "@/components/AudiencePicker";
+import UsernameLink from "@/components/UsernameLink";
+import { openPostPopup } from "@/lib/postPopupController";
+import { usePostState, setPost } from "@/lib/postStore";
 
 const FILTER_KEY = "ourrealm.feedMedia";
 const INTEREST_KEY = "ourrealm.interests";
@@ -97,6 +100,9 @@ export default function Feed() {
         content: composeText.trim(),
         media_type: composeMediaType || "thought",
         media_url: composeMediaUrl || null,
+        image_url: composeMediaType === "image" ? (composeMediaUrl || null) : null,
+        video_url: composeMediaType === "video" ? (composeMediaUrl || null) : null,
+        link_url: composeMediaType === "link" ? (composeMediaUrl || null) : null,
         audience: composeAudience,
       });
       setComposeText("");
@@ -235,43 +241,12 @@ export default function Feed() {
           </div>
         )}
         {allPosts.map((p) => (
-          <article key={p.id} className="or-surface p-4 sm:p-5" data-testid={`feed-post-${p.id}`}>
-            <header className="flex items-center gap-3 mb-3">
-              <img
-                src={p.author_avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(p.author_name)}`}
-                alt={p.author_name}
-                className="rounded-full object-cover"
-                style={{ width: 40, height: 40, border: "1px solid var(--border-col)" }}
-              />
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold truncate" style={{ color: "var(--text-main)" }}>@{p.author_name}</div>
-                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  {timeAgo(p.created_at)} · {p.media_type}
-                </div>
-              </div>
-              <button onClick={() => onAction("follow")} className="or-chip" data-testid={`feed-follow-${p.id}`}>+ Follow</button>
-            </header>
-            {p.content && <p className="mb-3 text-[15px] leading-relaxed" style={{ color: "var(--text-main)" }}>{p.content}</p>}
-            {p.media_url && p.media_type !== "post" && p.media_type !== "thought" && (
-              <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
-                <img src={p.media_url} alt="" className="w-full h-72 sm:h-96 object-cover" />
-              </div>
-            )}
-            <footer className="flex gap-5 text-sm" style={{ color: "var(--text-muted)" }}>
-              <button data-testid={`feed-like-${p.id}`} onClick={() => onAction("like a post")} className="flex items-center gap-1.5 hover:text-pink-400">
-                <Heart size={16} /> {p.likes}
-              </button>
-              <button data-testid={`feed-comment-${p.id}`} onClick={() => onAction("comment")} className="flex items-center gap-1.5">
-                <MessageCircle size={16} /> {p.comments}
-              </button>
-              <button data-testid={`feed-share-${p.id}`} onClick={() => onAction("share")} className="flex items-center gap-1.5">
-                <Share2 size={16} /> Share
-              </button>
-              <button data-testid={`feed-save-${p.id}`} onClick={() => onAction("save")} className="flex items-center gap-1.5 ml-auto">
-                <Bookmark size={16} />
-              </button>
-            </footer>
-          </article>
+          <FeedCard
+            key={p.id}
+            p={p}
+            onGuestAction={(label) => onAction(label)}
+            isGuest={!user || isGuest}
+          />
         ))}
       </div>
 
@@ -285,3 +260,94 @@ export default function Feed() {
     </div>
   );
 }
+
+function isVideoFile(u) { return !!u && /\.(mp4|webm|ogg)$/i.test(u); }
+
+function FeedCard({ p, onGuestAction, isGuest }) {
+  const live = usePostState(p.id, { liked: !!p.viewer_liked, likes: p.likes || 0, comments: p.comments || 0 });
+  const openPopup = () => openPostPopup(p);
+  const onLike = async (e) => {
+    e?.stopPropagation();
+    if (isGuest) { onGuestAction("like a post"); return; }
+    const willLike = !live.liked;
+    setPost(p.id, { liked: willLike, likes: Math.max(0, live.likes + (willLike ? 1 : -1)) });
+    try {
+      const { data } = await apiClient.post(`/posts/${p.id}/like`);
+      setPost(p.id, { liked: !!data.liked, likes: data.likes ?? 0 });
+    } catch { setPost(p.id, { liked: !willLike, likes: live.likes }); }
+  };
+  const onComment = (e) => {
+    e?.stopPropagation();
+    if (isGuest) { onGuestAction("comment"); return; }
+    openPopup();
+  };
+  const mediaImg = p.image_url || (p.media_type === "image" ? p.media_url : null);
+  const mediaVid = p.video_url || (p.media_type === "video" ? p.media_url : null);
+  const mediaLink = p.link_url || (p.media_type === "link" ? p.media_url : null);
+  return (
+    <article className="or-surface p-4 sm:p-5" data-testid={`feed-post-${p.id}`}>
+      <header className="flex items-center gap-3 mb-3">
+        <img
+          src={p.author_avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(p.author_name)}`}
+          alt={p.author_name}
+          className="rounded-full object-cover"
+          style={{ width: 40, height: 40, border: "1px solid var(--border-col)" }}
+        />
+        <div className="flex-1 min-w-0">
+          {p.author_username ? (
+            <UsernameLink username={p.author_username} className="font-semibold truncate block" style={{ color: "var(--text-main)" }} />
+          ) : (
+            <div className="font-semibold truncate" style={{ color: "var(--text-main)" }}>@{p.author_name}</div>
+          )}
+          <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {timeAgo(p.created_at)} · {p.media_type}
+          </div>
+        </div>
+        <button onClick={(e) => { e.stopPropagation(); onGuestAction("follow"); }} className="or-chip" data-testid={`feed-follow-${p.id}`}>+ Follow</button>
+      </header>
+      {p.content && <p className="mb-3 text-[15px] leading-relaxed whitespace-pre-wrap" style={{ color: "var(--text-main)" }}>{p.content}</p>}
+      {mediaImg && (
+        <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
+          <img src={mediaImg} alt="" className="w-full h-72 sm:h-96 object-cover" data-testid={`feed-image-${p.id}`} />
+        </div>
+      )}
+      {mediaVid && (
+        <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
+          {isVideoFile(mediaVid) ? (
+            <video src={mediaVid} controls className="w-full" style={{ maxHeight: 480 }} data-testid={`feed-video-${p.id}`} />
+          ) : (
+            <a href={mediaVid} target="_blank" rel="noreferrer" className="or-chip text-sm m-3 inline-flex" data-testid={`feed-video-link-${p.id}`} onClick={(e) => e.stopPropagation()}>
+              <Video size={14} /> Watch video
+            </a>
+          )}
+        </div>
+      )}
+      {mediaLink && (
+        <a href={mediaLink} target="_blank" rel="noreferrer" className="or-chip text-sm mb-3 inline-flex break-all" data-testid={`feed-link-${p.id}`} onClick={(e) => e.stopPropagation()}>
+          <Link2 size={14} /> {mediaLink}
+        </a>
+      )}
+      <footer className="flex gap-5 text-sm" style={{ color: "var(--text-muted)" }}>
+        <button
+          data-testid={`feed-like-${p.id}`}
+          onClick={onLike}
+          aria-pressed={live.liked}
+          className="flex items-center gap-1.5"
+          style={{ color: live.liked ? "#FF3F5A" : "var(--text-muted)" }}
+        >
+          <Heart size={16} fill={live.liked ? "#FF3F5A" : "none"} /> <span data-testid={`feed-like-count-${p.id}`}>{live.likes}</span>
+        </button>
+        <button data-testid={`feed-comment-${p.id}`} onClick={onComment} className="flex items-center gap-1.5">
+          <MessageCircle size={16} /> <span data-testid={`feed-comment-count-${p.id}`}>{live.comments}</span>
+        </button>
+        <button data-testid={`feed-share-${p.id}`} onClick={(e) => { e.stopPropagation(); onGuestAction("share"); }} className="flex items-center gap-1.5">
+          <Share2 size={16} /> Share
+        </button>
+        <button data-testid={`feed-save-${p.id}`} onClick={(e) => { e.stopPropagation(); onGuestAction("save"); }} className="flex items-center gap-1.5 ml-auto">
+          <Bookmark size={16} />
+        </button>
+      </footer>
+    </article>
+  );
+}
+

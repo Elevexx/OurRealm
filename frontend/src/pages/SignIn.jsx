@@ -66,9 +66,9 @@ export default function SignIn() {
           {!otpMode && (
             <form onSubmit={onSubmit} className="space-y-3">
               <input
-                type="email" placeholder="Email" required
+                type="text" placeholder="Email or username" required
                 value={email} onChange={(e) => { setEmail(e.target.value); setOtpDisplayed(""); }}
-                className="or-input" data-testid="signin-email" autoComplete="email"
+                className="or-input" data-testid="signin-email" autoComplete="username"
               />
               {!isFounder && (
                 <input

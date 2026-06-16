@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Sparkles, MoreHorizontal, Heart, MessageCircle } from "lucide-react";
 import apiClient from "@/api/client";
+import { openPostPopup } from "@/lib/postPopupController";
+import { usePostState } from "@/lib/postStore";
 
 /**
  * MyFeedWidget — renders the owner's posts newest-first.
@@ -65,38 +67,48 @@ export default function MyFeedWidget({ username, isOwner = false, dense = false 
       ) : (
         <ul className="flex-1 overflow-y-auto space-y-2 no-scrollbar" data-testid="myfeed-list">
           {posts.map((p) => (
-            <li
-              key={p.id}
-              className="or-surface p-2"
-              style={{ background: "var(--surface-2)" }}
-              data-testid={`myfeed-post-${p.id}`}
-            >
-              <div className="flex items-start gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="text-[12px] leading-snug or-wrap" style={{ color: "var(--text-main)" }}>
-                    {p.content}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
-                    <span>{timeAgo(p.created_at)}</span>
-                    <span>·</span>
-                    <span className="uppercase">{p.media_type}</span>
-                    {p.audience?.visibility && p.audience.visibility !== "public" && (
-                      <span className="px-1 rounded" style={{ background: "var(--border-col)", color: "var(--text-muted)" }}>
-                        {p.audience.visibility}
-                      </span>
-                    )}
-                    <span className="ml-auto flex items-center gap-1">
-                      <Heart size={10} /> {p.likes || 0}
-                      <MessageCircle size={10} /> {p.comments || 0}
-                    </span>
-                  </div>
-                </div>
-                {!dense && <MoreHorizontal size={12} style={{ color: "var(--text-muted)" }} />}
-              </div>
-            </li>
+            <MyFeedRow key={p.id} p={p} dense={dense} />
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+function MyFeedRow({ p, dense }) {
+  const live = usePostState(p.id, { likes: p.likes || 0, comments: p.comments || 0, liked: !!p.viewer_liked });
+  return (
+    <li
+      className="or-surface p-2 cursor-pointer"
+      style={{ background: "var(--surface-2)" }}
+      data-testid={`myfeed-post-${p.id}`}
+      onClick={() => openPostPopup(p)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPostPopup(p); } }}
+    >
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="text-[12px] leading-snug or-wrap" style={{ color: "var(--text-main)" }}>
+            {p.content}
+          </div>
+          <div className="flex items-center gap-2 mt-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
+            <span>{p.created_at ? new Date(p.created_at).toLocaleDateString() : ""}</span>
+            <span>·</span>
+            <span className="uppercase">{p.media_type}</span>
+            {p.audience?.visibility && p.audience.visibility !== "public" && (
+              <span className="px-1 rounded" style={{ background: "var(--border-col)", color: "var(--text-muted)" }}>
+                {p.audience.visibility}
+              </span>
+            )}
+            <span className="ml-auto flex items-center gap-1">
+              <Heart size={10} fill={live.liked ? "#FF3F5A" : "none"} style={{ color: live.liked ? "#FF3F5A" : undefined }} /> {live.likes}
+              <MessageCircle size={10} /> {live.comments}
+            </span>
+          </div>
+        </div>
+        {!dense && <MoreHorizontal size={12} style={{ color: "var(--text-muted)" }} />}
+      </div>
+    </li>
   );
 }

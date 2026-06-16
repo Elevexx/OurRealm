@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Heart, MessageCircle, UserPlus, AtSign, Mail, Share2, Users, Bell, Calendar, Megaphone, Wallet as WalletIcon, Check, CheckCheck, Bookmark } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { NOTIFICATIONS, NOTIFICATION_CATEGORIES } from "@/data/mockData";
+import { openPostPopupById } from "@/lib/postPopupController";
 
 const ICONS = {
   like: Heart,
@@ -22,6 +24,7 @@ const ICONS = {
 
 export default function Notifications() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [cat, setCat] = useState("All");
   const [items, setItems] = useState(NOTIFICATIONS);
   const [serverItems, setServerItems] = useState([]);
@@ -53,9 +56,14 @@ export default function Notifications() {
                 n.kind === "share" ? "Shares" :
                 n.kind === "save" ? "Saves" : "All",
       title: n.actor_username ? `@${n.actor_username}` : "Someone",
+      actor: n.actor_username || "someone",
       body: n.payload?.preview || "",
       unread: !n.seen,
       created_at: n.created_at,
+      // Phase-1 deep-link payload — kept on each item so onSelect() can route.
+      post_id: n.payload?.post_id || null,
+      actor_username: n.actor_username || null,
+      is_server: true,
     }));
     const all = [...mapped, ...items];
     all.sort((a, b) => {
@@ -75,6 +83,36 @@ export default function Notifications() {
 
   const markAllRead = () => setItems((arr) => arr.map((n) => ({ ...n, unread: false })));
   const markOne = (id) => setItems((arr) => arr.map((n) => n.id === id ? { ...n, unread: false } : n));
+
+  /**
+   * Phase-1 deep linking — tapping a notification routes to the most
+   * useful surface for its kind. Mock items still get the same routing
+   * affordances where the data allows it (e.g. friend_request → /friends).
+   */
+  const onSelect = (n) => {
+    if (n.unread) markOne(n.id);
+    switch (n.type) {
+      case "message":
+        navigate(n.actor_username ? `/messages?user=${n.actor_username}` : "/messages");
+        return;
+      case "friend_request":
+        navigate("/friends");
+        return;
+      case "like":
+      case "comment":
+      case "share":
+      case "save":
+      case "mention":
+        if (n.post_id) { openPostPopupById(n.post_id); return; }
+        navigate("/feed");
+        return;
+      case "follow":
+        if (n.actor_username) navigate(`/public/${n.actor_username}`);
+        return;
+      default:
+        return;
+    }
+  };
 
   return (
     <div className="max-w-3xl mx-auto" data-testid="notifications-page">
@@ -131,7 +169,11 @@ export default function Notifications() {
           return (
             <div
               key={n.id}
-              className="or-surface p-4 flex items-center gap-3"
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelect(n)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(n); } }}
+              className="or-surface p-4 flex items-center gap-3 cursor-pointer"
               data-testid={`notification-${n.id}`}
               style={{ outline: n.unread ? "1px solid var(--primary)" : "1px solid transparent" }}
             >
@@ -159,7 +201,7 @@ export default function Notifications() {
               </div>
               <div className="text-xs whitespace-nowrap shrink-0" style={{ color: "var(--text-muted)" }}>{n.when}</div>
               {n.unread && (
-                <button onClick={() => markOne(n.id)} className="or-chip" style={{ padding: "0.2rem 0.5rem", fontSize: 11 }} data-testid={`notification-read-${n.id}`}>
+                <button onClick={(e) => { e.stopPropagation(); markOne(n.id); }} className="or-chip" style={{ padding: "0.2rem 0.5rem", fontSize: 11 }} data-testid={`notification-read-${n.id}`}>
                   <Check size={12} />
                 </button>
               )}

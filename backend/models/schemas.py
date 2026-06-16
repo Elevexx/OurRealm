@@ -10,10 +10,20 @@ class RegisterPayload(BaseModel):
     password: str = Field(min_length=6, max_length=128)
     name: str = Field(min_length=1, max_length=80)
     username: str = Field(min_length=3, max_length=24, pattern=r"^[a-zA-Z0-9_.]+$")
+    # ── Compliance acknowledgements (Phase 1) ──
+    # All four must be true for the account to be created.
+    accepted_terms: bool = False
+    accepted_privacy: bool = False
+    accepted_conditions: bool = False
+    age_confirmed_13: bool = False
+    # Optional client-supplied policy version for audit trail.
+    policy_version: Optional[str] = None
 
 
 class LoginPayload(BaseModel):
-    email: EmailStr
+    # Accepts an email OR a username. Validated leniently at the route so
+    # both founder and standard accounts can sign in with either identifier.
+    email: str
     password: str
 
 

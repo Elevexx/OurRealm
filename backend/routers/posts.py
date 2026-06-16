@@ -27,9 +27,14 @@ async def create_post(payload: PostCreate, current: CurrentUser):
         "content": payload.content,
         "media_type": payload.media_type,
         "media_url": payload.media_url,
+        # Optional rich-media URLs (any combination, all additive).
+        "image_url": payload.image_url,
+        "video_url": payload.video_url,
+        "link_url": payload.link_url,
         "tags": payload.tags,
         "audience": audience,
         "likes": 0,
+        "liked_by": [],
         "comments": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -113,17 +118,63 @@ async def list_posts(media_type: Optional[str] = None, limit: int = 50):
 
 @router.post("/{post_id}/like")
 async def like_post(post_id: str, current: CurrentUser):
-    post = await db.posts.find_one({"id": post_id}, {"_id": 0, "author_id": 1, "content": 1})
+    """Idempotent toggle. Returns the new {liked, likes} state.
+
+    Stores per-user likes in `posts.liked_by[]` so each user contributes
+    at most one like and re-tapping removes it.
+    """
+    post = await db.posts.find_one(
+        {"id": post_id},
+        {"_id": 0, "author_id": 1, "content": 1, "liked_by": 1, "likes": 1},
+    )
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
-    await db.posts.update_one({"id": post_id}, {"$inc": {"likes": 1}})
-    if post.get("author_id") and post["author_id"] != current["id"]:
+    uid = current["id"]
+    liked_by = post.get("liked_by") or []
+    if uid in liked_by:
+        # Unlike — pull + decrement, never below 0.
+        await db.posts.update_one(
+            {"id": post_id},
+            {"$pull": {"liked_by": uid}, "$inc": {"likes": -1}},
+        )
+        new_likes = max(0, (post.get("likes") or 0) - 1)
+        return {"liked": False, "likes": new_likes}
+    # Like — addToSet + increment, then notify the author once.
+    await db.posts.update_one(
+        {"id": post_id},
+        {"$addToSet": {"liked_by": uid}, "$inc": {"likes": 1}},
+    )
+    new_likes = (post.get("likes") or 0) + 1
+    if post.get("author_id") and post["author_id"] != uid:
         await emit_notification(
             post["author_id"], "like",
             actor_username=current.get("username"),
-            payload={"preview": (post.get("content") or "")[:60]},
+            payload={"preview": (post.get("content") or "")[:60], "post_id": post_id},
         )
-    return {"ok": True}
+    return {"liked": True, "likes": new_likes}
+
+
+@router.get("/{post_id}")
+async def get_post(post_id: str):
+    """Single post fetch — used by the post popup to refresh state."""
+    p = await db.posts.find_one({"id": post_id}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if isinstance(p.get("created_at"), str):
+        try:
+            p["created_at"] = datetime.fromisoformat(p["created_at"])
+        except Exception:
+            pass
+    return {"post": p}
+
+
+@router.get("/{post_id}/comments")
+async def list_comments(post_id: str, limit: int = 200):
+    cursor = db.comments.find({"post_id": post_id}, {"_id": 0}).sort("created_at", 1).limit(limit)
+    items = []
+    async for c in cursor:
+        items.append(c)
+    return {"comments": items}
 
 
 @router.post("/{post_id}/comment")
@@ -131,17 +182,32 @@ async def comment_post(post_id: str, current: CurrentUser, body: dict):
     text = (body or {}).get("text", "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Comment text required")
+    if len(text) > 178:
+        raise HTTPException(status_code=400, detail="Comments are limited to 178 characters")
     post = await db.posts.find_one({"id": post_id}, {"_id": 0, "author_id": 1, "content": 1})
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
+    comment = {
+        "id": str(uuid.uuid4()),
+        "post_id": post_id,
+        "author_id": current["id"],
+        "author_username": current.get("username"),
+        "author_name": current.get("name", ""),
+        "author_avatar": current.get("avatar_url"),
+        "text": text,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.comments.insert_one(comment)
+    comment.pop("_id", None)
     await db.posts.update_one({"id": post_id}, {"$inc": {"comments": 1}})
+    new_count_doc = await db.posts.find_one({"id": post_id}, {"_id": 0, "comments": 1})
     if post.get("author_id") and post["author_id"] != current["id"]:
         await emit_notification(
             post["author_id"], "comment",
             actor_username=current.get("username"),
             payload={"preview": text[:80], "post_id": post_id},
         )
-    return {"ok": True}
+    return {"comment": comment, "comments": (new_count_doc or {}).get("comments", 0)}
 
 
 @router.post("/{post_id}/share")
