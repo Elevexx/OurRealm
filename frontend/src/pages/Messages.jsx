@@ -77,8 +77,8 @@ function NotConfigured() {
         </h2>
       </div>
       <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-        Set <code>REACT_APP_SUPABASE_URL</code> and <code>REACT_APP_SUPABASE_ANON_KEY</code> in
-        <code> /app/frontend/.env</code>, then run the SQL in <code>/app/supabase/schema.sql</code>
+        Set <code>REACT_APP_SUPABASE_URL</code> and <code>REACT_APP_SUPABASE_ANON_KEY</code> in{" "}
+        <code>/app/frontend/.env</code>, then run the SQL in <code>/app/supabase/schema.sql</code>{" "}
         in your Supabase project to bring Chats, Groups, and Realms online.
       </p>
     </div>
