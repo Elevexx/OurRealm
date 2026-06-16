@@ -1,5 +1,14 @@
 # OurRealm — Product Requirements Document
 
+## Phase 2 Completion Gate — Radius chips on Discover & Friends (Feb 2026, UI-only surfacing)
+
+Reused the existing `core/geo.radius_filter` helper (NO new filtering logic) by exposing optional `?radius=&viewer=` query params on the existing `/users/search` and `/users/featured` endpoints. New `<RadiusChips>` component (`5/10/25/50 mi`, exactly one active, re-click toggles off) rendered on:
+
+- **Discover** — `[data-testid=discover-radius-bar]` + chips `discover-radius-{5,10,25,50}` + `discover-zip-required` modal. Persists via `localStorage.ourrealm.discoverRadius`.
+- **Friends → Find People** — `[data-testid=friends-radius-bar]` + chips `friends-radius-{5,10,25,50}` + `friends-zip-required` modal. Persists via `localStorage.ourrealm.friendsRadius`.
+
+Selection survives in-app navigation; non-Any picks without a stored ZIP trigger the shared `<ZipRequiredModal>` with the exact spec text and a Settings CTA.
+
 ## Phase 2.5 — Profiles, Local Discovery & Top 8 (Feb 2026)
 
 **Top 8 management inside Edit Profile**

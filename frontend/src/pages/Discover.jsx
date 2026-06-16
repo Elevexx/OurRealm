@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import apiClient from "@/api/client";
 import MiniWidget from "@/components/MiniWidget";
+import RadiusChips from "@/components/RadiusChips";
+import ZipRequiredModal from "@/components/ZipRequiredModal";
+import { useAuth } from "@/contexts/AuthContext";
 import { DISCOVER_ROWS, makeMockPosts, TRENDING_CREATORS, REALMS } from "@/data/mockData";
 
 const FILTERS = [
@@ -106,19 +109,34 @@ function RealmCard({ r, onClick }) {
 export default function Discover() {
   const [filter, setFilter] = useState("trending");
   const navigate = useNavigate();
+  const { user } = useAuth();
   const pool = useMemo(() => makeMockPosts(60), []);
   const pickByType = (type, n = 10) => pool.filter((p) => p.media_type === type).slice(0, n);
 
   // Featured users with their actual saved widgets (live from backend)
   const [featured, setFeatured] = useState([]);
+  // Phase-2-Gate — radius chip selection for Discover. Persisted across
+  // navigation; defaults to "" (no radius filter applied).
+  const [radius, setRadius] = useState(() => {
+    try { return localStorage.getItem("ourrealm.discoverRadius") || ""; } catch { return ""; }
+  });
+  const [zipRequired, setZipRequired] = useState(false);
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await apiClient.get("/users/featured?limit=12");
+        const params = { limit: 12 };
+        if (radius) {
+          if (!user?.zip_code) { setRadius(""); setZipRequired(true); }
+          else {
+            params.radius = radius;
+            if (user?.username) params.viewer = user.username;
+          }
+        }
+        const { data } = await apiClient.get("/users/featured", { params });
         setFeatured(data.users || []);
       } catch { /* */ }
     })();
-  }, []);
+  }, [radius, user?.zip_code, user?.username]);
 
   // Multi-filter chips — currently informational; expand filtering later
   return (
@@ -132,7 +150,7 @@ export default function Discover() {
       </div>
 
       {/* Top filter pills */}
-      <div className="flex items-center gap-2 mb-7 overflow-x-auto no-scrollbar" data-testid="discover-filter-bar">
+      <div className="flex items-center gap-2 mb-3 overflow-x-auto no-scrollbar" data-testid="discover-filter-bar">
         {FILTERS.map(({ id, label, Icon, color }) => (
           <button
             key={id}
@@ -146,6 +164,19 @@ export default function Discover() {
           </button>
         ))}
       </div>
+
+      {/* Phase-2-Gate — radius chips for Discover. Applies to featured-user
+          search via the existing /users/featured endpoint. */}
+      <RadiusChips
+        value={radius}
+        onChange={(v) => {
+          if (v && !user?.zip_code) { setZipRequired(true); return; }
+          setRadius(v);
+        }}
+        storageKey="ourrealm.discoverRadius"
+        testidPrefix="discover-radius"
+        className="mb-6"
+      />
 
       {/* Profile Widget Swiper — live, functional widget previews per user */}
       {featured.length > 0 && (
@@ -277,6 +308,7 @@ export default function Discover() {
           {pool.slice(idx * 3, idx * 3 + 10).map((p) => <ContentCard key={p.id} p={p} />)}
         </HRow>
       ))}
+      <ZipRequiredModal open={zipRequired} onClose={() => setZipRequired(false)} testid="discover-zip-required" />
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { UserPlus, MessageCircle, UserCheck, Search, Check, X, Sparkles, Users a
 import { useNavigate } from "react-router-dom";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import RadiusChips from "@/components/RadiusChips";
+import ZipRequiredModal from "@/components/ZipRequiredModal";
 
 const TABS = [
   { id: "friends",   label: "Friends" },
@@ -30,6 +32,12 @@ export default function Friends() {
   const [outgoing, setOutgoing] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  // Phase-2-Gate — radius chip selection for the Find People search.
+  // Persisted via localStorage so it survives in-app navigation.
+  const [radius, setRadius] = useState(() => {
+    try { return localStorage.getItem("ourrealm.friendsRadius") || ""; } catch { return ""; }
+  });
+  const [zipRequired, setZipRequired] = useState(false);
   const [actionId, setActionId] = useState("");
   const [actionErr, setActionErr] = useState("");
   const navigate = useNavigate();
@@ -51,15 +59,29 @@ export default function Friends() {
   useEffect(() => {
     if (tab !== "search") return;
     if (!q.trim()) { setSearchResults([]); return; }
+    // Phase-2-Gate — apply radius using existing backend filter when the
+    // user has selected one. If they pick a radius but have no ZIP set,
+    // we surface the shared ZipRequired modal and revert to "Any".
+    let effectiveRadius = radius;
+    if (effectiveRadius && !user?.zip_code) {
+      effectiveRadius = "";
+      setRadius("");
+      setZipRequired(true);
+    }
     setSearching(true);
     const t = setTimeout(async () => {
       try {
-        const { data } = await apiClient.get(`/users/search?q=${encodeURIComponent(q.trim())}`);
+        const params = { q: q.trim() };
+        if (effectiveRadius) {
+          params.radius = effectiveRadius;
+          if (user?.username) params.viewer = user.username;
+        }
+        const { data } = await apiClient.get("/users/search", { params });
         setSearchResults((data.users || []).filter((u) => u.username !== user?.username));
       } catch { setSearchResults([]); } finally { setSearching(false); }
     }, 300);
     return () => clearTimeout(t);
-  }, [q, tab, user?.username]);
+  }, [q, tab, radius, user?.username, user?.zip_code]);
 
   const friendUsernames = new Set(friends.map((f) => f.username));
   const outgoingUsernames = new Set(outgoing.map((f) => f.username));
@@ -270,6 +292,16 @@ export default function Friends() {
       {/* Search for people */}
       {tab === "search" && (
         <div className="space-y-3" data-testid="search-list">
+          <RadiusChips
+            value={radius}
+            onChange={(v) => {
+              if (v && !user?.zip_code) { setZipRequired(true); return; }
+              setRadius(v);
+            }}
+            storageKey="ourrealm.friendsRadius"
+            testidPrefix="friends-radius"
+            className="or-surface px-3 py-2"
+          />
           {!q.trim() && (
             <div className="or-surface p-6 text-center" style={{ color: "var(--text-muted)" }}>
               Start typing a name or @username to find people on OurRealm.
@@ -322,6 +354,7 @@ export default function Friends() {
           })}
         </div>
       )}
+      <ZipRequiredModal open={zipRequired} onClose={() => setZipRequired(false)} testid="friends-zip-required" />
     </div>
   );
 }

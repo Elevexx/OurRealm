@@ -3,10 +3,13 @@
 All friend / request arrays on user documents store **user_ids**, not
 usernames. This protects the social graph from username renames.
 """
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 
 from core.db import db
 from core.deps import CurrentUser
+from core.geo import parse_radius, radius_filter
 from models.schemas import FriendActionPayload
 from routers.notifications import emit_notification
 
@@ -156,9 +159,46 @@ async def friend_decline(payload: FriendActionPayload, current: CurrentUser):
     return {"status": "none"}
 
 
+async def _apply_user_radius(items: list, radius: Optional[str], viewer: Optional[str]) -> list:
+    """Filter a list of public user payloads in-place by the existing
+    `radius_filter` helper. PRIVATE coords are looked up server-side and
+    are NEVER added to the response — this is the Phase-2 helper being
+    surfaced, not a new pipeline."""
+    miles = parse_radius(radius)
+    if miles is None:
+        return items
+    if not viewer:
+        return []  # cannot measure without a viewer ZIP
+    vdoc = await db.users.find_one(
+        {"username": (viewer or "").lower()},
+        {"_id": 0, "zip_lat": 1, "zip_lng": 1},
+    )
+    if not vdoc or vdoc.get("zip_lat") is None or vdoc.get("zip_lng") is None:
+        return []
+    # Hydrate coords for each candidate by id, in a single round-trip.
+    ids = [u["id"] for u in items if u.get("id")]
+    coords = {}
+    if ids:
+        async for c in db.users.find(
+            {"id": {"$in": ids}}, {"_id": 0, "id": 1, "zip_lat": 1, "zip_lng": 1},
+        ):
+            coords[c["id"]] = (c.get("zip_lat"), c.get("zip_lng"))
+    # Pack a temporary lat/lng pair on each item just for the filter call,
+    # then strip before returning.
+    for u in items:
+        c = coords.get(u.get("id")) or (None, None)
+        u["_lat"] = c[0]
+        u["_lng"] = c[1]
+    keep = radius_filter(items, (float(vdoc["zip_lat"]), float(vdoc["zip_lng"])), miles, lat_key="_lat", lng_key="_lng")
+    for u in keep:
+        u.pop("_lat", None)
+        u.pop("_lng", None)
+    return keep
+
+
 # ----- discovery -----
 @router.get("/users/search")
-async def users_search(q: str = ""):
+async def users_search(q: str = "", radius: Optional[str] = None, viewer: Optional[str] = None):
     if not q or len(q) < 1:
         return {"users": []}
     qre = {"$regex": q, "$options": "i"}
@@ -171,11 +211,12 @@ async def users_search(q: str = ""):
     async for u in cursor:
         if u.get("username"):
             users.append(u)
+    users = await _apply_user_radius(users, radius, viewer)
     return {"users": users}
 
 
 @router.get("/users/featured")
-async def users_featured(limit: int = 12):
+async def users_featured(limit: int = 12, radius: Optional[str] = None, viewer: Optional[str] = None):
     cursor = db.users.find(
         {"username": {"$ne": None}},
         {"_id": 0, "password_hash": 0},
@@ -192,4 +233,5 @@ async def users_featured(limit: int = 12):
             "is_verified": bool(u.get("is_verified")),
             "widgets": u.get("widgets") or [],
         })
+    users = await _apply_user_radius(users, radius, viewer)
     return {"users": users}
