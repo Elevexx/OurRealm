@@ -69,6 +69,12 @@ export default function Feed() {
       return true;
     });
     if (media.length > 0) filtered = filtered.filter((p) => media.includes(p.media_type));
+    // Images category only: hide the two seeded "@Realm Admin" placeholder posts.
+    // Scoped strictly to the Images filter — does not affect other categories
+    // or the global post data.
+    if (media.length === 1 && media[0] === "image") {
+      filtered = filtered.filter((p) => (p.author_name || "").toLowerCase() !== "realm admin");
+    }
     // Apply interest filter when at least one interest is selected so the
     // For You feed actually reflects the user's saved preferences.
     if (interests.size > 0) {

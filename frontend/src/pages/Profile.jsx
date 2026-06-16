@@ -412,14 +412,14 @@ export default function Profile() {
       <div className="or-surface overflow-hidden mb-5 relative">
         {editing && (
           <button
-            className="starbar-icon absolute top-3 right-3 z-10"
-            style={{ width: 38, height: 38 }}
+            className="or-btn or-btn-ghost absolute top-3 right-3 z-10"
+            style={{ padding: "0.4rem 0.75rem", fontSize: "0.78rem" }}
             onClick={() => navigate("/settings/account")}
             data-testid="profile-settings-gear"
             title="Account settings"
             aria-label="Account settings"
           >
-            <Icons.Settings size={16} />
+            <Icons.Settings size={14} /> Settings
           </button>
         )}
         <div className="h-32 sm:h-48" style={{
