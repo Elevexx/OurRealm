@@ -10,6 +10,7 @@ import AudiencePicker from "@/components/AudiencePicker";
 import UsernameLink from "@/components/UsernameLink";
 import { openPostPopup } from "@/lib/postPopupController";
 import { usePostState, setPost } from "@/lib/postStore";
+import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPicker";
 
 const FILTER_KEY = "ourrealm.feedMedia";
 const INTEREST_KEY = "ourrealm.interests";
@@ -47,6 +48,7 @@ export default function Feed() {
   const [composeMediaUrl, setComposeMediaUrl] = useState("");
   const [composeAudience, setComposeAudience] = useState({ visibility: "public", user_ids: [] });
   const [audiencePickerOpen, setAudiencePickerOpen] = useState(false);
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
   const [guestPrompt, setGuestPrompt] = useState(null);
   const [posting, setPosting] = useState(false);
 
@@ -142,7 +144,7 @@ export default function Feed() {
           <div className="rounded-full overflow-hidden shrink-0" style={{ width: 40, height: 40, border: "1px solid var(--border-col)" }}>
             <img
               alt="me"
-              src={user?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || "Guest")}`}
+              src={absoluteImageUrl(user?.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || "Guest")}`}
               className="w-full h-full object-cover"
             />
           </div>
@@ -174,6 +176,8 @@ export default function Feed() {
                   onClick={() => {
                     setComposeMediaType(id);
                     if (id === "thought") setComposeMediaUrl("");
+                    // Tapping "Image" opens the upload picker (device or URL).
+                    if (id === "image") setImagePickerOpen(true);
                   }}
                 >
                   <Icon size={12} /> {label}
@@ -257,6 +261,13 @@ export default function Feed() {
         onChange={setComposeAudience}
         onClose={() => setAudiencePickerOpen(false)}
       />
+      <ImageUploadPicker
+        open={imagePickerOpen}
+        onClose={() => setImagePickerOpen(false)}
+        onPicked={({ url }) => { setComposeMediaUrl(url); setComposeMediaType("image"); }}
+        title="Add an image to your post"
+        testid="feed-image-picker"
+      />
     </div>
   );
 }
@@ -290,8 +301,10 @@ function FeedCard({ p, onGuestAction, isGuest }) {
     <article className="or-surface p-4 sm:p-5" data-testid={`feed-post-${p.id}`}>
       <header className="flex items-center gap-3 mb-3">
         <img
-          src={p.author_avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(p.author_name)}`}
+          src={absoluteImageUrl(p.author_avatar) || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(p.author_name)}`}
           alt={p.author_name}
+          loading="lazy"
+          decoding="async"
           className="rounded-full object-cover"
           style={{ width: 40, height: 40, border: "1px solid var(--border-col)" }}
         />
@@ -310,7 +323,7 @@ function FeedCard({ p, onGuestAction, isGuest }) {
       {p.content && <p className="mb-3 text-[15px] leading-relaxed whitespace-pre-wrap" style={{ color: "var(--text-main)" }}>{p.content}</p>}
       {mediaImg && (
         <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
-          <img src={mediaImg} alt="" className="w-full h-72 sm:h-96 object-cover" data-testid={`feed-image-${p.id}`} />
+          <img src={absoluteImageUrl(mediaImg)} alt="" loading="lazy" decoding="async" className="w-full h-72 sm:h-96 object-cover" data-testid={`feed-image-${p.id}`} />
         </div>
       )}
       {mediaVid && (

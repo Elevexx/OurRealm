@@ -143,6 +143,9 @@ def serialize_user(doc: dict) -> dict:
         "name": doc.get("name", ""),
         "role": doc.get("role", "user"),
         "avatar_url": doc.get("avatar_url"),
+        # Spec alias — same value as avatar_url, exposed under the spec's
+        # name so the frontend may use either field interchangeably.
+        "profileImageUrl": doc.get("avatar_url"),
         "bio": doc.get("bio", ""),
         "interests": doc.get("interests", []),
         "mode": doc.get("mode", "neon"),

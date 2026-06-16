@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Search, Sliders, Pin, MessagesSquare, Users, Radio, Users2, Phone, Settings as SettingsIcon, Plus, Send, Mic, Paperclip, X, ChevronRight, Crown, UserPlus, AlertTriangle } from "lucide-react";
+import { Search, Sliders, Pin, MessagesSquare, Users, Radio, Users2, Phone, Settings as SettingsIcon, Plus, Send, Mic, Paperclip, X, ChevronRight, Crown, UserPlus, AlertTriangle, Image as ImageIcon } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { CHARACTERS, PINNED_CONVERSATIONS, GROUP_CHATS, DIRECT_MESSAGES, CURRENT_PERSONA } from "@/data/mockData";
+import ImageUploadPicker from "@/components/ImageUploadPicker";
 
 const SIDEBAR = [
   { id: "chats",    label: "Chats",    Icon: MessagesSquare, badge: null },
@@ -77,6 +78,7 @@ export default function Messages() {
   const [realThread, setRealThread] = useState(null); // {messages: [], target, allowed, reason}
   const [realDraft, setRealDraft] = useState("");
   const [realErr, setRealErr] = useState("");
+  const [realImagePicker, setRealImagePicker] = useState(false);
   const [realBusy, setRealBusy] = useState(false);
   // Edit + long-press delete state
   const [msgMenu, setMsgMenu] = useState(null);      // {id, text, x, y}
@@ -119,6 +121,20 @@ export default function Messages() {
       loadThreads();
     } catch (e) {
       setRealErr(e.response?.data?.detail || "Failed to send");
+    } finally { setRealBusy(false); }
+  };
+
+  const sendRealImage = async ({ url }) => {
+    if (!realThread?.allowed || !url) return;
+    setRealBusy(true);
+    try {
+      // Use the hosted image URL as the message body — the link-preview
+      // renderer in the bubble will surface it inline as an image.
+      const { data } = await apiClient.post("/messages", { to_username: realThread.target, text: url });
+      setRealThread((rt) => ({ ...rt, messages: [...(rt.messages || []), data.message] }));
+      loadThreads();
+    } catch (e) {
+      setRealErr(e.response?.data?.detail || "Failed to send image");
     } finally { setRealBusy(false); }
   };
 
@@ -750,6 +766,17 @@ export default function Messages() {
                   <div className="text-xs px-4 py-1.5" style={{ color: "#FF8080" }}>{realErr}</div>
                 )}
                 <div className="p-3 flex items-center gap-2" style={{ borderTop: "1px solid var(--border-col)" }}>
+                  <button
+                    type="button"
+                    className="starbar-icon"
+                    style={{ width: 36, height: 36 }}
+                    onClick={() => setRealImagePicker(true)}
+                    data-testid="real-chat-attach-image"
+                    aria-label="Send image"
+                    title="Send image"
+                  >
+                    <ImageIcon size={16} />
+                  </button>
                   <input
                     className="or-input flex-1"
                     value={realDraft}
@@ -767,6 +794,14 @@ export default function Messages() {
           </div>
         </div>
       )}
+
+      <ImageUploadPicker
+        open={realImagePicker}
+        onClose={() => setRealImagePicker(false)}
+        onPicked={sendRealImage}
+        title="Send an image"
+        testid="real-chat-image-picker"
+      />
     </div>
   );
 }

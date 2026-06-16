@@ -14,6 +14,7 @@ import { registerPopupSetter } from "@/lib/postPopupController";
 import { setPost, getPost, usePostState } from "@/lib/postStore";
 import { useAuth } from "@/contexts/AuthContext";
 import UsernameLink from "@/components/UsernameLink";
+import { absoluteImageUrl } from "@/components/ImageUploadPicker";
 
 function fmtTime(iso) {
   if (!iso) return "";
@@ -168,7 +169,7 @@ export default function PostPopup() {
       >
         <div className="flex items-center gap-3 p-3 sm:p-4" style={{ borderBottom: "1px solid var(--border-col)" }}>
           {post?.author_avatar && (
-            <img src={post.author_avatar} alt="" className="rounded-full object-cover" style={{ width: 36, height: 36 }} />
+            <img src={absoluteImageUrl(post.author_avatar)} alt="" className="rounded-full object-cover" style={{ width: 36, height: 36 }} />
           )}
           <div className="flex-1 min-w-0">
             {post?.author_username ? (
@@ -203,7 +204,7 @@ export default function PostPopup() {
                 </p>
               )}
               {mediaImg && (
-                <img src={mediaImg} alt="" className="rounded w-full object-cover" style={{ maxHeight: 480, border: "1px solid var(--border-col)" }} data-testid="post-popup-image" />
+                <img src={absoluteImageUrl(mediaImg)} alt="" loading="lazy" decoding="async" className="rounded w-full object-cover" style={{ maxHeight: 480, border: "1px solid var(--border-col)" }} data-testid="post-popup-image" />
               )}
               {mediaVid && (
                 isVideoUrl(mediaVid) ? (

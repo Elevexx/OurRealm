@@ -1,0 +1,41 @@
+{
+  "summary": "Phase-2 image hosting verified end-to-end. Backend: 9/9 new pytest cases pass covering POST /api/images/upload (success + mime sniff rejection + 413 oversize), POST /api/images/from-url (picsum success + non-image rejection), GET /api/images/{name} cache-control on origin, filename security (path traversal + bad extension), profile alias (avatar_url + profileImageUrl both exposed via /api/auth/me wrapped under user{}), and per-user 12/5min rate limit triggers 400 on 13th. Frontend: AccountSettings avatar-edit modal opens, URL tab + Fetch & Rehost flow updates avatar (header img src points to /api/images/...). Feed composer image picker opens, has both device+url tabs, URL submit rehosts and feed-composer-preview-image renders /api/images/ src, posted card includes loading='lazy' and decoding='async' on feed-image-* . Messenger real-chat-attach-image picker URL flow sends a chat bubble containing the hosted image. Phase-1 regression all green (17/17).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/images/{name}", "issue": "Backend sends 'Cache-Control: public, max-age=31536000, immutable' (verified at origin :8001) but the preview Kubernetes ingress / CDN edge rewrites this to 'no-store, no-cache, must-revalidate' (Cloudflare CF-Cache-Status: DYNAMIC). Application code is correct; this is an infra layer concern. CDN-friendly caching will likely work in production but cannot be verified through the preview URL."},
+      {"endpoint": "GET /api/images/../etc/passwd", "issue": "Returns 404 (not 400 as in spec). Starlette normalises '..' before the route matcher so _safe_filename validator never runs. Security is preserved (no traversal possible), but the error code differs from spec. Optionally add an explicit middleware/route to return 400 'Invalid image name' for normalized paths."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_image_hosting.py",
+    "/app/test_reports/pytest/image_hosting_results.xml",
+    "/app/backend/tests/test_phase1_features.py"
+  ],
+  "action_items": [
+    "(Optional) Add a catch-all middleware or explicit handler that maps normalized '..' paths under /api/images/* to 400 'Invalid image name' to match spec verbatim. Functionally not exploitable today.",
+    "(Optional) Investigate platform ingress override of Cache-Control on /api/images/* responses if CDN long-cache is desired in this preview env. May require an additional response header like 'Surrogate-Control' or ingress annotation."
+  ],
+  "critical_code_review_comments": [
+    "image_store.save_bytes correctly enforces 10MB cap, mime allowlist, EXIF strip via ImageOps.exif_transpose, and resizes originals down to 2048 prior to write — solid.",
+    "images.router._safe_filename allowlist (a-z0-9_.) is strict and prevents '/' and '..'; ext whitelist is enforced before FileResponse — good.",
+    "/api/auth/me returns the user inside a {user:{...}} envelope; UserOut already adds profileImageUrl alias next to avatar_url so clients can use either name.",
+    "Rate limit uses count_documents with $gte on ISO string; works because created_at is ISO-8601 UTC (lexicographic order == chronological).",
+    "Frontend ImageUploadPicker emits onPicked({url}) with the RELATIVE /api/images/... path; consumers (AccountSettings, Feed, Messages) correctly prepend REACT_APP_BACKEND_URL via absoluteImageUrl()."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_image_hosting.py (new — 9 image hosting pytest cases, all passing)"
+  ],
+  "success_rate": {"backend": "100% (9/9 new + 17/17 Phase-1 regression)", "frontend": "100% — avatar, feed composer, messenger, lazy-load all verified"},
+  "test_credentials": "testfriend1@example.com / pass1234 (tfone); stealth/Password1$; admin per /app/memory/test_credentials.md",
+  "seed_data_creation": "Backend tests created ~15 image rows on disk under /app/backend/uploads/images plus 1 fresh TEST_imgXXXX user for rate-limit. UI run posted one feed image post as @tfone, attached one image DM to @stealth, and changed @tfone's avatar (now points to a hosted /api/images/ URL).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "PHASE-2 PROVEN PASSING: (1) POST /api/images/upload returns {image:{id,user_id,original_url,thumbnail_url,width,height,bytes,mime,sha256,created_at}, url, thumbnail_url}; original_url+thumbnail_url are RELATIVE paths starting with /api/images/. (2) POST /api/images/from-url with picsum URLs works; example.com (HTML) -> 400 with detail about unsupported format. (3) Mime sniffer rejects text-declared-as-png with 400. (4) >10MB upload -> 413. (5) 13th upload within 5 minutes -> 400 'Too many uploads…'. (6) GET /api/images/<id>.<ext> at the origin (port 8001) returns Cache-Control: public, max-age=31536000, immutable. Through the public preview URL the CDN edge rewrites this to no-store — IGNORE this when testing via preview URL. (7) /api/auth/me returns user.avatar_url AND user.profileImageUrl after PATCH /api/profile/me {avatar_url}. (8) Frontend testids: account-avatar-edit / account-avatar-picker / *-tab-url / *-url-input / *-url-submit; feed-composer-type-image -> feed-image-picker -> *-tab-url -> *-url-input -> *-url-submit -> feed-composer-preview-image; real-chat-attach-image -> real-chat-image-picker (same testid pattern). (9) Posted feed images have loading='lazy' and decoding='async'. SIGN-IN page is at /signin not /login (testids: signin-email, signin-password). EVERYTHING ELSE FROM iteration_5 (Phase-1 features) is also confirmed green via re-run of test_phase1_features.py: 17/17.",
+  "rca_of_the_issue": "Cache-Control discrepancy in preview env: backend FileResponse sets the immutable header correctly; observed at origin :8001 with curl. The preview's Kubernetes ingress (Cloudflare in front, CF-Cache-Status: DYNAMIC) is overriding it to no-store at the edge. Code change is NOT required; this should be verified in the production deployment where the actual CDN policy applies. To force the immutable header through the edge you would need an ingress annotation or set Surrogate-Control / equivalent header alongside Cache-Control."
+}

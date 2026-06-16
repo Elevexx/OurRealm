@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, Globe2, Users as UsersIcon, Wallet, DollarSign, BadgeCheck } from "lucide-react";
+import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, Globe2, Users as UsersIcon, Wallet, DollarSign, BadgeCheck, Camera } from "lucide-react";
 import apiClient from "@/api/client";
 import VipBadge from "@/components/VipBadge";
+import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPicker";
 
 /**
  * Account Settings — Phase C. Implements:
@@ -23,6 +24,16 @@ export default function AccountSettings() {
   const { user, refreshMe } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState("account");
+  const [avatarPicker, setAvatarPicker] = useState(false);
+
+  const onAvatarPicked = async ({ url }) => {
+    try {
+      await apiClient.patch("/profile/me", { avatar_url: url });
+      await refreshMe?.();
+    } catch (e) {
+      // No-op — modal already closed; surface via toast would be nice later.
+    }
+  };
 
   // Account
   const [newUsername, setNewUsername] = useState("");
@@ -99,10 +110,26 @@ export default function AccountSettings() {
       </div>
 
       <div className="or-surface p-5 mb-4 flex items-center gap-3" data-testid="account-settings-summary">
-        <img
-          src={user.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.name || user.username || "U")}`}
-          alt="" className="rounded-full object-cover" style={{ width: 56, height: 56, border: "2px solid var(--border-col)" }}
-        />
+        <button
+          type="button"
+          onClick={() => setAvatarPicker(true)}
+          className="relative shrink-0"
+          style={{ background: "transparent", padding: 0 }}
+          data-testid="account-avatar-edit"
+          aria-label="Change profile image"
+          title="Change profile image"
+        >
+          <img
+            src={absoluteImageUrl(user.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.name || user.username || "U")}`}
+            alt="" className="rounded-full object-cover" style={{ width: 56, height: 56, border: "2px solid var(--border-col)" }}
+          />
+          <span
+            className="absolute -bottom-1 -right-1 rounded-full flex items-center justify-center"
+            style={{ width: 22, height: 22, background: "var(--primary)", color: "var(--bgc)" }}
+          >
+            <Camera size={12} />
+          </span>
+        </button>
         <div className="flex-1 min-w-0">
           <div className="font-semibold flex items-center gap-2 flex-wrap" style={{ color: "var(--text-main)" }}>
             <span className="truncate">{user.name}</span>
@@ -227,6 +254,14 @@ export default function AccountSettings() {
           </button>
         </div>
       )}
+
+      <ImageUploadPicker
+        open={avatarPicker}
+        onClose={() => setAvatarPicker(false)}
+        onPicked={onAvatarPicked}
+        title="Change profile image"
+        testid="account-avatar-picker"
+      />
     </div>
   );
 }
