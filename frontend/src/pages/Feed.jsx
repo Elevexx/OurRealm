@@ -60,7 +60,14 @@ export default function Feed() {
   const mockPosts = useMemo(() => makeMockPosts(24), []);
   const allPosts = useMemo(() => {
     const merged = [...serverPosts, ...mockPosts];
-    let filtered = merged;
+    // De-dupe by id (server backfill can produce overlapping ids,
+    // and we never want React duplicate-key warnings on the feed).
+    const seen = new Set();
+    let filtered = merged.filter((p) => {
+      if (!p?.id || seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
     if (media.length > 0) filtered = filtered.filter((p) => media.includes(p.media_type));
     // Apply interest filter when at least one interest is selected so the
     // For You feed actually reflects the user's saved preferences.

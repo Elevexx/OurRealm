@@ -1,5 +1,37 @@
 # OurRealm — Product Requirements Document
 
+## Phase 7 — Top 8 Friends, Messenger anchored menu, Thoughts, Feed media composer (Feb 2026)
+
+**Top 8 Friends widget (drag-reorder)**
+- New `<TopEightWidget>` component renders on Profile via the WidgetBody `case 'top8'`.
+- `DEFAULT_WIDGETS` in `/app/frontend/src/data/mockData.js` now includes a Top 8 entry so new accounts always start with it.
+- `core/config.py` adds `TOP8_WIDGET_TYPE = "top8"` + `default_top8_widget()`; `core/seed.py` runs an idempotent startup migration (`migrate_inject_top8_widget`) that injects Top 8 into every existing user that doesn't already have one (positioned directly after My Feed).
+- Drag-and-drop reorder via existing `@dnd-kit` infrastructure; layout is persisted via the same Save flow as other widgets.
+
+**Messenger anchored long-press edit/delete menu**
+- Long-press (or right-click ~700ms) on a sent bubble opens `[data-testid=real-msg-menu]` anchored INSIDE the bubble (top:100% / right:0 for own messages).
+- Edit reveals an inline input with Save → bubble text updates and `[data-testid=real-msg-edited-{id}]` indicator appears.
+- Delete removes the bubble immediately; deletion persists after reload via `DELETE /api/messages/{msg_id}`.
+
+**Thoughts post classification (with backfill)**
+- Text-only posts from the Feed composer now save with `media_type='thought'`.
+- Startup migration `migrate_text_posts_to_thoughts` reclassifies any legacy posts with `media_type` in `{text, post}` → `thought`. Idempotent.
+
+**Feed composer media options**
+- Composer exposes Thought / Image / Video / Link chips with `data-testid=feed-composer-type-{id}`.
+- Selecting Image/Video/Link reveals a URL input; Image and Link show inline previews; Video shows a render hint.
+
+**Media Selection bar persistence**
+- Selection persists across SPA navigation via the `ourrealm.feedMedia` localStorage key (verified `aria-pressed=true` round-trip).
+
+**Iteration 4 polish — code-quality fixes**
+- Fixed React duplicate-key warning on `/feed`: `BottomNav.ITEMS_LEFT` had two entries with `to:"/feed"` (Home + For You) and was keyed by `to`. Re-keyed by `testid`.
+- Fixed three nested-`<button>` hydration violations by converting outer interactive container to `<div role="button" tabIndex={0} onKeyDown=…>` in:
+  - `Messages.jsx` real DM row (dm-{username}) which contained `dm-pin-*` button.
+  - `Discover.jsx` `CreatorCard` which contained an inner Follow button.
+  - `ModesPage.jsx` `modes-card-{m}` which contained `modes-apply-{m}` button.
+- Feed now de-dupes the merged server+mock post list by `id` to defensively avoid future key collisions.
+
 ## Phase 6 — Early Adopter, My Feed, Privacy & UX upgrades (Feb 2026)
 
 **Early Adopter / VIP system**

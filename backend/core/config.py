@@ -24,6 +24,7 @@ FOUNDER_WIDGETS = [
 # registered count < VIP_CUTOFF gets the badge permanently.
 VIP_CUTOFF = 1000
 MYFEED_WIDGET_TYPE = "myfeed"
+TOP8_WIDGET_TYPE = "top8"
 
 
 def default_myfeed_widget() -> dict:
@@ -33,6 +34,15 @@ def default_myfeed_widget() -> dict:
         "size": "large",
         "title": "My Feed",
         "audience": {"visibility": "public", "user_ids": []},
+    }
+
+
+def default_top8_widget() -> dict:
+    return {
+        "id": "w-top8",
+        "type": TOP8_WIDGET_TYPE,
+        "size": "medium",
+        "title": "Top 8 Friends",
     }
 
 

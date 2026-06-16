@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from .config import (
     FOUNDER_EMAIL, FOUNDER_USERNAME, FOUNDER_AVATAR, FOUNDER_WIDGETS,
     VIP_CUTOFF, MYFEED_WIDGET_TYPE, default_myfeed_widget,
+    TOP8_WIDGET_TYPE, default_top8_widget,
 )
 from .db import db
 from .security import hash_password, verify_password
@@ -212,6 +213,7 @@ async def run_startup():
     await backfill_founder_as_default_friend(founder)
     await migrate_vip_and_strip_founder_badges(founder)
     await migrate_inject_myfeed_widget()
+    await migrate_inject_top8_widget()
     await migrate_text_posts_to_thoughts()
 
 
@@ -299,3 +301,32 @@ async def migrate_inject_myfeed_widget():
         n += 1
     if n:
         log.info(f"Injected My Feed widget into {n} existing profiles")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# TOP 8 FRIENDS WIDGET — auto-inject for every existing user that doesn't
+# already have one. Placed directly AFTER My Feed when present, otherwise
+# at the top. Idempotent.
+# ─────────────────────────────────────────────────────────────────────
+async def migrate_inject_top8_widget():
+    import logging
+    log = logging.getLogger("ourrealm.seed")
+    n = 0
+    async for u in db.users.find({}, {"_id": 0, "id": 1, "widgets": 1}):
+        widgets = u.get("widgets") or []
+        if any((w or {}).get("type") == TOP8_WIDGET_TYPE for w in widgets):
+            continue
+        # Insert Top 8 right after My Feed if present, else at index 0.
+        insert_at = 0
+        for i, w in enumerate(widgets):
+            if (w or {}).get("type") == MYFEED_WIDGET_TYPE:
+                insert_at = i + 1
+                break
+        new_widgets = list(widgets)
+        new_widgets.insert(insert_at, default_top8_widget())
+        await db.users.update_one(
+            {"id": u["id"]}, {"$set": {"widgets": new_widgets}}
+        )
+        n += 1
+    if n:
+        log.info(f"Injected Top 8 widget into {n} existing profiles")

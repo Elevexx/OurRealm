@@ -71,12 +71,15 @@ export default function ModesPage() {
           const Icon = info.Icon;
           const active = mode === m;
           return (
-            <button
+            <div
               key={m}
+              role="button"
+              tabIndex={0}
               onClick={() => setMode(m)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setMode(m); } }}
               data-testid={`modes-card-${m}`}
               data-active={active}
-              className="text-left or-surface overflow-hidden transition-all duration-300"
+              className="text-left or-surface overflow-hidden transition-all duration-300 cursor-pointer"
               style={{
                 outline: active ? `2px solid ${info.accent}` : "none",
                 outlineOffset: -2,
@@ -147,7 +150,7 @@ export default function ModesPage() {
                   )}
                 </div>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

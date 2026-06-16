@@ -34,9 +34,12 @@ function HRow({ id, title, Icon, children, accent }) {
 
 function CreatorCard({ c, onClick }) {
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className="or-surface shrink-0 overflow-hidden snap-start text-left p-4"
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick?.(); } }}
+      className="or-surface shrink-0 overflow-hidden snap-start text-left p-4 cursor-pointer"
       style={{ width: 230 }}
       data-testid={`discover-creator-${c.id}`}
     >
@@ -50,11 +53,11 @@ function CreatorCard({ c, onClick }) {
         <div className="font-bold" style={{ color: "var(--text-main)" }}>@{c.name}</div>
         <div className="text-xs uppercase tracking-widest mt-1" style={{ color: c.ringColor }}>{c.category}</div>
         <div className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>{c.followers.toLocaleString()} followers</div>
-        <button className="or-btn w-full mt-3" style={{ padding: "0.4rem", fontSize: "0.78rem" }}>
+        <button className="or-btn w-full mt-3" style={{ padding: "0.4rem", fontSize: "0.78rem" }} onClick={(e) => e.stopPropagation()}>
           <Icons.UserPlus size={12} /> Follow
         </button>
       </div>
-    </button>
+    </div>
   );
 }
 

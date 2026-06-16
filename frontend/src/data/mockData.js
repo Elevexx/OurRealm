@@ -324,14 +324,15 @@ export const WIDGET_TYPES = [
 ];
 
 export const DEFAULT_WIDGETS = [
-  { id: "w1", type: "live",   size: "large" },
-  { id: "w2", type: "music",  size: "medium" },
-  { id: "w3", type: "photos", size: "medium" },
-  { id: "w4", type: "friends",size: "small" },
-  { id: "w5", type: "wallet", size: "small" },
-  { id: "w6", type: "events", size: "small" },
-  { id: "w7", type: "tour",   size: "medium" },
-  { id: "w8", type: "merch",  size: "full" },
+  { id: "w-top8", type: "top8",   size: "medium" },
+  { id: "w1",     type: "live",   size: "large" },
+  { id: "w2",     type: "music",  size: "medium" },
+  { id: "w3",     type: "photos", size: "medium" },
+  { id: "w4",     type: "friends",size: "small" },
+  { id: "w5",     type: "wallet", size: "small" },
+  { id: "w6",     type: "events", size: "small" },
+  { id: "w7",     type: "tour",   size: "medium" },
+  { id: "w8",     type: "merch",  size: "full" },
 ];
 
 export const MODE_PREVIEW_IMG = {

@@ -188,7 +188,7 @@ export default function BottomNav() {
           {ITEMS_LEFT.map(({ to, label, Icon, testid }) => {
             const active = location.pathname === to || location.pathname.startsWith(to + "/");
             return (
-              <button key={to} className="bottomnav-btn" data-active={active} data-testid={testid} onClick={() => navigate(to)}>
+              <button key={testid} className="bottomnav-btn" data-active={active} data-testid={testid} onClick={() => navigate(to)}>
                 <Icon size={22} />
                 <span>{label}</span>
               </button>

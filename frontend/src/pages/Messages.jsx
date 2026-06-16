@@ -496,10 +496,13 @@ export default function Messages() {
                   ? (t.last_from_me ? `You: ${t.last_text}` : t.last_text)
                   : "Tap to start a conversation";
                 return (
-                  <button
+                  <div
                     key={t.conv_id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => openRealChat(t.peer.username)}
-                    className="w-full flex items-center gap-3 py-2.5 px-2 text-left transition-colors"
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openRealChat(t.peer.username); } }}
+                    className="w-full flex items-center gap-3 py-2.5 px-2 text-left transition-colors cursor-pointer"
                     style={{ borderBottom: "1px solid var(--border-col)" }}
                     data-testid={`dm-${t.peer.username}`}
                   >
@@ -533,7 +536,7 @@ export default function Messages() {
                         <Pin size={12} style={{ color: "var(--text-muted)" }} />
                       </button>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
