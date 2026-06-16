@@ -1,5 +1,40 @@
 # OurRealm — Product Requirements Document
 
+## Phase 1 — Platform Foundation (Feb 2026)
+
+**1. Password login for @stealth (coexists with OTP)**
+- `seed.py.seed_founder()` resets founder `password_hash` to `Password1$` on every boot unless `password_set_by_user=True`.
+- `LoginPayload.email` now accepts email OR username (string, validated at route).
+- `profile.change_password` marks the account `password_set_by_user=True` so the seed migration won't reset it.
+- `SignIn.jsx` input changed from `type="email"` to `type="text"` (label: "Email or username") so non-email identifiers are not blocked by browser validation.
+
+**2. Universal emoji support**
+- Verified end-to-end (UTF-8 default in JSON/Mongo). Round-trip tested for posts, comments, messages.
+
+**3. Universal `@username` clickable navigation**
+- New `<UsernameLink>` component (`/components/UsernameLink.jsx`). Already-existing nav in Friends, Top 8, Messages thread header preserved; added to Feed cards and PostPopup author + comment authors.
+
+**4. Full Like system**
+- Backend: `POST /api/posts/{id}/like` is now an idempotent toggle (`liked_by[]` array per post). Returns `{liked, likes}`.
+- Frontend: per-post live state via a tiny `postStore` (`lib/postStore.js`) + `usePostState(id)` hook. Optimistic toggle, rollback on failure.
+- One-source-of-truth across Feed, MyFeedWidget, and PostPopup (verified bidirectional sync without page reload).
+
+**5. Full Comment system**
+- Backend: `POST /api/posts/{id}/comment` persists into a new `comments` collection (no longer a no-op increment). `GET /api/posts/{id}/comments` lists them. Server enforces 178-char limit (400 otherwise).
+- Frontend: PostPopup comment composer with live remaining-char counter + emoji support. Counts sync via postStore.
+
+**6. PostPopup + Notification deep-linking**
+- New global `<PostPopup>` mounted once in `App.js`. Controller helpers: `openPostPopup(post)`, `openPostPopupById(id)`, `closePostPopup()`.
+- `Notifications.jsx.onSelect()` routes: like/comment/share/save/mention → `openPostPopupById(payload.post_id)`; friend_request → `/friends`; message → `/messages?user=<actor>`; follow → `/public/<actor>`.
+
+**7. Account-creation compliance**
+- `RegisterPayload` requires `accepted_terms`, `accepted_privacy`, `accepted_conditions`, `age_confirmed_13` (all true). Server stores them with timestamp + `policy_version` in `users.compliance`.
+- `SignUp.jsx` adds 4 checkboxes with links to `/terms`, `/privacy`, `/terms-conditions`. Submit disabled until all four are checked.
+- New `LegalPages.jsx` exports `TermsOfServicePage`, `TermsConditionsPage`, `PrivacyPolicyPage` — plain, mobile-responsive boilerplate covering COPPA/GDPR/CCPA basics; wired in App.js.
+
+**Extras delivered in the same batch**
+- Posts gained optional `image_url`, `video_url`, `link_url` fields (any combination, all additive — text-only posts unchanged). Feed + PostPopup render image/video/link previews accordingly.
+
 ## Phase 7 — Top 8 Friends, Messenger anchored menu, Thoughts, Feed media composer (Feb 2026)
 
 **Top 8 Friends widget (drag-reorder)**

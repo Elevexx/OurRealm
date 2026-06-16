@@ -11,7 +11,8 @@ import React, { useEffect, useState, useCallback } from "react";
 import { X, Heart, MessageCircle, Send, Loader2, Link2, Video as VideoIcon } from "lucide-react";
 import apiClient from "@/api/client";
 import { registerPopupSetter } from "@/lib/postPopupController";
-import { setPost, seedPost, usePostState } from "@/lib/postStore";
+import { setPost, getPost, usePostState } from "@/lib/postStore";
+import { useAuth } from "@/contexts/AuthContext";
 import UsernameLink from "@/components/UsernameLink";
 
 function fmtTime(iso) {
@@ -36,40 +37,58 @@ export default function PostPopup() {
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [posting, setPosting] = useState(false);
+  const { user } = useAuth();
+  const viewerLiked = !!(user?.id && Array.isArray(post?.liked_by) && post.liked_by.includes(user.id));
   const live = usePostState(post?.id, {
-    liked: !!post?.viewer_liked,
+    liked: viewerLiked,
     likes: post?.likes,
     comments: post?.comments,
   });
 
   useEffect(() => registerPopupSetter(setState), []);
 
-  // Fetch fresh data whenever popup opens (and seed/refresh the store).
+  // When the server post arrives (after open) and the store hasn't been
+  // touched by the user yet, sync `liked` from liked_by[]. This keeps the
+  // popup heart honest after a full reload without clobbering an in-flight
+  // optimistic toggle.
+  useEffect(() => {
+    if (!post?.id || !user?.id) return;
+    const cur = getPost(post.id);
+    if (cur && cur.liked === undefined) {
+      setPost(post.id, { liked: viewerLiked });
+    }
+  }, [post?.id, user?.id, viewerLiked]);
+
+  // Fetch fresh data whenever popup opens. We ALWAYS hit the server so the
+  // post popup is the canonical source of truth — this prevents a stale
+  // `state.post` snapshot (taken at feed-render time) from overwriting the
+  // optimistic counts already in the postStore.
   useEffect(() => {
     let cancelled = false;
     if (!state?.postId) { setPostData(null); setComments([]); return; }
+    // Optimistic local render from whatever caller passed (if any).
+    if (state.post && !post) setPostData(state.post);
     setLoading(true);
     (async () => {
       try {
-        const fetchPost = state.post
-          ? Promise.resolve({ data: { post: state.post } })
-          : apiClient.get(`/posts/${state.postId}`);
         const [p, c] = await Promise.all([
-          fetchPost,
+          apiClient.get(`/posts/${state.postId}`),
           apiClient.get(`/posts/${state.postId}/comments`),
         ]);
         if (cancelled) return;
         const pd = p.data.post;
         setPostData(pd);
         setComments(c.data.comments || []);
-        seedPost(pd.id, {
-          liked: !!pd.viewer_liked,
+        // Hydrate store from authoritative server response. setPost merges
+        // so callers that already optimistically toggled `liked` keep their
+        // per-viewer flag while the absolute counters are corrected.
+        setPost(pd.id, {
           likes: pd.likes ?? 0,
           comments: pd.comments ?? (c.data.comments?.length || 0),
         });
       } catch (e) {
-        // Still seed from the state.post fallback so the popup can render.
-        if (state.post) setPostData(state.post);
+        // Network blip — keep the optimistic state.post snapshot.
+        if (state.post && !cancelled) setPostData(state.post);
       } finally {
         if (!cancelled) setLoading(false);
       }

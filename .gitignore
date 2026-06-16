@@ -100,3 +100,4 @@ credentials.json
 *.key
 .credentials
 frontend/node_modules/.cache/default-development/24.pack
+frontend/node_modules/.cache/default-development/15.pack

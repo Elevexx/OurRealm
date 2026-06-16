@@ -264,7 +264,9 @@ export default function Feed() {
 function isVideoFile(u) { return !!u && /\.(mp4|webm|ogg)$/i.test(u); }
 
 function FeedCard({ p, onGuestAction, isGuest }) {
-  const live = usePostState(p.id, { liked: !!p.viewer_liked, likes: p.likes || 0, comments: p.comments || 0 });
+  const { user } = useAuth();
+  const viewerLiked = !!(user?.id && Array.isArray(p.liked_by) && p.liked_by.includes(user.id));
+  const live = usePostState(p.id, { liked: viewerLiked, likes: p.likes || 0, comments: p.comments || 0 });
   const openPopup = () => openPostPopup(p);
   const onLike = async (e) => {
     e?.stopPropagation();
