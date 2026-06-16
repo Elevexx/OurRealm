@@ -7,12 +7,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Play, Heart, Plus, ChevronDown, ChevronLeft, ChevronRight,
-  Music as MusicIcon, Mic, Sparkles, Wand2, Disc3, Loader2, Upload,
+  Music as MusicIcon, Mic, Sparkles, Wand2, Disc3, Loader2, Upload, Send, Search,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import RadiusChips from "@/components/RadiusChips";
 import SoundUploadPicker from "@/components/SoundUploadPicker";
+import ShareToChatModal from "@/components/ShareToChatModal";
 import ZipRequiredModal from "@/components/ZipRequiredModal";
 import { play as playerPlay, formatTime } from "@/lib/audioPlayer";
 import { TRENDING_TRACKS } from "@/data/mockData";
@@ -72,6 +73,8 @@ export default function Sounds() {
   const [chart, setChart] = useState("Top 100");
   const [mood, setMood] = useState("Any");
   const [radius, setRadius] = useState("");     // "" = Any
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
   const [zipRequiredOpen, setZipRequiredOpen] = useState(false);
 
@@ -80,6 +83,7 @@ export default function Sounds() {
   const [featured, setFeatured] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [shareTrack, setShareTrack] = useState(null);
 
   const onRadiusChange = (val) => {
     if (val && !user?.zip_code) {
@@ -91,7 +95,13 @@ export default function Sounds() {
   };
 
   // Filters reset to page 1 on change; one filter never resets the others.
-  useEffect(() => { setPage(1); }, [tab, genre, mood, chart]);
+  useEffect(() => { setPage(1); }, [tab, genre, mood, chart, searchTerm]);
+
+  // Debounce the search input (300ms) so we don't hammer the API per keystroke.
+  useEffect(() => {
+    const id = setTimeout(() => setSearchTerm(searchInput.trim()), 300);
+    return () => clearTimeout(id);
+  }, [searchInput]);
 
   // Featured carousel — always Top 6 of the platform regardless of filters
   const loadFeatured = useCallback(async () => {
@@ -120,6 +130,7 @@ export default function Sounds() {
             genre: genre !== "All" ? genre : undefined,
             mood:   mood  !== "Any" ? mood  : undefined,
             radius: radius || undefined,
+            q: searchTerm || undefined,
             page,
           },
         });
@@ -133,6 +144,7 @@ export default function Sounds() {
             mood:   mood  !== "Any" ? mood  : undefined,
             chart,
             radius: radius || undefined,
+            q: searchTerm || undefined,
             limit: 100,
           },
         });
@@ -144,7 +156,7 @@ export default function Sounds() {
       setTracks([]);
       setPageInfo({ page: 1, pages: 5, total: 0 });
     } finally { setLoading(false); }
-  }, [tab, genre, mood, chart, radius, page]);
+  }, [tab, genre, mood, chart, radius, searchTerm, page]);
 
   useEffect(() => { loadFeatured(); }, [loadFeatured]);
   useEffect(() => { load(); }, [load]);
@@ -236,6 +248,31 @@ export default function Sounds() {
             <Dropdown label="Charts" value={chart}  onChange={setChart}  options={CHARTS} testid="sounds-chart" />
             <Dropdown label="Mood"   value={mood}   onChange={setMood}   options={MOODS}  testid="sounds-mood" />
           </div>
+          {/* Search bar — debounced 300ms; never resets filters */}
+          <div
+            className="or-surface mb-2 p-2.5 flex items-center gap-2"
+            style={{ background: "var(--surface-2)" }}
+            data-testid="sounds-search-bar"
+          >
+            <Search size={14} style={{ color: "var(--text-muted)" }} />
+            <input
+              type="text"
+              placeholder="Search sounds by title or genre…"
+              className="bg-transparent flex-1 outline-none border-none text-sm"
+              style={{ color: "var(--text-main)" }}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              data-testid="sounds-search-input"
+            />
+            {searchInput && (
+              <button
+                onClick={() => setSearchInput("")}
+                className="text-xs underline"
+                style={{ color: "var(--text-muted)" }}
+                data-testid="sounds-search-clear"
+              >Clear</button>
+            )}
+          </div>
           <div className="mb-5">
             <RadiusChips
               value={radius}
@@ -299,7 +336,13 @@ export default function Sounds() {
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="sounds-results">
               {tracks.map((t) => (
-                <TrackCard key={t.id} t={t} onPlay={() => onPlay(t)} onLike={() => onLike(t)} />
+                <TrackCard
+                  key={t.id}
+                  t={t}
+                  onPlay={() => onPlay(t)}
+                  onLike={() => onLike(t)}
+                  onShare={() => setShareTrack(t)}
+                />
               ))}
             </div>
           )}
@@ -318,6 +361,12 @@ export default function Sounds() {
         onUploaded={onUploaded}
         defaultCategory={isAI ? "Music" : tab}
         testid="sounds-upload"
+      />
+      <ShareToChatModal
+        open={!!shareTrack}
+        track={shareTrack}
+        onClose={() => setShareTrack(null)}
+        testid="sounds-share"
       />
       <ZipRequiredModal open={zipRequiredOpen} onClose={() => setZipRequiredOpen(false)} testid="sounds-zip-required" />
     </div>
@@ -390,7 +439,7 @@ function FeaturedCard({ t, onPlay, testid }) {
   );
 }
 
-function TrackCard({ t, onPlay, onLike }) {
+function TrackCard({ t, onPlay, onLike, onShare }) {
   const cover = t.cover_url || t.cover || null;
   return (
     <div className="or-surface overflow-hidden" data-testid={`sounds-track-${t.id}`}>
@@ -429,6 +478,16 @@ function TrackCard({ t, onPlay, onLike }) {
             {t.plays ? `${t.plays} plays` : ""}{t.plays && t.likes ? " · " : ""}{t.likes ? `${t.likes} likes` : ""}
           </div>
         </div>
+        <button
+          onClick={onShare}
+          className="starbar-icon"
+          style={{ width: 36, height: 36, color: "var(--text-muted)" }}
+          data-testid={`sounds-share-${t.id}`}
+          aria-label="Share to chat"
+          title="Share to chat"
+        >
+          <Send size={15} />
+        </button>
         <button
           onClick={onLike}
           className="starbar-icon"

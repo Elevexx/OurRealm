@@ -1,6 +1,6 @@
 """Post endpoints (/api/posts/*)."""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -12,6 +12,36 @@ from models.schemas import PostCreate
 from routers.notifications import emit_notification
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
+
+
+def _build_poll(payload_poll) -> Optional[dict]:
+    """Translate a `PollPayload` into the stored document shape (Phase 4B).
+
+    Returns None if no poll attached. We assign stable ids to each option
+    (carrying over any explicitly provided id) so vote tallies remain
+    correct even if the user reorders options before posting.
+    """
+    if not payload_poll:
+        return None
+    options = []
+    seen = set()
+    for raw in payload_poll.options:
+        oid = (raw.id or "").strip() or uuid.uuid4().hex[:12]
+        # Defensive: avoid collisions in user-supplied ids
+        while oid in seen:
+            oid = uuid.uuid4().hex[:12]
+        seen.add(oid)
+        options.append({"id": oid, "text": raw.text.strip()})
+    expires_at = None
+    if payload_poll.duration_hours and payload_poll.duration_hours > 0:
+        expires_at = (datetime.now(timezone.utc)
+                      + timedelta(hours=int(payload_poll.duration_hours))).isoformat()
+    return {
+        "question": payload_poll.question.strip(),
+        "options": options,
+        "expires_at": expires_at,
+        "votes": {},   # { user_id: option_id }
+    }
 
 
 @router.post("")
@@ -37,6 +67,8 @@ async def create_post(payload: PostCreate, current: CurrentUser):
         "likes": 0,
         "liked_by": [],
         "comments": 0,
+        # Phase 4B — optional attached poll
+        "poll": _build_poll(payload.poll),
         # Phase-2 — author location SNAPSHOT for radius filtering. PRIVATE:
         # `author_zip` is never serialized to consumers. `author_lat`/`author_lng`
         # are used at query time by `radius_filter` and otherwise omitted.
@@ -48,7 +80,7 @@ async def create_post(payload: PostCreate, current: CurrentUser):
     await db.posts.insert_one(doc)
     doc["created_at"] = datetime.fromisoformat(doc["created_at"])
     doc.pop("_id", None)
-    return {"post": _public_post(doc)}
+    return {"post": _public_post(doc, viewer_id=current["id"])}
 
 
 def _visibility_query(viewer: Optional[dict], author_id: Optional[str] = None) -> dict:
@@ -106,11 +138,43 @@ async def feed_by_user(username: str, limit: int = 100):
     return {"posts": items}
 
 
-def _public_post(p: dict) -> dict:
-    """Strip private author-location fields from a post doc before returning."""
+def _public_post(p: dict, viewer_id: Optional[str] = None) -> dict:
+    """Strip private author-location fields from a post doc before returning.
+    For polls (Phase 4B) compute tallies + indicate the viewer's vote.
+    """
     p.pop("author_zip", None)
     p.pop("author_lat", None)
     p.pop("author_lng", None)
+    poll = p.get("poll")
+    if poll:
+        votes = poll.get("votes") or {}
+        total = len(votes)
+        # tally by option_id
+        tally: dict = {}
+        for opt in (poll.get("options") or []):
+            tally[opt["id"]] = 0
+        for _uid, oid in votes.items():
+            if oid in tally:
+                tally[oid] += 1
+        opts_out = [
+            {**opt, "votes": tally.get(opt["id"], 0),
+             "percent": round(100 * tally.get(opt["id"], 0) / total, 1) if total else 0}
+            for opt in (poll.get("options") or [])
+        ]
+        expired = False
+        if poll.get("expires_at"):
+            try:
+                expired = datetime.fromisoformat(poll["expires_at"]) <= datetime.now(timezone.utc)
+            except Exception:
+                expired = False
+        p["poll"] = {
+            "question": poll.get("question"),
+            "options": opts_out,
+            "total_votes": total,
+            "expires_at": poll.get("expires_at"),
+            "expired": expired,
+            "my_vote": (votes.get(viewer_id) if viewer_id else None),
+        }
     return p
 
 
@@ -142,13 +206,13 @@ async def list_posts(
         items.append(p)
 
     miles = parse_radius(radius)
+    viewer_doc = None
+    if viewer:
+        viewer_doc = await db.users.find_one(
+            {"username": (viewer or "").lower()},
+            {"_id": 0, "id": 1, "zip_lat": 1, "zip_lng": 1},
+        )
     if miles is not None:
-        viewer_doc = None
-        if viewer:
-            viewer_doc = await db.users.find_one(
-                {"username": (viewer or "").lower()},
-                {"_id": 0, "zip_lat": 1, "zip_lng": 1},
-            )
         if not viewer_doc or viewer_doc.get("zip_lat") is None or viewer_doc.get("zip_lng") is None:
             # The frontend is responsible for blocking the radius UI until
             # the viewer has a ZIP. We still hard-gate here so the API
@@ -165,8 +229,72 @@ async def list_posts(
             lng_key="author_lng",
         )
 
-    items = [_public_post(p) for p in items]
+    viewer_id = viewer_doc.get("id") if viewer_doc else None
+    items = [_public_post(p, viewer_id=viewer_id) for p in items]
     return {"posts": items}
+
+
+@router.post("/{post_id}/poll/vote")
+async def vote_poll(post_id: str, current: CurrentUser, body: dict):
+    """Cast or change a vote on the attached poll (Phase 4B).
+
+    - One vote per user. Re-voting changes your selection.
+    - Blocked after `poll.expires_at` (when set).
+    - Idempotent in the sense that voting for the same option twice is a no-op.
+    """
+    option_id = (body or {}).get("option_id")
+    if not isinstance(option_id, str) or not option_id.strip():
+        raise HTTPException(status_code=400, detail="option_id is required")
+    post = await db.posts.find_one({"id": post_id}, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    poll = post.get("poll")
+    if not poll:
+        raise HTTPException(status_code=400, detail="This post has no poll")
+    if poll.get("expires_at"):
+        try:
+            if datetime.fromisoformat(poll["expires_at"]) <= datetime.now(timezone.utc):
+                raise HTTPException(status_code=400, detail="Poll has expired")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+    valid_ids = {o.get("id") for o in (poll.get("options") or [])}
+    if option_id not in valid_ids:
+        raise HTTPException(status_code=400, detail="Invalid option")
+    uid = current["id"]
+    await db.posts.update_one(
+        {"id": post_id},
+        {"$set": {f"poll.votes.{uid}": option_id}},
+    )
+    fresh = await db.posts.find_one({"id": post_id}, {"_id": 0, "poll": 1})
+    if isinstance(fresh, dict):
+        fresh.setdefault("id", post_id)
+    return {"poll": _public_post(fresh or {}, viewer_id=uid).get("poll")}
+
+
+@router.delete("/{post_id}/poll/vote")
+async def unvote_poll(post_id: str, current: CurrentUser):
+    """Withdraw the user's vote — only allowed while poll is open."""
+    post = await db.posts.find_one({"id": post_id}, {"_id": 0, "poll": 1})
+    if not post or not post.get("poll"):
+        raise HTTPException(status_code=404, detail="Poll not found")
+    poll = post["poll"]
+    if poll.get("expires_at"):
+        try:
+            if datetime.fromisoformat(poll["expires_at"]) <= datetime.now(timezone.utc):
+                raise HTTPException(status_code=400, detail="Poll has expired")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+    uid = current["id"]
+    await db.posts.update_one(
+        {"id": post_id},
+        {"$unset": {f"poll.votes.{uid}": ""}},
+    )
+    fresh = await db.posts.find_one({"id": post_id}, {"_id": 0, "poll": 1})
+    return {"poll": _public_post(fresh or {}, viewer_id=uid).get("poll")}
 
 
 @router.post("/{post_id}/like")
@@ -208,8 +336,10 @@ async def like_post(post_id: str, current: CurrentUser):
 
 
 @router.get("/{post_id}")
-async def get_post(post_id: str):
-    """Single post fetch — used by the post popup to refresh state."""
+async def get_post(post_id: str, viewer: Optional[str] = None):
+    """Single post fetch — used by the post popup to refresh state.
+    Optional `?viewer=<username>` so poll tallies can mark the user's own vote.
+    """
     p = await db.posts.find_one({"id": post_id}, {"_id": 0})
     if not p:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -218,7 +348,11 @@ async def get_post(post_id: str):
             p["created_at"] = datetime.fromisoformat(p["created_at"])
         except Exception:
             pass
-    return {"post": _public_post(p)}
+    viewer_id = None
+    if viewer:
+        vd = await db.users.find_one({"username": viewer.lower()}, {"_id": 0, "id": 1})
+        viewer_id = (vd or {}).get("id")
+    return {"post": _public_post(p, viewer_id=viewer_id)}
 
 
 @router.get("/{post_id}/comments")

@@ -31,6 +31,12 @@ from core.geo import (
 from services.audio_store import (
     MAX_BYTES, audio_dir, is_safe_audio_filename, media_type_for_ext, save_audio,
 )
+from services.preferences import (
+    bump as prefs_bump,
+    summarise as prefs_summarise,
+    personalization_active,
+    boost as prefs_boost,
+)
 
 
 router = APIRouter(prefix="/api/sounds", tags=["sounds"])
@@ -205,20 +211,29 @@ async def feed(
     mood: Optional[str] = None,
     chart: Optional[str] = "Top 100",
     radius: Optional[str] = None,
+    q: Optional[str] = None,
     limit: int = 50,
 ):
-    q: dict = {"is_ai_generated": False}
+    query: dict = {"is_ai_generated": False}
     if category and category != "All":
-        q["category"] = category
+        query["category"] = category
     if genre and genre != "All":
-        q["genre"] = genre
+        query["genre"] = genre
     if mood and mood != "Any":
-        q["mood"] = mood
+        query["mood"] = mood
+    # Phase 4B — case-insensitive search across title + genre
+    if q and q.strip():
+        import re as _re
+        term = _re.escape(q.strip())
+        query["$or"] = [
+            {"title": {"$regex": term, "$options": "i"}},
+            {"genre": {"$regex": term, "$options": "i"}},
+        ]
 
-    cursor = db.tracks.find(q).limit(max(1, min(int(limit), 200)))
+    cursor = db.tracks.find(query).limit(max(1, min(int(limit), 200)))
     items = [doc async for doc in cursor]
 
-    # Sort per chart selection
+    # Base sort per chart selection
     if chart == "Trending":
         items.sort(key=lambda t: float(t.get("plays", 0)) * 0.7 + float(t.get("likes", 0)) * 3.0, reverse=True)
     elif chart == "New Releases":
@@ -232,8 +247,42 @@ async def feed(
     miles = parse_radius(radius)
     viewer_geo = await _viewer_geo(current)
     items = _apply_radius(items, viewer_geo, miles)
+    # Bump radius preference signal (Phase 4B)
+    if radius and radius != "any":
+        await prefs_bump(current["id"], radius=str(radius), signal="play")
+
+    # ── Phase 4B — Personalization (70% global / 30% user signal)
+    items = await _apply_personalization(current["id"], items, chart=chart)
 
     return {"tracks": [_public(t, viewer_id=current["id"]) for t in items]}
+
+
+async def _apply_personalization(user_id: str, items, chart: str = "Top 100"):
+    """Phase 4B — Blend a 70% global ranking with 30% personal signal.
+
+    Global rank stays the source of truth — we only re-order within the
+    same shortlist. Anonymous-style charts (New Releases / Up & Coming)
+    deliberately skip personalization to preserve their meaning.
+    """
+    if not items:
+        return items
+    if chart in ("New Releases", "Up & Coming"):
+        return items
+    summary = await prefs_summarise(user_id)
+    if not personalization_active(summary):
+        return items
+    # Pre-compute the max global score for normalisation
+    scored = [(t, _score(t)) for t in items]
+    max_score = max((s for _, s in scored), default=0) or 1
+    blended = []
+    for t, s in scored:
+        global_norm = s / max_score
+        personal = prefs_boost(t, summary)
+        # 70/30 blend
+        rank_signal = 0.7 * global_norm + 0.3 * personal
+        blended.append((t, rank_signal))
+    blended.sort(key=lambda kv: kv[1], reverse=True)
+    return [t for t, _ in blended]
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -246,27 +295,42 @@ async def top100(
     genre: Optional[str] = None,
     mood: Optional[str] = None,
     radius: Optional[str] = None,
+    q: Optional[str] = None,
     page: int = 1,
 ):
     page = max(1, min(int(page or 1), 5))
-    q: dict = {"is_ai_generated": False}
+    query: dict = {"is_ai_generated": False}
     if category and category != "All":
-        q["category"] = category
+        query["category"] = category
     if genre and genre != "All":
-        q["genre"] = genre
+        query["genre"] = genre
     if mood and mood != "Any":
-        q["mood"] = mood
+        query["mood"] = mood
+    if q and q.strip():
+        import re as _re
+        term = _re.escape(q.strip())
+        query["$or"] = [
+            {"title": {"$regex": term, "$options": "i"}},
+            {"genre": {"$regex": term, "$options": "i"}},
+        ]
 
     # Always fetch the engagement-sorted top 200 then narrow down — keeps
     # the ranking stable across filter combinations without an expensive
     # aggregation.
-    cursor = db.tracks.find(q).limit(200)
+    cursor = db.tracks.find(query).limit(200)
     items = [doc async for doc in cursor]
     items.sort(key=_score, reverse=True)
 
     miles = parse_radius(radius)
     viewer_geo = await _viewer_geo(current)
     items = _apply_radius(items, viewer_geo, miles)
+    if radius and radius != "any":
+        await prefs_bump(current["id"], radius=str(radius), signal="play")
+
+    # ── Phase 4B — Personalization (70/30) — applied BEFORE truncation so
+    # tracks ranked just outside top-100 globally can surface when they
+    # match user preferences strongly.
+    items = await _apply_personalization(current["id"], items, chart="Top 100")
 
     items = items[:100]                 # never publish beyond rank 100
     start = (page - 1) * PAGE_SIZE
@@ -293,14 +357,28 @@ async def increment_play(track_id: str, current: CurrentUser):
     res = await db.tracks.update_one({"id": track_id}, {"$inc": {"plays": 1}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Track not found")
-    track = await db.tracks.find_one({"id": track_id}, {"plays": 1})
+    track = await db.tracks.find_one(
+        {"id": track_id}, {"_id": 0, "plays": 1, "category": 1, "genre": 1, "mood": 1}
+    )
+    # Phase 4B — personalization signal
+    if track:
+        await prefs_bump(
+            current["id"],
+            category=track.get("category"),
+            genre=track.get("genre"),
+            mood=track.get("mood"),
+            signal="play",
+        )
     return {"ok": True, "plays": (track or {}).get("plays", 0)}
 
 
 @router.post("/{track_id}/like")
 async def like_track(track_id: str, current: CurrentUser):
     uid = current["id"]
-    track = await db.tracks.find_one({"id": track_id}, {"liked_by": 1})
+    track = await db.tracks.find_one(
+        {"id": track_id},
+        {"_id": 0, "liked_by": 1, "likes": 1, "category": 1, "genre": 1, "mood": 1},
+    )
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
     if uid in (track.get("liked_by") or []):
@@ -314,6 +392,14 @@ async def like_track(track_id: str, current: CurrentUser):
         {"$set": {"user_id": uid, "track_id": track_id,
                   "created_at": datetime.now(timezone.utc).isoformat()}},
         upsert=True,
+    )
+    # Phase 4B — personalization signal (stronger weight than play)
+    await prefs_bump(
+        uid,
+        category=track.get("category"),
+        genre=track.get("genre"),
+        mood=track.get("mood"),
+        signal="like",
     )
     updated = await db.tracks.find_one({"id": track_id}, {"likes": 1})
     return {"ok": True, "liked": True, "likes": (updated or {}).get("likes", 0)}

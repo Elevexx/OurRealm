@@ -110,6 +110,23 @@ class AudiencePayload(BaseModel):
     friend_group_ids: Optional[List[str]] = None
 
 
+class PollOptionPayload(BaseModel):
+    """One option in a poll. id is generated server-side if missing."""
+    id: Optional[str] = None
+    text: str = Field(min_length=1, max_length=100)
+
+
+class PollPayload(BaseModel):
+    """Poll attached to a post (Phase 4B).
+
+    `duration_hours`: 24, 72, 168, 720, or 0 for no expiration.
+    Future-proofed for: multi-vote polls, anonymous polls, image options.
+    """
+    question: str = Field(min_length=1, max_length=200)
+    options: List[PollOptionPayload] = Field(min_length=2, max_length=10)
+    duration_hours: int = 0   # 0 = no expiration; 24/72/168/720 supported
+
+
 class PostCreate(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
     media_type: str = Field(default="thought")
@@ -122,6 +139,7 @@ class PostCreate(BaseModel):
     link_url: Optional[str] = None
     tags: List[str] = []
     audience: Optional[AudiencePayload] = None
+    poll: Optional[PollPayload] = None   # Phase 4B — optional poll attached
 
 
 class UserOut(BaseModel):

@@ -851,12 +851,25 @@ function renderText(text) {
   while ((m = urlRe.exec(text)) !== null) {
     if (m.index > last) parts.push(<span key={`t${i++}`}>{text.slice(last, m.index)}</span>);
     const url = m[0];
-    const isImg = /\.(png|jpe?g|gif|webp|avif)(\?.*)?$/i.test(url);
+    const isImg   = /\.(png|jpe?g|gif|webp|avif)(\?.*)?$/i.test(url);
+    const isAudio = /\.(mp3|m4a|aac|wav|ogg|flac|webm)(\?.*)?$/i.test(url);
     if (isImg) {
       parts.push(
         <a key={`img${i++}`} href={url} target="_blank" rel="noopener noreferrer" className="block mt-1 mb-1">
           <img src={url} alt="" className="rounded" style={{ maxHeight: 200, maxWidth: "100%" }} />
         </a>
+      );
+    } else if (isAudio) {
+      // Inline mini-player for shared OurRealm sounds (Phase 4A "Share to chat").
+      // No schema change — we just recognise the URL pattern here.
+      parts.push(
+        <audio
+          key={`a${i++}`}
+          controls preload="metadata"
+          src={url}
+          className="block mt-1 mb-1 w-full"
+          style={{ maxWidth: "100%" }}
+        />
       );
     } else {
       parts.push(

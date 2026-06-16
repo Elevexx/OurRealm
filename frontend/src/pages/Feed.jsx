@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, Users as UsersIcon, Lock, UserCheck, MessageSquare, Image as ImageIcon, Video, Link2 } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, Users as UsersIcon, Lock, UserCheck, MessageSquare, Image as ImageIcon, Video, Link2, BarChart3 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { makeMockPosts } from "@/data/mockData";
@@ -12,6 +12,8 @@ import { openPostPopup } from "@/lib/postPopupController";
 import { usePostState, setPost } from "@/lib/postStore";
 import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPicker";
 import ZipRequiredModal from "@/components/ZipRequiredModal";
+import PollComposer from "@/components/PollComposer";
+import PollDisplay from "@/components/PollDisplay";
 
 const FILTER_KEY = "ourrealm.feedMedia";
 const INTEREST_KEY = "ourrealm.interests";
@@ -58,6 +60,8 @@ export default function Feed() {
   const [composeMediaType, setComposeMediaType] = useState("thought"); // thought | image | video | link
   const [composeMediaUrl, setComposeMediaUrl] = useState("");
   const [composeAudience, setComposeAudience] = useState({ visibility: "public", user_ids: [] });
+  const [composePoll, setComposePoll] = useState(null);   // Phase 4B
+  const [pollComposerOpen, setPollComposerOpen] = useState(false);
   const [audiencePickerOpen, setAudiencePickerOpen] = useState(false);
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
   // Phase-2 — Radius filter ("any" | "10" | "20" | "50" | "100" | "250" | "500").
@@ -77,16 +81,17 @@ export default function Feed() {
       // viewer hasn't set one we either fall back to "any" silently or, if
       // they explicitly chose a radius, gate the action via the modal.
       const params = {};
+      // Always pass viewer so backend can mark poll votes for the current user.
+      if (user?.username) params.viewer = user.username;
       if (radius && radius !== "any") {
         if (!user?.zip_code) {
           setRadius("any");
           setZipRequiredOpen(true);
-          const { data } = await apiClient.get("/posts");
+          const { data } = await apiClient.get("/posts", { params });
           setServerPosts(data.posts || []);
           return;
         }
         params.radius = radius;
-        if (user?.username) params.viewer = user.username;
       }
       const { data } = await apiClient.get("/posts", { params });
       setServerPosts(data.posts || []);
@@ -127,22 +132,24 @@ export default function Feed() {
 
   const submitPost = async () => {
     if (!user || isGuest) { setGuestPrompt("post a thought"); return; }
-    if (!composeText.trim()) return;
+    if (!composeText.trim() && !composePoll) return;
     setPosting(true);
     try {
       await apiClient.post("/posts", {
-        content: composeText.trim(),
+        content: composeText.trim() || (composePoll?.question || ""),
         media_type: composeMediaType || "thought",
         media_url: composeMediaUrl || null,
         image_url: composeMediaType === "image" ? (composeMediaUrl || null) : null,
         video_url: composeMediaType === "video" ? (composeMediaUrl || null) : null,
         link_url: composeMediaType === "link" ? (composeMediaUrl || null) : null,
         audience: composeAudience,
+        poll: composePoll || undefined,
       });
       setComposeText("");
       setComposeMediaType("thought");
       setComposeMediaUrl("");
       setComposeAudience({ visibility: "public", user_ids: [] });
+      setComposePoll(null);
       await loadPosts();
     } finally { setPosting(false); }
   };
@@ -236,6 +243,29 @@ export default function Feed() {
                   <Icon size={12} /> {label}
                 </button>
               ))}
+              {/* Phase 4B — Poll attachment */}
+              <button
+                type="button"
+                className="or-chip"
+                data-active={!!composePoll}
+                data-testid="feed-composer-poll"
+                onClick={() => setPollComposerOpen(true)}
+                title={composePoll ? "Edit poll" : "Add poll"}
+              >
+                <BarChart3 size={12} /> {composePoll ? "Poll attached" : "Poll"}
+              </button>
+              {composePoll && (
+                <button
+                  type="button"
+                  className="or-chip"
+                  onClick={() => setComposePoll(null)}
+                  data-testid="feed-composer-poll-clear"
+                  title="Remove poll"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Remove poll
+                </button>
+              )}
             </div>
             {composeMediaType !== "thought" && (
               <input
@@ -263,6 +293,25 @@ export default function Feed() {
             {composeMediaType === "link" && composeMediaUrl && (
               <div className="mt-2 text-xs flex items-center gap-1.5" data-testid="feed-composer-preview-link" style={{ color: "var(--text-muted)" }}>
                 <Link2 size={12} /> <span className="truncate">{composeMediaUrl}</span>
+              </div>
+            )}
+            {composePoll && (
+              <div className="mt-2 p-2 text-xs flex items-start gap-2"
+                style={{
+                  borderRadius: "calc(var(--radius) - 4px)",
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--border-col)",
+                }}
+                data-testid="feed-composer-poll-preview"
+              >
+                <BarChart3 size={12} style={{ color: "var(--primary)", marginTop: 2 }} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold truncate" style={{ color: "var(--text-main)" }}>{composePoll.question}</div>
+                  <div className="truncate" style={{ color: "var(--text-muted)" }}>
+                    {composePoll.options.map((o) => o.text).join(" · ")}
+                    {composePoll.duration_hours ? ` · ${composePoll.duration_hours}h` : " · no expiry"}
+                  </div>
+                </div>
               </div>
             )}
             <div className="flex items-center justify-between mt-2 gap-2">
@@ -320,6 +369,17 @@ export default function Feed() {
         onPicked={({ url }) => { setComposeMediaUrl(url); setComposeMediaType("image"); }}
         title="Add an image to your post"
         testid="feed-image-picker"
+      />
+      <PollComposer
+        open={pollComposerOpen}
+        initial={composePoll ? {
+          question: composePoll.question,
+          options: composePoll.options.map((o) => o.text),
+          duration_hours: composePoll.duration_hours,
+        } : null}
+        onClose={() => setPollComposerOpen(false)}
+        onSave={(payload) => setComposePoll(payload)}
+        testid="feed-poll-composer"
       />
       <ZipRequiredModal open={zipRequiredOpen} onClose={() => setZipRequiredOpen(false)} testid="feed-zip-required" />
     </div>
@@ -396,6 +456,7 @@ function FeedCard({ p, onGuestAction, isGuest }) {
           <Link2 size={14} /> {mediaLink}
         </a>
       )}
+      {p.poll && <PollDisplay post={p} />}
       <footer className="flex gap-5 text-sm" style={{ color: "var(--text-muted)" }}>
         <button
           data-testid={`feed-like-${p.id}`}
