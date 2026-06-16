@@ -95,7 +95,7 @@ class AudiencePayload(BaseModel):
 
 class PostCreate(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
-    media_type: str = Field(default="post")
+    media_type: str = Field(default="thought")
     media_url: Optional[str] = None
     tags: List[str] = []
     audience: Optional[AudiencePayload] = None

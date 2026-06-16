@@ -14,6 +14,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import MyFeedWidget from "@/components/MyFeedWidget";
+import TopEightWidget from "@/components/TopEightWidget";
 import VipBadge from "@/components/VipBadge";
 
 const SIZE_TO_CLASS = {
@@ -28,6 +29,8 @@ function WidgetBody({ w, mode, ownerUsername, isOwner }) {
   switch (w.type) {
     case "myfeed":
       return <MyFeedWidget username={ownerUsername} isOwner={isOwner} />;
+    case "top8":
+      return <TopEightWidget username={ownerUsername} />;
     case "live":
       return (
         <div className="relative h-full overflow-hidden" style={{ borderRadius: "calc(var(--radius) - 4px)" }}>

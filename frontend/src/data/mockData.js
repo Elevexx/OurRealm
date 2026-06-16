@@ -262,6 +262,8 @@ export const MARKETPLACE_ADS = Array.from({ length: 8 }).map((_, i) => ({
 export const WIDGET_TYPES = [
   // My Feed — default top widget for every account
   { id: "myfeed",   label: "My Feed",         icon: "Sparkles",    default_size: "large",  cat: "feed" },
+  // Top 8 — favorite friends grid (Inner-8)
+  { id: "top8",     label: "Top 8 Friends",   icon: "Users",       default_size: "medium", cat: "social" },
   // Core content widgets
   { id: "live",     label: "Live Stream",     icon: "Radio",       default_size: "large",  cat: "content" },
   { id: "videos",   label: "Videos",          icon: "PlayCircle",  default_size: "medium", cat: "content" },

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, Users as UsersIcon, Lock, UserCheck } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, Users as UsersIcon, Lock, UserCheck, MessageSquare, Image as ImageIcon, Video, Link2 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { makeMockPosts } from "@/data/mockData";
@@ -40,6 +40,8 @@ export default function Feed() {
 
   const [serverPosts, setServerPosts] = useState([]);
   const [composeText, setComposeText] = useState("");
+  const [composeMediaType, setComposeMediaType] = useState("thought"); // thought | image | video | link
+  const [composeMediaUrl, setComposeMediaUrl] = useState("");
   const [composeAudience, setComposeAudience] = useState({ visibility: "public", user_ids: [] });
   const [audiencePickerOpen, setAudiencePickerOpen] = useState(false);
   const [guestPrompt, setGuestPrompt] = useState(null);
@@ -80,10 +82,13 @@ export default function Feed() {
     try {
       await apiClient.post("/posts", {
         content: composeText.trim(),
-        media_type: "post",
+        media_type: composeMediaType || "thought",
+        media_url: composeMediaUrl || null,
         audience: composeAudience,
       });
       setComposeText("");
+      setComposeMediaType("thought");
+      setComposeMediaUrl("");
       setComposeAudience({ visibility: "public", user_ids: [] });
       await loadPosts();
     } finally { setPosting(false); }
@@ -132,6 +137,58 @@ export default function Feed() {
               className="or-input resize-none"
               style={{ background: "transparent" }}
             />
+            {/* Media type chips — image/video/link expand a URL input;
+                clicking the active chip clears it back to a plain thought. */}
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap" data-testid="feed-composer-media-row">
+              {[
+                { id: "thought", label: "Thought", Icon: MessageSquare },
+                { id: "image",   label: "Image",   Icon: ImageIcon },
+                { id: "video",   label: "Video",   Icon: Video },
+                { id: "link",    label: "Link",    Icon: Link2 },
+              ].map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  className="or-chip"
+                  data-active={composeMediaType === id}
+                  data-testid={`feed-composer-type-${id}`}
+                  onClick={() => {
+                    setComposeMediaType(id);
+                    if (id === "thought") setComposeMediaUrl("");
+                  }}
+                >
+                  <Icon size={12} /> {label}
+                </button>
+              ))}
+            </div>
+            {composeMediaType !== "thought" && (
+              <input
+                className="or-input mt-2 text-sm"
+                placeholder={
+                  composeMediaType === "image" ? "Paste an image URL (jpg/png/gif/webp)" :
+                  composeMediaType === "video" ? "Paste a video URL (mp4/youtube/vimeo)" :
+                  "Paste a link URL"
+                }
+                value={composeMediaUrl}
+                onChange={(e) => setComposeMediaUrl(e.target.value)}
+                data-testid="feed-composer-media-url"
+              />
+            )}
+            {composeMediaType === "image" && composeMediaUrl && (
+              <div className="mt-2" data-testid="feed-composer-preview-image">
+                <img src={composeMediaUrl} alt="" className="rounded" style={{ maxHeight: 180, maxWidth: "100%" }} />
+              </div>
+            )}
+            {composeMediaType === "video" && composeMediaUrl && (
+              <div className="mt-2 text-xs flex items-center gap-1.5" data-testid="feed-composer-preview-video" style={{ color: "var(--text-muted)" }}>
+                <Video size={12} /> Video will render in feed
+              </div>
+            )}
+            {composeMediaType === "link" && composeMediaUrl && (
+              <div className="mt-2 text-xs flex items-center gap-1.5" data-testid="feed-composer-preview-link" style={{ color: "var(--text-muted)" }}>
+                <Link2 size={12} /> <span className="truncate">{composeMediaUrl}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between mt-2 gap-2">
               <button
                 className="or-chip"

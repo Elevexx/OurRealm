@@ -159,9 +159,10 @@ export default function Messages() {
     // Long-press (500ms) opens the menu — only for own messages
     if (m.from_username !== user?.username) return;
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    const rect = e.currentTarget.getBoundingClientRect();
     longPressTimer.current = setTimeout(() => {
-      setMsgMenu({ id: m.id, text: m.text, x: rect.right - 140, y: rect.top - 6 });
+      // The menu is rendered INSIDE the bubble (position absolute) so it
+      // can't overflow the chat viewport on small screens.
+      setMsgMenu({ id: m.id, text: m.text });
     }, 480);
   };
   const onMsgPointerUp = () => {
@@ -698,6 +699,42 @@ export default function Messages() {
                                   <span data-testid={`real-msg-status-${m.id}`}>· {status}</span>
                                 )}
                               </div>
+                              {/* Long-press dropdown — anchored INSIDE the bubble.
+                                  Aligns to the bubble's edge so it cannot overflow
+                                  the chat viewport, regardless of screen size. */}
+                              {msgMenu?.id === m.id && (
+                                <div
+                                  className="absolute or-surface p-1 z-10"
+                                  onClick={(e) => e.stopPropagation()}
+                                  data-testid="real-msg-menu"
+                                  style={{
+                                    top: "100%",
+                                    [mine ? "right" : "left"]: 0,
+                                    marginTop: 4,
+                                    minWidth: 140,
+                                    background: "var(--surface-2)",
+                                    boxShadow: "0 8px 20px rgba(0,0,0,0.4)",
+                                  }}
+                                >
+                                  <button
+                                    className="block w-full text-left px-3 py-2 text-sm"
+                                    onClick={() => beginEdit(m)}
+                                    data-testid="real-msg-menu-edit"
+                                    style={{ color: "var(--text-main)" }}
+                                  >Edit</button>
+                                  <button
+                                    className="block w-full text-left px-3 py-2 text-sm"
+                                    onClick={() => deleteMsg(m.id)}
+                                    data-testid="real-msg-menu-delete"
+                                    style={{ color: "#FF8080" }}
+                                  >Delete for everyone</button>
+                                  <button
+                                    className="block w-full text-left px-3 py-2 text-[11px]"
+                                    onClick={() => setMsgMenu(null)}
+                                    style={{ color: "var(--text-muted)" }}
+                                  >Cancel</button>
+                                </div>
+                              )}
                             </>
                           )}
                         </div>
@@ -706,34 +743,6 @@ export default function Messages() {
                   })}
                   <div ref={realEndRef} />
                 </div>
-
-                {/* Long-press action menu */}
-                {msgMenu && (
-                  <div
-                    className="fixed z-[90] or-surface p-1"
-                    style={{ left: Math.max(8, msgMenu.x), top: msgMenu.y, background: "var(--surface-2)" }}
-                    onClick={(e) => e.stopPropagation()}
-                    data-testid="real-msg-menu"
-                  >
-                    <button
-                      className="block w-full text-left px-3 py-2 text-sm"
-                      onClick={() => beginEdit(realThread.messages.find((m) => m.id === msgMenu.id))}
-                      data-testid="real-msg-menu-edit"
-                      style={{ color: "var(--text-main)" }}
-                    >Edit</button>
-                    <button
-                      className="block w-full text-left px-3 py-2 text-sm"
-                      onClick={() => deleteMsg(msgMenu.id)}
-                      data-testid="real-msg-menu-delete"
-                      style={{ color: "#FF8080" }}
-                    >Delete for everyone</button>
-                    <button
-                      className="block w-full text-left px-3 py-2 text-[11px]"
-                      onClick={() => setMsgMenu(null)}
-                      style={{ color: "var(--text-muted)" }}
-                    >Cancel</button>
-                  </div>
-                )}
                 {realErr && (
                   <div className="text-xs px-4 py-1.5" style={{ color: "#FF8080" }}>{realErr}</div>
                 )}

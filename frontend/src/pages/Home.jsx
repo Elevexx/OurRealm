@@ -89,13 +89,11 @@ export default function Home() {
     const arr = [...selected];
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
-      // Also seed the For You feed's media filter so it persists across the
-      // navigation handoff (this was missing before the bug-fix).
-      localStorage.setItem(FEED_FILTER_KEY, JSON.stringify(media));
+      // NOTE: do NOT write `media` here — onMediaChange already persisted it.
+      // Re-writing the closure value clobbers a freshly-toggled chip when
+      // the user taps Next before React re-renders.
     } catch { /* */ }
     if (user && !isGuest) {
-      // Save and WAIT for it before navigating — guarantees the /feed page
-      // sees the latest interests on first paint.
       await updateProfile({ interests: arr });
     }
     navigate("/feed");

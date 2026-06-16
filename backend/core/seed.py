@@ -212,6 +212,21 @@ async def run_startup():
     await backfill_founder_as_default_friend(founder)
     await migrate_vip_and_strip_founder_badges(founder)
     await migrate_inject_myfeed_widget()
+    await migrate_text_posts_to_thoughts()
+
+
+async def migrate_text_posts_to_thoughts():
+    """Reclassify legacy text posts (`media_type` in {"text","post"}) as
+    `thought`. Idempotent — subsequent boots match 0 docs."""
+    import logging
+    res = await db.posts.update_many(
+        {"media_type": {"$in": ["text", "post"]}},
+        {"$set": {"media_type": "thought"}},
+    )
+    if res.modified_count:
+        logging.getLogger("ourrealm.seed").info(
+            f"Reclassified {res.modified_count} legacy posts as 'thought'"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────

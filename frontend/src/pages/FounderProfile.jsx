@@ -9,6 +9,7 @@ import { CSS } from "@dnd-kit/utilities";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import MyFeedWidget from "@/components/MyFeedWidget";
+import TopEightWidget from "@/components/TopEightWidget";
 import VipBadge from "@/components/VipBadge";
 
 const SIZE_TO_CLASS = {
@@ -61,6 +62,8 @@ function WidgetBody({ w, ownerUsername, isOwner }) {
   switch (w.type) {
     case "myfeed":
       return <MyFeedWidget username={ownerUsername} isOwner={isOwner} />;
+    case "top8":
+      return <TopEightWidget username={ownerUsername} />;
     case "live":
       return (
         <div className="h-full flex flex-col">
