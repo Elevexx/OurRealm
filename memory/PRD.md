@@ -1,5 +1,27 @@
 # OurRealm — Product Requirements Document
 
+## Phase 2 — Image Hosting + Profile Image System (Feb 2026)
+
+**Centralized image hosting**
+- `services/image_store.py` — local-disk backend at `/app/backend/uploads/images`, behind a small abstraction so it can be swapped for S3/R2/Cloudinary later without touching call sites. Pillow-based EXIF strip + resize-down original (max 2048×2048) + generated thumbnail (max 480×480). SHA256 + bytes + width + height stored on each `images` row.
+- `routers/images.py` — `POST /api/images/upload` (multipart), `POST /api/images/from-url` (server-side fetch + sniff + rehost), `GET /api/images/me/list`, `GET /api/images/{name}` (no auth, cache-control `public, max-age=31536000, immutable`, served via `FileResponse`).
+- Validation: 10 MB cap, MIME sniff (JPEG/PNG/WebP/GIF), filename allowlist `[a-z0-9_.]`, ext allowlist; per-user rate limit 12 uploads / 5 min.
+
+**Frontend `<ImageUploadPicker>`**
+- Reusable modal with two tabs: "Upload from device" (multipart) and "Upload via URL" (re-hosted). Returns `{url, thumbnailUrl, image}` — relative paths absolutized via `absoluteImageUrl()` against `REACT_APP_BACKEND_URL`.
+- Wired into: Account Settings (`account-avatar-edit` → `account-avatar-picker`), Feed composer (tapping `feed-composer-type-image` opens `feed-image-picker`), Messenger composer (`real-chat-attach-image` opens `real-chat-image-picker`).
+
+**Profile image**
+- `UserOut` serializer now exposes `profileImageUrl` (alias of `avatar_url`) so the spec field name works alongside the legacy field. Avatar updates flow `Picker → PATCH /api/profile/me → refreshMe()`.
+
+**Performance**
+- Feed and PostPopup images: `loading="lazy" decoding="async"`.
+- Cloudflare in front of preview/production handles edge caching; immutable cache-control set on file responses.
+
+**Out of scope (intentional)**:
+- No external CDN integration (S3/R2/Cloudinary) — local disk + Cloudflare edge is sufficient for current scale; swap is one file (`services/image_store.py`).
+- Multi-image arrays on posts (`imageUrls: string[]`) deferred — single `image_url` covers the current composer; arrays can be added without backend changes once the composer supports multi-pick.
+
 ## Phase 1 — Platform Foundation (Feb 2026)
 
 **1. Password login for @stealth (coexists with OTP)**
