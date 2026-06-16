@@ -26,6 +26,7 @@ import Settings from "@/pages/Settings";
 import AccountSettings from "@/pages/AccountSettings";
 import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage } from "@/pages/LegalPages";
 import PostPopup from "@/components/PostPopup";
+import MiniPlayer from "@/components/MiniPlayer";
 
 function ShellRoute({ children }) {
   const { isLoading } = useAuth();
@@ -74,6 +75,7 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <PostPopup />
+          <MiniPlayer />
         </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>
