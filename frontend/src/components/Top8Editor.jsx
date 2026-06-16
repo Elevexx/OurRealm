@@ -139,10 +139,12 @@ export default function Top8Editor() {
           const avatar = f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.name || f.username)}`;
           return (
             <div key={id} className="flex flex-col items-center gap-1.5 min-w-0 w-full" data-testid={`top8-slot-${f.username}`}>
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setPicker({ open: true, replaceIndex: i })}
-                className="rounded-full p-[3px] relative aspect-square w-full"
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPicker({ open: true, replaceIndex: i }); } }}
+                className="rounded-full p-[3px] relative aspect-square w-full cursor-pointer"
                 style={{ background: ring, boxShadow: `0 0 14px ${ring}66`, maxWidth: 80 }}
                 aria-label={`Top 8 #${i + 1}: @${f.username} (tap to replace)`}
               >
@@ -158,7 +160,7 @@ export default function Top8Editor() {
                 >
                   <X size={10} />
                 </button>
-              </button>
+              </div>
               <div className="text-[11px] sm:text-xs font-semibold text-center truncate w-full" style={{ color: "var(--text-main)" }}>{f.name || `@${f.username}`}</div>
               <div className="flex gap-1">
                 <button type="button" className="text-[10px] px-1" onClick={() => move(id, -1)} data-testid={`top8-up-${f.username}`} style={{ color: "var(--text-muted)" }} aria-label={`Move @${f.username} left`}>◀</button>

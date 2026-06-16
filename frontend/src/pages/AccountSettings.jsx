@@ -107,10 +107,18 @@ export default function AccountSettings() {
   // Phase-2 — ZIP save + Presence toggle save. Both auto-save with the
   // backend's validation; the toggle is instant (no Save button).
   const saveZip = async () => {
+    const trimmed = zip.trim();
+    // Pre-flight validation that mirrors the backend regex so the user
+    // gets the spec-mandated error before the input mask hides their
+    // mistake. Empty string is intentionally allowed — it CLEARS the ZIP.
+    if (trimmed && !/^\d{5}(-\d{4})?$/.test(trimmed)) {
+      setZipMsg("Please enter a valid 5-digit US ZIP code.");
+      return;
+    }
     setZipBusy(true); setZipMsg("");
     try {
-      await apiClient.patch("/profile/me", { zip_code: zip.trim() });
-      setZipMsg(zip.trim() ? "ZIP saved." : "ZIP cleared.");
+      await apiClient.patch("/profile/me", { zip_code: trimmed });
+      setZipMsg(trimmed ? "ZIP saved." : "ZIP cleared.");
       if (refreshMe) await refreshMe();
     } catch (e) {
       setZipMsg(e?.response?.data?.detail || "Could not save ZIP");

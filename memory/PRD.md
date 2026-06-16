@@ -1,5 +1,37 @@
 # OurRealm — Product Requirements Document
 
+## Phase 2.5 — Profiles, Local Discovery & Top 8 (Feb 2026)
+
+**Top 8 management inside Edit Profile**
+- New `<Top8Editor>` component (`/components/Top8Editor.jsx`) — self-contained: fetches viewer's friends, persists changes via `PATCH /api/profile/me {inner_8}`. Add / Remove / Reorder (◀ ▶) / Replace flows all auto-save with optimistic UI + rollback on error. Mounted in Profile editing mode. `inner_8` is the canonical field (existing); TopEightWidget on the public profile reads the same field, so changes appear instantly.
+- Friend-membership check + 8-cap enforced server-side.
+
+**Profile presence indicator**
+- New `<PresenceDot>` — pure CSS animated green radar dot. Placed in the new `[data-testid=profile-username-row]` (handle + dot).
+- `users.presence_visible` (default true). Toggle in Account Settings (`settings-presence-toggle`, auto-saves).
+
+**Private ZIP code storage**
+- `users.zip_code` + `zip_lat` / `zip_lng` (geocoded server-side via pgeocode at save time). PRIVATE: serialize_user exposes `zip_code` ONLY for owner-targeted endpoints; public `/profile/by-username/{u}` POPs the field.
+- Account Settings form (`settings-zip-input`, `settings-zip-save`, `settings-zip-msg`). Client-side prevalidation + backend regex `^\d{5}(-\d{4})?$`. Empty string CLEARS.
+
+**Local-discovery infrastructure**
+- `core/geo.py` — `resolve_zip`, `haversine_miles`, `parse_radius`, `radius_filter`. ALLOWED_RADII = {10,20,50,100,250,500}. "any" disables filtering. Items without coords are excluded from non-Any queries by design.
+- Posts snapshot `author_zip` + `author_lat` + `author_lng` at write time so changing a ZIP later doesn't retro-locate old posts. `_public_post` strips all three private fields from every response.
+- Reusable filter — same code path will power future user / community / event searches without modification.
+
+**For You Feed radius chips**
+- `[data-testid=feed-radius-bar]` with 7 chips (`feed-radius-{any,10,20,50,100,250,500}`). Default Any. Selection persists in `localStorage.ourrealm.feedRadius`. Backend gate: non-Any without ZIP → 400.
+
+**Sounds radius dropdown**
+- Spec radii applied to Sounds page Dropdown. Default Any. Mock data filtered client-side via existing `distance_miles` field.
+
+**ZIP-required modal**
+- New `<ZipRequiredModal>` mounted in Feed (`feed-zip-required`) and Sounds (`sounds-zip-required`). Exact spec text: "Radius Search requires a ZIP code in your Profile Settings." CTA `…-go` navigates to /settings/account; modal does NOT break the current page.
+
+**Polish from iteration_7 feedback**
+- AccountSettings ZIP input now surfaces spec error text "Please enter a valid 5-digit US ZIP code." via client-side regex pre-flight (input mask was hiding letters and bypassing the backend message).
+- Top8Editor outer wrapper switched to `<div role="button">` to eliminate the nested-`<button>` hydration warning while keeping click & keyboard support.
+
 ## Phase 2 — Image Hosting + Profile Image System (Feb 2026)
 
 **Centralized image hosting**
