@@ -78,8 +78,15 @@ class ProfileUpdate(BaseModel):
     profile_visibility: Optional[str] = None
     # Wallet payment placeholders (stored as-is, no real ACH)
     wallet: Optional[dict] = None
-    # Inner-8 friends ordered list of user_ids (max 8)
+    # Inner-8 / Top-8 friends ordered list of user_ids (max 8)
     inner_8: Optional[List[str]] = None
+    # Phase-2: presence indicator visibility (default true). When false the
+    # animated radar dot is hidden on the public profile.
+    presence_visible: Optional[bool] = None
+    # Phase-2: PRIVATE 5-digit US ZIP. Never exposed by the public profile
+    # serializer; only used server-side for radius filtering and surfaced
+    # back to the owner via /auth/me. Pass empty string to clear.
+    zip_code: Optional[str] = Field(default=None, max_length=10)
 
 
 class UsernameChangePayload(BaseModel):
@@ -158,6 +165,12 @@ def serialize_user(doc: dict) -> dict:
         "profile_visibility": doc.get("profile_visibility", "public"),
         "wallet": doc.get("wallet", {}),
         "inner_8": doc.get("inner_8", []),
+        # Phase-2 — presence indicator visibility (default ON).
+        "presence_visible": doc.get("presence_visible", True),
+        # PRIVATE — only returned via `/auth/me` (the owner). The public
+        # `/profile/by-username/...` route MUST omit this field. See
+        # routers/profile.py:public_profile() for the redaction.
+        "zip_code": doc.get("zip_code") or None,
         "social": doc.get("social", {}),
         # `friends` is a list of user_ids internally — UI can resolve via /friends/list
         "friends": doc.get("friends", []),

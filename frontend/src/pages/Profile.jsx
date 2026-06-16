@@ -15,6 +15,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import MyFeedWidget from "@/components/MyFeedWidget";
 import TopEightWidget from "@/components/TopEightWidget";
+import Top8Editor from "@/components/Top8Editor";
+import PresenceDot from "@/components/PresenceDot";
 import VipBadge from "@/components/VipBadge";
 
 const SIZE_TO_CLASS = {
@@ -452,6 +454,14 @@ export default function Profile() {
                 <h2 className="text-2xl sm:text-3xl flex items-center gap-2 flex-wrap" style={{ fontFamily: "var(--font-display)" }} data-testid="profile-name">
                   {user?.name || "Guest visitor"}
                 </h2>
+                {user?.username && (
+                  <div className="flex items-center gap-2 mt-1" data-testid="profile-username-row">
+                    <span className="text-sm" style={{ color: "var(--text-muted)" }}>@{user.username}</span>
+                    {user?.presence_visible !== false && (
+                      <PresenceDot data-testid="profile-presence-indicator" />
+                    )}
+                  </div>
+                )}
                 <div className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }} data-testid="profile-bio">
                   {user?.bio || (isGuest ? "Browsing as guest." : "Tap edit to add a bio.")}
                 </div>
@@ -486,6 +496,10 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* Phase-2: Top 8 management inline in Edit Profile.
+          Auto-saves; instant; reflects on the Top-8 widget after refreshMe. */}
+      {editing && !isGuest && user && <Top8Editor />}
 
       {/* Widgets bento (drag-and-drop when editing) */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>

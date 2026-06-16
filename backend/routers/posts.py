@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 
 from core.db import db
 from core.deps import CurrentUser
+from core.geo import parse_radius, radius_filter
 from models.schemas import PostCreate
 from routers.notifications import emit_notification
 
@@ -36,12 +37,18 @@ async def create_post(payload: PostCreate, current: CurrentUser):
         "likes": 0,
         "liked_by": [],
         "comments": 0,
+        # Phase-2 — author location SNAPSHOT for radius filtering. PRIVATE:
+        # `author_zip` is never serialized to consumers. `author_lat`/`author_lng`
+        # are used at query time by `radius_filter` and otherwise omitted.
+        "author_zip": current.get("zip_code"),
+        "author_lat": current.get("zip_lat"),
+        "author_lng": current.get("zip_lng"),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.posts.insert_one(doc)
     doc["created_at"] = datetime.fromisoformat(doc["created_at"])
     doc.pop("_id", None)
-    return {"post": doc}
+    return {"post": _public_post(doc)}
 
 
 def _visibility_query(viewer: Optional[dict], author_id: Optional[str] = None) -> dict:
@@ -95,17 +102,37 @@ async def feed_by_user(username: str, limit: int = 100):
                 p["created_at"] = datetime.fromisoformat(p["created_at"])
             except Exception:
                 pass
-        items.append(p)
+        items.append(_public_post(p))
     return {"posts": items}
 
 
+def _public_post(p: dict) -> dict:
+    """Strip private author-location fields from a post doc before returning."""
+    p.pop("author_zip", None)
+    p.pop("author_lat", None)
+    p.pop("author_lng", None)
+    return p
+
+
 @router.get("")
-async def list_posts(media_type: Optional[str] = None, limit: int = 50):
+async def list_posts(
+    media_type: Optional[str] = None,
+    limit: int = 50,
+    radius: Optional[str] = None,
+    viewer: Optional[str] = None,
+):
+    """List posts. Phase-2: optional `?radius=10|20|50|100|250|500|any`.
+
+    Radius filtering uses the viewer's stored ZIP coords (looked up by
+    `?viewer=<username>`) and matches posts whose author has stored
+    coords within the requested miles. Posts without author coords are
+    EXCLUDED from a non-Any radius (cannot be measured).
+    """
     query: dict = {}
     if media_type and media_type != "all":
         query["media_type"] = media_type
     cursor = db.posts.find(query, {"_id": 0}).sort("created_at", -1).limit(limit)
-    items = []
+    items: list = []
     async for p in cursor:
         if isinstance(p.get("created_at"), str):
             try:
@@ -113,6 +140,32 @@ async def list_posts(media_type: Optional[str] = None, limit: int = 50):
             except Exception:
                 pass
         items.append(p)
+
+    miles = parse_radius(radius)
+    if miles is not None:
+        viewer_doc = None
+        if viewer:
+            viewer_doc = await db.users.find_one(
+                {"username": (viewer or "").lower()},
+                {"_id": 0, "zip_lat": 1, "zip_lng": 1},
+            )
+        if not viewer_doc or viewer_doc.get("zip_lat") is None or viewer_doc.get("zip_lng") is None:
+            # The frontend is responsible for blocking the radius UI until
+            # the viewer has a ZIP. We still hard-gate here so the API
+            # can't be tricked into bypassing the requirement.
+            raise HTTPException(
+                status_code=400,
+                detail="Radius Search requires a ZIP code in your Profile Settings.",
+            )
+        items = radius_filter(
+            items,
+            (float(viewer_doc["zip_lat"]), float(viewer_doc["zip_lng"])),
+            miles,
+            lat_key="author_lat",
+            lng_key="author_lng",
+        )
+
+    items = [_public_post(p) for p in items]
     return {"posts": items}
 
 
@@ -165,7 +218,7 @@ async def get_post(post_id: str):
             p["created_at"] = datetime.fromisoformat(p["created_at"])
         except Exception:
             pass
-    return {"post": p}
+    return {"post": _public_post(p)}
 
 
 @router.get("/{post_id}/comments")

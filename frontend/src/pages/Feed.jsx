@@ -11,9 +11,20 @@ import UsernameLink from "@/components/UsernameLink";
 import { openPostPopup } from "@/lib/postPopupController";
 import { usePostState, setPost } from "@/lib/postStore";
 import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPicker";
+import ZipRequiredModal from "@/components/ZipRequiredModal";
 
 const FILTER_KEY = "ourrealm.feedMedia";
 const INTEREST_KEY = "ourrealm.interests";
+const RADIUS_KEY = "ourrealm.feedRadius";
+const RADIUS_OPTIONS = [
+  { id: "any", label: "Any" },
+  { id: "10",  label: "10 mi" },
+  { id: "20",  label: "20 mi" },
+  { id: "50",  label: "50 mi" },
+  { id: "100", label: "100 mi" },
+  { id: "250", label: "250 mi" },
+  { id: "500", label: "500 mi" },
+];
 
 function timeAgo(iso) {
   const d = new Date(iso); const s = Math.floor((Date.now() - d.getTime()) / 1000);
@@ -49,6 +60,12 @@ export default function Feed() {
   const [composeAudience, setComposeAudience] = useState({ visibility: "public", user_ids: [] });
   const [audiencePickerOpen, setAudiencePickerOpen] = useState(false);
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  // Phase-2 — Radius filter ("any" | "10" | "20" | "50" | "100" | "250" | "500").
+  const [radius, setRadius] = useState(() => {
+    try { return localStorage.getItem(RADIUS_KEY) || "any"; } catch { return "any"; }
+  });
+  const [zipRequiredOpen, setZipRequiredOpen] = useState(false);
+  useEffect(() => { try { localStorage.setItem(RADIUS_KEY, radius); } catch { /* ignore */ } }, [radius]);
   const [guestPrompt, setGuestPrompt] = useState(null);
   const [posting, setPosting] = useState(false);
 
@@ -56,11 +73,26 @@ export default function Feed() {
 
   const loadPosts = async () => {
     try {
-      const { data } = await apiClient.get("/posts");
+      // Radius queries require a stored ZIP code on the viewer. When the
+      // viewer hasn't set one we either fall back to "any" silently or, if
+      // they explicitly chose a radius, gate the action via the modal.
+      const params = {};
+      if (radius && radius !== "any") {
+        if (!user?.zip_code) {
+          setRadius("any");
+          setZipRequiredOpen(true);
+          const { data } = await apiClient.get("/posts");
+          setServerPosts(data.posts || []);
+          return;
+        }
+        params.radius = radius;
+        if (user?.username) params.viewer = user.username;
+      }
+      const { data } = await apiClient.get("/posts", { params });
       setServerPosts(data.posts || []);
     } catch { setServerPosts([]); }
   };
-  useEffect(() => { loadPosts(); }, []);
+  useEffect(() => { loadPosts(); }, [radius, user?.zip_code, user?.username]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const mockPosts = useMemo(() => makeMockPosts(24), []);
   const allPosts = useMemo(() => {
@@ -137,6 +169,27 @@ export default function Feed() {
 
       {/* Media type bar (matches uploaded design) */}
       <MediaTypeBar value={media} onChange={setMedia} onNext={() => {}} />
+
+      {/* Phase-2 — Radius filter chips. Filters server posts by author
+          location within `radius` miles of the viewer's ZIP. Default Any. */}
+      <div className="mt-3 flex items-center gap-2 overflow-x-auto no-scrollbar" data-testid="feed-radius-bar">
+        <span className="text-[11px] uppercase tracking-wider shrink-0" style={{ color: "var(--text-muted)" }}>Radius</span>
+        {RADIUS_OPTIONS.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            className="or-chip shrink-0"
+            data-active={radius === id}
+            onClick={() => {
+              if (id !== "any" && !user?.zip_code) { setZipRequiredOpen(true); return; }
+              setRadius(id);
+            }}
+            data-testid={`feed-radius-${id}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* Composer */}
       <div className="or-surface p-4 mt-4" data-testid="feed-composer">
@@ -268,6 +321,7 @@ export default function Feed() {
         title="Add an image to your post"
         testid="feed-image-picker"
       />
+      <ZipRequiredModal open={zipRequiredOpen} onClose={() => setZipRequiredOpen(false)} testid="feed-zip-required" />
     </div>
   );
 }

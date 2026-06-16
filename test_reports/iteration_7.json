@@ -1,0 +1,58 @@
+{
+  "summary": "Phase-2 (Profiles + Local Discovery + Top 8) verified end-to-end. Backend 15/15 pytest cases passing in /app/backend/tests/test_phase2_geo.py: (a) PATCH /api/profile/me {zip_code:'10001'} → 200 + zip set; {zip_code:'abcde'} → 400 'Please enter a valid 5-digit US ZIP code.'; {zip_code:''} → clears; (b) GET /api/profile/by-username/tfone PUBLIC payload OMITS zip_code, while GET /api/auth/me INCLUDES zip_code for the owner; (c) presence_visible toggle PATCHes and persists via /auth/me; (d) Radius gate — posts with snapshot author_lat/author_lng on creation, /api/posts?radius=20&viewer=tfone returns tfone's TEST_radius_post_phase2, /api/posts?radius=10&viewer=tftwo (no ZIP) → 400 'Radius Search requires a ZIP code in your Profile Settings.', radius=any and no-radius work normally; (e) Top-8 add by friend id persists in /auth/me.inner_8, non-friend id → 400, 9 ids → 400 'Inner 8'. Private fields author_zip/author_lat/author_lng stripped from every post in response payloads. Frontend verified live: AccountSettings ZIP+Presence cards work (toggle aria-pressed flips and persists), profile view (?edit=0) shows profile-username-row + profile-presence-indicator, edit mode reveals profile-top8-editor with stealth in slot #1 — remove/add/picker/pick-stealth-back flow works and persists across refresh, feed-radius-bar has all 7 chips testids feed-radius-{any,10,20,50,100,250,500}, default Any has data-active=true, clicking 20 as tfone (with ZIP) activates without modal, while tftwo (no ZIP) clicking 20 triggers feed-zip-required modal with the EXACT spec text and feed-zip-required-go navigates to /settings/account. Sounds page uses Dropdown testid root 'sounds-radius' (button = sounds-radius-button, opts = sounds-radius-opt-{Any|10 mi|...|500 mi}) — all 7 options present, default Any.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "AccountSettings ZIP input",
+        "issue": "Input strips non-digit/hyphen chars client-side via setZip(value.replace(/[^0-9-]/g,'').slice(0,10)) in AccountSettings.jsx:225. Typing 'abcde' becomes '' before save, so the user never sees backend's 'Please enter a valid 5-digit US ZIP code.' — instead they see 'ZIP cleared.' Spec wanted error message surfaced. Backend rejection path (catch → setZipMsg(detail)) is wired correctly but unreachable. Either remove the strict input mask OR add a 5-digit length check on submit that uses the same error string.",
+        "affected_selectors": ["settings-zip-input", "settings-zip-save", "settings-zip-msg"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Sounds radius dropdown — spec testid mismatch",
+        "issues": [
+          "Spec calls for [data-testid=sounds-radius-toggle] and 'sounds-radius-option-10 mi'. Actual code uses the shared Dropdown component which emits root testid 'sounds-radius', button 'sounds-radius-button' and options 'sounds-radius-opt-{label}' (e.g. 'sounds-radius-opt-10 mi'). All 7 options present; only the naming pattern differs from spec."
+        ]
+      },
+      {
+        "screen": "Top8Editor remove button — nested button hydration warning",
+        "issues": [
+          "Top8Editor.jsx:142 renders an outer <button> (replace-slot) with an inner <button data-testid=top8-remove-{username}> (X icon). React hydration warning 'In HTML, <button> cannot be a descendant of <button>'. Cosmetic — both clicks still work because the inner button calls e.stopPropagation() — but should be a <span role=button> or a sibling element."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase2_geo.py",
+    "/app/test_reports/pytest/phase2_geo.xml"
+  ],
+  "action_items": [
+    "(Minor UX/Spec) AccountSettings ZIP input: surface backend's 'Please enter a valid 5-digit US ZIP code.' for non-numeric input. Either remove the input mask, or add explicit `if (zip && !/^\\d{5}$/.test(zip.trim())) { setZipMsg('Please enter a valid 5-digit US ZIP code.'); return; }` before the PATCH call.",
+    "(Minor) Optionally rename Sounds Dropdown testid from 'sounds-radius' to 'sounds-radius-toggle' to match spec, or update spec docs to reference the actual Dropdown pattern.",
+    "(Cosmetic) Top8Editor: refactor the inner remove <button> to <span role='button'> (or move it outside the parent <button>) to eliminate the nested-button hydration warning."
+  ],
+  "critical_code_review_comments": [
+    "core/geo.py is clean: ZIP_RE strict, pgeocode lru_cache prevents repeated dataset loads, NaN guards on lat/lng, radius_filter EXCLUDES items without coords (matches spec).",
+    "routers/profile.py PATCH /me handles all three ZIP states correctly: empty-string clears (zip_code/zip_lat/zip_lng → None), invalid → 400, valid+geocode-fail → 400, valid+geocode-ok stores prefix + coords. Inner-8 friend membership check + 8-cap enforced.",
+    "routers/posts.py snapshots author_zip/author_lat/author_lng at create time so changing a user's ZIP later does NOT retroactively relocate old posts — correct privacy/semantics. _public_post strips all three private fields from every response shape (list, single get, feed-by-user, create).",
+    "Frontend Top8Editor optimistic UI + rollback on error is correct (setIds(next) then PATCH, rollback to user.inner_8 on failure). refreshMe() re-fetches /auth/me so widgets stay in sync.",
+    "ZipRequiredModal text matches spec verbatim ('Radius Search requires a ZIP code in your Profile Settings.') and the Go CTA navigates to /settings/account via react-router useNavigate — no full-page reload, no broken state.",
+    "Feed.jsx default Any has data-active=true and only fires the ZIP-required modal when user.zip_code is empty AND a non-Any radius is selected — matches spec."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase2_geo.py (new — 15 pytest cases covering ZIP, presence, radius, Top 8)"
+  ],
+  "success_rate": {"backend": "100% (15/15 phase-2 + iteration_6 phase-2-images still 9/9 + iteration_5 phase-1 17/17 untouched)", "frontend": "~95% — all critical flows pass; only ZIP-invalid client-side error message differs from spec (input mask strips chars)"},
+  "test_credentials": "tfone=testfriend1@example.com/pass1234; tftwo=testfriend2@example.com/pass1234; stealth=Password1$. Per /app/memory/test_credentials.md.",
+  "seed_data_creation": "One post 'TEST_radius_post_phase2' created by tfone with snapshot coords for 10001. Top-8 left in stable state (stealth re-added). tftwo ZIP cleared via test; tfone ZIP set to 10001 after test run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "PHASE-2 PROVEN PASSING (Profile/Local-Discovery/Top-8). Verified live testids: settings-zip-input, settings-zip-save, settings-zip-msg, settings-presence-toggle (aria-pressed), profile-username-row, profile-presence-indicator, profile-edit (visible only in VIEW mode — Profile defaults to editing=true unless ?edit=0), profile-top8-editor (visible in EDIT mode), top8-add-slot-{0..7}, top8-slot-{username}, top8-remove-{username}, top8-up-{username}, top8-down-{username}, top8-picker, top8-pick-{username}, top8-picker-close. Feed: feed-radius-bar, feed-radius-{any,10,20,50,100,250,500} (data-active attr), feed-zip-required + feed-zip-required-go + feed-zip-required-cancel + feed-zip-required-close. Sounds: testid root is 'sounds-radius' (NOT 'sounds-radius-toggle'), button=sounds-radius-button, options=sounds-radius-opt-{Any|10 mi|20 mi|50 mi|100 mi|250 mi|500 mi}, plus sounds-zip-required modal. Backend endpoint behaviors documented in summary; one_known issue is that the AccountSettings ZIP input client-side masks non-digits so backend 400 validation never surfaces — Phase-1 and Phase-2-image flows from iterations 5+6 unaffected.",
+  "rca_of_the_issue": "ZIP invalid-input UX gap: AccountSettings.jsx:225 onChange handler uses setZip(e.target.value.replace(/[^0-9-]/g, '').slice(0, 10)). Effect: when a user types 'abcde', the field becomes '' synchronously; clicking Save then sends zip_code:'', which the backend treats as a CLEAR (200) — the UI shows 'ZIP cleared.' instead of the spec's 'Please enter a valid 5-digit US ZIP code.' Fix options: (1) remove the regex mask; (2) keep the mask but in saveZip(), assert that the user *intended* non-empty input — track the raw onChange value separately, or simply require length === 5 before sending. Backend itself is fully correct (test_invalid_zip_returns_400 passes against the API directly)."
+}

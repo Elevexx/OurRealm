@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from core.db import db
 from core.deps import CurrentUser
 from core.security import hash_password, verify_password
+from core.geo import is_valid_zip, resolve_zip
 from models.schemas import (
     ProfileUpdate, UsernameChangePayload, PasswordChangePayload, serialize_user,
 )
@@ -40,6 +41,25 @@ async def update_profile(update: ProfileUpdate, current: CurrentUser):
         for uid in set_doc["inner_8"]:
             if uid not in friend_ids:
                 raise HTTPException(status_code=400, detail="Inner 8 entry is not a friend")
+    # Phase-2 — ZIP code validation + coords resolution. The 5-digit
+    # prefix is geocoded server-side via pgeocode; lat/lng is stored in
+    # private fields used by the radius-filter helpers. Pass an empty
+    # string to clear the ZIP and its derived coords.
+    if "zip_code" in set_doc:
+        raw = (set_doc.pop("zip_code") or "").strip()
+        if raw == "":
+            set_doc["zip_code"] = None
+            set_doc["zip_lat"] = None
+            set_doc["zip_lng"] = None
+        else:
+            if not is_valid_zip(raw):
+                raise HTTPException(status_code=400, detail="Please enter a valid 5-digit US ZIP code.")
+            coords = resolve_zip(raw)
+            if coords is None:
+                raise HTTPException(status_code=400, detail="Could not locate that ZIP code. Try a different one.")
+            set_doc["zip_code"] = raw[:10]
+            set_doc["zip_lat"] = coords[0]
+            set_doc["zip_lng"] = coords[1]
     if set_doc:
         await db.users.update_one({"id": current["id"]}, {"$set": set_doc})
     user = await db.users.find_one({"id": current["id"]}, {"_id": 0})
@@ -107,4 +127,8 @@ async def get_public_profile_by_username(username: str):
     out = serialize_user(user)
     out["widgets"] = user.get("widgets") or []
     out["social"] = user.get("social", {})
+    # ── PRIVACY: ZIP code never leaves the owner's session. ──
+    # The serializer adds it for /auth/me; we strip here for the public
+    # by-username endpoint that anyone can hit.
+    out.pop("zip_code", None)
     return {"user": out}

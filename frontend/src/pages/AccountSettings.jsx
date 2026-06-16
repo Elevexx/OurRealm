@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, Globe2, Users as UsersIcon, Wallet, DollarSign, BadgeCheck, Camera } from "lucide-react";
+import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, Globe2, Users as UsersIcon, Wallet, DollarSign, BadgeCheck, Camera, MapPin, Radar } from "lucide-react";
 import apiClient from "@/api/client";
 import VipBadge from "@/components/VipBadge";
 import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPicker";
@@ -54,6 +54,13 @@ export default function AccountSettings() {
   const [walletMsg, setWalletMsg] = useState("");
   const [walletBusy, setWalletBusy] = useState(false);
 
+  // Phase-2 — Profile Settings (ZIP + Presence)
+  const [zip, setZip] = useState(user?.zip_code || "");
+  const [zipMsg, setZipMsg] = useState("");
+  const [zipBusy, setZipBusy] = useState(false);
+  const [presence, setPresence] = useState(user?.presence_visible !== false);
+  const [presenceBusy, setPresenceBusy] = useState(false);
+
   if (!user) return <div className="text-center py-8" style={{ color: "var(--text-muted)" }}>Sign in to view settings</div>;
 
   const changeUsername = async () => {
@@ -95,6 +102,28 @@ export default function AccountSettings() {
     } catch (e) {
       setWalletMsg(e?.response?.data?.detail || "Could not save");
     } finally { setWalletBusy(false); }
+  };
+
+  // Phase-2 — ZIP save + Presence toggle save. Both auto-save with the
+  // backend's validation; the toggle is instant (no Save button).
+  const saveZip = async () => {
+    setZipBusy(true); setZipMsg("");
+    try {
+      await apiClient.patch("/profile/me", { zip_code: zip.trim() });
+      setZipMsg(zip.trim() ? "ZIP saved." : "ZIP cleared.");
+      if (refreshMe) await refreshMe();
+    } catch (e) {
+      setZipMsg(e?.response?.data?.detail || "Could not save ZIP");
+    } finally { setZipBusy(false); }
+  };
+  const togglePresence = async (next) => {
+    setPresence(next); setPresenceBusy(true);
+    try {
+      await apiClient.patch("/profile/me", { presence_visible: next });
+      if (refreshMe) await refreshMe();
+    } catch (e) {
+      setPresence(!next); // rollback
+    } finally { setPresenceBusy(false); }
   };
 
   return (
@@ -180,6 +209,56 @@ export default function AccountSettings() {
                 {pwdBusy ? "Saving…" : "Update password"}
               </button>
               {pwdMsg && <div className="text-xs" data-testid="settings-password-msg" style={{ color: pwdMsg.includes("updated") ? "var(--brand-green)" : "#FF8080" }}>{pwdMsg}</div>}
+            </div>
+          </Card>
+
+          <Card title="ZIP Code (Private)" Icon={MapPin}>
+            <div className="text-[12px] mb-2" style={{ color: "var(--text-muted)" }}>
+              Your 5-digit US ZIP code stays private. It powers the For You and Sounds radius filters and is never shown to other users.
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="or-input flex-1"
+                inputMode="numeric"
+                maxLength={10}
+                value={zip}
+                onChange={(e) => setZip(e.target.value.replace(/[^0-9-]/g, "").slice(0, 10))}
+                placeholder="e.g. 10001"
+                data-testid="settings-zip-input"
+              />
+              <button
+                className="or-btn"
+                disabled={zipBusy}
+                onClick={saveZip}
+                data-testid="settings-zip-save"
+              >
+                {zipBusy ? "Saving…" : "Save"}
+              </button>
+            </div>
+            {zipMsg && <div className="text-xs mt-2" data-testid="settings-zip-msg" style={{ color: zipMsg.toLowerCase().includes("saved") || zipMsg.toLowerCase().includes("cleared") ? "var(--brand-green)" : "#FF8080" }}>{zipMsg}</div>}
+          </Card>
+
+          <Card title="Presence Indicator" Icon={Radar}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="text-[12px] flex-1" style={{ color: "var(--text-muted)" }}>
+                Show an animated green radar dot under your profile image to indicate active status. Visual only — no functional change.
+              </div>
+              <button
+                type="button"
+                onClick={() => togglePresence(!presence)}
+                disabled={presenceBusy}
+                className="or-chip shrink-0"
+                data-active={presence}
+                aria-pressed={presence}
+                data-testid="settings-presence-toggle"
+              >
+                <span style={{
+                  display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+                  background: presence ? "var(--brand-green)" : "var(--text-muted)",
+                  boxShadow: presence ? "0 0 8px var(--brand-green)" : "none",
+                }} />
+                {presence ? "On" : "Off"}
+              </button>
             </div>
           </Card>
         </div>

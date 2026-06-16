@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { Play, Heart, Plus, ShoppingCart, Video, Disc3, Music as MusicIcon, Mic, Sparkles, Wand2, ChevronDown } from "lucide-react";
 import { TRENDING_TRACKS, CHARACTERS } from "@/data/mockData";
+import { useAuth } from "@/contexts/AuthContext";
+import ZipRequiredModal from "@/components/ZipRequiredModal";
 
 const TABS = [
   { id: "Music",    Icon: MusicIcon },
@@ -11,7 +13,9 @@ const TABS = [
 const GENRES = ["All","Psytrance","House","Techno","Drum & Bass","Ambient","Hip-Hop","Indie"];
 const CHARTS = ["Top 100","Trending","New Releases","Up & Coming","Editor's Picks"];
 const MOODS = ["Any","Energetic","Chill","Dark","Uplifting","Focus","Party"];
-const RADII = [25, 50, 100, 250, 500];
+// Phase-2 — radius options match the spec across Feed and Sounds.
+// "Any" disables the radius filter entirely. Default is "Any".
+const RADII = ["Any", "10", "20", "50", "100", "250", "500"];
 
 function Dropdown({ label, options, value, onChange, testid }) {
   const [open, setOpen] = useState(false);
@@ -54,12 +58,24 @@ function Dropdown({ label, options, value, onChange, testid }) {
 }
 
 export default function Sounds() {
+  const { user } = useAuth();
   const [tab, setTab] = useState("Music");
   const [genre, setGenre] = useState("All");
   const [chart, setChart] = useState("Top 100");
   const [mood, setMood] = useState("Any");
-  const [radius, setRadius] = useState(100);
+  // Phase-2 — radius default = "Any" (spec). ZIP-gated when non-Any.
+  const [radius, setRadius] = useState("Any");
+  const [zipRequiredOpen, setZipRequiredOpen] = useState(false);
   const [open, setOpen] = useState(null);
+
+  const onRadiusChange = (val) => {
+    const raw = (val || "").replace(/\s*mi$/i, "").trim();
+    if (raw !== "Any" && !user?.zip_code) {
+      setZipRequiredOpen(true);
+      return;
+    }
+    setRadius(raw);
+  };
 
   const tracks = useMemo(() => {
     const list = TRENDING_TRACKS.filter((t) => {
@@ -69,7 +85,7 @@ export default function Sounds() {
       if (tab === "AI")       if (t.category !== "AI") return false;
       if (genre !== "All" && t.genre !== genre) return false;
       if (mood  !== "Any" && t.mood  !== mood)  return false;
-      if (t.distance_miles > radius) return false;
+      if (radius !== "Any" && t.distance_miles > parseInt(radius, 10)) return false;
       return true;
     });
     const sorted = [...list].sort((a, b) => {
@@ -113,7 +129,7 @@ export default function Sounds() {
         <Dropdown label="Genre"  value={genre}  onChange={setGenre}  options={GENRES} testid="sounds-genre" />
         <Dropdown label="Charts" value={chart}  onChange={setChart}  options={CHARTS} testid="sounds-chart" />
         <Dropdown label="Mood"   value={mood}   onChange={setMood}   options={MOODS}  testid="sounds-mood" />
-        <Dropdown label="Radius" value={`${radius} mi`} onChange={(v) => setRadius(parseInt(v))} options={RADII.map(r => `${r} mi`)} testid="sounds-radius" />
+        <Dropdown label="Radius" value={radius === "Any" ? "Any" : `${radius} mi`} onChange={onRadiusChange} options={RADII.map((r) => r === "Any" ? "Any" : `${r} mi`)} testid="sounds-radius" />
       </div>
 
       {/* Row 4: featured carousel */}
@@ -211,6 +227,7 @@ export default function Sounds() {
           </div>
         </div>
       )}
+      <ZipRequiredModal open={zipRequiredOpen} onClose={() => setZipRequiredOpen(false)} testid="sounds-zip-required" />
     </div>
   );
 }
