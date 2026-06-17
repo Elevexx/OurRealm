@@ -221,6 +221,14 @@ export default function AdminSupport() {
         >
           <RefreshCw size={14} /> Refresh
         </button>
+        <button
+          onClick={() => navigate("/admin/faq")}
+          className="or-btn or-btn-ghost"
+          data-testid="admin-support-faq-link"
+          title="Manage FAQ"
+        >
+          FAQ
+        </button>
       </header>
 
       {err && (

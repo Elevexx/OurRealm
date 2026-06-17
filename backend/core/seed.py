@@ -235,6 +235,9 @@ async def seed_support_account():
     log = logging.getLogger("ourrealm.seed")
 
     fixed_id = "00000000-0000-0000-0000-000000005500"  # stable, easy to spot
+    # SUPPORT_PASSWORD env override (mirrors STEALTH_INITIAL_PASSWORD).
+    # Falls back to the documented default if unset.
+    support_password = os.environ.get("SUPPORT_PASSWORD") or "Password1$"
     profile = {
         "id": fixed_id,
         "username": "support",
@@ -261,19 +264,19 @@ async def seed_support_account():
     if existing is None:
         await db.users.insert_one({
             **profile,
-            "password_hash": hash_password("Password1$"),
+            "password_hash": hash_password(support_password),
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
         log.info("Seeded @support system account")
         existing = await db.users.find_one({"username": "support"})
     else:
-        # Force-reset protected fields. Keep friends list (we'll merge below).
+        # Force-reset protected fields. Always re-hash from env so a
+        # rotated SUPPORT_PASSWORD takes effect on next boot.
         await db.users.update_one(
             {"id": existing["id"]},
             {"$set": {
                 **{k: v for k, v in profile.items() if k not in ("friends",)},
-                "password_hash": existing.get("password_hash")
-                                  or hash_password("Password1$"),
+                "password_hash": hash_password(support_password),
             }},
         )
         log.info("Refreshed @support system account")

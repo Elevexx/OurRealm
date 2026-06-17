@@ -28,6 +28,7 @@ import Settings from "@/pages/Settings";
 import AccountSettings from "@/pages/AccountSettings";
 import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
+import AdminFAQ from "@/pages/AdminFAQ";
 import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage } from "@/pages/LegalPages";
 import PostPopup from "@/components/PostPopup";
 import MiniPlayer from "@/components/MiniPlayer";
@@ -80,6 +81,7 @@ function App() {
             <Route path="/settings/account" element={<ShellRoute><AccountSettings /></ShellRoute>} />
             <Route path="/profile/support" element={<ShellRoute><Support /></ShellRoute>} />
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
+            <Route path="/admin/faq" element={<ShellRoute><AdminFAQ /></ShellRoute>} />
             <Route path="/terms" element={<TermsOfServicePage />} />
             <Route path="/terms-conditions" element={<TermsConditionsPage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />

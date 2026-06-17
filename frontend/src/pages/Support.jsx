@@ -9,7 +9,7 @@
  */
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LifeBuoy, Loader2, MessageSquare, Plus, ShieldCheck } from "lucide-react";
+import { ChevronDown, ChevronUp, HelpCircle, LifeBuoy, Loader2, MessageSquare, Plus, ShieldCheck } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdmin } from "@/lib/isAdmin";
@@ -42,6 +42,8 @@ export default function Support() {
   const [err, setErr] = useState("");
   const [subject, setSubject] = useState("");
   const [creating, setCreating] = useState(false);
+  const [faq, setFaq] = useState([]);
+  const [openFaq, setOpenFaq] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -52,6 +54,11 @@ export default function Support() {
   };
 
   useEffect(() => { if (user) load(); }, [user]);
+
+  // FAQ is a public read — no auth required, no need to block on user.
+  useEffect(() => {
+    apiClient.get("/faq").then((r) => setFaq(r.data.items || [])).catch(() => {});
+  }, []);
 
   const onCreate = async () => {
     setCreating(true); setErr("");
@@ -97,6 +104,46 @@ export default function Support() {
           </button>
         )}
       </header>
+
+      {faq.length > 0 && (
+        <section className="or-surface p-4 mb-5" data-testid="support-faq">
+          <div className="flex items-center gap-2 mb-3">
+            <HelpCircle size={16} style={{ color: "var(--primary)" }} />
+            <h2 className="text-base" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>
+              Frequently asked
+            </h2>
+          </div>
+          <ul className="divide-y" style={{ borderColor: "var(--border-col)" }}>
+            {faq.map((it) => {
+              const isOpen = openFaq === it.id;
+              return (
+                <li key={it.id} data-testid={`support-faq-item-${it.id}`}>
+                  <button
+                    className="w-full flex items-center gap-2 py-2 text-left"
+                    onClick={() => setOpenFaq(isOpen ? null : it.id)}
+                    data-testid={`support-faq-toggle-${it.id}`}
+                    aria-expanded={isOpen}
+                  >
+                    <span className="flex-1 text-sm font-medium" style={{ color: "var(--text-main)" }}>
+                      {it.question}
+                    </span>
+                    {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                  {isOpen && (
+                    <div
+                      className="text-xs whitespace-pre-wrap pb-3"
+                      style={{ color: "var(--text-muted)" }}
+                      data-testid={`support-faq-answer-${it.id}`}
+                    >
+                      {it.answer}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <section className="or-surface p-4 mb-5">
         <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>

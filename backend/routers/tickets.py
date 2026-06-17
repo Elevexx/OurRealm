@@ -19,6 +19,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from pymongo import ReturnDocument
 
 from core.db import db
 from core.deps import CurrentUser, require_admin
@@ -49,10 +50,34 @@ def _conv_id(a: str, b: str) -> str:
 
 
 async def _next_ticket_number() -> int:
-    # Simple monotonic counter from existing max + 1. Single-writer admin
-    # context, so race is not a concern.
-    last = await db.tickets.find_one({}, sort=[("ticket_number", -1)])
-    return int(last["ticket_number"]) + 1 if last and last.get("ticket_number") else 1001
+    """Atomically reserve the next ticket number using a Mongo counter doc.
+
+    `db.counters` holds `{_id: 'tickets', seq: <int>}`. A single
+    `find_one_and_update` with `$inc` is race-free, so concurrent ticket
+    creations can never collide on `ticket_number` even under load.
+    Seed seq=1000 the first time so the first ticket is #1001 (matches
+    the legacy max+1 behaviour exactly).
+    """
+    doc = await db.counters.find_one_and_update(
+        {"_id": "tickets"},
+        {"$inc": {"seq": 1}, "$setOnInsert": {"_id": "tickets"}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    seq = int(doc.get("seq") or 0)
+    # First-ever call returns seq=1 → bump baseline to 1001 to honour the
+    # documented #1001 starting number AND skip any IDs already in use.
+    if seq < 1001:
+        max_existing = 1000
+        last = await db.tickets.find_one({}, sort=[("ticket_number", -1)])
+        if last and last.get("ticket_number"):
+            max_existing = max(max_existing, int(last["ticket_number"]))
+        next_seq = max_existing + 1
+        await db.counters.update_one(
+            {"_id": "tickets"}, {"$set": {"seq": next_seq}}, upsert=True
+        )
+        return next_seq
+    return seq
 
 
 async def _send_support_message(*, support_id: str, user_id: str, text: str) -> None:

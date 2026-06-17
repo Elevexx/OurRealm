@@ -19,6 +19,7 @@ import {
   fetchMessages, sendMessage, subscribeToConversation,
 } from "@/lib/messaging";
 import ImageUploadPicker from "@/components/ImageUploadPicker";
+import MessageActionMenu from "@/components/MessageActionMenu";
 
 const TABS = [
   { id: "chats",  label: "Chats",  Icon: MessagesSquare },
@@ -497,9 +498,12 @@ function DMConversationOverlay({ me, peer, onClose }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [menuFor, setMenuFor] = useState(null);     // message id of action menu
+  const [menuAnchor, setMenuAnchor] = useState(null); // DOMRect for desktop popover
   const [editingId, setEditingId] = useState(null); // currently editing
   const [editDraft, setEditDraft] = useState("");
   const endRef = useRef(null);
+  const longPressTimer = useRef(null);
+  const longPressFired = useRef(false);
   const username = peer?.username;
 
   const reload = useCallback(async () => {
@@ -542,7 +546,7 @@ function DMConversationOverlay({ me, peer, onClose }) {
     } finally { setBusy(false); }
   };
 
-  const startEdit = (m) => { setMenuFor(null); setEditingId(m.id); setEditDraft(m.text || ""); };
+  const startEdit = (m) => { setMenuFor(null); setMenuAnchor(null); setEditingId(m.id); setEditDraft(m.text || ""); };
   const cancelEdit = () => { setEditingId(null); setEditDraft(""); };
 
   const saveEdit = async () => {
@@ -557,7 +561,7 @@ function DMConversationOverlay({ me, peer, onClose }) {
   };
 
   const doDelete = async (id) => {
-    setMenuFor(null);
+    setMenuFor(null); setMenuAnchor(null);
     try {
       await apiClient.delete(`/messages/${id}`);
       setMessages((prev) => prev.filter((m) => m.id !== id));
@@ -565,6 +569,28 @@ function DMConversationOverlay({ me, peer, onClose }) {
       setErr(e?.response?.data?.detail || e.message || "Failed to delete");
     }
   };
+
+  const closeMenu = () => { setMenuFor(null); setMenuAnchor(null); };
+
+  // Tap or long-press an own bubble to surface the action menu. Capture
+  // the bubble rect for the desktop popover anchor.
+  const openMenuFor = (id, el) => {
+    const rect = el?.getBoundingClientRect?.() || null;
+    setMenuAnchor(rect);
+    setMenuFor(id);
+  };
+
+  // Long-press handlers (mobile) — fire after 450ms hold.
+  const onBubbleTouchStart = (m, el) => {
+    longPressFired.current = false;
+    clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      openMenuFor(m.id, el);
+    }, 450);
+  };
+  const onBubbleTouchEnd = () => { clearTimeout(longPressTimer.current); };
+  const onBubbleTouchMove = () => { clearTimeout(longPressTimer.current); };
 
   return (
     <div
@@ -633,9 +659,23 @@ function DMConversationOverlay({ me, peer, onClose }) {
                     color: mine ? "var(--primary-fg)" : "var(--text-main)",
                     borderRadius: "var(--radius)",
                     cursor: mine ? "pointer" : "default",
+                    userSelect: mine ? "none" : "auto",
+                    WebkitUserSelect: mine ? "none" : "auto",
+                    WebkitTouchCallout: "none",
                   }}
                   data-testid={`dm-msg-${m.id}`}
-                  onClick={() => { if (mine) setMenuFor(menuFor === m.id ? null : m.id); }}
+                  onClick={(e) => {
+                    // Suppress the click that follows a long-press release.
+                    if (longPressFired.current) { longPressFired.current = false; return; }
+                    if (mine && !isEditing) openMenuFor(m.id, e.currentTarget);
+                  }}
+                  onTouchStart={(e) => { if (mine && !isEditing) onBubbleTouchStart(m, e.currentTarget); }}
+                  onTouchEnd={onBubbleTouchEnd}
+                  onTouchMove={onBubbleTouchMove}
+                  onContextMenu={(e) => {
+                    // Right-click on desktop also opens the menu.
+                    if (mine && !isEditing) { e.preventDefault(); openMenuFor(m.id, e.currentTarget); }
+                  }}
                 >
                   {isEditing ? (
                     <div onClick={(e) => e.stopPropagation()}>
@@ -670,46 +710,34 @@ function DMConversationOverlay({ me, peer, onClose }) {
                       </div>
                     </>
                   )}
-
-                  {/* Owner action menu — Edit / Delete / Cancel */}
-                  {mine && menuFor === m.id && !isEditing && (
-                    <div
-                      className="absolute right-0 z-10 or-surface p-1.5"
-                      style={{
-                        top: "calc(100% + 6px)",
-                        minWidth: 130,
-                        background: "var(--surface)",
-                        border: "1px solid var(--border-col)",
-                        boxShadow: "0 8px 28px rgba(0,0,0,0.35)",
-                        color: "var(--text-main)",
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      data-testid={`dm-actions-${m.id}`}
-                    >
-                      <button
-                        className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5"
-                        onClick={() => startEdit(m)}
-                        data-testid={`dm-action-edit-${m.id}`}
-                      >Edit</button>
-                      <button
-                        className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5"
-                        style={{ color: "#FF8080" }}
-                        onClick={() => doDelete(m.id)}
-                        data-testid={`dm-action-delete-${m.id}`}
-                      >Delete</button>
-                      <button
-                        className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5"
-                        onClick={() => setMenuFor(null)}
-                        data-testid={`dm-action-cancel-${m.id}`}
-                      >Cancel</button>
-                    </div>
-                  )}
                 </div>
               </div>
             );
           })}
           <div ref={endRef} />
         </div>
+
+        {/* Portal-based action menu — Edit / Delete / Cancel. Mirrors the
+            post management popup so mobile and desktop placement match
+            the rest of the app. */}
+        {menuFor && (() => {
+          const m = messages.find((x) => x.id === menuFor);
+          if (!m) return null;
+          return (
+            <MessageActionMenu
+              open
+              anchorRect={menuAnchor}
+              busy={false}
+              onEdit={() => startEdit(m)}
+              onDelete={() => doDelete(m.id)}
+              onClose={closeMenu}
+              testid={`dm-actions-${m.id}`}
+              editTestid={`dm-action-edit-${m.id}`}
+              deleteTestid={`dm-action-delete-${m.id}`}
+              cancelTestid={`dm-action-cancel-${m.id}`}
+            />
+          );
+        })()}
 
         {err && <div className="text-xs px-4 py-1.5 shrink-0" style={{ color: "#FF8080" }} data-testid="dm-error">{err}</div>}
 
