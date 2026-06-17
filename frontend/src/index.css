@@ -59,6 +59,41 @@ img, video { display: block; }
 .or-wrap {
   overflow-wrap: anywhere;
   word-break: break-word;
+  white-space: pre-wrap;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   Post card overflow safety. Long words / URLs / emoji-runs in user
+   content can otherwise blow out the feed and force horizontal scroll
+   on the whole page. These rules give every post card a guaranteed
+   shrinkable, clip-bounded box without changing visual styling.
+   ──────────────────────────────────────────────────────────────────── */
+[data-testid^="feed-post-"],
+[data-testid^="myfeed-post-"] {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+[data-testid^="feed-post-"] *,
+[data-testid^="myfeed-post-"] * {
+  /* Force flex children to be shrinkable so long content can wrap. */
+  min-width: 0;
+}
+[data-testid^="feed-post-"] img,
+[data-testid^="feed-post-"] video,
+[data-testid^="myfeed-post-"] img,
+[data-testid^="myfeed-post-"] video {
+  max-width: 100%;
+}
+
+/* Page-level safety net — prevent any unexpected overflow from forcing
+   horizontal scrollbars across the whole app. Vertical scroll is
+   untouched. */
+html, body, #root {
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 /* Mobile-first nav sizing tweaks (iPhone SE 320px) */

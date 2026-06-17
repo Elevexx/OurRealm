@@ -516,7 +516,21 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
           testid={`feed-manage-${p.id}`}
         />
       </header>
-      {p.content && <p className="mb-3 text-[15px] leading-relaxed whitespace-pre-wrap" style={{ color: "var(--text-main)" }}>{p.content}</p>}
+      {p.content && (
+        <p
+          className="mb-3 text-[15px] leading-relaxed or-wrap"
+          style={{
+            color: "var(--text-main)",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+            maxWidth: "100%",
+            minWidth: 0,
+          }}
+        >
+          {p.content}
+        </p>
+      )}
       {mediaImg && (
         <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
           <img src={absoluteImageUrl(mediaImg)} alt="" loading="lazy" decoding="async" className="w-full h-72 sm:h-96 object-cover" data-testid={`feed-image-${p.id}`} />

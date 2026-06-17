@@ -13,7 +13,8 @@
  *   - @stealth viewing other's → Delete ONLY (no visibility chips)
  *   - Everyone else           → nothing rendered
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Edit3, Trash2, Globe2, Users as UsersIcon, UserCheck, Eye, EyeOff, X, Loader2 } from "lucide-react";
 import apiClient from "@/api/client";
 import FriendMultiPicker from "@/components/FriendMultiPicker";
@@ -43,11 +44,35 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [pickFriends, setPickFriends] = useState(false);
+  // Anchor coordinates for the desktop popover (mobile uses fixed CSS instead).
+  const [anchorRect, setAnchorRect] = useState(null);
+  const toggleRef = React.useRef(null);
 
-  if (!canManagePost(post, user)) return null;
-
-  const isOwner = post.author_id === user.id;
+  const allowed = canManagePost(post, user);
+  const isOwner = !!(post && user && post.author_id === user.id);
   const vis = currentVisibility(post);
+
+  const openMenu = () => {
+    const r = toggleRef.current?.getBoundingClientRect?.();
+    if (r) setAnchorRect({ top: r.bottom, right: window.innerWidth - r.right });
+    setOpen(true);
+  };
+  const closeMenu = () => setOpen(false);
+
+  // Close on Esc / window resize. Effect always runs; gate is the `open` flag.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") closeMenu(); };
+    const onResize = () => closeMenu();
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [open]);
+
+  if (!allowed) return null;
 
   const updateVisibility = async (next) => {
     if (!isOwner) return;
@@ -86,11 +111,176 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
 
   const tid = testid || `post-manage-${post.id}`;
 
-  return (
-    <div className="relative" onClick={(e) => e.stopPropagation()}>
+  // ── Menu content (used in both mobile and desktop overlays) ─────────
+  const VisGrid = isOwner ? (
+    <>
+      <div
+        className="text-[10px] uppercase tracking-widest mb-2"
+        style={{ color: "var(--text-muted)" }}
+        data-testid={`${tid}-title`}
+      >
+        Who can see this
+      </div>
+      <div
+        className="grid grid-cols-2 gap-1.5"
+        data-testid={`${tid}-vis-grid`}
+      >
+        {VIS_OPTIONS.map(({ id, label, Icon }) => {
+          const active = vis === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              disabled={busy}
+              onClick={() => (id === "custom" ? setPickFriends(true) : updateVisibility(id))}
+              className="text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-2 py-2"
+              style={{
+                borderRadius: 6,
+                background: active ? "color-mix(in srgb, var(--primary) 22%, transparent)" : "transparent",
+                color: active ? "var(--primary)" : "var(--text-main)",
+                border: active ? "1px solid var(--primary)" : "1px solid var(--border-col)",
+                opacity: busy ? 0.6 : 1,
+                wordBreak: "break-word",
+                overflowWrap: "anywhere",
+                whiteSpace: "normal",
+                maxWidth: "100%",
+                minWidth: 0,
+              }}
+              data-testid={`${tid}-vis-${id}`}
+            >
+              <Icon size={11} /> {label}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  ) : null;
+
+  const DeleteSection = (
+    <div
+      className="mt-3 pt-3"
+      style={{ borderTop: isOwner ? "1px solid var(--border-col)" : "none" }}
+    >
       <button
         type="button"
-        onClick={() => setOpen((s) => !s)}
+        disabled={busy}
+        onClick={remove}
+        className="w-full text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-3 py-2.5"
+        style={{
+          borderRadius: 6,
+          background: "color-mix(in srgb, #FF3F5A 16%, transparent)",
+          color: "#FF8080",
+          border: "1px solid color-mix(in srgb, #FF3F5A 35%, transparent)",
+          wordBreak: "break-word",
+          overflowWrap: "anywhere",
+          whiteSpace: "normal",
+          maxWidth: "100%",
+        }}
+        data-testid={`${tid}-delete`}
+      >
+        {busy ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Delete
+      </button>
+    </div>
+  );
+
+  // The menu body (without its outer positioning container).
+  const MenuBody = (
+    <>
+      {VisGrid}
+      {DeleteSection}
+      {err && (
+        <div className="w-full text-[11px] mt-2" style={{ color: "#FF8080" }} data-testid={`${tid}-error`}>
+          {err}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={closeMenu}
+        className="absolute -top-2 -right-2 rounded-full"
+        style={{ width: 22, height: 22, background: "var(--surface-2)", border: "1px solid var(--border-col)", color: "var(--text-muted)" }}
+        aria-label="Close menu"
+        data-testid={`${tid}-close`}
+      >
+        <X size={12} style={{ margin: "0 auto" }} />
+      </button>
+    </>
+  );
+
+  // ── Portal-based overlay (viewport-level — never anchored to the post)
+  const Overlay = open && createPortal(
+    <>
+      {/* Backdrop — tapping it closes the menu. Pointer-events on so it
+          actually catches clicks above the bottom navigation. */}
+      <div
+        className="fixed inset-0"
+        style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)", zIndex: 9998 }}
+        onClick={closeMenu}
+        data-testid={`${tid}-backdrop`}
+      />
+      {/* Mobile bottom sheet (visible <640px). Spec-exact CSS so the menu
+          never overflows the viewport horizontally and always sits above
+          the bottom navigation (≈80–88 px tall) + iOS home indicator. */}
+      <div
+        className="or-surface sm:hidden"
+        style={{
+          position: "fixed",
+          left: 16,
+          right: 16,
+          bottom: "calc(88px + env(safe-area-inset-bottom))",
+          width: "auto",
+          maxWidth: "calc(100vw - 32px)",
+          maxHeight: "70vh",
+          overflowY: "auto",
+          overflowX: "hidden",
+          boxSizing: "border-box",
+          zIndex: 9999,
+          padding: 14,
+          background: "var(--surface)",
+          border: "1px solid var(--border-col)",
+          boxShadow: "0 14px 40px rgba(0,0,0,0.55)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+        data-testid={tid}
+      >
+        {MenuBody}
+      </div>
+      {/* Desktop popover (≥640px) — anchored just below the toggle button
+          using the rect we captured on open. */}
+      {anchorRect && (
+        <div
+          className="or-surface hidden sm:block"
+          style={{
+            position: "fixed",
+            top: anchorRect.top + 6,
+            right: anchorRect.right,
+            width: isOwner ? 320 : 160,
+            maxWidth: "calc(100vw - 24px)",
+            maxHeight: "70vh",
+            overflowY: "auto",
+            overflowX: "hidden",
+            boxSizing: "border-box",
+            zIndex: 9999,
+            padding: 12,
+            background: "var(--surface)",
+            border: "1px solid var(--border-col)",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+          data-testid={`${tid}-desktop`}
+        >
+          {MenuBody}
+        </div>
+      )}
+    </>,
+    document.body,
+  );
+
+  return (
+    <div className="inline-block" onClick={(e) => e.stopPropagation()}>
+      <button
+        ref={toggleRef}
+        type="button"
+        onClick={() => (open ? closeMenu() : openMenu())}
         className="starbar-icon"
         style={{ width: 30, height: 30 }}
         aria-label="Manage post"
@@ -101,110 +291,7 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
         <Edit3 size={13} />
       </button>
 
-      {open && (
-        <>
-          {/* Mobile backdrop — taps outside the bottom sheet dismiss it. */}
-          <div
-            className="fixed inset-0 z-[120] sm:hidden"
-            style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
-            onClick={() => setOpen(false)}
-            data-testid={`${tid}-backdrop`}
-          />
-          <div
-            className="or-surface fixed left-1/2 sm:absolute sm:left-auto sm:right-0 sm:translate-x-0 sm:-translate-y-0 z-[130] sm:z-30 p-3 sm:p-2 sm:mt-1"
-            style={{
-              // ───── Mobile (<sm): centred bottom sheet, safe-area aware
-              bottom: "calc(env(safe-area-inset-bottom) + 16px)",
-              top: "auto",
-              transform: "translateX(-50%)",
-              width: "min(420px, calc(100vw - 32px))",
-              maxWidth: "calc(100vw - 32px)",
-              maxHeight: "80vh",
-              overflowY: "auto",
-              paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))",
-              background: "var(--surface)",
-              border: "1px solid var(--border-col)",
-              boxShadow: "0 14px 40px rgba(0,0,0,0.45)",
-            }}
-            data-testid={tid}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {isOwner && (
-              <>
-                <div className="text-[10px] uppercase tracking-widest pb-1 sm:hidden" style={{ color: "var(--text-muted)" }}>
-                  Who can see this
-                </div>
-                <div
-                  className="grid grid-cols-2 sm:flex sm:flex-row sm:flex-wrap gap-1.5"
-                  data-testid={`${tid}-vis-grid`}
-                >
-                  {VIS_OPTIONS.map(({ id, label, Icon }) => {
-                    const active = vis === id;
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => (id === "custom" ? setPickFriends(true) : updateVisibility(id))}
-                        className="text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-2 py-2 sm:py-1.5"
-                        style={{
-                          borderRadius: 6,
-                          background: active ? "color-mix(in srgb, var(--primary) 22%, transparent)" : "transparent",
-                          color: active ? "var(--primary)" : "var(--text-main)",
-                          border: active ? "1px solid var(--primary)" : "1px solid var(--border-col)",
-                          opacity: busy ? 0.6 : 1,
-                        }}
-                        data-testid={`${tid}-vis-${id}`}
-                      >
-                        <Icon size={11} /> {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {/* Destructive section — always rendered as its own block below. */}
-            <div
-              className="mt-3 pt-3 sm:mt-2 sm:pt-2 sm:ml-auto"
-              style={{ borderTop: isOwner ? "1px solid var(--border-col)" : "none" }}
-            >
-              <button
-                type="button"
-                disabled={busy}
-                onClick={remove}
-                className="w-full sm:w-auto text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-3 py-2.5 sm:py-1.5"
-                style={{
-                  borderRadius: 6,
-                  background: "color-mix(in srgb, #FF3F5A 16%, transparent)",
-                  color: "#FF8080",
-                  border: "1px solid color-mix(in srgb, #FF3F5A 35%, transparent)",
-                }}
-                data-testid={`${tid}-delete`}
-              >
-                {busy ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Delete
-              </button>
-            </div>
-
-            {err && (
-              <div className="w-full text-[11px] mt-2" style={{ color: "#FF8080" }} data-testid={`${tid}-error`}>
-                {err}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="absolute -top-2 -right-2 rounded-full"
-              style={{ width: 22, height: 22, background: "var(--surface-2)", border: "1px solid var(--border-col)", color: "var(--text-muted)" }}
-              aria-label="Close menu"
-              data-testid={`${tid}-close`}
-            >
-              <X size={12} style={{ margin: "0 auto" }} />
-            </button>
-          </div>
-        </>
-      )}
+      {Overlay}
 
       {pickFriends && (
         <FriendMultiPicker
