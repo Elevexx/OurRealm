@@ -15,7 +15,34 @@ React 19 · FastAPI · MongoDB (Motor) · Supabase (Postgres + Realtime for mess
 ## Completed Phases
 Phase 1 · 2 · 2.5 · 3 · 4A · 4A follow-up · 4B (Polls/Personalization) · 4B follow-up (Made for You) · Landing/Modes refresh · PWA icon · mode animations · Phase 5 foundation (Home Dashboard + Admin Analytics + PWA prompt + autoplay) · **Phase 5 MVP + deferred polish (Feb 2026)** · **Phase 5+ Parts 0/1/2/3 (Feb 2026)**.
 
-## Phase 5+ — Feed UI hotfix (Feb 2026)
+## Phase 5+ — Direct video uploads (Feb 2026)
+
+### Backend (mirrors images.py)
+- `services/upload_limits.py` — `LIMITS["video"]` raised to `100 MB / 3 per 24h / 60 s`; counter switched to a dedicated `db.videos` collection so uploads count independently of post creation.
+- `services/video_store.py` (NEW) — saves to `/app/backend/uploads/videos/{32hex}.{ext}` and inserts metadata into `db.videos`. Accepts `video/mp4 · video/quicktime · video/webm` (with `.mp4 / .mov / .webm` fallback when browsers send `application/octet-stream`).
+- `routers/videos.py` (NEW):
+  - `POST /api/videos/upload` — multipart `file` + optional `duration` form field, runs `enforce_pre_upload` (100 MB / per-day) then `enforce_duration` (60 s if client measured).
+  - `GET /api/videos/{name}` — public CDN-style streaming with `Cache-Control: public, max-age=31536000, immutable`.
+  - `GET /api/videos/me/list` — current user's upload history.
+- `server.py` registers `videos_router_mod`.
+
+### Frontend
+- `components/VideoUploadPicker.jsx` (NEW) — small picker that:
+  - opens the device file picker (`accept="video/mp4,video/quicktime,video/webm"`)
+  - probes `HTMLVideoElement.duration` locally, rejects >60 s before upload
+  - shows a thumbnail preview (object-URL while uploading, server URL once saved)
+  - shows an `onUploadProgress` bar that fills to 100%
+  - surfaces 413 / 429 / 400 errors with friendly copy
+  - displays remaining daily quota
+- `pages/Feed.jsx` mounts the picker **below** the existing Video URL input when `composeMediaType === "video"` — URL field kept as the optional fallback. Both write into the same `composeMediaUrl` state so the existing Share submit path is unchanged.
+- `pages/Feed.jsx` FeedCard + `components/PostPopup.jsx` promote relative `/api/videos/*` URLs to absolute via `absoluteImageUrl(...)`.
+
+### Test coverage
+- testing_agent_v3_fork iteration_15 — 9/9 new video tests + 13/13 regression PASS · 100% backend · 92% frontend (preview-src nit fixed post-test). Report `/app/test_reports/iteration_15.json`.
+
+---
+
+
 
 ### Mobile post-action menu — portal refactor
 - `components/PostManagementMenu.jsx` now renders the open menu via `createPortal(document.body)` instead of an absolute child of the post card. This removes every parent stacking context that was clipping the menu against the post card.

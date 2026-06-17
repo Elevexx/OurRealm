@@ -100,6 +100,12 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
       });
       const next = data?.url || data?.video?.url;
       if (!next) throw new Error("Upload returned no URL");
+      // Server URL is now authoritative — drop the local blob so the preview
+      // <video> swaps to the rehosted file (and tests can assert on the
+      // absolute REACT_APP_BACKEND_URL prefix).
+      if (localPreview) URL.revokeObjectURL(localPreview);
+      setLocalPreview(null);
+      setProgress(100);
       onChange?.(next);
       // Refresh quota so the visible "N left today" decrements live.
       apiClient.get("/upload-limits/me")
