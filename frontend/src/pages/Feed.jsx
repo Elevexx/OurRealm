@@ -152,7 +152,12 @@ export default function Feed() {
 
   const submitPost = async () => {
     if (!user || isGuest) { setGuestPrompt("post a thought"); return; }
-    if (!composeText.trim() && !composePoll) return;
+    // Allow media-only posts (the previous text-required guard broke video
+    // uploads in production — backend now accepts empty text iff at least
+    // one of content / media_url / image_url / video_url / link_url / poll
+    // is present).
+    const hasMedia = !!(composeMediaUrl);
+    if (!composeText.trim() && !composePoll && !hasMedia) return;
     if (composeText.length > charLimit) return;  // safety net; Share is already disabled
     setPosting(true);
     try {
@@ -172,6 +177,19 @@ export default function Feed() {
       setComposeAudience({ visibility: "public", user_ids: [] });
       setComposePoll(null);
       await loadPosts();
+    } catch (e) {
+      // Surface the server's reason so users don't see a silently-closed
+      // composer. The most common case here is the 400 "Post is empty"
+      // guard or the 413 upload-too-large branch.
+      // eslint-disable-next-line no-console
+      console.error("[Feed] /posts failed", {
+        status: e?.response?.status,
+        detail: e?.response?.data?.detail,
+        payload: { media_type: composeMediaType, has_url: !!composeMediaUrl },
+      });
+      const detail = e?.response?.data?.detail || "Could not publish post.";
+      // eslint-disable-next-line no-alert
+      alert(detail);
     } finally { setPosting(false); }
   };
   const onAction = (label) => { if (!user || isGuest) setGuestPrompt(label); };

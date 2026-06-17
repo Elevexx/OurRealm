@@ -73,6 +73,14 @@ def _build_poll(payload_poll) -> Optional[dict]:
 
 @router.post("")
 async def create_post(payload: PostCreate, current: CurrentUser):
+    # Reject truly empty posts (no text, no media, no poll). This replaces
+    # the previous schema-level `min_length=1` on content so video/image/
+    # link uploads with no caption are still allowed.
+    if not (payload.content or "").strip() \
+       and not (payload.media_url or payload.image_url or payload.video_url or payload.link_url) \
+       and not payload.poll:
+        raise HTTPException(status_code=400, detail="Post is empty — add text, media, or a poll.")
+
     # Role-based content cap (founder 2000 / VIP 500 / default 300).
     # Applies to text content only — media-only posts (image/video/link/poll)
     # with no text are exempt.

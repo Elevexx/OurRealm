@@ -4,6 +4,7 @@ import { Home, Search, Sparkles, Plus, Wallet, Users, User, Radio, Video, Image 
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import GuestPrompt from "@/components/GuestPrompt";
+import VideoUploadPicker from "@/components/VideoUploadPicker";
 
 const ITEMS_LEFT = [
   // Home → new Home Dashboard (widget board). For You → personalized feed.
@@ -30,6 +31,7 @@ function CreateWorkflow({ option, onClose, onDone }) {
   const [text, setText] = useState("");
   const [title, setTitle] = useState("");
   const [posting, setPosting] = useState(false);
+  const [videoUrl, setVideoUrl] = useState(""); // populated by VideoUploadPicker
   if (!option) return null;
   const Icon = option.Icon;
 
@@ -39,12 +41,34 @@ function CreateWorkflow({ option, onClose, onDone }) {
       const content = option.id === "thought"
         ? text.trim()
         : `${title.trim() || option.label}${text.trim() ? " — " + text.trim() : ""}`;
-      if (!content) { setPosting(false); return; }
-      await apiClient.post("/posts", {
-        content,
-        media_type: option.id === "thought" ? "thought" : option.id === "image" ? "image" : option.id === "video" ? "video" : option.id === "live" ? "live" : "sound",
-      });
+      // Production-bug fix: a Video workflow requires the uploaded video URL,
+      // not just a caption. Without it the post was being created with
+      // media_type='video' + video_url=null and the feed couldn't render it.
+      if (option.id === "video" && !videoUrl) {
+        // eslint-disable-next-line no-alert
+        alert("Pick a video file before sharing.");
+        setPosting(false);
+        return;
+      }
+      if (!content && !videoUrl) { setPosting(false); return; }
+      const mediaType = option.id === "thought" ? "thought"
+        : option.id === "image" ? "image"
+        : option.id === "video" ? "video"
+        : option.id === "live"  ? "live"
+        : "sound";
+      const body = { content, media_type: mediaType };
+      if (videoUrl) { body.video_url = videoUrl; body.media_url = videoUrl; }
+      await apiClient.post("/posts", body);
       onDone();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[CreateWorkflow] /posts failed", {
+        status: e?.response?.status,
+        detail: e?.response?.data?.detail,
+        body: { id: option.id, hasVideo: !!videoUrl },
+      });
+      // eslint-disable-next-line no-alert
+      alert(e?.response?.data?.detail || "Could not publish post.");
     } finally { setPosting(false); }
   };
 
@@ -90,12 +114,12 @@ function CreateWorkflow({ option, onClose, onDone }) {
         )}
         {option.id === "video" && (
           <>
-            <button className="or-surface p-6 mb-3 w-full text-center cursor-pointer" style={{ background: "var(--surface-2)", borderStyle: "dashed" }} data-testid="create-video-dropzone">
-              <Video size={28} style={{ color: option.color }} className="mx-auto mb-2" />
-              <div className="text-sm font-semibold">Drop video file or tap to choose</div>
-              <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>MP4, MOV · up to 10 min</div>
-            </button>
-            <input className="or-input mb-2" placeholder="Video title" value={title} onChange={(e) => setTitle(e.target.value)} data-testid="create-video-title" />
+            <VideoUploadPicker
+              videoUrl={videoUrl}
+              onChange={setVideoUrl}
+              testid="create-video-upload"
+            />
+            <input className="or-input mb-2 mt-2" placeholder="Video title" value={title} onChange={(e) => setTitle(e.target.value)} data-testid="create-video-title" />
             <textarea className="or-input resize-none" rows={2} placeholder="Description (optional)" value={text} onChange={(e) => setText(e.target.value)} />
           </>
         )}

@@ -101,12 +101,16 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
       const next = data?.url || data?.video?.url;
       if (!next) throw new Error("Upload returned no URL");
       // Server URL is now authoritative — drop the local blob so the preview
-      // <video> swaps to the rehosted file (and tests can assert on the
-      // absolute REACT_APP_BACKEND_URL prefix).
+      // <video> swaps to the rehosted file.
       if (localPreview) URL.revokeObjectURL(localPreview);
       setLocalPreview(null);
       setProgress(100);
-      onChange?.(next);
+      // Production fix: backend returns a relative `/api/videos/<id>.<ext>`
+      // path. When the frontend is deployed on a different origin than the
+      // API (e.g. `ourrealm.social` → `api.ourrealm.social`), the relative
+      // URL would resolve against the frontend origin and 404. We persist
+      // an ABSOLUTE URL so the post document survives any future re-host.
+      onChange?.(absUrl(next));
       // Refresh quota so the visible "N left today" decrements live.
       apiClient.get("/upload-limits/me")
         .then(({ data: q }) => setQuota(q?.limits?.video || null))

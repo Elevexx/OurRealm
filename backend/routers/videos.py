@@ -1,7 +1,7 @@
 """Video hosting endpoints — mirrors images.py.
 
   POST /api/videos/upload    multipart `file` field
-  GET  /api/videos/{name}    serves stored file (no auth — public CDN-style)
+  GET  /api/videos/{name}    serves stored file with HTTP-Range support
   GET  /api/videos/me/list   list current user's uploaded videos
 
 Server-side duration enforcement is best-effort: most browsers don't ship
@@ -12,10 +12,12 @@ enforced on the post creation path via enforce_duration.
 """
 from __future__ import annotations
 
+import os
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, File, Form, HTTPException, Request
+from fastapi import UploadFile
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from core.deps import CurrentUser
 from services.upload_limits import enforce_duration, enforce_pre_upload
@@ -71,14 +73,107 @@ async def list_mine(current: CurrentUser, limit: int = 60):
     return {"videos": items}
 
 
+_CHUNK = 1024 * 1024  # 1 MB streaming chunks for ranged responses
+
+
+def _iterfile(path, start: int, length: int):
+    """Yield `length` bytes from `path` starting at `start`, in 1 MB chunks.
+
+    Used for HTTP-Range responses so mobile Safari can scrub video and so
+    we never load the whole file into memory.
+    """
+    with open(path, "rb") as f:
+        f.seek(start)
+        remaining = length
+        while remaining > 0:
+            chunk = f.read(min(_CHUNK, remaining))
+            if not chunk:
+                break
+            yield chunk
+            remaining -= len(chunk)
+
+
+def _parse_range(header: str, file_size: int):
+    """Return (start, end) for a single-range request, or None if invalid.
+
+    We deliberately support only the single-range form (`bytes=START-END?`)
+    because that's what every browser, including mobile Safari, sends for
+    `<video>` playback. Multi-range is rare and not worth the complexity.
+    """
+    try:
+        unit, _, spec = header.strip().partition("=")
+        if unit.lower() != "bytes" or "," in spec:
+            return None
+        start_s, _, end_s = spec.partition("-")
+        if start_s == "":
+            # Suffix range: `bytes=-500` → last 500 bytes
+            suffix = int(end_s)
+            if suffix <= 0:
+                return None
+            start = max(0, file_size - suffix)
+            end = file_size - 1
+        else:
+            start = int(start_s)
+            end = int(end_s) if end_s else file_size - 1
+        if start < 0 or end < start or start >= file_size:
+            return None
+        return start, min(end, file_size - 1)
+    except (ValueError, TypeError):
+        return None
+
+
 @router.get("/{name}")
-async def serve(name: str):
+async def serve(name: str, request: Request):
+    """Stream a stored video with full HTTP-Range / 206 support.
+
+    Mobile Safari (and Chrome on cellular) REQUIRES a 206 Partial Content
+    response for `<video>` to start playback at all — without it the
+    element shows the crossed-out play badge and never fires the
+    `loadedmetadata` event. We honour `Range` headers manually because
+    Starlette's `FileResponse` returns the whole file with HTTP 200.
+    """
     if not is_safe_video_filename(name):
         raise HTTPException(status_code=400, detail="Invalid video name")
     path = video_dir() / name
     if not path.exists():
         raise HTTPException(status_code=404, detail="Not found")
-    ext = name.rsplit(".", 1)[-1]
+
+    file_size = os.path.getsize(path)
+    ext = name.rsplit(".", 1)[-1].lower()
     media_type = {"mp4": "video/mp4", "mov": "video/quicktime", "webm": "video/webm"}[ext]
-    headers = {"Cache-Control": "public, max-age=31536000, immutable"}
-    return FileResponse(path, media_type=media_type, headers=headers)
+
+    common_headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=31536000, immutable",
+    }
+
+    range_header = request.headers.get("range") or request.headers.get("Range")
+    if range_header:
+        rng = _parse_range(range_header, file_size)
+        if rng is None:
+            # Malformed → 416 Range Not Satisfiable.
+            return Response(
+                status_code=416,
+                headers={**common_headers, "Content-Range": f"bytes */{file_size}"},
+            )
+        start, end = rng
+        length = end - start + 1
+        headers = {
+            **common_headers,
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
+            "Content-Length": str(length),
+        }
+        return StreamingResponse(
+            _iterfile(path, start, length),
+            status_code=206,
+            media_type=media_type,
+            headers=headers,
+        )
+
+    # No Range header → whole file. Still emit Accept-Ranges so the
+    # browser knows it CAN range on subsequent requests.
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={**common_headers, "Content-Length": str(file_size)},
+    )

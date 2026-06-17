@@ -132,7 +132,12 @@ class PostCreate(BaseModel):
     # Role-based cap (founder 2000 / VIP 500 / default 300) is enforced
     # centrally via enforce_post_content_limit. If POST_LIMITS["founder"] ever
     # changes, this max_length must move in lockstep.
-    content: str = Field(min_length=1, max_length=2000)
+    # Production-bug fix (Feb 2026): media-only posts (a video/image/link
+    # upload with no caption) were rejected with 422 because of the old
+    # `min_length=1`. Caption is now optional; `create_post` validates
+    # server-side that the post carries SOMETHING (content, any media URL,
+    # or a poll) so we still reject truly empty payloads.
+    content: str = Field(default="", max_length=2000)
     media_type: str = Field(default="thought")
     media_url: Optional[str] = None
     # Optional rich-media URLs. Any combination may be set in addition to
