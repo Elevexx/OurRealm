@@ -11,6 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import MyFeedWidget from "@/components/MyFeedWidget";
 import TopEightWidget from "@/components/TopEightWidget";
 import VipBadge from "@/components/VipBadge";
+import ReportButton from "@/components/ReportButton";
 
 const SIZE_TO_CLASS = {
   small:  "col-span-2 sm:col-span-1 row-span-1",
@@ -348,6 +349,14 @@ export default function FounderProfile() {
               <button className="or-btn" onClick={() => navigate("/profile")} data-testid="public-switch-edit">
                 <Icons.Pencil size={14} /> Switch to Edit
               </button>
+            )}
+            {!isOwner && profile?.id && (
+              <ReportButton
+                targetType="profile"
+                targetId={profile.id}
+                label="Report"
+                testid={`profile-report-${profile.username}`}
+              />
             )}
           </div>
         </div>

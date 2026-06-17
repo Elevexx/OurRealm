@@ -480,17 +480,42 @@ async def get_post(post_id: str, viewer: Optional[str] = None):
 
 
 @router.get("/{post_id}/comments")
-async def list_comments(post_id: str, limit: int = 200):
+async def list_comments(post_id: str, limit: int = 200, viewer: Optional[str] = None):
+    """Top-level comments + their (one level deep) replies.
+
+    Reply ordering: newest replies stay below their parent in chronological
+    order, mirroring the post-list reading rhythm. Likes are denormalised
+    onto each comment as `likes` and `liked` (per-viewer).
+    """
+    viewer_id = None
+    if viewer:
+        vd = await db.users.find_one({"username": viewer.lower()}, {"_id": 0, "id": 1})
+        viewer_id = (vd or {}).get("id")
+
+    def hydrate(c: dict) -> dict:
+        lb = c.get("liked_by") or []
+        c["likes"] = c.get("likes") if c.get("likes") is not None else len(lb)
+        c["liked"] = bool(viewer_id and viewer_id in lb)
+        c.pop("liked_by", None)
+        return c
+
     cursor = db.comments.find({"post_id": post_id}, {"_id": 0}).sort("created_at", 1).limit(limit)
-    items = []
-    async for c in cursor:
-        items.append(c)
-    return {"comments": items}
+    all_items = [c async for c in cursor]
+    parents = [hydrate(c) for c in all_items if not c.get("parent_id")]
+    by_parent: dict = {}
+    for c in all_items:
+        pid = c.get("parent_id")
+        if pid:
+            by_parent.setdefault(pid, []).append(hydrate(c))
+    for p in parents:
+        p["replies"] = by_parent.get(p["id"], [])
+    return {"comments": parents}
 
 
 @router.post("/{post_id}/comment")
 async def comment_post(post_id: str, current: CurrentUser, body: dict):
     text = (body or {}).get("text", "").strip()
+    parent_id = (body or {}).get("parent_id")
     if not text:
         raise HTTPException(status_code=400, detail="Comment text required")
     if len(text) > 178:
@@ -498,27 +523,93 @@ async def comment_post(post_id: str, current: CurrentUser, body: dict):
     post = await db.posts.find_one({"id": post_id}, {"_id": 0, "author_id": 1, "content": 1})
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
+
+    # One-level-only replies. Replying to a reply is rewritten to reply to
+    # the same parent so the tree never deepens beyond two rows.
+    parent = None
+    if parent_id:
+        parent = await db.comments.find_one(
+            {"id": parent_id, "post_id": post_id},
+            {"_id": 0, "id": 1, "parent_id": 1, "author_id": 1},
+        )
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent comment not found")
+        if parent.get("parent_id"):
+            parent_id = parent["parent_id"]
+
     comment = {
         "id": str(uuid.uuid4()),
         "post_id": post_id,
+        "parent_id": parent_id,
         "author_id": current["id"],
         "author_username": current.get("username"),
         "author_name": current.get("name", ""),
         "author_avatar": current.get("avatar_url"),
         "text": text,
+        "likes": 0,
+        "liked_by": [],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.comments.insert_one(comment)
     comment.pop("_id", None)
     await db.posts.update_one({"id": post_id}, {"$inc": {"comments": 1}})
     new_count_doc = await db.posts.find_one({"id": post_id}, {"_id": 0, "comments": 1})
-    if post.get("author_id") and post["author_id"] != current["id"]:
+
+    # Notify the post author for a top-level comment, the parent comment's
+    # author for a reply. Skip self-notifications.
+    if parent_id and parent and parent.get("author_id") and parent["author_id"] != current["id"]:
+        await emit_notification(
+            parent["author_id"], "reply",
+            actor_username=current.get("username"),
+            payload={"preview": text[:80], "post_id": post_id, "comment_id": parent_id},
+        )
+    elif post.get("author_id") and post["author_id"] != current["id"]:
         await emit_notification(
             post["author_id"], "comment",
             actor_username=current.get("username"),
             payload={"preview": text[:80], "post_id": post_id},
         )
+
+    comment["liked"] = False
+    comment.pop("liked_by", None)
     return {"comment": comment, "comments": (new_count_doc or {}).get("comments", 0)}
+
+
+@router.post("/{post_id}/comments/{comment_id}/like")
+async def like_comment(post_id: str, comment_id: str, current: CurrentUser):
+    """Toggle like on a comment OR reply (single endpoint handles both).
+
+    Mirrors `/posts/{id}/like`: `liked_by[]` for per-user uniqueness,
+    `likes` counter denormalised. Fires a `comment_like` notification on
+    transition to liked.
+    """
+    c = await db.comments.find_one(
+        {"id": comment_id, "post_id": post_id},
+        {"_id": 0, "author_id": 1, "text": 1, "liked_by": 1, "likes": 1},
+    )
+    if not c:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    uid = current["id"]
+    liked_by = c.get("liked_by") or []
+    if uid in liked_by:
+        await db.comments.update_one(
+            {"id": comment_id},
+            {"$pull": {"liked_by": uid}, "$inc": {"likes": -1}},
+        )
+        new_likes = max(0, (c.get("likes") or 0) - 1)
+        return {"liked": False, "likes": new_likes}
+    await db.comments.update_one(
+        {"id": comment_id},
+        {"$addToSet": {"liked_by": uid}, "$inc": {"likes": 1}},
+    )
+    new_likes = (c.get("likes") or 0) + 1
+    if c.get("author_id") and c["author_id"] != uid:
+        await emit_notification(
+            c["author_id"], "comment_like",
+            actor_username=current.get("username"),
+            payload={"preview": (c.get("text") or "")[:60], "post_id": post_id, "comment_id": comment_id},
+        )
+    return {"liked": True, "likes": new_likes}
 
 
 @router.post("/{post_id}/share")

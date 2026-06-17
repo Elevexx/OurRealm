@@ -20,6 +20,7 @@ import {
 } from "@/lib/messaging";
 import ImageUploadPicker from "@/components/ImageUploadPicker";
 import MessageActionMenu from "@/components/MessageActionMenu";
+import ReportButton from "@/components/ReportButton";
 
 const TABS = [
   { id: "chats",  label: "Chats",  Icon: MessagesSquare },
@@ -704,8 +705,26 @@ function DMConversationOverlay({ me, peer, onClose }) {
                       <div className="text-[10px] mt-1 opacity-70 flex items-center justify-end gap-2">
                         {m.edited_at && <span data-testid={`dm-edited-${m.id}`}>edited</span>}
                         <span>{formatTime(m.created_at)}</span>
-                        {mine && (
+                        {mine ? (
                           <span data-testid={`dm-status-${m.id}`}>{status}</span>
+                        ) : (
+                          /* Phase 4 — non-own bubble: small Report flag.
+                             Opens the universal ReportModal with target_type='message'.
+                             We deliberately send ONLY {conv_id, message_id} as
+                             metadata — the message body is never sent. */
+                          <ReportButton
+                            targetType="message"
+                            targetId={m.id}
+                            variant="icon"
+                            testid={`dm-report-${m.id}`}
+                            style={{
+                              width: 18, height: 18,
+                              background: "transparent", border: "none",
+                              color: "inherit", opacity: 0.55,
+                              padding: 0,
+                            }}
+                            title="Report message"
+                          />
                         )}
                       </div>
                     </>

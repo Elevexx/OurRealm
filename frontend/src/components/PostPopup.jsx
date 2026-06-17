@@ -8,7 +8,7 @@
  * through postStore so other surfaces (Feed, My Feed widget) update.
  */
 import React, { useEffect, useState, useCallback } from "react";
-import { X, Heart, MessageCircle, Send, Loader2, Link2, Video as VideoIcon } from "lucide-react";
+import { X, Heart, MessageCircle, Send, Loader2, Link2, Video as VideoIcon, Reply, Flag } from "lucide-react";
 import apiClient from "@/api/client";
 import { registerPopupSetter } from "@/lib/postPopupController";
 import { setPost, getPost, usePostState } from "@/lib/postStore";
@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import UsernameLink from "@/components/UsernameLink";
 import { absoluteImageUrl } from "@/components/ImageUploadPicker";
 import AutoplayVideo from "@/components/AutoplayVideo";
+import ReportButton from "@/components/ReportButton";
 
 function fmtTime(iso) {
   if (!iso) return "";
@@ -32,11 +33,143 @@ function isVideoUrl(u) {
   return /\.(mp4|webm|ogg)$/i.test(u);
 }
 
+/**
+ * Single comment row + nested replies + (lazy) reply composer.
+ * Replies are themselves likeable + reportable but use `target_type='reply'`
+ * so admin tooling can distinguish them from top-level comments.
+ */
+function CommentRow({
+  comment, me,
+  onLike, onLikeReply,
+  isReplying, onToggleReply,
+  replyDraft, setReplyDraft, onSubmitReply, posting,
+}) {
+  const isOwn = me?.id && comment.author_id === me.id;
+  const replyRemaining = 178 - replyDraft.length;
+  return (
+    <div data-testid={`post-popup-comment-${comment.id}`}>
+      <CommentBody c={comment} isOwn={isOwn} onLike={onLike} onToggleReply={onToggleReply} targetType="comment" />
+
+      {/* Replies (one level only) */}
+      {(comment.replies || []).length > 0 && (
+        <div className="mt-2 ml-9 space-y-2.5" data-testid={`post-popup-replies-${comment.id}`}>
+          {comment.replies.map((r) => (
+            <div key={r.id} data-testid={`post-popup-reply-${r.id}`}>
+              <CommentBody
+                c={r}
+                isOwn={me?.id && r.author_id === me.id}
+                onLike={() => onLikeReply(r.id)}
+                targetType="reply"
+                compact
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isReplying && (
+        <form
+          onSubmit={onSubmitReply}
+          className="mt-2 ml-9 flex items-center gap-2"
+          data-testid={`post-popup-reply-form-${comment.id}`}
+        >
+          <input
+            type="text"
+            value={replyDraft}
+            onChange={(e) => setReplyDraft(e.target.value.slice(0, 178))}
+            placeholder={`Reply to @${comment.author_username || "user"}…`}
+            maxLength={178}
+            className="or-input flex-1"
+            autoFocus
+            data-testid={`post-popup-reply-input-${comment.id}`}
+          />
+          <span
+            className="text-[11px] tabular-nums"
+            style={{ color: replyRemaining < 20 ? "#FF3F5A" : "var(--text-muted)" }}
+          >{replyRemaining}</span>
+          <button
+            type="submit"
+            disabled={!replyDraft.trim() || posting}
+            className="or-btn"
+            style={{ padding: "0.4rem 0.6rem" }}
+            data-testid={`post-popup-reply-submit-${comment.id}`}
+          >
+            <Send size={12} />
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function CommentBody({ c, isOwn, onLike, onToggleReply, targetType, compact = false }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <img
+        src={c.author_avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(c.author_name || c.author_username || "u")}`}
+        alt=""
+        className="rounded-full object-cover shrink-0"
+        style={{ width: compact ? 24 : 30, height: compact ? 24 : 30 }}
+      />
+      <div className="flex-1 min-w-0">
+        <div className="text-xs">
+          {c.author_username ? (
+            <UsernameLink username={c.author_username} className="font-semibold" style={{ color: "var(--text-main)" }} />
+          ) : (
+            <span className="font-semibold" style={{ color: "var(--text-main)" }}>@{c.author_name}</span>
+          )}
+          <span className="ml-2" style={{ color: "var(--text-muted)" }}>{fmtTime(c.created_at)}</span>
+        </div>
+        <div className="text-sm whitespace-pre-wrap break-words" style={{ color: "var(--text-main)" }}>{c.text}</div>
+        <div className="flex items-center gap-3 mt-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
+          <button
+            type="button"
+            onClick={onLike}
+            className="flex items-center gap-1"
+            style={{ background: "transparent", padding: 0, color: c.liked ? "#FF3F5A" : "var(--text-muted)" }}
+            data-testid={`post-popup-${targetType}-like-${c.id}`}
+            aria-pressed={!!c.liked}
+            title={c.liked ? "Unlike" : "Like"}
+          >
+            <Heart size={12} fill={c.liked ? "#FF3F5A" : "none"} />
+            <span data-testid={`post-popup-${targetType}-like-count-${c.id}`}>{c.likes || 0}</span>
+          </button>
+          {onToggleReply && (
+            <button
+              type="button"
+              onClick={onToggleReply}
+              className="flex items-center gap-1"
+              style={{ background: "transparent", padding: 0, color: "var(--text-muted)" }}
+              data-testid={`post-popup-comment-reply-${c.id}`}
+              title="Reply"
+            >
+              <Reply size={12} /> Reply
+            </button>
+          )}
+          {!isOwn && (
+            <ReportButton
+              targetType={targetType}
+              targetId={c.id}
+              variant="icon"
+              testid={`post-popup-${targetType}-report-${c.id}`}
+              className="flex items-center"
+              style={{ background: "transparent", padding: 0, color: "var(--text-muted)", width: "auto", height: "auto" }}
+              title={`Report ${targetType}`}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PostPopup() {
   const [state, setState] = useState(null); // { post, postId }
   const [post, setPostData] = useState(null);
   const [comments, setComments] = useState([]);
   const [draft, setDraft] = useState("");
+  const [replyDrafts, setReplyDrafts] = useState({}); // {parentId: text}
+  const [replyingTo, setReplyingTo] = useState(null); // parentId | null
   const [loading, setLoading] = useState(false);
   const [posting, setPosting] = useState(false);
   const { user } = useAuth();
@@ -73,9 +206,10 @@ export default function PostPopup() {
     setLoading(true);
     (async () => {
       try {
+        const viewerQ = user?.username ? `?viewer=${encodeURIComponent(user.username)}` : "";
         const [p, c] = await Promise.all([
           apiClient.get(`/posts/${state.postId}`),
-          apiClient.get(`/posts/${state.postId}/comments`),
+          apiClient.get(`/posts/${state.postId}/comments${viewerQ}`),
         ]);
         if (cancelled) return;
         const pd = p.data.post;
@@ -96,7 +230,7 @@ export default function PostPopup() {
       }
     })();
     return () => { cancelled = true; };
-  }, [state?.postId]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state?.postId, user?.username]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = useCallback(() => setState(null), []);
 
@@ -127,23 +261,66 @@ export default function PostPopup() {
     }
   };
 
-  const onSubmitComment = async (e) => {
-    e?.preventDefault();
-    const text = draft.trim();
+  const onSubmitComment = async (e, parentId = null) => {
+    e?.preventDefault?.();
+    const text = (parentId ? (replyDrafts[parentId] || "") : draft).trim();
     if (!text || !post?.id) return;
     if (text.length > 178) return;
     setPosting(true);
     try {
-      const { data } = await apiClient.post(`/posts/${post.id}/comment`, { text });
-      setComments((arr) => [...arr, data.comment]);
+      const { data } = await apiClient.post(`/posts/${post.id}/comment`, {
+        text,
+        ...(parentId ? { parent_id: parentId } : {}),
+      });
+      // The list endpoint groups replies under their parents — apply
+      // the same shape client-side so the new row renders in place.
+      setComments((arr) => {
+        if (!parentId) return [...arr, { ...data.comment, replies: [] }];
+        return arr.map((c) => c.id === parentId
+          ? { ...c, replies: [...(c.replies || []), data.comment] }
+          : c);
+      });
       setPost(post.id, { comments: data.comments ?? (live.comments + 1) });
-      setDraft("");
+      if (parentId) {
+        setReplyDrafts((d) => ({ ...d, [parentId]: "" }));
+        setReplyingTo(null);
+      } else {
+        setDraft("");
+      }
     } catch (err) {
-      // Surface very short error; otherwise no-op.
       const msg = err?.response?.data?.detail || "Could not post comment";
       alert(msg);
     } finally {
       setPosting(false);
+    }
+  };
+
+  // Toggle like on a comment OR reply. Optimistic, with rollback on error.
+  const onLikeComment = async (commentId, parentId = null) => {
+    if (!post?.id || !commentId) return;
+    const apply = (mutator) => setComments((arr) => arr.map((c) => {
+      if (!parentId) {
+        return c.id === commentId ? mutator(c) : c;
+      }
+      if (c.id !== parentId) return c;
+      return { ...c, replies: (c.replies || []).map((r) => r.id === commentId ? mutator(r) : r) };
+    }));
+    const before = (() => {
+      for (const c of comments) {
+        if (c.id === commentId) return { liked: !!c.liked, likes: c.likes ?? 0 };
+        for (const r of (c.replies || [])) {
+          if (r.id === commentId) return { liked: !!r.liked, likes: r.likes ?? 0 };
+        }
+      }
+      return { liked: false, likes: 0 };
+    })();
+    const willLike = !before.liked;
+    apply((c) => ({ ...c, liked: willLike, likes: Math.max(0, (c.likes ?? 0) + (willLike ? 1 : -1)) }));
+    try {
+      const { data } = await apiClient.post(`/posts/${post.id}/comments/${commentId}/like`);
+      apply((c) => ({ ...c, liked: !!data.liked, likes: data.likes ?? 0 }));
+    } catch {
+      apply((c) => ({ ...c, liked: before.liked, likes: before.likes }));
     }
   };
 
@@ -243,25 +420,19 @@ export default function PostPopup() {
                   <div className="text-xs" style={{ color: "var(--text-muted)" }}>Be the first to comment.</div>
                 )}
                 {comments.map((c) => (
-                  <div key={c.id} className="flex items-start gap-2.5" data-testid={`post-popup-comment-${c.id}`}>
-                    <img
-                      src={c.author_avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(c.author_name || c.author_username || "u")}`}
-                      alt=""
-                      className="rounded-full object-cover shrink-0"
-                      style={{ width: 30, height: 30 }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs">
-                        {c.author_username ? (
-                          <UsernameLink username={c.author_username} className="font-semibold" style={{ color: "var(--text-main)" }} />
-                        ) : (
-                          <span className="font-semibold" style={{ color: "var(--text-main)" }}>@{c.author_name}</span>
-                        )}
-                        <span className="ml-2" style={{ color: "var(--text-muted)" }}>{fmtTime(c.created_at)}</span>
-                      </div>
-                      <div className="text-sm whitespace-pre-wrap break-words" style={{ color: "var(--text-main)" }}>{c.text}</div>
-                    </div>
-                  </div>
+                  <CommentRow
+                    key={c.id}
+                    comment={c}
+                    me={user}
+                    onLike={() => onLikeComment(c.id, null)}
+                    onLikeReply={(rid) => onLikeComment(rid, c.id)}
+                    isReplying={replyingTo === c.id}
+                    onToggleReply={() => setReplyingTo(replyingTo === c.id ? null : c.id)}
+                    replyDraft={replyDrafts[c.id] || ""}
+                    setReplyDraft={(t) => setReplyDrafts((d) => ({ ...d, [c.id]: t }))}
+                    onSubmitReply={(e) => onSubmitComment(e, c.id)}
+                    posting={posting}
+                  />
                 ))}
               </div>
             </>

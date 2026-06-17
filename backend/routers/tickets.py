@@ -209,3 +209,50 @@ async def admin_update(ticket_id: str, payload: TicketUpdate, current: CurrentUs
 
     fresh = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
     return {"ok": True, "ticket": fresh}
+
+
+@router.get("/api/admin/support/tickets/{ticket_id}/report")
+async def admin_report_details(ticket_id: str, current: CurrentUser):
+    """Phase 4 — return the linked report (metadata + screenshot URLs) for
+    a ticket that was opened via /api/reports. Returns 404 if the ticket
+    is a plain user-initiated ticket (no `report_id`).
+
+    PRIVACY: for `report_type == 'message'` we expose ONLY the report
+    metadata (reason, description, screenshots the reporter uploaded) and
+    the message-id/conv-id used as the report target. The actual message
+    body is never fetched or returned by this endpoint.
+    """
+    _require_admin(current)
+    ticket = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    rep_id = ticket.get("report_id")
+    if not rep_id:
+        raise HTTPException(status_code=404, detail="Ticket has no linked report")
+    rep = await db.reports.find_one({"id": rep_id}, {"_id": 0})
+    if not rep:
+        raise HTTPException(status_code=404, detail="Report record missing")
+
+    # Resolve screenshot image ids → public URLs.
+    screenshots = []
+    for img_id in (rep.get("screenshots") or [])[:8]:
+        img = await db.images.find_one({"id": img_id}, {"_id": 0, "original_url": 1, "thumbnail_url": 1})
+        if img:
+            screenshots.append({
+                "id":            img_id,
+                "url":           img.get("original_url"),
+                "thumbnail_url": img.get("thumbnail_url"),
+            })
+
+    return {
+        "ticket":      ticket,
+        "report": {
+            "id":           rep["id"],
+            "reason":       rep.get("reason"),
+            "detail":       rep.get("detail"),
+            "content_type": rep.get("content_type"),
+            "content_id":   rep.get("content_id"),
+            "created_at":   rep.get("created_at"),
+            "screenshots":  screenshots,
+        },
+    }

@@ -13,6 +13,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LifeBuoy, Loader2, MessageSquare, ShieldCheck, RefreshCw, Edit3, Check, X,
+  Flag, ChevronDown, ChevronUp,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -58,6 +59,19 @@ function TicketRow({ t, onChanged }) {
   const [editingSubj, setEditingSubj] = useState(false);
   const [subj, setSubj] = useState(t.subject || "");
   const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState(null);
+  const [reportOpen, setReportOpen] = useState(false);
+
+  const loadReport = async () => {
+    if (report) { setReportOpen((v) => !v); return; }
+    try {
+      const { data } = await apiClient.get(`/admin/support/tickets/${t.id}/report`);
+      setReport(data.report);
+      setReportOpen(true);
+    } catch (e) {
+      alert(e?.response?.data?.detail || "Could not load report");
+    }
+  };
 
   const submit = async (patch) => {
     setBusy(true);
@@ -152,7 +166,75 @@ function TicketRow({ t, onChanged }) {
         >
           <MessageSquare size={12} /> Chat
         </button>
+        {t.report_type && (
+          <button
+            className="or-btn or-btn-ghost"
+            style={{ padding: "0.35rem 0.6rem", fontSize: "0.7rem", color: "#FF8080" }}
+            onClick={loadReport}
+            data-testid={`admin-ticket-report-toggle-${t.ticket_number}`}
+            title="View report details"
+          >
+            <Flag size={12} /> Report {reportOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+          </button>
+        )}
       </div>
+
+      {/* Report details — privacy-safe: shows reporter metadata + their
+          uploaded screenshots only. NEVER renders message text for
+          target_type='message'. */}
+      {reportOpen && report && (
+        <div
+          className="w-full mt-3 pt-3"
+          style={{ borderTop: "1px dashed var(--border-col)" }}
+          data-testid={`admin-ticket-report-details-${t.ticket_number}`}
+        >
+          <div className="grid grid-cols-2 gap-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            <div><b style={{ color: "var(--text-main)" }}>Type:</b> {report.content_type}</div>
+            <div><b style={{ color: "var(--text-main)" }}>Reason:</b> {(report.reason || "").replace(/_/g, " ")}</div>
+            <div className="col-span-2 truncate">
+              <b style={{ color: "var(--text-main)" }}>Target ID:</b>{" "}
+              <code style={{ fontFamily: "var(--font-mono)" }}>{report.content_id}</code>
+            </div>
+            {report.detail && (
+              <div className="col-span-2">
+                <b style={{ color: "var(--text-main)" }}>Description:</b>{" "}
+                <span style={{ color: "var(--text-main)" }}>{report.detail}</span>
+              </div>
+            )}
+            {report.content_type === "message" && (
+              <div
+                className="col-span-2 text-[10px] mt-1 italic"
+                style={{ color: "#FFD166" }}
+              >
+                Privacy: the reported conversation is not visible. Only the reporter's screenshots and description are available below.
+              </div>
+            )}
+          </div>
+          {(report.screenshots || []).length > 0 && (
+            <div className="mt-2 grid grid-cols-4 gap-2" data-testid={`admin-ticket-report-screenshots-${t.ticket_number}`}>
+              {report.screenshots.map((s) => (
+                <a
+                  key={s.id}
+                  href={s.url?.startsWith("/api/") ? `${process.env.REACT_APP_BACKEND_URL || ""}${s.url}` : s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block"
+                  data-testid={`admin-ticket-report-shot-${s.id}`}
+                >
+                  <img
+                    src={s.thumbnail_url?.startsWith("/api/")
+                      ? `${process.env.REACT_APP_BACKEND_URL || ""}${s.thumbnail_url}`
+                      : (s.thumbnail_url || s.url)}
+                    alt=""
+                    className="w-full h-20 object-cover rounded"
+                    style={{ border: "1px solid var(--border-col)" }}
+                  />
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </li>
   );
 }

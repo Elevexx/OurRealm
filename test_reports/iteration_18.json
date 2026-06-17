@@ -1,0 +1,54 @@
+{
+  "summary": "Phase 4 — Comment likes/replies + Universal Reporting System. Backend: 31/31 pytest tests PASS in /app/backend/tests/test_phase4_reporting.py covering comment like toggle (200/404), threaded comments (1-level cap, replies re-parented), notifications (kind=comment / reply / comment_like), POST /api/reports universal (post-type ticket+DM, duplicate dedupe, message-privacy gate, screenshot cap at 8, non-string rejection, all 11 reasons accepted, invalid reason rejected, unknown content_type rejected), GET /api/admin/support/tickets/{id}/report (admin 200, non-admin 403, plain ticket 404, NO message body leak), atomic ticket counter monotonic under 5 back-to-back POSTs. Frontend: Feed Report button visible per post, click opens portal ReportModal containing all 11 reason buttons + description + 8-shot uploader + submit/cancel — every testid pattern from spec verified live on https://realm-deploy.preview.emergentagent.com/feed (logged in as tftwo).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "PostPopup open after Report submit",
+        "issue": "InstallPrompt overlay re-appears after the ReportModal closes (state change re-mounts the prompt despite localStorage install_prompt_dismissed='1' set earlier in session). This blocked the secondary click-to-open-PostPopup in automation. Real users would tap NOT NOW once. Recommend honouring localStorage flag on remount to prevent re-display in the same session.",
+        "affected_selectors": ["[data-testid='install-prompt']", "[data-testid='install-prompt-close']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "verified_against_spec": {
+    "POST /api/posts/{id}/comments/{cid}/like toggle + 404 + denormalised count": "PASS",
+    "GET /api/posts/{id}/comments returns tree, hydrates liked/likes, hides liked_by[]": "PASS",
+    "POST /api/posts/{id}/comment with parent_id — one level only, reply-to-reply reparented": "PASS",
+    "Notifications: comment / reply / comment_like, skip when actor==target": "PASS",
+    "POST /api/reports post-type — ticket created + @support DM + moderation_status=pending_review": "PASS",
+    "Duplicate report from same user returns duplicate:true with same ticket_number": "PASS",
+    "POST /api/reports message-type — NO moderation_status bump, NO body leak in ticket/report": "PASS",
+    "Screenshots cap at 8 (10 ids silently capped)": "PASS",
+    "Non-string screenshot rejected with 400": "PASS",
+    "All 11 reasons accepted (spam..other)": "PASS",
+    "Invalid reason rejected with 400": "PASS",
+    "Unknown content_type rejected with 400": "PASS",
+    "GET /api/admin/support/tickets/{id}/report — admin 200, non-admin 403, no-report 404, message body not exposed": "PASS",
+    "Atomic ticket counter — monotonic + unique under back-to-back POSTs": "PASS",
+    "Frontend: Feed Report trigger present per post, opens ReportModal portal with all 11 reasons + description + add-screenshot + submit/cancel testids": "PASS (verified live)"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase4_reporting.py",
+    "/app/test_reports/pytest/phase4_reporting.xml"
+  ],
+  "action_items": [
+    "(LOW) InstallPrompt re-renders after closing other modals/state changes despite localStorage 'install_prompt_dismissed' being set. Consider gating render on a useState read from localStorage on mount AND skipping subsequent shows in the same session."
+  ],
+  "critical_code_review_comments": [
+    "routers/moderation.submit_report has good privacy gating: skips coll.update_one when content_type=='message', and the support-ticket preview is metadata-only (reason + target ref + screenshot count) — no message body retrieved or stored.",
+    "routers/tickets.admin_report_details NEVER fetches db.messages, so no leak path even if the screenshots/preview were tampered with.",
+    "routers/posts.comment_post correctly normalises 2-level cap: if parent.parent_id is set, parent_id := parent.parent_id (grandparent). Notifications correctly emit `reply` to the original parent author (not the reparented one) — verified via test.",
+    "routers/posts.like_comment is symmetric with /posts/{id}/like (addToSet/$pull on liked_by[], $inc on likes), and fires comment_like only on the liked→unliked transition AND only when actor != author. Good.",
+    "ReportPayload.screenshots is `Optional[list[str]]` — pydantic correctly rejects non-string items with 400/422 (verified). Cap to 8 happens before validation, which is fine."
+  ],
+  "updated_files": ["/app/backend/tests/test_phase4_reporting.py (new)"],
+  "success_rate": { "backend": "100% (31/31)", "frontend": "ReportModal portal + all 11 reasons + screenshot uploader + submit verified live; PostPopup secondary navigation blocked by InstallPrompt re-render (pre-existing dev quirk)" },
+  "test_credentials": "stealth/Password1$, support/Password1$, tftwo via testfriend2@example.com/pass1234, tfone via testfriend1@example.com/pass1234",
+  "seed_data_creation": "Created ~10 TEST_PHASE4 posts under @stealth + several reports/tickets (numbered above 1012) and a TEST_top1 comment + 2 replies on a tf1 post. Reports created from tf2 and tf1 against stealth posts. One DM 'TEST_PHASE4 secret body <hex>' tf1→tf2 with corresponding [Report:Message] ticket — body NOT leaked anywhere in admin report API. Cleanup via /api/admin/* if desired.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test file /app/backend/tests/test_phase4_reporting.py is fully pytest-compatible with conftest in place; runs in ~5s. Notification kind field is `kind` NOT `type`. Notifications endpoint is /api/notifications/list. Image upload has daily cap of 20 per 24h — don't bulk-upload in tests. Frontend uses cookie-based auth; await page.evaluate fetch('/api/auth/login',{credentials:'include'}) before goto. Install prompt re-renders even with localStorage flag — pre-dismiss before page.goto and again immediately after.",
+  "rca of the issue": "No real bugs. Single pre-existing UX nit: InstallPrompt component does not respect the install_prompt_dismissed localStorage flag across re-renders in the same SPA session, so closing a different modal (e.g. ReportModal) re-shows it. Spec features all work as designed at API and UI render level."
+}
