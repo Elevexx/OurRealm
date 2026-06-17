@@ -34,16 +34,17 @@ function dicebear(seed) {
   return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed || "OurRealm")}`;
 }
 
-// Bubble metrics — proportional placement so the dot sits at the
-// bottom-right *edge* of the circular avatar (≈8% inset from the
-// bounding box, partially overlapping the border like a standard
-// online-status indicator on Discord/WhatsApp/Slack).
+// Bubble metrics — small, subtle status dot at the bottom-right *edge*
+// of the circular avatar (sits ON the border, partially overlapping it
+// like the original OurRealm online indicator).
 function dotMetrics(size) {
-  const dot = Math.max(8, Math.round(size * 0.28));
+  // ~22 % of the avatar — keeps the dot readable but never huge.
+  const dot = Math.max(7, Math.round(size * 0.22));
+  // 1-px punch-out ring on small avatars, 2-px on larger ones.
   const pad = size <= 36 ? 1 : 2;
-  // Inset from the wrapper's right/bottom — pulls the bubble inward so
-  // its center sits roughly on the circle's lower-right edge.
-  const inset = Math.max(2, Math.round(size * 0.05));
+  // Inset from the wrapper's right/bottom edge so the dot sits on the
+  // lower-right of the circle, partially overlapping the border.
+  const inset = Math.max(0, Math.round(size * 0.04));
   return { dot, pad, inset };
 }
 
@@ -72,11 +73,33 @@ export default function UserAvatar({
   const src = abs(u.avatar_url) || dicebear(u.name || u.username || "OurRealm");
   const m = dotMetrics(size);
   const imgClass = `rounded-full object-cover block ${className}`;
-  const wrapperStyle = { position: "relative", display: "inline-block", lineHeight: 0, ...style };
-  // Optional accent ring around the avatar (e.g. featured creators).
+  const wrapperStyle = {
+    position: "relative",
+    display: "inline-block",
+    lineHeight: 0,
+    // Guarantees the wrapper is square so the circular border-radius
+    // never produces a stretched/elliptical avatar even when a parent
+    // passes width: 100% / height: 100%.
+    aspectRatio: "1 / 1",
+    ...style,
+  };
+  // The img itself enforces perfect-circle geometry — never an ellipse,
+  // never with visible square corners.
   const imgStyle = ring
-    ? { width: size, height: size, border: `2px solid ${ring}`, boxShadow: `0 0 10px ${ring}55` }
-    : { width: size, height: size };
+    ? {
+        width: size, height: size,
+        aspectRatio: "1 / 1",
+        border: `2px solid ${ring}`,
+        boxShadow: `0 0 10px ${ring}55`,
+        objectFit: "cover",
+        borderRadius: "50%",
+      }
+    : {
+        width: size, height: size,
+        aspectRatio: "1 / 1",
+        objectFit: "cover",
+        borderRadius: "50%",
+      };
 
   const Img = (
     <img
@@ -103,17 +126,17 @@ export default function UserAvatar({
           aria-hidden="true"
           style={{
             position: "absolute",
-            // ALWAYS bottom-right edge of the circular avatar.
+            // Bottom-right edge of the circular avatar.
             right: m.inset,
             bottom: m.inset,
-            // The "punch-out" ring lifts the dot off the avatar so it
-            // never blurs into the photo. Uses the page background so it
-            // matches every surface.
+            // Subtle punch-out ring + faint shadow — keeps the dot legible
+            // against any background without making it look "floating".
             background: "var(--bgc, #0a0a0f)",
             borderRadius: "50%",
             padding: m.pad,
             display: "inline-flex",
             lineHeight: 0,
+            boxShadow: "0 0 0 1px rgba(0,0,0,0.25)",
             zIndex: 1,
           }}
           data-testid={testid ? `${testid}-presence` : "user-avatar-presence"}

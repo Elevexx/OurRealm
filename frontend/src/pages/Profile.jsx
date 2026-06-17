@@ -19,6 +19,7 @@ import Top8Editor from "@/components/Top8Editor";
 import UserAvatar from "@/components/UserAvatar";
 import VipBadge from "@/components/VipBadge";
 import AvatarPicker from "@/components/AvatarPicker";
+import BannerEditor, { BannerView } from "@/components/BannerEditor";
 
 const SIZE_TO_CLASS = {
   small:  "col-span-2 sm:col-span-1 row-span-1",
@@ -355,7 +356,7 @@ function AddWidgetPicker({ open, onClose, onPick }) {
 
 /* ============================================================ */
 export default function Profile() {
-  const { user, isGuest, updateProfile } = useAuth();
+  const { user, isGuest, updateProfile, refreshMe } = useAuth();
   const { mode } = useTheme();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -364,6 +365,7 @@ export default function Profile() {
   const [widgets, setWidgets] = useState(user?.widgets?.length ? user.widgets : DEFAULT_WIDGETS);
   const [addOpen, setAddOpen] = useState(false);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [bannerEditorOpen, setBannerEditorOpen] = useState(false);
 
   useEffect(() => { if (searchParams.get("edit") === "1") setEditing(true); }, [searchParams]);
   useEffect(() => {
@@ -426,15 +428,36 @@ export default function Profile() {
             <Icons.Settings size={14} /> Settings
           </button>
         )}
-        <div className="h-32 sm:h-48" style={{
+        <div className="h-24 sm:h-32 relative overflow-hidden" data-testid="profile-banner-area" style={{
           background: "linear-gradient(135deg, color-mix(in srgb, var(--primary) 50%, transparent), color-mix(in srgb, var(--secondary) 50%, transparent))",
-        }} />
-        <div className="px-5 sm:px-8 pb-6 -mt-12 sm:-mt-14 flex flex-col sm:flex-row sm:items-end gap-4">
+        }}>
+          {user?.banner_url && (
+            <BannerView
+              url={user.banner_url}
+              offsetY={user.banner_offset_y ?? 50}
+              scale={user.banner_scale ?? 1}
+              testid="profile-banner-img"
+            />
+          )}
+          {editing && !isGuest && (
+            <button
+              type="button"
+              onClick={() => setBannerEditorOpen(true)}
+              className="absolute right-3 bottom-3 or-btn"
+              style={{ padding: "0.35rem 0.7rem", fontSize: "0.75rem", zIndex: 2 }}
+              data-testid="profile-banner-edit"
+              aria-label="Edit banner image"
+            >
+              <Icons.Image size={12} /> {user?.banner_url ? "Change banner" : "Add banner"}
+            </button>
+          )}
+        </div>
+        <div className="px-4 sm:px-6 pb-4 -mt-10 sm:-mt-12 flex flex-col sm:flex-row sm:items-end gap-3">
           <div className="relative shrink-0">
             <UserAvatar
               user={user}
-              size={110}
-              style={{ border: "4px solid var(--surface)", background: "var(--surface)" }}
+              size={96}
+              style={{ border: "3px solid var(--surface)", background: "var(--surface)" }}
               testid="profile-avatar"
             />
             {/* Avatar change CTA — visible only while editing the profile.
@@ -565,6 +588,20 @@ export default function Profile() {
         open={avatarPickerOpen}
         onClose={() => setAvatarPickerOpen(false)}
         onSaved={() => setAvatarPickerOpen(false)}
+      />
+      <BannerEditor
+        open={bannerEditorOpen}
+        onClose={() => setBannerEditorOpen(false)}
+        initial={{ banner_url: user?.banner_url, banner_offset_y: user?.banner_offset_y, banner_scale: user?.banner_scale }}
+        onSave={async (payload) => {
+          await updateProfile(payload);
+          await refreshMe?.();
+        }}
+        onRemove={async () => {
+          await updateProfile({ banner_url: null, banner_offset_y: 50, banner_scale: 1 });
+          await refreshMe?.();
+        }}
+        testid="profile-banner-editor"
       />
     </div>
   );

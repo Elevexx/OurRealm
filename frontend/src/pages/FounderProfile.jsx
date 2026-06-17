@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import UserAvatar from "@/components/UserAvatar";
+import { BannerView } from "@/components/BannerEditor";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
 } from "@dnd-kit/core";
@@ -268,7 +269,7 @@ export default function FounderProfile() {
   return (
     <div className="max-w-7xl mx-auto" data-testid="founder-profile-page">
       <div className="or-surface overflow-hidden mb-5">
-        <div className="h-32 sm:h-48 relative" style={{
+        <div className="h-24 sm:h-32 relative" style={{
           background: "linear-gradient(135deg, rgba(0,255,102,0.25), rgba(46,160,255,0.20), rgba(176,38,255,0.20))",
         }}>
           <div className="absolute inset-0" style={{
@@ -277,28 +278,36 @@ export default function FounderProfile() {
             mask: "radial-gradient(ellipse at center, black 30%, transparent 80%)",
             WebkitMask: "radial-gradient(ellipse at center, black 30%, transparent 80%)",
           }} />
+          {profile.banner_url && (
+            <BannerView
+              url={profile.banner_url}
+              offsetY={profile.banner_offset_y ?? 50}
+              scale={profile.banner_scale ?? 1}
+              testid="founder-banner"
+            />
+          )}
         </div>
-        <div className="px-5 sm:px-8 pb-6 -mt-14 sm:-mt-16 flex flex-col sm:flex-row sm:items-end gap-4">
+        <div className="px-4 sm:px-6 pb-4 -mt-10 sm:-mt-12 flex flex-col sm:flex-row sm:items-end gap-3">
           <div className="relative shrink-0">
             <UserAvatar
               user={{ ...profile, avatar_url: profile.avatar_url }}
-              size={128}
+              size={96}
               style={{
-                border: "4px solid var(--surface)",
+                border: "3px solid var(--surface)",
                 background: "var(--surface)",
-                boxShadow: "0 0 30px rgba(0,255,102,0.45)",
+                boxShadow: "0 0 22px rgba(0,255,102,0.35)",
               }}
               testid="founder-avatar"
             />
             {profile.is_verified && (
-              <span className="absolute -top-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, #2EA0FF, #10E670)", boxShadow: "0 0 12px rgba(46,160,255,0.6)", zIndex: 2 }} data-testid="founder-verified-badge">
-                <Icons.BadgeCheck size={16} style={{ color: "#fff" }} />
+              <span className="absolute -top-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, #2EA0FF, #10E670)", boxShadow: "0 0 10px rgba(46,160,255,0.55)", zIndex: 2 }} data-testid="founder-verified-badge">
+                <Icons.BadgeCheck size={12} style={{ color: "#fff" }} />
               </span>
             )}
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl sm:text-3xl" style={{ fontFamily: "var(--font-display)" }} data-testid="founder-name">{profile.name}</h1>
+              <h1 className="text-xl sm:text-2xl" style={{ fontFamily: "var(--font-display)" }} data-testid="founder-name">{profile.name}</h1>
               {/* Founder badge ONLY for the actual @stealth account */}
               {profile.is_founder && (
                 <span className="text-xs font-bold uppercase tracking-widest px-2 py-1 rounded" style={{ background: "linear-gradient(135deg, #00FF66, #2EA0FF)", color: "#0a0a0a" }} data-testid="founder-badge">FOUNDER</span>

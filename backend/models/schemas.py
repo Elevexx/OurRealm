@@ -87,6 +87,12 @@ class ProfileUpdate(BaseModel):
     # serializer; only used server-side for radius filtering and surfaced
     # back to the owner via /auth/me. Pass empty string to clear.
     zip_code: Optional[str] = Field(default=None, max_length=10)
+    # Phase E — Banner image. `banner_url` may be set to null to remove.
+    # `banner_offset_y` 0..100 controls vertical object-position. `banner_scale`
+    # 1.0..3.0 controls zoom (CSS transform on the underlying <img>).
+    banner_url: Optional[str] = None
+    banner_offset_y: Optional[float] = Field(default=None, ge=0, le=100)
+    banner_scale: Optional[float] = Field(default=None, ge=1.0, le=3.0)
 
 
 class UsernameChangePayload(BaseModel):
@@ -190,6 +196,10 @@ def serialize_user(doc: dict) -> dict:
         "name": doc.get("name", ""),
         "role": doc.get("role", "user"),
         "avatar_url": doc.get("avatar_url"),
+        # Phase E — Banner. Falls back to no banner (null) when never uploaded.
+        "banner_url": doc.get("banner_url"),
+        "banner_offset_y": doc.get("banner_offset_y", 50),
+        "banner_scale": doc.get("banner_scale", 1),
         # Spec alias — same value as avatar_url, exposed under the spec's
         # name so the frontend may use either field interchangeably.
         "profileImageUrl": doc.get("avatar_url"),
