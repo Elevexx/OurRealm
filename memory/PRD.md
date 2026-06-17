@@ -2,85 +2,66 @@
 
 ## Mission
 Premium social platform rebranded from the original "widget-stage" / Orbit prototype.
-Multi-mode visual system + drag-and-drop widget profiles + unified messaging + Sounds library + Polls/personalization.
+Multi-mode visual system + drag-and-drop widget profiles + unified messaging + Sounds library + Polls + personalization.
 
 ## Core Modes
 Neon, Business, Millennium, Stealth.
 
 ## Tech Stack
 - **Frontend**: React 19, TailwindCSS, lucide-react, framer-motion, @dnd-kit, @supabase/supabase-js v2
-- **Backend**: FastAPI + MongoDB (Motor) for users, profiles, posts, friends, images, geo, sounds, polls, preferences
+- **Backend**: FastAPI + MongoDB (Motor) for users, profiles, posts (+polls), friends, images, geo, sounds, preferences
 - **Messaging (Phase 3)**: **Supabase** (Postgres + Realtime) — single unified system for Chats/Groups/Realms
-- **Audio (Phase 4A)**: FastAPI + disk-backed `services.audio_store`, `mutagen` for duration extraction
-- **Geo**: `pgeocode` (offline ZIP → lat/long) — `ALLOWED_RADII = {10,20,50,100,250,500}`
+- **Audio (Phase 4A)**: FastAPI + disk-backed `services.audio_store`, `mutagen` duration extraction
+- **Geo**: `pgeocode` — `ALLOWED_RADII = {10,20,50,100,250,500}`
 
-## Architecture: dual-store
+## Architecture: dual-store (unchanged)
 | Domain | Storage |
 |---|---|
-| Users, auth (JWT), profiles, widgets, friends, posts (with optional polls), comments, likes, notifications, images, tracks, track_likes, **preferences**, ZIP/radius | MongoDB (FastAPI) |
-| Chats, Groups, Realms, Messages | **Supabase Postgres + Realtime** |
-| Image binaries | `/app/backend/uploads/images/` |
-| Audio binaries | `/app/backend/uploads/audio/` |
+| Users, auth (JWT), profiles, widgets, friends, posts (with optional polls), comments, likes, notifications, images, tracks, track_likes, preferences, ZIP/radius | MongoDB |
+| Chats, Groups, Realms, Messages | Supabase Postgres + Realtime |
 
 ## Completed Phases
-- **Phase 1** — Stealth password, emojis, like/comment, notifications, signup compliance.
-- **Phase 2 / 2.5** — Image hosting, Top 8 editor, ZIP/radius infra, Discover/Friends/Sounds radius filters, PresenceDot.
-- **Phase 3** — Supabase-only unified messaging. 4 tabs. E2E verified at 462 ms realtime latency.
-- **Phase 4A** — Sounds Platform Foundation. 4 tabs (Music/Podcasts/FX/AI-SOON), uploads, Top 100 paginated, MiniPlayer, RadiusChips reuse.
-- **Phase 4A follow-up** — Share to Chat. Track cards expose a `Send` action → opens reusable `FriendPicker` → sends a Supabase chat message containing the public stream URL. Messenger renderText now plays shared `.mp3/.wav/...` URLs inline via `<audio controls>`.
-- **Phase 4B (Feb 2026 — SHIPPED)** — Polls, Personalization, Sounds Search.
+- Phase 1, 2, 2.5, 3, 4A, 4A follow-up (Share to Chat) and Phase 4B (Polls, Personalization, Search) — all shipped & curl-verified.
+- **Phase 4B follow-up (Feb 2026 — SHIPPED)**: "Made for You" rail above Top 100.
+- **Landing + Modes refresh (Feb 2026 — SHIPPED)**: pure CSS/SVG mode previews + preview-only Landing selector.
 
-## Phase 4B — Polls, Personalization, Discovery Intelligence
-### Polls (on existing posts — NOT a new post type)
-- Schema: `PollPayload` with `question` (1–200), `options` (2–10, each 1–100 chars), `duration_hours` ∈ {0, 24, 72, 168, 720}.
-- Backend: `POST /api/posts` accepts optional `poll`. `POST/DELETE /api/posts/{id}/poll/vote`. One vote per user, change-vote allowed, server-side dedup, expiration enforced.
-- `_public_post` computes tallies + percentages + `my_vote` + `expired` from the raw votes dict — frontend never sees votes.
-- Frontend: `PollComposer` modal attached to the existing "What's happening in your Realm?" composer via a `Poll` chip. `PollDisplay` inside `FeedCard` with vote bars, selected highlight, percentages, and live polling (8 s interval, stops at expiry).
-- Realtime: lightweight HTTP polling per spec (no shared realtime outside messaging).
+## Phase 4B follow-up — "Made for You" rail
+- New endpoint `GET /api/sounds/me/personalized` → `{ active, total_plays, total_likes }` using existing `prefs_summarise` + `personalization_active`.
+- Sounds page renders horizontally-scrollable rail above Top 100 **only when** the user has crossed the activation threshold (`total_plays + 2·total_likes ≥ 5`).
+- Reuses existing `/api/sounds/feed` endpoint with the 70/30 personalization blend — no new ranking system, no duplicated feed logic.
+- Mobile-first horizontal scroll, 180 px cards, single click → play via the singleton audio player.
 
-### Personalization Engine (`services/preferences.py`)
-- Per-user `preferences` sub-doc with rolling counters: `categories`, `genres`, `moods`, `radii`, `total_plays`, `total_likes`.
-- Weighted signals: play = 1, like = 3 (+2 reserved for comment/share/save).
-- Single `$inc` write per signal — zero aggregation pipelines.
-- Activates at `total_plays + 2·total_likes ≥ 5` so new users get pure global rankings.
+## Landing + Modes preview refresh
+- **No backend or routing changes.** Mode names unchanged. Saved app mode persistence flow untouched.
+- New component `components/ModePreviewArt.jsx` — CSS/SVG-only themed art for each mode (zero external images, zero copyright risk, fast loading, mobile-first).
+  - **Neon**: deep purple→cyan base, hologram panels, particle grid
+  - **Business**: cream gradient, frosted dashboard with gold analytics bars, silver pill
+  - **Millennium**: sky-blue→green sky, soft clouds, glossy 3D chat-bubble & green orb, translucent card (original — no copy of any existing OS)
+  - **Stealth**: dark grid + scan lines + animated radar sweep + telemetry chip (no IP references)
+- `Landing.jsx`:
+  - 2x2 full-screen quadrants (TL/TR/BL/BR).
+  - **Preview-only click model**: clicking a quadrant updates LOCAL `previewMode` state — does NOT call `setMode`. Saved app mode unchanged until normal /modes flow.
+  - Center widget re-skins on click: ambient halo, preview pill ("NEON MODE · PREVIEW"), logo drop-shadow, headline gradient, and welcome-text glow all reactively use the active preview's accent.
+  - Sign up / Sign in / Browse-as-guest functionality preserved exactly.
+- `ModesPage.jsx`: same `<ModePreviewArt>` swapped in for the previous external image. All mode selection + apply behavior preserved.
 
-### Discovery Intelligence (`/sounds/feed` + `/sounds/charts/top100`)
-- 70/30 blend: `0.7 × global_norm + 0.3 × personal_boost`.
-- `personal_boost = 0.4·category + 0.4·genre + 0.2·mood` (each normalized to user's max).
-- Applied BEFORE Top 100 truncation so a strongly-matched track can surface from rank 100–200.
-- Skipped for "New Releases" / "Up & Coming" to preserve their meaning.
+## Phase 3 Auth bridging (unchanged)
+RLS commented out — enable via Supabase Auth signin OR custom JWT signed with project secret.
 
-### Search (`q` query param)
-- Case-insensitive regex across `title` + `genre`.
-- Lives on existing `/sounds/feed` AND `/sounds/charts/top100`.
-- Frontend: debounced 300 ms input above the radius bar. Changing search **does not** reset filters. Changing filters **does not** clear search.
-- Empty search behaves identically to no `q` param.
-
-### Radius (reused, unchanged)
-- All endpoints accept `radius` ∈ {10, 20, 50, 100, 250, 500, any/""}. Personalization combines with radius for the final ordering.
-
-### Engagement Signals (lightweight)
-- Aggregated counters on `tracks`: `plays`, `likes`, `liked_by[]` (existing).
-- Future-proof inert fields shipped earlier: `is_ai_generated`, `live_room_id`, `remix_parent_id`, `playlist_ids`.
-
-## Phase 3 Auth bridging note (unchanged)
-Schema ships with **RLS commented out**. Enable via Supabase Auth signin OR custom JWT signed with the project secret.
-
-## Performance / Cost
-- Debounced search (300 ms), polls live every 8 s, sounds list paginates at 20/page.
-- All filter changes are pure additions — no recomputed rankings on every keystroke.
-- Mock fallback for Featured carousel only when zero uploads platform-wide.
+## Performance
+- All mode-preview art is pure CSS/SVG → near-zero network cost vs. previous Unsplash images.
+- "Made for You" rail uses the existing `/sounds/feed` endpoint — one extra HTTP request only when the user is activated.
+- Sounds search debounced 300 ms; polls live-refresh every 8 s while open.
 
 ## Roadmap
 | Priority | Item | Status |
 |---|---|---|
-| P1 | Track detail modal — full player + comments | not started |
+| P1 | Track detail modal | not started |
 | P1 | Group/Realm Member Directory | deferred |
 | P1 | Pinned Chats | deferred |
 | P1 | RLS enforcement | deferred |
-| P2 | Profile mirror in Supabase | deferred |
 | P2 | Sent/Delivered/Read indicators | deferred |
-| P2 | Playlists (schema field `playlist_ids` already in place) | not started |
+| P2 | Playlists (schema reserved) | not started |
 | P2 | Wallet integrations | deferred |
 | P3 | Voice/video Calls | deferred |
 | P3 | AI Sounds (Phase 4C+) | placeholder shipped |
@@ -88,12 +69,12 @@ Schema ships with **RLS commented out**. Enable via Supabase Auth signin OR cust
 | P3 | Remixing | schema reserved |
 
 ## Known Mocked
-- Calls tab UI-only placeholder
-- Featured carousel mock fallback only when zero uploads platform-wide
+- Calls tab (UI placeholder)
 - Wallet payments
+- Featured carousel mock fallback only when zero uploads platform-wide
 
 ## Test Credentials
 See `/app/memory/test_credentials.md`.
 
 ---
-*Last updated: Feb 2026 — Phase 4A follow-up (Share to Chat) + Phase 4B (Polls, Personalization, Search) shipped. Backend curl-verified for poll create/vote/change/withdraw, search across title+genre, personalization counters bumped on play/like.*
+*Last updated: Feb 2026 — "Made for You" rail + Landing/Modes CSS-art refresh shipped. Lint clean across all changes.*

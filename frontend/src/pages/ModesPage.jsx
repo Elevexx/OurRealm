@@ -2,7 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, Zap, Crown, Sparkles, Shield, ArrowRight } from "lucide-react";
 import { useTheme, MODES } from "@/contexts/ThemeContext";
-import { MODE_PREVIEW_IMG } from "@/data/mockData";
+import ModePreviewArt from "@/components/ModePreviewArt";
 
 const MODE_INFO = {
   neon: {
@@ -11,7 +11,6 @@ const MODE_INFO = {
     Icon: Zap,
     accent: "#2EA0FF",
     glow: "rgba(46,160,255,0.55)",
-    img: MODE_PREVIEW_IMG.neon,
     bullets: ["Holographic widgets", "Floating glass panels", "Particle field + grid", "Futuristic creator aesthetic"],
     gradient: "linear-gradient(135deg, #2EA0FF 0%, #10E670 100%)",
     family: "'Unbounded', sans-serif",
@@ -22,7 +21,6 @@ const MODE_INFO = {
     Icon: Crown,
     accent: "#C8A24A",
     glow: "rgba(200,162,74,0.55)",
-    img: MODE_PREVIEW_IMG.business,
     bullets: ["White + cream backgrounds", "Gold and silver accents", "Frosted luxury cards", "Executive dashboards"],
     gradient: "linear-gradient(135deg, #D5B05A 0%, #8C7A3E 100%)",
     family: "'Playfair Display', serif",
@@ -33,7 +31,6 @@ const MODE_INFO = {
     Icon: Sparkles,
     accent: "#2EA0FF",
     glow: "rgba(46,160,255,0.55)",
-    img: MODE_PREVIEW_IMG.millennium,
     bullets: ["Bright sky-blue gradients", "Glossy rounded panels", "Playful chrome buttons", "Original — never copies any OS"],
     gradient: "linear-gradient(180deg, #6CC4FF 0%, #2E78D6 100%)",
     family: "'Fredoka', sans-serif",
@@ -44,7 +41,6 @@ const MODE_INFO = {
     Icon: Shield,
     accent: "#00FF66",
     glow: "rgba(0,255,102,0.55)",
-    img: MODE_PREVIEW_IMG.stealth,
     bullets: ["Grid + scan-line backdrop", "Terminal monospace fonts", "Corner-bracketed surfaces", "Radar widget signature"],
     gradient: "linear-gradient(135deg, #00FF66 0%, #00B23E 100%)",
     family: "'Share Tech Mono', monospace",
@@ -88,7 +84,7 @@ export default function ModesPage() {
               }}
             >
               <div className="relative h-44 sm:h-52 overflow-hidden">
-                <img src={info.img} alt="" className="w-full h-full object-cover" />
+                <ModePreviewArt mode={m} />
                 <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, transparent 20%, ${info.accent}33 70%, rgba(0,0,0,0.7))` }} />
                 <div
                   className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-extrabold"

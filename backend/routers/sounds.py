@@ -431,3 +431,16 @@ async def my_tracks(current: CurrentUser, limit: int = 60):
     )
     items = [doc async for doc in cursor]
     return {"tracks": [_public(t, viewer_id=current["id"]) for t in items]}
+
+
+@router.get("/me/personalized")
+async def my_personalization_status(current: CurrentUser):
+    """Phase 4B follow-up — drives the 'Made for You' rail visibility.
+    Active once the user has crossed the engagement threshold.
+    """
+    summary = await prefs_summarise(current["id"])
+    return {
+        "active": personalization_active(summary),
+        "total_plays": summary.get("total_plays", 0),
+        "total_likes": summary.get("total_likes", 0),
+    }

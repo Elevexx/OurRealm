@@ -81,6 +81,8 @@ export default function Sounds() {
   const [tracks, setTracks] = useState([]);
   const [pageInfo, setPageInfo] = useState({ page: 1, pages: 5, total: 0 });
   const [featured, setFeatured] = useState([]);
+  const [madeForYou, setMadeForYou] = useState([]);
+  const [showMadeForYou, setShowMadeForYou] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [shareTrack, setShareTrack] = useState(null);
@@ -117,6 +119,29 @@ export default function Sounds() {
         setFeatured(items);
       }
     } catch { /* ignore */ }
+  }, []);
+
+  // Phase 4B follow-up — "Made for You" rail (above Top 100).
+  // Render only when the personalization engine reports `active` for this user.
+  const loadMadeForYou = useCallback(async () => {
+    try {
+      const { data: status } = await apiClient.get("/sounds/me/personalized");
+      if (!status?.active) {
+        setShowMadeForYou(false);
+        setMadeForYou([]);
+        return;
+      }
+      // Reuse the existing /feed endpoint — 70/30 personalized blend is server-side.
+      const { data } = await apiClient.get("/sounds/feed", {
+        params: { chart: "Top 100", limit: 12 },
+      });
+      const items = data.tracks || [];
+      setShowMadeForYou(items.length > 0);
+      setMadeForYou(items);
+    } catch {
+      setShowMadeForYou(false);
+      setMadeForYou([]);
+    }
   }, []);
 
   const load = useCallback(async () => {
@@ -159,13 +184,14 @@ export default function Sounds() {
   }, [tab, genre, mood, chart, radius, searchTerm, page]);
 
   useEffect(() => { loadFeatured(); }, [loadFeatured]);
+  useEffect(() => { loadMadeForYou(); }, [loadMadeForYou]);
   useEffect(() => { load(); }, [load]);
 
   const onUploaded = (track) => {
     setShowUpload(false);
     setTab(track.category);
     setPage(1);
-    setTimeout(() => { load(); loadFeatured(); }, 250);
+    setTimeout(() => { load(); loadFeatured(); loadMadeForYou(); }, 250);
   };
 
   const onPlay = (t) => {
@@ -318,6 +344,54 @@ export default function Sounds() {
       {/* Results */}
       {!isAI && (
         <>
+          {/* Phase 4B follow-up — "Made for You" rail.
+              Only renders once the personalization engine activates for this user. */}
+          {showMadeForYou && (
+            <div className="mb-6" data-testid="sounds-made-for-you">
+              <div className="flex items-baseline justify-between mb-3">
+                <h3 className="text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--brand-green)" }}>
+                  Made for <span style={{ color: "var(--primary)" }}>You</span>
+                </h3>
+                <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                  Tuned to your taste
+                </span>
+              </div>
+              <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2" data-testid="sounds-made-for-you-rail">
+                {madeForYou.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => onPlay(t)}
+                    className="or-surface shrink-0 text-left overflow-hidden"
+                    style={{ width: 180 }}
+                    data-testid={`sounds-mfy-${t.id}`}
+                  >
+                    <div className="relative aspect-square overflow-hidden">
+                      {t.cover_url ? (
+                        <img src={t.cover_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center"
+                          style={{ background: "var(--surface-2)", color: "var(--brand-green)" }}>
+                          <MusicIcon size={36} />
+                        </div>
+                      )}
+                      <span className="absolute bottom-2 right-2 rounded-full p-2"
+                        style={{ background: "var(--primary)", color: "var(--primary-fg)", boxShadow: "0 0 12px var(--primary)" }}>
+                        <Play size={14} />
+                      </span>
+                    </div>
+                    <div className="p-2.5">
+                      <div className="text-sm font-semibold truncate" style={{ color: "var(--text-main)" }}>{t.title}</div>
+                      <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
+                        {t.artist_username ? `@${t.artist_username}` : ""}
+                        {t.genre ? ` · ${t.genre}` : ""}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="mb-3 flex items-baseline justify-between">
             <h3 className="text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>
               {chart}{tracks.length ? ` · ${tracks.length} results` : ""}

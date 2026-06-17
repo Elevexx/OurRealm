@@ -4,47 +4,30 @@ import { UserPlus, LogIn, VenetianMask, ShieldCheck, Zap, Users } from "lucide-r
 import Logo, { LOGO_URL } from "@/components/Logo";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { MODE_PREVIEW_IMG } from "@/data/mockData";
+import ModePreviewArt from "@/components/ModePreviewArt";
 
-// 4-mode grid — matches the reference Image 3 layout (TL/TR/BL/BR)
+// 4-mode grid — matches the reference Image 3 layout (TL/TR/BL/BR).
+// Each quadrant now uses pure CSS/SVG art via <ModePreviewArt> instead of
+// external photos — zero copyright risk, faster load, perfectly themed.
 const QUADRANTS = [
-  {
-    mode: "neon",
-    label: "NEON MODE",
-    accent: "#B026FF",
-    accentSoft: "rgba(176,38,255,0.18)",
-    img: MODE_PREVIEW_IMG.neon,
-    overlay: "radial-gradient(ellipse at 30% 30%, rgba(176,38,255,0.5), rgba(10,5,20,0.92))",
-    pos: "tl",
-  },
-  {
-    mode: "business",
-    label: "BUSINESS MODE",
-    accent: "#C8A24A",
-    accentSoft: "rgba(200,162,74,0.20)",
-    img: MODE_PREVIEW_IMG.business,
-    overlay: "linear-gradient(135deg, rgba(255,250,240,0.85), rgba(220,195,130,0.55))",
-    pos: "tr",
-  },
-  {
-    mode: "millennium",
-    label: "MILLENNIUM MODE",
-    accent: "#2EA0FF",
-    accentSoft: "rgba(46,160,255,0.22)",
-    img: MODE_PREVIEW_IMG.millennium,
-    overlay: "linear-gradient(180deg, rgba(46,160,255,0.55), rgba(20,60,130,0.75))",
-    pos: "bl",
-  },
-  {
-    mode: "stealth",
-    label: "STEALTH MODE",
-    accent: "#00FF66",
-    accentSoft: "rgba(0,255,102,0.18)",
-    img: MODE_PREVIEW_IMG.stealth,
-    overlay: "radial-gradient(ellipse at 70% 70%, rgba(0,255,102,0.30), rgba(5,8,7,0.95))",
-    pos: "br",
-  },
+  { mode: "neon",       label: "NEON MODE",       accent: "#B026FF", pos: "tl",
+    overlay: "radial-gradient(ellipse at 30% 30%, rgba(176,38,255,0.18), rgba(10,5,20,0.55))" },
+  { mode: "business",   label: "BUSINESS MODE",   accent: "#C8A24A", pos: "tr",
+    overlay: "linear-gradient(135deg, rgba(255,250,240,0.20), rgba(220,195,130,0.18))" },
+  { mode: "millennium", label: "MILLENNIUM MODE", accent: "#2EA0FF", pos: "bl",
+    overlay: "linear-gradient(180deg, rgba(46,160,255,0.10), rgba(20,60,130,0.20))" },
+  { mode: "stealth",    label: "STEALTH MODE",    accent: "#00FF66", pos: "br",
+    overlay: "radial-gradient(ellipse at 70% 70%, rgba(0,255,102,0.14), rgba(5,8,7,0.55))" },
 ];
+
+// Convert "#RRGGBB" → "rgba(R, G, B, a)". Used so the preview accent can
+// drive translucent halos / shadows without copy-pasting per-mode rgba.
+function hexA(hex, alpha = 1) {
+  const h = (hex || "#000000").replace("#", "");
+  const v = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = parseInt(v, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
 
 // CTA button styled as a neon-outlined pill (matches reference Image 2)
 function NeonPill({ color, glow, Icon, title, subtitle, onClick, testid }) {
@@ -103,10 +86,16 @@ function NeonPill({ color, glow, Icon, title, subtitle, onClick, testid }) {
 
 export default function Landing() {
   const navigate = useNavigate();
-  const { mode, setMode } = useTheme();
+  const { mode } = useTheme();
   const { user, isGuest, setGuest, logout } = useAuth();
   const [hover, setHover] = useState(null);
+  // PREVIEW-only mode — clicking a quadrant changes the local preview accent
+  // (center widget colors/glow/border/buttons), but does NOT change the
+  // saved app mode. The saved mode is only persisted via the normal flow
+  // on /modes after login.
+  const [previewMode, setPreviewMode] = useState(mode || "neon");
   const isLoggedIn = !!user && !isGuest;
+  const activePreview = QUADRANTS.find((q) => q.mode === previewMode) || QUADRANTS[0];
 
   return (
     <div
@@ -129,36 +118,38 @@ export default function Landing() {
         }}
       />
 
-      {/* 4-mode quadrant grid (Image 3) — interactive */}
+      {/* 4-mode quadrant grid (Image 3) — interactive, PREVIEW only */}
       <div className="absolute inset-0 grid grid-cols-2 grid-rows-2" data-testid="landing-mode-grid">
         {QUADRANTS.map((q) => {
-          const active = mode === q.mode;
+          const active = previewMode === q.mode;
           const hovered = hover === q.mode;
           return (
             <button
               key={q.mode}
               data-testid={`landing-quadrant-${q.mode}`}
-              onClick={() => setMode(q.mode)}
+              data-active={active}
+              aria-pressed={active}
+              onClick={() => setPreviewMode(q.mode)}
               onMouseEnter={() => setHover(q.mode)}
               onMouseLeave={() => setHover(null)}
               className="relative overflow-hidden text-left"
               style={{
                 outline: active ? `2px solid ${q.accent}` : "none",
                 outlineOffset: -2,
-                opacity: hovered ? 0.95 : 0.55,
-                transition: "opacity 0.4s ease, transform 0.7s ease",
+                opacity: active ? 1 : hovered ? 0.92 : 0.6,
+                transition: "opacity 0.35s ease, transform 0.7s ease",
               }}
             >
+              {/* CSS/SVG mode preview (replaces external image) */}
               <div
                 className="absolute inset-0 transition-transform duration-700"
                 style={{
-                  backgroundImage: `url(${q.img})`,
-                  backgroundSize: "cover",
-                  backgroundPosition: "center",
-                  transform: hovered ? "scale(1.05)" : "scale(1.0)",
-                  filter: active ? "saturate(1.4)" : "saturate(1.0)",
+                  transform: hovered ? "scale(1.04)" : "scale(1.0)",
+                  filter: active ? "saturate(1.25)" : "saturate(0.95)",
                 }}
-              />
+              >
+                <ModePreviewArt mode={q.mode} />
+              </div>
               <div className="absolute inset-0" style={{ background: q.overlay }} />
               {/* Corner mode label */}
               <div
@@ -184,7 +175,7 @@ export default function Landing() {
                     className="inline-block mt-2 text-[10px] tracking-[0.3em] uppercase px-2 py-0.5"
                     style={{ border: `1px solid ${q.accent}`, color: q.accent }}
                   >
-                    Active mode
+                    Preview
                   </div>
                 )}
               </div>
@@ -196,15 +187,42 @@ export default function Landing() {
       {/* Center floating panel — matches reference Image 2 structure */}
       <div className="pointer-events-none relative z-10 min-h-screen flex items-center justify-center px-4 py-10">
         <div
-          className="pointer-events-auto w-full max-w-md flex flex-col items-center"
+          className="pointer-events-auto w-full max-w-md flex flex-col items-center relative"
           data-testid="landing-center-panel"
         >
-          {/* Big square logo (Image 1) */}
+          {/* Mode-tinted ambient halo behind the center widget — re-skins on preview click */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -inset-6 -z-10"
+            style={{
+              background: `radial-gradient(ellipse at 50% 38%, ${hexA(activePreview.accent, 0.32)} 0%, transparent 60%)`,
+              transition: "background 360ms ease",
+            }}
+          />
+          {/* Mode pill — shows which preview is active */}
+          <div
+            className="mb-4 inline-flex items-center gap-2 px-3 py-1"
+            style={{
+              border: `1px solid ${activePreview.accent}`,
+              color: activePreview.accent,
+              borderRadius: 999,
+              fontSize: 10,
+              letterSpacing: "0.32em",
+              textTransform: "uppercase",
+              fontWeight: 800,
+              transition: "color 280ms ease, border-color 280ms ease",
+            }}
+            data-testid="landing-preview-pill"
+          >
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: activePreview.accent, boxShadow: `0 0 10px ${activePreview.accent}` }} />
+            {activePreview.label} · Preview
+          </div>
+          {/* Big square logo (Image 1) — drop-shadow re-skins on preview click */}
           <div
             className="w-full max-w-[320px] sm:max-w-[360px]"
             style={{
-              filter:
-                "drop-shadow(0 0 28px rgba(46,160,255,0.45)) drop-shadow(0 0 22px rgba(16,230,112,0.35))",
+              filter: `drop-shadow(0 0 28px ${hexA(activePreview.accent, 0.55)}) drop-shadow(0 0 22px ${hexA(activePreview.accent, 0.35)})`,
+              transition: "filter 360ms ease",
             }}
           >
             <img
@@ -216,7 +234,7 @@ export default function Landing() {
             />
           </div>
 
-          {/* Welcome headline (blue → green gradient like reference) */}
+          {/* Welcome headline — gradient re-skins on preview click */}
           <h1
             className="mt-6 sm:mt-8 text-center"
             style={{
@@ -224,11 +242,12 @@ export default function Landing() {
               fontSize: "clamp(1.5rem, 3.4vw, 1.85rem)",
               letterSpacing: "0.32em",
               fontWeight: 800,
-              background: "linear-gradient(90deg, #2EA0FF 0%, #2EA0FF 35%, #10E670 65%, #10E670 100%)",
+              background: `linear-gradient(90deg, ${activePreview.accent} 0%, ${activePreview.accent} 45%, #FFFFFF 100%)`,
               WebkitBackgroundClip: "text",
               backgroundClip: "text",
               color: "transparent",
-              textShadow: "0 0 28px rgba(46,160,255,0.35)",
+              textShadow: `0 0 28px ${hexA(activePreview.accent, 0.45)}`,
+              transition: "background 360ms ease, text-shadow 360ms ease",
             }}
             data-testid="landing-welcome"
           >
