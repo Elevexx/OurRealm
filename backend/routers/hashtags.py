@@ -136,6 +136,24 @@ async def migrate_index_all_posts() -> dict:
 # ──────────────────────────────────────────────────────────────────
 # REST routes
 # ──────────────────────────────────────────────────────────────────
+@router.get("/trending")
+async def trending(window: str = "7d", limit: int = 6):
+    """Public list of currently trending hashtags.
+
+    Trending = hashtags used most often within the rolling window,
+    measured by total usage_count of tags whose `last_used_at >= cutoff`.
+    Cheap aggregate against the indexed `last_used_at` field — no
+    post-text scans.
+    """
+    days = {"1d": 1, "7d": 7, "30d": 30, "all": 36500}.get(window, 7)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    items = [h async for h in db.hashtags
+             .find({"last_used_at": {"$gte": cutoff}}, {"_id": 0})
+             .sort([("usage_count", -1), ("last_used_at", -1)])
+             .limit(max(1, min(limit, 24)))]
+    return {"window": window, "hashtags": items}
+
+
 @router.get("/{tag}/feed")
 async def hashtag_feed(tag: str, limit: int = 30, before: Optional[str] = None):
     """Reverse-chronological feed of posts containing `#tag`.

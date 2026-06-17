@@ -15,6 +15,7 @@ import SoundUploadPicker from "@/components/SoundUploadPicker";
 import SoundPlayerCard from "@/components/SoundPlayerCard";
 import UserAvatar from "@/components/UserAvatar";
 import HashtagText from "@/components/HashtagText";
+import TrendingHashtags from "@/components/TrendingHashtags";
 import ZipRequiredModal from "@/components/ZipRequiredModal";
 import PollComposer from "@/components/PollComposer";
 import PollDisplay from "@/components/PollDisplay";
@@ -259,6 +260,7 @@ export default function Feed() {
       </div>
 
       {/* Composer */}
+      <TrendingHashtags />
       <div className="or-surface p-4 mt-4" data-testid="feed-composer">
         <div className="flex gap-3">
           <UserAvatar user={user} size={40} testid="feed-composer-avatar" />
