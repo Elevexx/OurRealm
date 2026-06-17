@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 
 from core.db import db
 from core.deps import CurrentUser
@@ -194,19 +194,64 @@ async def upload_track(
 # File serve  (must come BEFORE the parameterized routes so it matches)
 # ─────────────────────────────────────────────────────────────────────
 @router.get("/file/{name}")
-async def serve(name: str):
+async def serve(name: str, request: Request):
     if not is_safe_audio_filename(name):
         raise HTTPException(status_code=400, detail="Invalid audio name")
     path = audio_dir() / name
     if not path.exists():
         raise HTTPException(status_code=404, detail="Not found")
     ext = name.rsplit(".", 1)[-1]
+    media_type = media_type_for_ext(ext)
+    file_size = path.stat().st_size
+
+    # HTTP Range support — required by iOS Safari for scrub-seek on audio.
+    # FastAPI's FileResponse does NOT honour Range on the installed
+    # starlette version, so we parse it ourselves and return 206 with a
+    # Content-Range header when the client asks for a slice.
+    range_header = request.headers.get("range") or request.headers.get("Range")
+    if range_header and range_header.startswith("bytes="):
+        try:
+            spec = range_header[6:].split(",")[0].strip()
+            start_s, end_s = (spec.split("-") + [""])[:2]
+            start = int(start_s) if start_s else 0
+            end = int(end_s) if end_s else file_size - 1
+            if start < 0 or end >= file_size or start > end:
+                raise ValueError("range out of bounds")
+        except (ValueError, IndexError):
+            return Response(
+                status_code=416,
+                headers={"Content-Range": f"bytes */{file_size}"},
+            )
+        length = end - start + 1
+
+        def _stream():
+            with path.open("rb") as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = f.read(min(64 * 1024, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    yield chunk
+
+        return StreamingResponse(
+            _stream(),
+            status_code=206,
+            media_type=media_type,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(length),
+                "Cache-Control": "public, max-age=31536000, immutable",
+            },
+        )
+
     headers = {
         "Cache-Control": "public, max-age=31536000, immutable",
         "Accept-Ranges": "bytes",
     }
-    # FastAPI's FileResponse handles HTTP Range requests automatically.
-    return FileResponse(path, media_type=media_type_for_ext(ext), headers=headers)
+    return FileResponse(path, media_type=media_type, headers=headers)
 
 
 # Compatibility — also serve under /api/sounds/{name} so the file_url stored
