@@ -9,50 +9,57 @@ React 19 · FastAPI · MongoDB (Motor) · Supabase (Postgres + Realtime for mess
 ## Architecture: dual-store
 | Domain | Storage |
 |---|---|
-| Users, auth (JWT), profiles, widgets, friends, posts (+polls), comments, likes, notifications, images, tracks, track_likes, preferences, **dashboards** (Phase 5), ZIP/radius | MongoDB |
+| Users, auth (JWT), profiles, widgets, friends, posts (+polls), comments, likes, notifications, images, tracks, track_likes, preferences, dashboards, ZIP/radius | MongoDB |
 | Chats, Groups, Realms, Messages | Supabase Postgres + Realtime |
 
 ## Completed Phases
-- 1, 2, 2.5, 3, 4A (+ Share to Chat follow-up), 4B (Polls/Personalization/Search), 4B follow-up (Made for You rail), Landing/Modes refresh, PWA icon update, mode animations.
-- **Phase 5 (Feb 2026 — SHIPPED foundation)**: Home Dashboard, Admin Analytics, PWA install prompt, media autoplay hook.
-- **Phase 5 (Feb 2026 — SHIPPED MVP + polish)**: Media Upload Limits + Phase 5 deferred polish.
+Phase 1 · 2 · 2.5 · 3 · 4A · 4A follow-up · 4B (Polls/Personalization) · 4B follow-up (Made for You) · Landing/Modes refresh · PWA icon · mode animations · Phase 5 foundation (Home Dashboard + Admin Analytics + PWA prompt + autoplay) · **Phase 5 MVP + deferred polish (Feb 2026)** · **Phase 5+ Parts 0/1/2/3 (Feb 2026)**.
 
-## Phase 5 — Media Upload Limits MVP (Feb 2026)
-### Server-enforced caps (rolling 24h, founder `@stealth` exempt)
-| Kind   | Per file | Per day | Max duration |
-|--------|----------|---------|--------------|
-| image  | 3 MB     | 20      | n/a          |
-| audio  | 5 MB     | 10      | 60 s         |
-| video  | 10 MB    | 3       | 30 s (counted only when posts.media_type="video"; external URLs not counted) |
+## Phase 5+ — Parts 0/1/2/3 (Feb 2026)
 
-### Enforcement points
-- `services/upload_limits.py` — `enforce_pre_upload`, `enforce_duration`, `remaining_for_user`, `is_founder`.
-- `routers/images.py` — both `/upload` and `/from-url` call `enforce_pre_upload` (from-url fetches first so the real size is checked).
-- `routers/sounds.py` — `/upload` calls `enforce_pre_upload` and then `enforce_duration` after mutagen reads the file; on duration reject the on-disk file is deleted.
-- Legacy in-store 5-min rate limits in `image_store.py` / `audio_store.py` removed (replaced by the centralized service).
+### Part 1 — Mode descriptions refreshed
+`/modes` cards now ship the official taglines and body copy for Neon, Business, Millennium, Stealth. Rendered at `data-testid="modes-description-{mode}"`.
 
-### Client UX
-- `GET /api/upload-limits/me` → `{limits: {image, audio, video}}` with `{used, remaining, per_day}`; founder gets `remaining: "unlimited"`.
-- `ImageUploadPicker.jsx` and `SoundUploadPicker.jsx` fetch the quota on open, display "N of N remaining today" (or "Founder account — unlimited uploads."), and surface HTTP 413/429 detail messages from the API.
+### Part 2 — Top 8 quick action + picker search
+- Every friend card on `/friends` shows `friend-add-top8-{username}` (or `friend-in-top8-{username}` when already in slots).
+- Hitting the cap returns the exact message **"Please remove friend from top 8 to add more"**.
+- Picker modals on both `Friends.jsx` (`inner8-picker-search`) and `Top8Editor.jsx` (`top8-picker-search`) now expose a client-side filter on display name + `@username`.
 
-## Phase 5 — Deferred polish (now shipped)
-- **Customize Feed page** — `/home/legacy` (interest picker) renamed to "Customize Feed" with subtitle "Pick your interest".
-- **AutoplayVideo** — new component (`components/AutoplayVideo.jsx`) wrapping `useAutoplayOnVisible`; used by `pages/Feed.jsx` and `components/PostPopup.jsx`. Videos auto-play muted when ≥50% visible and pause off-screen.
-- **Sounds tabs hero polish** — Music / Podcasts / FX / AI now render as a 4-up grid of large color-gradient cards with decorative orbs and an iconized chip per tab. `data-testid="sounds-tab-*"` preserved.
-- **Custom visibility multi-select friends UI** — Home Dashboard widgets now expose a 4th visibility option `Custom`. New `components/FriendMultiPicker.jsx` modal opens automatically when Custom is selected; choosing friends saves `custom_user_ids[]` via existing `PUT /api/dashboard/layout`. A "N chosen / Pick friends" button reopens the picker.
+### Part 3 — Role-based post character limits
+| Role          | Limit |
+|---------------|-------|
+| Founder (`@stealth` / `is_founder`) | 2,000 |
+| VIP (`is_vip`)                       |   500 |
+| Default                              |   300 |
 
-## Existing endpoints + Phase 3 messenger: untouched.
+- Backend: `services/post_limits.py` — `character_limit_for(user)`, `enforce_post_content_limit(user, content)`. Wired into `POST /api/posts`.
+- Frontend: `lib/postLimits.js` — `getPostCharacterLimit(user)`. Feed composer shows live counter `data-testid="feed-composer-charcount"` and disables `feed-composer-submit` when over.
+- `PostCreate.content` Pydantic `max_length=2000` is the absolute hard ceiling (= founder cap); a comment in `schemas.py` notes the cross-file dependency.
 
-## ⚠️ Still deferred (next pass)
-1. **Widget resize** — `size` field is persisted (`sm/md/lg/xl`), but no drag-to-resize UI yet.
-2. **Mode visual updates — additional representative imagery beyond CSS art**.
-3. **Real weather + news API integration** — placeholders exist; pick provider keys next.
-4. **Advanced message status (Sent/Delivered/Read)** — deferred per user.
-5. **Group/Realm Member Directory UI enhancements** — deferred per user.
-6. **Real Wallet integration** — currently mocked.
+### Part 0 — Polish
+- **A** (core social polish) – no functional regressions; `refreshMe()` is called after Top-8 mutation so the Friends UI updates without a manual reload.
+- **B** (Top 8 + widget persistence) – preserved; `inner_8` and `dashboard.widgets` still persist via existing endpoints.
+- **C** (mode visual enhancements, CSS-only) – additive keyframes appended to `index.css`:
+  - Neon: `neon-glow-pulse` on `.or-surface` + `neon-particle-drift` on the existing star field.
+  - Business: `biz-sheen-pulse` on `.or-surface`.
+  - Millennium: `millen-chrome-shine` on `.or-btn::before` + body-level `millen-star-twinkle` overlay (pointer-events: none).
+  - Stealth: `stealth-pulse-ring` on `.or-btn::after`.
+  - `prefers-reduced-motion` disables all animations.
+- **D** (drag-to-resize widgets) – `HomeDashboard.jsx` SE-corner handle (`widget-{id}-resize`) uses pointer events + `SIZE_DIM` table to cycle through `sm → md → lg → xl`, persisted via existing `PUT /api/dashboard/layout`. `lg`/`xl` widgets get `gridColumn: span 2`.
+
+## Phase 5 — Media Upload Limits (already shipped earlier this session)
+- Server caps via `services/upload_limits.py` (3 MB / 20 per day for images, 5 MB / 10 / 60 s for audio, 10 MB / 3 / 30 s for video) with `@stealth` exempt.
+- `GET /api/upload-limits/me` exposed and consumed by ImageUploadPicker + SoundUploadPicker.
+
+## ⚠️ Backlog
+1. Real weather + news API integration for dashboard widgets.
+2. Advanced message status (Sent/Delivered/Read) — Supabase messenger.
+3. Group/Realm member directory UI enhancements.
+4. Real Wallet integration (currently mocked).
+5. Dedicated "Manage Top 8" button on `/friends` for picker discoverability (suggested by tester).
 
 ## Test Credentials
-See `/app/memory/test_credentials.md`.
+See `/app/memory/test_credentials.md`. Note: `core/seed.py` backfills `is_vip=true` for all pre-existing users on every boot, so freshly-registered accounts are the only path to exercise the pure 300 default cap end-to-end.
 
 ---
-*Last updated: Feb 2026 — Phase 5 Media Upload Limits MVP + deferred polish shipped (13/13 backend tests pass; frontend flows verified).*
+*Last updated: Feb 2026 — Phase 5+ Parts 0/1/2/3 shipped (13/13 backend tests pass; all frontend flows verified).*

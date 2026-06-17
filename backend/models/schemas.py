@@ -128,6 +128,10 @@ class PollPayload(BaseModel):
 
 
 class PostCreate(BaseModel):
+    # Hard ceiling that mirrors POST_LIMITS["founder"] in services/post_limits.py.
+    # Role-based cap (founder 2000 / VIP 500 / default 300) is enforced
+    # centrally via enforce_post_content_limit. If POST_LIMITS["founder"] ever
+    # changes, this max_length must move in lockstep.
     content: str = Field(min_length=1, max_length=2000)
     media_type: str = Field(default="thought")
     media_url: Optional[str] = None
