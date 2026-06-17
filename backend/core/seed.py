@@ -224,10 +224,87 @@ async def backfill_founder_as_default_friend(founder: dict | None):
     logger.info("Backfill: ensured 'stealth' is a default friend for all users (by user_id)")
 
 
-async def run_startup():
+async def seed_support_account():
+    """Phase B — protected @support system account.
+
+    Idempotent. Username/profile is force-reset on each boot so admin UI
+    can't accidentally rename or ban it. Auto-friends every existing
+    user so anyone can DM @support from /profile/support.
+    """
+    import logging
+    log = logging.getLogger("ourrealm.seed")
+
+    fixed_id = "00000000-0000-0000-0000-000000005500"  # stable, easy to spot
+    profile = {
+        "id": fixed_id,
+        "username": "support",
+        "name": "OurRealm Support",
+        "email": "ourrealmapp@gmail.com",
+        "bio": "",
+        "badges": ["SUPPORT"],
+        "is_system": True,                   # NEW — used by API guards
+        "is_protected": True,                # NEW — blocks ban / delete / rename
+        "is_founder": False,
+        "is_vip": False,
+        "avatar_url": None,
+        "widgets": [],
+        "friends": [],
+        "friend_requests_in": [],
+        "friend_requests_out": [],
+        "pinned_threads": [],
+        "social": {},
+    }
+
+    existing = await db.users.find_one({"username": "support"})
+    if existing is None:
+        existing = await db.users.find_one({"id": fixed_id})
+    if existing is None:
+        await db.users.insert_one({
+            **profile,
+            "password_hash": hash_password("Password1$"),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        log.info("Seeded @support system account")
+        existing = await db.users.find_one({"username": "support"})
+    else:
+        # Force-reset protected fields. Keep friends list (we'll merge below).
+        await db.users.update_one(
+            {"id": existing["id"]},
+            {"$set": {
+                **{k: v for k, v in profile.items() if k not in ("friends",)},
+                "password_hash": existing.get("password_hash")
+                                  or hash_password("Password1$"),
+            }},
+        )
+        log.info("Refreshed @support system account")
+        existing = await db.users.find_one({"id": existing["id"]})
+
+    support_id = existing["id"]
+
+    # Backfill auto-friendship for every non-support user.
+    other_users = db.users.find(
+        {"id": {"$ne": support_id}}, {"id": 1, "friends": 1}
+    )
+    n_users = 0
+    async for u in other_users:
+        n_users += 1
+        # Add support → user friendship.
+        if support_id not in (u.get("friends") or []):
+            await db.users.update_one(
+                {"id": u["id"]},
+                {"$addToSet": {"friends": support_id}},
+            )
+        # Add user → support friendship.
+        await db.users.update_one(
+            {"id": support_id},
+            {"$addToSet": {"friends": u["id"]}},
+        )
+    log.info(f"Auto-friended @support with {n_users} existing users")
+    return existing
     await ensure_indexes()
     await seed_admin()
     founder = await seed_founder()
+    await seed_support_account()      # Phase B — protected @support account
     await migrate_friend_graph_to_ids()
     await backfill_founder_as_default_friend(founder)
     await migrate_vip_and_strip_founder_badges(founder)

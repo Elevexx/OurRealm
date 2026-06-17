@@ -103,6 +103,13 @@ async def register(payload: RegisterPayload, response: Response):
         await db.users.update_one(
             {"id": founder["id"]}, {"$addToSet": {"friends": user_id}}
         )
+
+    # Phase B — also auto-friend the protected @support account so every
+    # new user can immediately DM support from /profile/support.
+    support = await db.users.find_one({"username": "support"})
+    if support and support["id"] != user_id:
+        await db.users.update_one({"id": user_id}, {"$addToSet": {"friends": support["id"]}})
+        await db.users.update_one({"id": support["id"]}, {"$addToSet": {"friends": user_id}})
         doc["friends"] = list(set(doc["friends"] + [founder["id"]]))
 
     access = create_access_token(user_id, email)
