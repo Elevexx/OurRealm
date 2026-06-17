@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { UserPlus, LogIn, VenetianMask, ShieldCheck, Zap, Users } from "lucide-react";
 import Logo, { LOGO_URL } from "@/components/Logo";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -86,8 +86,9 @@ function NeonPill({ color, glow, Icon, title, subtitle, onClick, testid }) {
 
 export default function Landing() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { mode } = useTheme();
-  const { user, isGuest, setGuest, logout } = useAuth();
+  const { user, isGuest, isLoading, setGuest, logout } = useAuth();
   const [hover, setHover] = useState(null);
   // PREVIEW-only mode — clicking a quadrant changes the local preview accent
   // (center widget colors/glow/border/buttons), but does NOT change the
@@ -96,6 +97,20 @@ export default function Landing() {
   const [previewMode, setPreviewMode] = useState(mode || "neon");
   const isLoggedIn = !!user && !isGuest;
   const activePreview = QUADRANTS.find((q) => q.mode === previewMode) || QUADRANTS[0];
+
+  // Deep-link passthrough — when an authenticated user arrives at `/`
+  // (typically via a "/messages/<peer>" or "/admin/support" link that
+  // got rewritten through SignIn or a desktop bookmark), bounce them
+  // straight to their intended page so the chooser never blocks the
+  // intended destination. Honours `?to=/messages?dm=support` if set.
+  useEffect(() => {
+    if (isLoading || !isLoggedIn) return;
+    const raw = searchParams.get("to") || searchParams.get("next");
+    if (!raw) return;
+    // Only allow same-origin internal paths — refuse external redirects.
+    if (!raw.startsWith("/") || raw.startsWith("//")) return;
+    navigate(raw, { replace: true });
+  }, [isLoading, isLoggedIn, searchParams, navigate]);
 
   return (
     <div

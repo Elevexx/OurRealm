@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Logo from "@/components/Logo";
 import apiClient, { formatApiErrorDetail } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,6 +11,12 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false);
   const { login, refreshMe } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Deep-link destination: prefer `?next=`, fall back to `?to=`, then /feed.
+  // Same-origin paths only — refuse external redirects.
+  const nextRaw = searchParams.get("next") || searchParams.get("to") || "";
+  const nextPath = (nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//")) ? nextRaw : "/feed";
 
   // OTP state — kept for any account that opts into a one-time code,
   // but no longer auto-triggered for the founder. The founder now uses
@@ -27,7 +33,7 @@ export default function SignIn() {
     // `stealth` or `slopestyle2022@gmail.com` interchangeably.
     const res = await login(email, password);
     setLoading(false);
-    if (res.ok) navigate("/feed");
+    if (res.ok) navigate(nextPath, { replace: true });
     else setError(res.error);
   };
 
@@ -48,7 +54,7 @@ export default function SignIn() {
       const { data } = await apiClient.post("/auth/otp/verify", { email, code: otpInput });
       try { if (data.access_token) localStorage.setItem("ourrealm.access", data.access_token); } catch {/* */}
       await refreshMe();
-      navigate("/feed");
+      navigate(nextPath, { replace: true });
     } catch (e) {
       setError(formatApiErrorDetail(e.response?.data?.detail) || e.message);
     } finally { setLoading(false); }
