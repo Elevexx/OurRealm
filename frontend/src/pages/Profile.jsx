@@ -16,7 +16,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import MyFeedWidget from "@/components/MyFeedWidget";
 import TopEightWidget from "@/components/TopEightWidget";
 import Top8Editor from "@/components/Top8Editor";
-import PresenceDot from "@/components/PresenceDot";
+import UserAvatar from "@/components/UserAvatar";
 import VipBadge from "@/components/VipBadge";
 import AvatarPicker from "@/components/AvatarPicker";
 
@@ -431,31 +431,16 @@ export default function Profile() {
         }} />
         <div className="px-5 sm:px-8 pb-6 -mt-12 sm:-mt-14 flex flex-col sm:flex-row sm:items-end gap-4">
           <div className="relative shrink-0">
-            <img
-              src={user?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || "Guest")}`}
-              alt="avatar"
-              className="rounded-full object-cover"
-              style={{ width: 110, height: 110, border: "4px solid var(--surface)", background: "var(--surface)" }}
-              data-testid="profile-avatar"
+            <UserAvatar
+              user={user}
+              size={110}
+              style={{ border: "4px solid var(--surface)", background: "var(--surface)" }}
+              testid="profile-avatar"
             />
-            {/* Live presence bubble — positioned top-right so it never
-                collides with the bottom-right Camera change-button. */}
-            <span
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                top: 6, right: 6,
-                background: "var(--surface)",
-                borderRadius: "50%",
-                padding: 2,
-                display: "inline-flex",
-                lineHeight: 0,
-              }}
-              data-testid="profile-avatar-presence"
-            >
-              <PresenceDot status={user?.presence_status} size={14} />
-            </span>
-            {/* Avatar change CTA — visible only while editing the profile. */}
+            {/* Avatar change CTA — visible only while editing the profile.
+                Sits on the bottom-right; the presence bubble (also bottom-
+                right) is naturally hidden behind it during edit mode, which
+                is fine because the change-button is the active control. */}
             {editing && !isGuest && (
               <button
                 type="button"
@@ -466,6 +451,7 @@ export default function Profile() {
                   background: "var(--primary)", color: "var(--primary-fg)",
                   border: "2px solid var(--surface)",
                   boxShadow: "0 4px 14px rgba(0,0,0,0.4)",
+                  zIndex: 2,
                 }}
                 aria-label={user?.avatar_url ? "Change profile picture" : "Add profile picture"}
                 title={user?.avatar_url ? "Change Profile Pic" : "Add Profile Pic"}
@@ -499,9 +485,6 @@ export default function Profile() {
                 {user?.username && (
                   <div className="flex items-center gap-2 mt-1" data-testid="profile-username-row">
                     <span className="text-sm" style={{ color: "var(--text-muted)" }}>@{user.username}</span>
-                    {user?.presence_visible !== false && (
-                      <PresenceDot data-testid="profile-presence-indicator" />
-                    )}
                   </div>
                 )}
                 <div className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }} data-testid="profile-bio">

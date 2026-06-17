@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import apiClient from "@/api/client";
 import MiniWidget from "@/components/MiniWidget";
-import PresenceDot from "@/components/PresenceDot";
+import UserAvatar from "@/components/UserAvatar";
 import RadiusChips from "@/components/RadiusChips";
 import ZipRequiredModal from "@/components/ZipRequiredModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -46,20 +46,13 @@ function UserCard({ u, status, onClick, accent, testid }) {
       data-testid={testid}
     >
       <div className="flex flex-col items-center">
-        <div className="relative">
-          <div className="rounded-full p-[3px] mb-3" style={{ background: accent, boxShadow: `0 0 14px ${accent}55`, width: 96, height: 96 }}>
-            <img
-              src={u.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.name || u.username)}`}
-              alt={u.username}
-              className="w-full h-full rounded-full object-cover"
-              style={{ border: "3px solid var(--bgc)" }}
-            />
-          </div>
-          {status && status !== "offline" && (
-            <span style={{ position: "absolute", right: 6, bottom: 18 }}>
-              <PresenceDot status={status} size={12} data-testid={`${testid}-status`} />
-            </span>
-          )}
+        <div className="rounded-full p-[3px] mb-3 relative" style={{ background: accent, boxShadow: `0 0 14px ${accent}55`, width: 96, height: 96 }}>
+          <UserAvatar
+            user={{ ...u, presence_status: status || u.presence_status }}
+            size={90}
+            style={{ border: "3px solid var(--bgc)", width: "100%", height: "100%" }}
+            testid={testid ? `${testid}-avatar` : undefined}
+          />
         </div>
         <div className="font-bold flex items-center gap-1" style={{ color: "var(--text-main)" }}>
           @{u.username}

@@ -34,14 +34,17 @@ function dicebear(seed) {
   return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed || "OurRealm")}`;
 }
 
-// Map avatar size → presence dot size + offset, kept consistent everywhere.
+// Bubble metrics — proportional placement so the dot sits at the
+// bottom-right *edge* of the circular avatar (≈8% inset from the
+// bounding box, partially overlapping the border like a standard
+// online-status indicator on Discord/WhatsApp/Slack).
 function dotMetrics(size) {
-  if (size <= 24)  return { dot: 8,  pad: 1, offset: -1 };
-  if (size <= 36)  return { dot: 9,  pad: 1, offset: -1 };
-  if (size <= 48)  return { dot: 11, pad: 2, offset: 0 };
-  if (size <= 72)  return { dot: 13, pad: 2, offset: 1 };
-  if (size <= 96)  return { dot: 15, pad: 2, offset: 2 };
-  return { dot: 18, pad: 3, offset: 3 };
+  const dot = Math.max(8, Math.round(size * 0.28));
+  const pad = size <= 36 ? 1 : 2;
+  // Inset from the wrapper's right/bottom — pulls the bubble inward so
+  // its center sits roughly on the circle's lower-right edge.
+  const inset = Math.max(2, Math.round(size * 0.05));
+  return { dot, pad, inset };
 }
 
 export default function UserAvatar({
@@ -100,8 +103,9 @@ export default function UserAvatar({
           aria-hidden="true"
           style={{
             position: "absolute",
-            right: m.offset,
-            bottom: m.offset,
+            // ALWAYS bottom-right edge of the circular avatar.
+            right: m.inset,
+            bottom: m.inset,
             // The "punch-out" ring lifts the dot off the avatar so it
             // never blurs into the photo. Uses the page background so it
             // matches every surface.
@@ -110,8 +114,9 @@ export default function UserAvatar({
             padding: m.pad,
             display: "inline-flex",
             lineHeight: 0,
+            zIndex: 1,
           }}
-          data-testid={testid ? `${testid}-presence` : undefined}
+          data-testid={testid ? `${testid}-presence` : "user-avatar-presence"}
         >
           <PresenceDot status={liveStatus} size={m.dot} />
         </span>

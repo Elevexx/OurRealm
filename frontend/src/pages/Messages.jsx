@@ -22,7 +22,6 @@ import ImageUploadPicker from "@/components/ImageUploadPicker";
 import MessageActionMenu from "@/components/MessageActionMenu";
 import ReportButton from "@/components/ReportButton";
 import SharedPostCard from "@/components/SharedPostCard";
-import PresenceDot from "@/components/PresenceDot";
 import { usePresence } from "@/contexts/PresenceContext";
 import presenceSocket from "@/lib/presenceSocket";
 import UserAvatar from "@/components/UserAvatar";

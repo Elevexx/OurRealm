@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
-import PresenceDot from "@/components/PresenceDot";
+import UserAvatar from "@/components/UserAvatar";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
 } from "@dnd-kit/core";
@@ -280,35 +280,18 @@ export default function FounderProfile() {
         </div>
         <div className="px-5 sm:px-8 pb-6 -mt-14 sm:-mt-16 flex flex-col sm:flex-row sm:items-end gap-4">
           <div className="relative shrink-0">
-            <img
-              src={profile.avatar_url}
-              alt={profile.name}
-              className="rounded-full"
+            <UserAvatar
+              user={{ ...profile, avatar_url: profile.avatar_url }}
+              size={128}
               style={{
-                width: 128, height: 128,
-                objectFit: "cover", objectPosition: "center",
                 border: "4px solid var(--surface)",
                 background: "var(--surface)",
                 boxShadow: "0 0 30px rgba(0,255,102,0.45)",
               }}
-              data-testid="founder-avatar"
+              testid="founder-avatar"
             />
-            {/* Presence bubble — top-left so it doesn't collide with the
-                bottom-right verified badge. */}
-            <span
-              aria-hidden="true"
-              style={{
-                position: "absolute", top: 6, left: 6,
-                background: "var(--surface)",
-                borderRadius: "50%", padding: 2,
-                display: "inline-flex", lineHeight: 0,
-              }}
-              data-testid="founder-avatar-presence"
-            >
-              <PresenceDot status={profile.presence_status} size={14} />
-            </span>
             {profile.is_verified && (
-              <span className="absolute bottom-2 right-2 w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, #2EA0FF, #10E670)", boxShadow: "0 0 12px rgba(46,160,255,0.6)" }} data-testid="founder-verified-badge">
+              <span className="absolute -top-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, #2EA0FF, #10E670)", boxShadow: "0 0 12px rgba(46,160,255,0.6)", zIndex: 2 }} data-testid="founder-verified-badge">
                 <Icons.BadgeCheck size={16} style={{ color: "#fff" }} />
               </span>
             )}

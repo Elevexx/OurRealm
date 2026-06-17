@@ -3,7 +3,7 @@ import { Flame, Sparkles, Star, Loader2, UserPlus, BadgeCheck } from "lucide-rea
 import { useNavigate } from "react-router-dom";
 import apiClient from "@/api/client";
 import { usePresence } from "@/contexts/PresenceContext";
-import PresenceDot from "@/components/PresenceDot";
+import UserAvatar from "@/components/UserAvatar";
 
 /**
  * Featured — Phase C rebuild.
@@ -72,18 +72,13 @@ export default function Featured() {
                   >
                     <div className="relative inline-block">
                       <div className="rounded-full p-[3px] mx-auto" style={{ background: "var(--primary)", width: 88, height: 88 }}>
-                        <img
-                          src={u.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.name || u.username)}`}
-                          alt={u.username}
-                          className="w-full h-full rounded-full object-cover"
-                          style={{ border: "3px solid var(--bgc)" }}
+                        <UserAvatar
+                          user={{ ...u, presence_status: status || u.presence_status }}
+                          size={82}
+                          style={{ border: "3px solid var(--bgc)", width: "100%", height: "100%" }}
+                          testid={`featured-creator-${u.username}-avatar`}
                         />
                       </div>
-                      {status !== "offline" && (
-                        <span style={{ position: "absolute", right: 4, bottom: 4 }}>
-                          <PresenceDot status={status} size={12} data-testid={`featured-status-${u.username}`} />
-                        </span>
-                      )}
                     </div>
                     <div className="mt-3 font-semibold flex items-center justify-center gap-1" style={{ color: "var(--text-main)" }}>
                       @{u.username}
@@ -117,11 +112,11 @@ export default function Featured() {
                   className="or-surface p-4 text-left flex items-center gap-3"
                   data-testid={`featured-rising-${u.username}`}
                 >
-                  <img
-                    src={u.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.name || u.username)}`}
-                    alt={u.username}
-                    className="rounded-full object-cover"
-                    style={{ width: 48, height: 48, border: "2px solid var(--primary)" }}
+                  <UserAvatar
+                    user={u}
+                    size={48}
+                    ring="var(--primary)"
+                    testid={`featured-rising-${u.username}-avatar`}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate" style={{ color: "var(--text-main)" }}>@{u.username}</div>
