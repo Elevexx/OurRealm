@@ -12,6 +12,7 @@ from core.geo import parse_radius, radius_filter
 from models.schemas import PostCreate
 from routers.notifications import emit_notification
 from services.post_limits import enforce_post_content_limit
+from services.moderation import scan_and_apply
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
 
@@ -108,9 +109,23 @@ async def create_post(payload: PostCreate, current: CurrentUser):
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.posts.insert_one(doc)
-    doc["created_at"] = datetime.fromisoformat(doc["created_at"])
-    doc.pop("_id", None)
-    return {"post": _public_post(doc, viewer_id=current["id"])}
+    # Moderation scan — sets moderation_* fields on the just-inserted doc.
+    await scan_and_apply(
+        coll_name="posts",
+        doc_id_field="id",
+        doc=doc,
+        text_fields=("content",),
+        link_fields=("link_url", "video_url"),
+        user_id=current["id"],
+    )
+    # Pull the now-moderated record back so the response carries fresh state.
+    fresh = await db.posts.find_one({"id": doc["id"]}, {"_id": 0})
+    if isinstance(fresh.get("created_at"), str):
+        try:
+            fresh["created_at"] = datetime.fromisoformat(fresh["created_at"])
+        except Exception:
+            pass
+    return {"post": _public_post(fresh or doc, viewer_id=current["id"])}
 
 
 class PostUpdatePayload(BaseModel):
@@ -197,6 +212,22 @@ def _visibility_query(viewer: Optional[dict], author_id: Optional[str] = None) -
     q: dict = {"$or": or_clauses}
     if author_id:
         q = {"$and": [q, {"author_id": author_id}]}
+
+    # ── Moderation gate: hide auto-hidden / rejected posts from everyone
+    # except their author (and `@stealth`, who can view the moderation
+    # queue separately on /admin).
+    is_admin = bool(viewer and (
+        (viewer.get("username") or "").lower() == "stealth" or viewer.get("is_founder")
+    ))
+    if not is_admin:
+        mod_clause = {
+            "$or": [
+                {"moderation_status": {"$in": [None, "approved", "pending_review"]}},
+                {"moderation_status": {"$exists": False}},
+                {"author_id": viewer["id"] if viewer else None},
+            ],
+        }
+        q = {"$and": [q, mod_clause]}
     return q
 
 

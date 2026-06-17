@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { ShieldCheck, Loader2 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import ModerationPanel from "@/components/ModerationPanel";
 
 const RANGES = [
   { id: "24h", label: "24 hours" }, { id: "7d", label: "7 days" },
@@ -155,6 +156,10 @@ export default function AdminAnalytics() {
           </div>
         </>
       )}
+
+      {/* Phase A moderation widget — vertical scroll allowed for future
+          widgets per spec. */}
+      <ModerationPanel />
     </div>
   );
 }

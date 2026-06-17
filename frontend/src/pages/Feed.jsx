@@ -17,6 +17,7 @@ import PollDisplay from "@/components/PollDisplay";
 import AutoplayVideo from "@/components/AutoplayVideo";
 import VideoUploadPicker from "@/components/VideoUploadPicker";
 import PostManagementMenu from "@/components/PostManagementMenu";
+import ReportButton from "@/components/ReportButton";
 import { getPostCharacterLimit } from "@/lib/postLimits";
 
 const FILTER_KEY = "ourrealm.feedMedia";
@@ -519,6 +520,9 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
           </div>
         </div>
         <button onClick={(e) => { e.stopPropagation(); onGuestAction("follow"); }} className="or-chip" data-testid={`feed-follow-${p.id}`}>+ Follow</button>
+        {user && user.id !== p.author_id && (
+          <ReportButton contentType="post" contentId={p.id} testid={`feed-report-${p.id}`} />
+        )}
         <PostManagementMenu
           post={p}
           user={user}
