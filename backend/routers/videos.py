@@ -15,11 +15,14 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+import logging
+
 from fastapi import APIRouter, File, Form, HTTPException, Request
 from fastapi import UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 
-from core.deps import CurrentUser
+from core.db import db
+from core.deps import CurrentUser, require_admin
 from services.upload_limits import enforce_duration, enforce_pre_upload
 from services.video_store import (
     MAX_BYTES, ALLOWED_EXTS, is_safe_video_filename, save_video, video_dir,
@@ -27,6 +30,7 @@ from services.video_store import (
 
 
 router = APIRouter(prefix="/api/videos", tags=["videos"])
+log = logging.getLogger("ourrealm.videos")
 
 
 @router.post("/upload")
@@ -133,9 +137,19 @@ async def serve(name: str, request: Request):
     Starlette's `FileResponse` returns the whole file with HTTP 200.
     """
     if not is_safe_video_filename(name):
+        log.warning("[videos.serve] invalid filename rejected", extra={"name": name})
         raise HTTPException(status_code=400, detail="Invalid video name")
     path = video_dir() / name
     if not path.exists():
+        # Production diagnostic — when an existing post's video file is
+        # missing on disk (e.g. ephemeral pod, lost on redeploy) we log
+        # the requested URL + resolved path so admins can correlate
+        # client failures with the storage state.
+        log.error("[videos.serve] file missing on disk", extra={
+            "name": name,
+            "resolved_path": str(path),
+            "dir": str(video_dir()),
+        })
         raise HTTPException(status_code=404, detail="Not found")
 
     file_size = os.path.getsize(path)
@@ -177,3 +191,113 @@ async def serve(name: str, request: Request):
         media_type=media_type,
         headers={**common_headers, "Content-Length": str(file_size)},
     )
+
+
+
+# ─── Admin diagnostics (Phase 5 production hotfix #2) ──────────────────
+# Mobile-friendly endpoints so production triage is possible from a phone.
+# All require @stealth / @support / role=admin via require_admin.
+
+@router.get("/admin/diagnostics")
+async def video_diagnostics(current: CurrentUser):
+    """Report storage + DB state so admins can confirm whether uploaded
+    videos are intact on the production pod. Designed to be tap-friendly
+    from a mobile Emergent dashboard.
+
+    Returns:
+      storage_dir, dir_exists, file_count, total_bytes
+      posts_with_video_url, posts_pointing_to_missing_files (capped 20),
+      posts_with_absolute_urls_remaining (should be 0 after migration).
+    """
+    require_admin(current)
+    vdir = video_dir()
+    files_on_disk = set()
+    total_bytes = 0
+    if vdir.exists():
+        for p in vdir.iterdir():
+            if p.is_file():
+                files_on_disk.add(p.name)
+                try:
+                    total_bytes += p.stat().st_size
+                except OSError:
+                    pass
+
+    fields = ("video_url", "image_url", "media_url")
+    # Counts ANY post whose URL starts with `http://` — includes YouTube /
+    # Vimeo embeds (which are SUPPOSED to be absolute) and any leftover
+    # preview-host URLs we'd want to rewrite. Useful as a "did anything
+    # slip through the migration" signal; the manual migrate endpoint
+    # only touches /api/videos/ + /api/images/ paths.
+    abs_with_internal_path = await db.posts.count_documents(
+        {"$or": [
+            {f: {"$regex": r"^https?://[^/]+/api/(?:videos|images)/"}}
+            for f in fields
+        ]}
+    )
+
+    posts_with_video = []
+    cursor = db.posts.find(
+        {"video_url": {"$regex": "^/api/videos/"}},
+        {"_id": 0, "id": 1, "video_url": 1, "author_username": 1, "created_at": 1},
+    ).sort("created_at", -1).limit(200)
+    missing = []
+    seen = 0
+    async for p in cursor:
+        seen += 1
+        url = p.get("video_url") or ""
+        # Extract just the filename after /api/videos/
+        name = url.rsplit("/api/videos/", 1)[-1]
+        if name and name not in files_on_disk:
+            if len(missing) < 20:
+                missing.append({
+                    "post_id": p.get("id"),
+                    "author": p.get("author_username"),
+                    "created_at": p.get("created_at"),
+                    "video_url": url,
+                    "expected_file": name,
+                })
+        posts_with_video.append(name)
+
+    return {
+        "storage_dir": str(vdir),
+        "dir_exists": vdir.exists(),
+        "file_count": len(files_on_disk),
+        "total_bytes": total_bytes,
+        "posts_with_video_url_sampled": seen,
+        "posts_pointing_to_missing_files_count": len(posts_with_video) - len([n for n in posts_with_video if n in files_on_disk]),
+        "examples_pointing_to_missing_files": missing,
+        "posts_with_absolute_urls_remaining": abs_with_internal_path,
+    }
+
+
+@router.post("/admin/migrate-urls")
+async def admin_run_url_migration(current: CurrentUser):
+    """Manually re-run the relative-URL migration on demand.
+
+    This is the same logic as `core.seed.migrate_video_urls_to_relative`
+    — exposed here so admins can rerun it without redeploying. Returns
+    `{updated: <int>}`.
+    """
+    require_admin(current)
+    import re as _re
+    re_strip = _re.compile(r"^https?://[^/]+(/api/(?:videos|images)/.+)$")
+    fields = ("video_url", "image_url", "media_url")
+    cursor = db.posts.find(
+        {"$or": [{f: {"$regex": "^https?://"}} for f in fields]},
+        {"_id": 0, "id": 1, **{f: 1 for f in fields}},
+    )
+    updated = 0
+    async for doc in cursor:
+        upd = {}
+        for f in fields:
+            v = doc.get(f)
+            if not v:
+                continue
+            m = re_strip.match(v)
+            if m:
+                upd[f] = m.group(1)
+        if upd:
+            await db.posts.update_one({"id": doc["id"]}, {"$set": upd})
+            updated += 1
+    log.info("[videos.admin] manual URL migration ran", extra={"updated": updated})
+    return {"ok": True, "updated": updated}
