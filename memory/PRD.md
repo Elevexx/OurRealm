@@ -15,48 +15,44 @@ React 19 · FastAPI · MongoDB (Motor) · Supabase (Postgres + Realtime for mess
 ## Completed Phases
 - 1, 2, 2.5, 3, 4A (+ Share to Chat follow-up), 4B (Polls/Personalization/Search), 4B follow-up (Made for You rail), Landing/Modes refresh, PWA icon update, mode animations.
 - **Phase 5 (Feb 2026 — SHIPPED foundation)**: Home Dashboard, Admin Analytics, PWA install prompt, media autoplay hook.
+- **Phase 5 (Feb 2026 — SHIPPED MVP + polish)**: Media Upload Limits + Phase 5 deferred polish.
 
-## Phase 5 — what shipped this round
-### PWA install prompt (`components/InstallPrompt.jsx`)
-- Globally mounted in `App.js`. Auto-shows ~5.5s after first paint for non-standalone visitors; remembers dismissal in localStorage for 14 days.
-- Android: uses `beforeinstallprompt` for one-tap install.
-- iOS/Safari: Share → Add to Home Screen → Add walkthrough (3 steps with icons).
-- Themed via existing OurRealm surfaces; shows `/icon-192.png` (the new transparent maskable icon).
-- Detects standalone mode and never shows when already installed.
+## Phase 5 — Media Upload Limits MVP (Feb 2026)
+### Server-enforced caps (rolling 24h, founder `@stealth` exempt)
+| Kind   | Per file | Per day | Max duration |
+|--------|----------|---------|--------------|
+| image  | 3 MB     | 20      | n/a          |
+| audio  | 5 MB     | 10      | 60 s         |
+| video  | 10 MB    | 3       | 30 s (counted only when posts.media_type="video"; external URLs not counted) |
 
-### Home Dashboard (`pages/HomeDashboard.jsx`, `routers/phase5.py`)
-- New `/home` route now renders the dashboard. Legacy interest-picker home preserved at `/home/legacy`.
-- Backend persistence: `GET/PUT /api/dashboard/layout` (per-user widget list). First call seeds 5 defaults.
-- Customize mode: reorder (up/down arrows), remove, per-widget visibility (Public/Friends/Private — Custom shape stored, multi-select UI deferred).
-- Widget library modal with all 14 widget types from spec.
-- Live widgets implemented: **For You Feed**, **Weather** (ZIP-aware placeholder structure), **Realms** (reads Supabase), **Groups** (reads Supabase), **Top News** (placeholder rows), **Trending Sounds** (reads `/sounds/charts/top100`). Remaining widget types render a clean "structurally ready" placeholder.
-- "Add Home Widgets" outlined dashed tile at end of grid.
+### Enforcement points
+- `services/upload_limits.py` — `enforce_pre_upload`, `enforce_duration`, `remaining_for_user`, `is_founder`.
+- `routers/images.py` — both `/upload` and `/from-url` call `enforce_pre_upload` (from-url fetches first so the real size is checked).
+- `routers/sounds.py` — `/upload` calls `enforce_pre_upload` and then `enforce_duration` after mutagen reads the file; on duration reject the on-disk file is deleted.
+- Legacy in-store 5-min rate limits in `image_store.py` / `audio_store.py` removed (replaced by the centralized service).
 
-### Admin Analytics (`pages/AdminAnalytics.jsx`, `/api/admin/analytics`)
-- **Server-side guarded** — checks `current["username"] == "stealth"`; non-admin gets HTTP 403 (curl-verified).
-- Aggregated user metrics (total/new signups/DAU/MAU/retention), content (posts series + media distribution + likes/comments), messaging (messages/chats/groups/realms), sounds (uploads series + category distribution + total plays + top 10).
-- Time range selector: 24h / 7d / 30d / all time.
-- Inline SVG line charts + horizontal bar charts (zero chart-lib weight).
-- Accessible at `/admin` and `/admin/analytics`.
+### Client UX
+- `GET /api/upload-limits/me` → `{limits: {image, audio, video}}` with `{used, remaining, per_day}`; founder gets `remaining: "unlimited"`.
+- `ImageUploadPicker.jsx` and `SoundUploadPicker.jsx` fetch the quota on open, display "N of N remaining today" (or "Founder account — unlimited uploads."), and surface HTTP 413/429 detail messages from the API.
 
-### Media autoplay hook (`lib/useAutoplayOnVisible.js`)
-- `IntersectionObserver`-based; threshold 0.5. Auto-plays muted video when ≥50% visible; pauses when off-screen. Ready to drop into feed cards, profile media, etc.
+## Phase 5 — Deferred polish (now shipped)
+- **Customize Feed page** — `/home/legacy` (interest picker) renamed to "Customize Feed" with subtitle "Pick your interest".
+- **AutoplayVideo** — new component (`components/AutoplayVideo.jsx`) wrapping `useAutoplayOnVisible`; used by `pages/Feed.jsx` and `components/PostPopup.jsx`. Videos auto-play muted when ≥50% visible and pause off-screen.
+- **Sounds tabs hero polish** — Music / Podcasts / FX / AI now render as a 4-up grid of large color-gradient cards with decorative orbs and an iconized chip per tab. `data-testid="sounds-tab-*"` preserved.
+- **Custom visibility multi-select friends UI** — Home Dashboard widgets now expose a 4th visibility option `Custom`. New `components/FriendMultiPicker.jsx` modal opens automatically when Custom is selected; choosing friends saves `custom_user_ids[]` via existing `PUT /api/dashboard/layout`. A "N chosen / Pick friends" button reopens the picker.
 
-### Existing endpoints + Phase 3 messenger: untouched.
+## Existing endpoints + Phase 3 messenger: untouched.
 
-## ⚠️ Explicitly deferred in Phase 5 (next pass)
-These are written into the spec but not yet implemented — flagging so they're not assumed shipped:
-
-1. **Custom-visibility multi-select friends UI** — schema stores `custom_user_ids[]` but the multi-select picker is not wired (visibility currently chooses among Public/Friends/Private).
-2. **Widget resize** — `size` field is persisted (`sm/md/lg/xl`), but no drag-to-resize UI yet.
-3. **Feed Customize page rename + "Pick your interest" subtitle + icon-only small-mobile bars** — current Feed page already has a "Customize Feed" CTA, but the legacy /home/legacy page wasn't fully re-titled.
-4. **Sounds UI polish — bigger category cards with unique colors/graphics** — tabs already colored & iconed; full "card hero" treatment not done.
-5. **Mode visual updates — additional representative imagery beyond CSS art** — the CSS-art previews already shipped; no extra imagery added this pass.
-6. **Media autoplay wired into every feed card** — the hook ships, but I did NOT touch all consumer components in this pass (Feed, Profile, RealmDetail). Drop `useAutoplayOnVisible` into the `<video>` JSX where needed.
-7. **Real weather + news API integration** — placeholders exist; pick provider keys next.
+## ⚠️ Still deferred (next pass)
+1. **Widget resize** — `size` field is persisted (`sm/md/lg/xl`), but no drag-to-resize UI yet.
+2. **Mode visual updates — additional representative imagery beyond CSS art**.
+3. **Real weather + news API integration** — placeholders exist; pick provider keys next.
+4. **Advanced message status (Sent/Delivered/Read)** — deferred per user.
+5. **Group/Realm Member Directory UI enhancements** — deferred per user.
+6. **Real Wallet integration** — currently mocked.
 
 ## Test Credentials
 See `/app/memory/test_credentials.md`.
 
 ---
-*Last updated: Feb 2026 — Phase 5 foundation shipped (PWA install prompt, Home Dashboard, Admin analytics, autoplay hook). Deferred items documented above.*
+*Last updated: Feb 2026 — Phase 5 Media Upload Limits MVP + deferred polish shipped (13/13 backend tests pass; frontend flows verified).*

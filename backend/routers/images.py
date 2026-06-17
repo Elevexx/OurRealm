@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
@@ -64,10 +65,20 @@ class FromUrlPayload(BaseModel):
 @router.post("/from-url")
 async def from_url(payload: FromUrlPayload, current: CurrentUser):
     # `from-url` re-hosts a remote image — counts against the user's daily image quota.
-    # We can't know the size up-front, so we pass 0 (size check happens after fetch via save_bytes).
-    await enforce_pre_upload(current, "image", 0)
+    # We fetch first so we can pass the real size to enforce_pre_upload (per-file 3 MB cap).
+    url = payload.url.strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="URL must be http(s)://")
     try:
-        rec = await save_from_url(payload.url.strip(), current["id"])
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            r = await client.get(url)
+            r.raise_for_status()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not fetch image: {e}")
+    raw = r.content
+    await enforce_pre_upload(current, "image", len(raw))
+    try:
+        rec = await save_bytes(raw, current["id"], declared_mime=r.headers.get("content-type", ""))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"image": rec.to_dict(), "url": rec.original_url, "thumbnail_url": rec.thumbnail_url}
