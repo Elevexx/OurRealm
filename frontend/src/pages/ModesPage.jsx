@@ -34,7 +34,7 @@ const MODE_INFO = {
     accent: "#2EA0FF",
     glow: "rgba(46,160,255,0.55)",
     description: "Bright, optimistic, and endlessly creative, Millennium Mode captures the excitement of a time when profiles were personal, communities felt genuine, and every click led to a new adventure.",
-    bullets: ["Bright sky-blue gradients", "Glossy rounded panels", "Playful chrome buttons", "Original — never copies any OS"],
+    bullets: ["Bright sky-blue gradients", "Glossy rounded panels", "Playful chrome buttons", "Brings back that millennial feel"],
     gradient: "linear-gradient(180deg, #6CC4FF 0%, #2E78D6 100%)",
     family: "'Fredoka', sans-serif",
   },
