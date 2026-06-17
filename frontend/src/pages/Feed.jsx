@@ -15,6 +15,8 @@ import ZipRequiredModal from "@/components/ZipRequiredModal";
 import PollComposer from "@/components/PollComposer";
 import PollDisplay from "@/components/PollDisplay";
 import AutoplayVideo from "@/components/AutoplayVideo";
+import VideoEmbed from "@/components/VideoEmbed";
+import ShareToUserModal from "@/components/ShareToUserModal";
 import VideoUploadPicker from "@/components/VideoUploadPicker";
 import PostManagementMenu from "@/components/PostManagementMenu";
 import ReportButton from "@/components/ReportButton";
@@ -474,6 +476,7 @@ function isVideoFile(u) { return !!u && /\.(mp4|webm|ogg)$/i.test(u); }
 
 function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
   const { user } = useAuth();
+  const [shareOpen, setShareOpen] = useState(false);
   const viewerLiked = !!(user?.id && Array.isArray(p.liked_by) && p.liked_by.includes(user.id));
   const live = usePostState(p.id, { liked: viewerLiked, likes: p.likes || 0, comments: p.comments || 0 });
   const openPopup = () => openPostPopup(p);
@@ -553,13 +556,7 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
       )}
       {mediaVid && (
         <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
-          {isVideoFile(mediaVid) ? (
-            <AutoplayVideo src={mediaVid} className="w-full" style={{ maxHeight: 480 }} testid={`feed-video-${p.id}`} />
-          ) : (
-            <a href={mediaVid} target="_blank" rel="noreferrer" className="or-chip text-sm m-3 inline-flex" data-testid={`feed-video-link-${p.id}`} onClick={(e) => e.stopPropagation()}>
-              <Video size={14} /> Watch video
-            </a>
-          )}
+          <VideoEmbed url={mediaVid} testid={`feed-video-${p.id}`} />
         </div>
       )}
       {mediaLink && (
@@ -581,13 +578,31 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
         <button data-testid={`feed-comment-${p.id}`} onClick={onComment} className="flex items-center gap-1.5">
           <MessageCircle size={16} /> <span data-testid={`feed-comment-count-${p.id}`}>{live.comments}</span>
         </button>
-        <button data-testid={`feed-share-${p.id}`} onClick={(e) => { e.stopPropagation(); onGuestAction("share"); }} className="flex items-center gap-1.5">
+        <button
+          data-testid={`feed-share-${p.id}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isGuest) { onGuestAction("share"); return; }
+            setShareOpen(true);
+          }}
+          disabled={isGuest}
+          title={isGuest ? "Sign in to share" : "Share with a friend"}
+          className="flex items-center gap-1.5"
+          style={isGuest ? { opacity: 0.55, cursor: "not-allowed" } : undefined}
+        >
           <Share2 size={16} /> Share
         </button>
         <button data-testid={`feed-save-${p.id}`} onClick={(e) => { e.stopPropagation(); onGuestAction("save"); }} className="flex items-center gap-1.5 ml-auto">
           <Bookmark size={16} />
         </button>
       </footer>
+      <ShareToUserModal
+        open={shareOpen}
+        postId={p.id}
+        postPreview={p.content || p.title || ""}
+        onClose={() => setShareOpen(false)}
+        testid={`feed-share-modal-${p.id}`}
+      />
     </article>
   );
 }

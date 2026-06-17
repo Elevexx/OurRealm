@@ -8,7 +8,7 @@
  * through postStore so other surfaces (Feed, My Feed widget) update.
  */
 import React, { useEffect, useState, useCallback } from "react";
-import { X, Heart, MessageCircle, Send, Loader2, Link2, Video as VideoIcon, Reply, Flag } from "lucide-react";
+import { X, Heart, MessageCircle, Send, Loader2, Link2, Video as VideoIcon, Reply, Flag, Share2, UserPlus, Check } from "lucide-react";
 import apiClient from "@/api/client";
 import { registerPopupSetter } from "@/lib/postPopupController";
 import { setPost, getPost, usePostState } from "@/lib/postStore";
@@ -16,7 +16,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import UsernameLink from "@/components/UsernameLink";
 import { absoluteImageUrl } from "@/components/ImageUploadPicker";
 import AutoplayVideo from "@/components/AutoplayVideo";
+import VideoEmbed from "@/components/VideoEmbed";
 import ReportButton from "@/components/ReportButton";
+import ShareToUserModal from "@/components/ShareToUserModal";
 
 function fmtTime(iso) {
   if (!iso) return "";
@@ -171,6 +173,11 @@ export default function PostPopup() {
   const [replyDrafts, setReplyDrafts] = useState({}); // {parentId: text}
   const [replyingTo, setReplyingTo] = useState(null); // parentId | null
   const [loading, setLoading] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  // Friend status with the post author: 'self' | 'friends' | 'outgoing' |
+  // 'incoming' | 'declined' | 'none' | null (unknown / not loaded yet).
+  const [friendStatus, setFriendStatus] = useState(null);
+  const [friendBusy, setFriendBusy] = useState(false);
   const [posting, setPosting] = useState(false);
   const { user } = useAuth();
   const viewerLiked = !!(user?.id && Array.isArray(post?.liked_by) && post.liked_by.includes(user.id));
@@ -231,6 +238,34 @@ export default function PostPopup() {
     })();
     return () => { cancelled = true; };
   }, [state?.postId, user?.username]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Friend status — only when the viewer is not the author. Reused by the
+  // header "Add friend / Requested / Friends" affordance for shared posts.
+  useEffect(() => {
+    setFriendStatus(null);
+    if (!post?.author_username || !user?.id) return;
+    if (post.author_id === user.id) { setFriendStatus("self"); return; }
+    let cancelled = false;
+    apiClient.get(`/friends/status/${post.author_username}`)
+      .then((r) => { if (!cancelled) setFriendStatus(r.data?.status || "none"); })
+      .catch(() => { if (!cancelled) setFriendStatus("none"); });
+    return () => { cancelled = true; };
+  }, [post?.author_username, post?.author_id, user?.id]);
+
+  const sendFriendRequest = async () => {
+    if (!post?.author_username || friendBusy) return;
+    setFriendBusy(true);
+    try {
+      const endpoint = friendStatus === "incoming" ? "/friends/accept" : "/friends/request";
+      await apiClient.post(endpoint, { username: post.author_username });
+      setFriendStatus(friendStatus === "incoming" ? "friends" : "outgoing");
+    } catch (e) {
+      // eslint-disable-next-line no-alert
+      alert(e?.response?.data?.detail || "Could not update friend status");
+    } finally {
+      setFriendBusy(false);
+    }
+  };
 
   const close = useCallback(() => setState(null), []);
 
@@ -365,6 +400,41 @@ export default function PostPopup() {
               {fmtTime(post?.created_at)} · {post?.media_type || "thought"}
             </div>
           </div>
+          {/* Phase: shared-post viewing — friend affordance shown only
+              when the viewer is not the author. The label flips through
+              outgoing/incoming/declined/friends states using the existing
+              /api/friends/status response. */}
+          {friendStatus && friendStatus !== "self" && (
+            friendStatus === "friends" ? (
+              <span
+                className="or-chip"
+                data-testid="post-popup-friend-status-friends"
+                title="You are friends"
+              >
+                <Check size={12} /> Friends
+              </span>
+            ) : friendStatus === "outgoing" ? (
+              <span
+                className="or-chip"
+                data-testid="post-popup-friend-status-outgoing"
+                title="Friend request sent"
+                style={{ opacity: 0.75 }}
+              >
+                Requested
+              </span>
+            ) : (
+              <button
+                className="or-chip"
+                onClick={sendFriendRequest}
+                disabled={friendBusy}
+                data-testid={`post-popup-friend-request${friendStatus === "declined" ? "-rerequest" : ""}`}
+                title={friendStatus === "declined" ? "Re-send friend request" : "Send friend request"}
+              >
+                {friendBusy ? <Loader2 size={12} className="animate-spin" /> : <UserPlus size={12} />}
+                {friendStatus === "incoming" ? "Accept" : (friendStatus === "declined" ? "Re-request" : "Add friend")}
+              </button>
+            )
+          )}
           <button onClick={close} className="starbar-icon" style={{ width: 36, height: 36 }} aria-label="Close" data-testid="post-popup-close">
             <X size={16} />
           </button>
@@ -386,13 +456,7 @@ export default function PostPopup() {
                 <img src={absoluteImageUrl(mediaImg)} alt="" loading="lazy" decoding="async" className="rounded w-full object-cover" style={{ maxHeight: 480, border: "1px solid var(--border-col)" }} data-testid="post-popup-image" />
               )}
               {mediaVid && (
-                isVideoUrl(mediaVid) ? (
-                  <AutoplayVideo src={mediaVid} className="rounded w-full" style={{ maxHeight: 480, border: "1px solid var(--border-col)" }} testid="post-popup-video" />
-                ) : (
-                  <a href={mediaVid} target="_blank" rel="noreferrer" className="or-chip text-sm" data-testid="post-popup-video-link">
-                    <VideoIcon size={14} /> Watch video
-                  </a>
-                )
+                <VideoEmbed url={mediaVid} testid="post-popup-video" />
               )}
               {mediaLink && (
                 <a href={mediaLink} target="_blank" rel="noreferrer" className="or-chip text-sm break-all" data-testid="post-popup-link">
@@ -413,6 +477,25 @@ export default function PostPopup() {
                 <div className="flex items-center gap-1.5" data-testid="post-popup-comment-count">
                   <MessageCircle size={16} /> {live.comments}
                 </div>
+                <button
+                  onClick={() => user ? setShareOpen(true) : null}
+                  disabled={!user}
+                  title={user ? "Share with a friend" : "Sign in to share"}
+                  className="flex items-center gap-1.5"
+                  style={{ background: "transparent", padding: 0, color: "var(--text-muted)", opacity: user ? 1 : 0.55, cursor: user ? "pointer" : "not-allowed" }}
+                  data-testid="post-popup-share"
+                >
+                  <Share2 size={16} /> Share
+                </button>
+                {user && post?.id && user.id !== post.author_id && (
+                  <ReportButton
+                    targetType="post"
+                    targetId={post.id}
+                    variant="icon"
+                    testid="post-popup-report"
+                    title="Report post"
+                  />
+                )}
               </div>
 
               <div className="pt-3 mt-1 space-y-3" style={{ borderTop: "1px solid var(--border-col)" }} data-testid="post-popup-comments">
@@ -468,6 +551,13 @@ export default function PostPopup() {
           </button>
         </form>
       </div>
+      <ShareToUserModal
+        open={shareOpen}
+        postId={post?.id}
+        postPreview={post?.content || ""}
+        onClose={() => setShareOpen(false)}
+        testid="post-popup-share-modal"
+      />
     </div>
   );
 }

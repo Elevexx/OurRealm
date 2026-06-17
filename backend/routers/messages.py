@@ -22,11 +22,17 @@ class MessageEditPayload(BaseModel):
 
 
 class MessageMediaPayload(BaseModel):
-    kind: str = Field(default="image")  # image | link
-    url: str
+    # `image` and `link` are the original inline-media flavours; `post_share`
+    # carries a reference to an existing post (post_id only — never a copy of
+    # the post body) so the recipient renders the SAME post from
+    # /api/posts/{id} and all engagement (likes, comments) stays on the
+    # canonical post document.
+    kind: str = Field(default="image")  # image | link | post_share
+    url: Optional[str] = None
     preview: Optional[str] = None
     width: Optional[int] = None
     height: Optional[int] = None
+    post_id: Optional[str] = None
 
 
 class MessageCreatePlus(MessageCreate):

@@ -21,6 +21,7 @@ import {
 import ImageUploadPicker from "@/components/ImageUploadPicker";
 import MessageActionMenu from "@/components/MessageActionMenu";
 import ReportButton from "@/components/ReportButton";
+import SharedPostCard from "@/components/SharedPostCard";
 
 const TABS = [
   { id: "chats",  label: "Chats",  Icon: MessagesSquare },
@@ -697,6 +698,9 @@ function DMConversationOverlay({ me, peer, onClose }) {
                   ) : (
                     <>
                       {m.text && <div className="or-wrap">{renderText(m.text)}</div>}
+                      {m.media?.kind === "post_share" && m.media?.post_id && (
+                        <SharedPostCard postId={m.media.post_id} testid={`dm-shared-post-${m.id}`} />
+                      )}
                       {m.media?.url && (
                         <a href={m.media.url} target="_blank" rel="noopener noreferrer" className="block mt-1" onClick={(e) => e.stopPropagation()}>
                           <img src={m.media.url} alt="" className="rounded" style={{ maxHeight: 220, maxWidth: "100%" }} />
