@@ -110,7 +110,7 @@ async def register(payload: RegisterPayload, response: Response):
     if support and support["id"] != user_id:
         await db.users.update_one({"id": user_id}, {"$addToSet": {"friends": support["id"]}})
         await db.users.update_one({"id": support["id"]}, {"$addToSet": {"friends": user_id}})
-        doc["friends"] = list(set(doc["friends"] + [founder["id"]]))
+        doc["friends"] = list(set(doc["friends"] + [support["id"]]))
 
     access = create_access_token(user_id, email)
     refresh = create_refresh_token(user_id)
