@@ -15,6 +15,7 @@ import ZipRequiredModal from "@/components/ZipRequiredModal";
 import PollComposer from "@/components/PollComposer";
 import PollDisplay from "@/components/PollDisplay";
 import AutoplayVideo from "@/components/AutoplayVideo";
+import PostManagementMenu from "@/components/PostManagementMenu";
 import { getPostCharacterLimit } from "@/lib/postLimits";
 
 const FILTER_KEY = "ourrealm.feedMedia";
@@ -424,6 +425,8 @@ export default function Feed() {
             p={p}
             onGuestAction={(label) => onAction(label)}
             isGuest={!user || isGuest}
+            onPostDeleted={(id) => setServerPosts((s) => s.filter((x) => x.id !== id))}
+            onPostUpdated={(updated) => setServerPosts((s) => s.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))}
           />
         ))}
       </div>
@@ -460,7 +463,7 @@ export default function Feed() {
 
 function isVideoFile(u) { return !!u && /\.(mp4|webm|ogg)$/i.test(u); }
 
-function FeedCard({ p, onGuestAction, isGuest }) {
+function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
   const { user } = useAuth();
   const viewerLiked = !!(user?.id && Array.isArray(p.liked_by) && p.liked_by.includes(user.id));
   const live = usePostState(p.id, { liked: viewerLiked, likes: p.likes || 0, comments: p.comments || 0 });
@@ -505,6 +508,13 @@ function FeedCard({ p, onGuestAction, isGuest }) {
           </div>
         </div>
         <button onClick={(e) => { e.stopPropagation(); onGuestAction("follow"); }} className="or-chip" data-testid={`feed-follow-${p.id}`}>+ Follow</button>
+        <PostManagementMenu
+          post={p}
+          user={user}
+          onDeleted={onPostDeleted}
+          onUpdated={onPostUpdated}
+          testid={`feed-manage-${p.id}`}
+        />
       </header>
       {p.content && <p className="mb-3 text-[15px] leading-relaxed whitespace-pre-wrap" style={{ color: "var(--text-main)" }}>{p.content}</p>}
       {mediaImg && (

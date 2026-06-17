@@ -4,6 +4,8 @@ import { Sparkles, MoreHorizontal, Heart, MessageCircle } from "lucide-react";
 import apiClient from "@/api/client";
 import { openPostPopup } from "@/lib/postPopupController";
 import { usePostState } from "@/lib/postStore";
+import { useAuth } from "@/contexts/AuthContext";
+import PostManagementMenu from "@/components/PostManagementMenu";
 
 /**
  * MyFeedWidget — renders the owner's posts newest-first.
@@ -67,7 +69,13 @@ export default function MyFeedWidget({ username, isOwner = false, dense = false 
       ) : (
         <ul className="flex-1 overflow-y-auto space-y-2 no-scrollbar" data-testid="myfeed-list">
           {posts.map((p) => (
-            <MyFeedRow key={p.id} p={p} dense={dense} />
+            <MyFeedRow
+              key={p.id}
+              p={p}
+              dense={dense}
+              onDeleted={(id) => setPosts((s) => s.filter((x) => x.id !== id))}
+              onUpdated={(updated) => setPosts((s) => s.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))}
+            />
           ))}
         </ul>
       )}
@@ -75,11 +83,12 @@ export default function MyFeedWidget({ username, isOwner = false, dense = false 
   );
 }
 
-function MyFeedRow({ p, dense }) {
+function MyFeedRow({ p, dense, onDeleted, onUpdated }) {
   const live = usePostState(p.id, { likes: p.likes || 0, comments: p.comments || 0, liked: !!p.viewer_liked });
+  const { user } = useAuth();
   return (
     <li
-      className="or-surface p-2 cursor-pointer"
+      className="or-surface p-2 cursor-pointer relative"
       style={{ background: "var(--surface-2)" }}
       data-testid={`myfeed-post-${p.id}`}
       onClick={() => openPostPopup(p)}
@@ -87,6 +96,15 @@ function MyFeedRow({ p, dense }) {
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPostPopup(p); } }}
     >
+      <div className="absolute top-1 right-1">
+        <PostManagementMenu
+          post={p}
+          user={user}
+          onDeleted={onDeleted}
+          onUpdated={onUpdated}
+          testid={`myfeed-manage-${p.id}`}
+        />
+      </div>
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           <div className="text-[12px] leading-snug or-wrap" style={{ color: "var(--text-main)" }}>

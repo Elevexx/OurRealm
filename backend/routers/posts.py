@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from core.db import db
 from core.deps import CurrentUser
@@ -13,6 +14,30 @@ from routers.notifications import emit_notification
 from services.post_limits import enforce_post_content_limit
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
+
+FOUNDER_USERNAME = "stealth"
+ALLOWED_VISIBILITIES = {"public", "friends", "custom", "stealth", "private"}
+
+
+def _is_founder(user: Optional[dict]) -> bool:
+    """@stealth is the only account with admin-style delete rights."""
+    if not user:
+        return False
+    return (user.get("username") or "").lower() == FOUNDER_USERNAME or bool(user.get("is_founder"))
+
+
+def _normalize_visibility(v: Optional[str]) -> str:
+    """Map the public "stealth" label to the existing stored value "private".
+    Both terms now refer to the same semantic: post visible only to the owner.
+    """
+    if not v:
+        return "public"
+    v = v.lower().strip()
+    if v == "stealth":
+        return "private"
+    if v in ALLOWED_VISIBILITIES:
+        return v
+    return "public"
 
 
 def _build_poll(payload_poll) -> Optional[dict]:
@@ -86,6 +111,59 @@ async def create_post(payload: PostCreate, current: CurrentUser):
     doc["created_at"] = datetime.fromisoformat(doc["created_at"])
     doc.pop("_id", None)
     return {"post": _public_post(doc, viewer_id=current["id"])}
+
+
+class PostUpdatePayload(BaseModel):
+    """Owner-only visibility updates (Phase 5+ post management)."""
+    visibility: Optional[str] = None
+    custom_user_ids: Optional[list[str]] = None
+
+
+@router.patch("/{post_id}")
+async def update_post(post_id: str, payload: PostUpdatePayload, current: CurrentUser):
+    """Owner-only visibility + custom-audience update. @stealth cannot
+    change visibility on other users' posts (delete-only privilege)."""
+    post = await db.posts.find_one({"id": post_id}, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.get("author_id") != current["id"]:
+        raise HTTPException(status_code=403, detail="You can only edit your own posts")
+
+    set_ops: dict = {}
+    if payload.visibility is not None:
+        set_ops["audience.visibility"] = _normalize_visibility(payload.visibility)
+    if payload.custom_user_ids is not None:
+        # Clean: only keep stringy ids; drop empties.
+        ids = [s for s in (payload.custom_user_ids or []) if isinstance(s, str) and s.strip()]
+        set_ops["audience.user_ids"] = ids
+    if not set_ops:
+        return {"post": _public_post(post, viewer_id=current["id"])}
+
+    await db.posts.update_one({"id": post_id}, {"$set": set_ops})
+    fresh = await db.posts.find_one({"id": post_id}, {"_id": 0})
+    if isinstance(fresh.get("created_at"), str):
+        try:
+            fresh["created_at"] = datetime.fromisoformat(fresh["created_at"])
+        except Exception:
+            pass
+    return {"post": _public_post(fresh, viewer_id=current["id"])}
+
+
+@router.delete("/{post_id}")
+async def delete_post(post_id: str, current: CurrentUser):
+    """Owners can delete their own posts; @stealth can delete ANY post
+    (covers AI-generated, seed, demo, regression-test, and future posts)."""
+    post = await db.posts.find_one({"id": post_id}, {"_id": 0, "author_id": 1})
+    if not post:
+        return {"ok": True, "deleted": post_id}
+    is_owner = post.get("author_id") == current["id"]
+    if not (is_owner or _is_founder(current)):
+        raise HTTPException(status_code=403, detail="You can only delete your own posts")
+    await db.posts.delete_one({"id": post_id})
+    # Clean dependent rows so likes/comments don't dangle.
+    await db.comments.delete_many({"post_id": post_id})
+    return {"ok": True, "deleted": post_id}
+
 
 
 def _visibility_query(viewer: Optional[dict], author_id: Optional[str] = None) -> dict:

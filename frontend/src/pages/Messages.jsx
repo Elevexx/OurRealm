@@ -166,38 +166,48 @@ function Header() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// CHATS TAB
+// CHATS TAB — restored to the MongoDB-backed REST system so historical
+// 1:1 conversations remain visible. Supabase is still used for groups
+// and realms. This keeps `delivered_at` / `read_at` / edit / delete
+// available without a schema change.
 // ─────────────────────────────────────────────────────────────────────
 function ChatsTab({ me }) {
-  const [chats, setChats] = useState([]);
+  const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [active, setActive] = useState(null); // chat row
+  const [active, setActive] = useState(null); // a "thread" row from /api/messages/threads
   const [showNew, setShowNew] = useState(false);
   const { cache, resolve } = useProfileCache();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const rows = await listChats(me.id);
-      setChats(rows);
-      const peerIds = rows.flatMap((c) => (c.participants || []).filter((id) => id !== me.id));
-      if (peerIds.length) await resolve(peerIds);
+      const { data } = await apiClient.get("/messages/threads");
+      const rows = data?.threads || [];
+      // The endpoint returns one row per FRIEND — empty threads included.
+      // Show only the ones with at least one real message OR pinned, so
+      // the list reflects existing conversations the user wants to find.
+      const visible = rows.filter((t) => t.last_at || t.is_pinned);
+      setThreads(visible);
+      const peerIds = rows.map((t) => t?.peer?.id).filter(Boolean);
+      if (peerIds.length) resolve(peerIds);
     } catch (e) {
-      console.error("listChats failed", e);
+      console.error("listThreads failed", e);
     } finally { setLoading(false); }
-  }, [me.id, resolve]);
+  }, [resolve]);
 
   useEffect(() => { load(); }, [load]);
 
-  const onStartChat = useCallback(async (friend) => {
-    try {
-      const chat = await getOrCreateDirectChat(me.id, friend.id);
-      await resolve([friend.id]);
-      setShowNew(false);
-      setActive(chat);
-      load();
-    } catch (e) { console.error(e); }
-  }, [me.id, resolve, load]);
+  const onStartChat = useCallback((friend) => {
+    // Synthesise an "active" thread so the DM overlay opens immediately.
+    setShowNew(false);
+    setActive({
+      conv_id: [me.id, friend.id].sort().join(":"),
+      peer: friend,
+      last_text: null,
+      last_at: null,
+      is_pinned: false,
+    });
+  }, [me.id]);
 
   return (
     <section className="or-surface p-3 sm:p-5">
@@ -217,7 +227,7 @@ function ChatsTab({ me }) {
 
       {loading ? (
         <Loading />
-      ) : chats.length === 0 ? (
+      ) : threads.length === 0 ? (
         <Empty
           icon={<MessagesSquare size={32} />}
           title="No chats yet"
@@ -226,27 +236,26 @@ function ChatsTab({ me }) {
         />
       ) : (
         <div data-testid="chats-list">
-          {chats.map((c) => {
-            const peerId = (c.participants || []).find((id) => id !== me.id);
-            const peer = cache[peerId];
+          {threads.map((t) => {
+            const peer = t.peer || cache[t?.peer?.id];
             const title = peer ? (peer.name || `@${peer.username}`) : "Loading…";
             return (
               <button
-                key={c.id}
-                onClick={() => setActive(c)}
+                key={t.conv_id}
+                onClick={() => setActive(t)}
                 className="w-full flex items-center gap-3 py-2.5 px-2 text-left"
                 style={{ borderBottom: "1px solid var(--border-col)" }}
-                data-testid={`chat-row-${c.id}`}
+                data-testid={`chat-row-${peer?.username || t.conv_id}`}
               >
                 <Avatar user={peer} />
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate" style={{ color: "var(--text-main)" }}>{title}</div>
                   <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
-                    {c.last_message || "Tap to start the conversation"}
+                    {t.last_text || "Tap to open conversation"}
                   </div>
                 </div>
                 <div className="text-xs whitespace-nowrap shrink-0" style={{ color: "var(--text-muted)" }}>
-                  {formatTime(c.updated_at)}
+                  {formatTime(t.last_at)}
                 </div>
               </button>
             );
@@ -259,12 +268,9 @@ function ChatsTab({ me }) {
       )}
 
       {active && (
-        <ConversationOverlay
+        <DMConversationOverlay
           me={me}
-          contextType="chat"
-          contextId={active.id}
-          title={chatTitle(active, me, cache)}
-          subtitle="Direct chat"
+          peer={active.peer}
           onClose={() => { setActive(null); load(); }}
         />
       )}
@@ -449,6 +455,258 @@ function CallsTab() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// DM CONVERSATION OVERLAY (MongoDB REST) — direct messages with edit,
+// delete, and delivered/read receipts. Mobile-safe layout per spec.
+// ─────────────────────────────────────────────────────────────────────
+function DMConversationOverlay({ me, peer, onClose }) {
+  const [messages, setMessages] = useState([]);
+  const [peerInfo, setPeerInfo] = useState(peer || null);
+  const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [menuFor, setMenuFor] = useState(null);     // message id of action menu
+  const [editingId, setEditingId] = useState(null); // currently editing
+  const [editDraft, setEditDraft] = useState("");
+  const endRef = useRef(null);
+  const username = peer?.username;
+
+  const reload = useCallback(async () => {
+    if (!username) return;
+    try {
+      const { data } = await apiClient.get(`/messages/thread/${username}`);
+      setMessages(data?.messages || []);
+      setPeerInfo(data?.peer || peer);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Failed to load");
+    } finally { setLoading(false); }
+  }, [username, peer]);
+
+  // Initial load (also marks unread messages from peer as read server-side)
+  useEffect(() => { reload(); }, [reload]);
+
+  // Light polling so delivered/read flips and new inbound messages appear
+  // without forcing a full app-wide socket layer. Cleared on unmount.
+  useEffect(() => {
+    if (!username) return undefined;
+    const tick = () => { reload(); };
+    const t = setInterval(tick, 4000);
+    return () => clearInterval(t);
+  }, [reload, username]);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+
+  const send = async () => {
+    const text = draft.trim();
+    if (!text) return;
+    setBusy(true); setErr("");
+    try {
+      const { data } = await apiClient.post("/messages", { to_username: username, text });
+      setMessages((prev) => [...prev, data.message]);
+      setDraft("");
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Failed to send");
+    } finally { setBusy(false); }
+  };
+
+  const startEdit = (m) => { setMenuFor(null); setEditingId(m.id); setEditDraft(m.text || ""); };
+  const cancelEdit = () => { setEditingId(null); setEditDraft(""); };
+
+  const saveEdit = async () => {
+    const text = editDraft.trim();
+    if (!text || !editingId) return cancelEdit();
+    try {
+      const { data } = await apiClient.patch(`/messages/${editingId}`, { text });
+      setMessages((prev) => prev.map((m) => (m.id === editingId ? { ...m, ...data.message } : m)));
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Failed to edit");
+    } finally { cancelEdit(); }
+  };
+
+  const doDelete = async (id) => {
+    setMenuFor(null);
+    try {
+      await apiClient.delete(`/messages/${id}`);
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Failed to delete");
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center"
+      style={{
+        background: "rgba(0,0,0,0.7)",
+        backdropFilter: "blur(10px)",
+        // Respect device safe areas (iOS notch + home indicator).
+        paddingTop: "max(12px, env(safe-area-inset-top))",
+        paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+        paddingLeft: 12,
+        paddingRight: 12,
+      }}
+      onClick={onClose}
+      data-testid="dm-overlay"
+    >
+      <div
+        className="or-surface flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(100vw - 24px, 640px)",
+          maxWidth: "100%",
+          maxHeight: "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px)",
+          overflow: "hidden",
+        }}
+      >
+        <header
+          className="flex items-center gap-3 p-3 shrink-0"
+          style={{ borderBottom: "1px solid var(--border-col)" }}
+        >
+          <Avatar user={peerInfo || peer} size={36} />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold truncate" style={{ color: "var(--text-main)" }} data-testid="dm-title">
+              {peerInfo?.name || `@${username}`}
+            </div>
+            <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>@{username}</div>
+          </div>
+          <button
+            className="starbar-icon"
+            style={{ width: 36, height: 36 }}
+            onClick={onClose}
+            data-testid="dm-close"
+            aria-label="Close"
+          >
+            <X size={16} />
+          </button>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-2" data-testid="dm-body">
+          {loading ? (
+            <Loading />
+          ) : messages.length === 0 ? (
+            <div className="text-center text-sm" style={{ color: "var(--text-muted)" }}>
+              Say something to start the conversation.
+            </div>
+          ) : messages.map((m) => {
+            const mine = m.from_user_id === me.id;
+            const isEditing = editingId === m.id;
+            const status = m.read_at ? "Read" : m.delivered_at ? "Delivered" : "Sent";
+            return (
+              <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                <div
+                  className="max-w-[80%] px-3 py-2 text-sm relative"
+                  style={{
+                    background: mine ? "var(--primary)" : "var(--surface-2)",
+                    color: mine ? "var(--primary-fg)" : "var(--text-main)",
+                    borderRadius: "var(--radius)",
+                    cursor: mine ? "pointer" : "default",
+                  }}
+                  data-testid={`dm-msg-${m.id}`}
+                  onClick={() => { if (mine) setMenuFor(menuFor === m.id ? null : m.id); }}
+                >
+                  {isEditing ? (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <textarea
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        rows={2}
+                        autoFocus
+                        className="w-full bg-transparent outline-none text-sm"
+                        style={{ color: "inherit", resize: "vertical", minHeight: 50 }}
+                        data-testid={`dm-edit-input-${m.id}`}
+                      />
+                      <div className="flex justify-end gap-2 mt-1">
+                        <button onClick={cancelEdit} className="or-chip" data-testid={`dm-edit-cancel-${m.id}`}>Cancel</button>
+                        <button onClick={saveEdit} className="or-chip" data-testid={`dm-edit-save-${m.id}`}>Save</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {m.text && <div className="or-wrap">{renderText(m.text)}</div>}
+                      {m.media?.url && (
+                        <a href={m.media.url} target="_blank" rel="noopener noreferrer" className="block mt-1" onClick={(e) => e.stopPropagation()}>
+                          <img src={m.media.url} alt="" className="rounded" style={{ maxHeight: 220, maxWidth: "100%" }} />
+                        </a>
+                      )}
+                      <div className="text-[10px] mt-1 opacity-70 flex items-center justify-end gap-2">
+                        {m.edited_at && <span data-testid={`dm-edited-${m.id}`}>edited</span>}
+                        <span>{formatTime(m.created_at)}</span>
+                        {mine && (
+                          <span data-testid={`dm-status-${m.id}`}>{status}</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Owner action menu — Edit / Delete / Cancel */}
+                  {mine && menuFor === m.id && !isEditing && (
+                    <div
+                      className="absolute right-0 z-10 or-surface p-1.5"
+                      style={{
+                        top: "calc(100% + 6px)",
+                        minWidth: 130,
+                        background: "var(--surface)",
+                        border: "1px solid var(--border-col)",
+                        boxShadow: "0 8px 28px rgba(0,0,0,0.35)",
+                        color: "var(--text-main)",
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      data-testid={`dm-actions-${m.id}`}
+                    >
+                      <button
+                        className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5"
+                        onClick={() => startEdit(m)}
+                        data-testid={`dm-action-edit-${m.id}`}
+                      >Edit</button>
+                      <button
+                        className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5"
+                        style={{ color: "#FF8080" }}
+                        onClick={() => doDelete(m.id)}
+                        data-testid={`dm-action-delete-${m.id}`}
+                      >Delete</button>
+                      <button
+                        className="w-full text-left text-xs px-2 py-1.5 hover:bg-white/5"
+                        onClick={() => setMenuFor(null)}
+                        data-testid={`dm-action-cancel-${m.id}`}
+                      >Cancel</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          <div ref={endRef} />
+        </div>
+
+        {err && <div className="text-xs px-4 py-1.5 shrink-0" style={{ color: "#FF8080" }} data-testid="dm-error">{err}</div>}
+
+        <div className="p-3 flex items-center gap-2 shrink-0" style={{ borderTop: "1px solid var(--border-col)" }}>
+          <input
+            className="or-input flex-1"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder={`Message @${username}`}
+            data-testid="dm-input"
+          />
+          <button
+            className="or-btn"
+            disabled={busy || !draft.trim()}
+            onClick={send}
+            data-testid="dm-send"
+            style={{ padding: "0.5rem 0.9rem" }}
+          >
+            <Send size={14} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // CONVERSATION OVERLAY — used by chats, groups, and realms
 // ─────────────────────────────────────────────────────────────────────
 function ConversationOverlay({ me, contextType, contextId, title, subtitle, onClose, onLeave }) {
@@ -508,13 +766,29 @@ function ConversationOverlay({ me, contextType, contextId, title, subtitle, onCl
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center px-2 pb-24 sm:pb-0"
-      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)" }}
+      className="fixed inset-0 z-[80] flex items-center justify-center"
+      style={{
+        background: "rgba(0,0,0,0.7)",
+        backdropFilter: "blur(10px)",
+        paddingTop: "max(12px, env(safe-area-inset-top))",
+        paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+        paddingLeft: 12,
+        paddingRight: 12,
+      }}
       onClick={onClose}
       data-testid="conversation-overlay"
     >
-      <div className="or-surface w-full max-w-2xl h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <header className="flex items-center gap-3 p-3" style={{ borderBottom: "1px solid var(--border-col)" }}>
+      <div
+        className="or-surface flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(100vw - 24px, 640px)",
+          maxWidth: "100%",
+          maxHeight: "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px)",
+          overflow: "hidden",
+        }}
+      >
+        <header className="flex items-center gap-3 p-3 shrink-0" style={{ borderBottom: "1px solid var(--border-col)" }}>
           <div className="flex-1 min-w-0">
             <div className="font-semibold truncate" style={{ color: "var(--text-main)" }} data-testid="conversation-title">{title}</div>
             <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{subtitle}</div>
