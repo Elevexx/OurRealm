@@ -438,6 +438,23 @@ export default function Profile() {
               style={{ width: 110, height: 110, border: "4px solid var(--surface)", background: "var(--surface)" }}
               data-testid="profile-avatar"
             />
+            {/* Live presence bubble — positioned top-right so it never
+                collides with the bottom-right Camera change-button. */}
+            <span
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: 6, right: 6,
+                background: "var(--surface)",
+                borderRadius: "50%",
+                padding: 2,
+                display: "inline-flex",
+                lineHeight: 0,
+              }}
+              data-testid="profile-avatar-presence"
+            >
+              <PresenceDot status={user?.presence_status} size={14} />
+            </span>
             {/* Avatar change CTA — visible only while editing the profile. */}
             {editing && !isGuest && (
               <button

@@ -9,26 +9,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { X, Search, Loader2 } from "lucide-react";
 import apiClient from "@/api/client";
-
-const BACKEND = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
-function abs(u) {
-  if (!u) return "";
-  if (/^https?:\/\//i.test(u)) return u;
-  if (u.startsWith("/")) return `${BACKEND}${u}`;
-  return u;
-}
+import UserAvatar from "@/components/UserAvatar";
 
 function Avatar({ user, size = 36 }) {
-  const src = abs(user?.avatar_url)
-    || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || user?.username || "u")}`;
-  return (
-    <img
-      src={src}
-      alt={user?.username || "user"}
-      className="rounded-full object-cover shrink-0"
-      style={{ width: size, height: size }}
-    />
-  );
+  return <UserAvatar user={user} size={size} />;
 }
 
 export default function FriendPicker({

@@ -18,6 +18,7 @@ import { absoluteImageUrl } from "@/components/ImageUploadPicker";
 import AutoplayVideo from "@/components/AutoplayVideo";
 import VideoEmbed from "@/components/VideoEmbed";
 import SoundPlayerCard from "@/components/SoundPlayerCard";
+import UserAvatar from "@/components/UserAvatar";
 import ReportButton from "@/components/ReportButton";
 import ImageLightbox from "@/components/ImageLightbox";
 import ShareToUserModal from "@/components/ShareToUserModal";
@@ -109,11 +110,10 @@ function CommentRow({
 function CommentBody({ c, isOwn, onLike, onToggleReply, targetType, compact = false }) {
   return (
     <div className="flex items-start gap-2.5">
-      <img
-        src={c.author_avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(c.author_name || c.author_username || "u")}`}
-        alt=""
-        className="rounded-full object-cover shrink-0"
-        style={{ width: compact ? 24 : 30, height: compact ? 24 : 30 }}
+      <UserAvatar
+        user={{ id: c.author_id, username: c.author_username, name: c.author_name, avatar_url: c.author_avatar }}
+        size={compact ? 24 : 30}
+        testid={`comment-avatar-${c.id || c.author_username}`}
       />
       <div className="flex-1 min-w-0">
         <div className="text-xs">
@@ -387,8 +387,12 @@ export default function PostPopup() {
         aria-modal="true"
       >
         <div className="flex items-center gap-3 p-3 sm:p-4" style={{ borderBottom: "1px solid var(--border-col)" }}>
-          {post?.author_avatar && (
-            <img src={absoluteImageUrl(post.author_avatar)} alt="" className="rounded-full object-cover" style={{ width: 36, height: 36 }} />
+          {post && (
+            <UserAvatar
+              user={{ id: post.author_id, username: post.author_username, name: post.author_name, avatar_url: post.author_avatar }}
+              size={36}
+              testid="post-popup-author-avatar"
+            />
           )}
           <div className="flex-1 min-w-0">
             {post?.author_username ? (

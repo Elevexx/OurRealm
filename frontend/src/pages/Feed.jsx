@@ -13,6 +13,7 @@ import { usePostState, setPost } from "@/lib/postStore";
 import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPicker";
 import SoundUploadPicker from "@/components/SoundUploadPicker";
 import SoundPlayerCard from "@/components/SoundPlayerCard";
+import UserAvatar from "@/components/UserAvatar";
 import ZipRequiredModal from "@/components/ZipRequiredModal";
 import PollComposer from "@/components/PollComposer";
 import PollDisplay from "@/components/PollDisplay";
@@ -259,13 +260,7 @@ export default function Feed() {
       {/* Composer */}
       <div className="or-surface p-4 mt-4" data-testid="feed-composer">
         <div className="flex gap-3">
-          <div className="rounded-full overflow-hidden shrink-0" style={{ width: 40, height: 40, border: "1px solid var(--border-col)" }}>
-            <img
-              alt="me"
-              src={absoluteImageUrl(user?.avatar_url) || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || "Guest")}`}
-              className="w-full h-full object-cover"
-            />
-          </div>
+          <UserAvatar user={user} size={40} testid="feed-composer-avatar" />
           <div className="flex-1">
             <textarea
               data-testid="feed-composer-input"
@@ -276,47 +271,54 @@ export default function Feed() {
               className="or-input resize-none"
               style={{ background: "transparent" }}
             />
-            {/* Media type chips — image/video/link expand a URL input;
-                clicking the active chip clears it back to a plain thought. */}
-            <div className="flex items-center gap-1.5 mt-2 flex-wrap" data-testid="feed-composer-media-row">
+            {/* Media type chips — laid out as a 3×2 grid so the order is
+                always: row1 Thought / Image / Poll, row2 Video / Sound / Link.
+                Wraps cleanly on every screen width (3 columns at all sizes). */}
+            <div className="grid grid-cols-3 gap-1.5 mt-2" data-testid="feed-composer-media-row">
               {[
-                { id: "thought", label: "Thought", Icon: MessageSquare },
-                { id: "image",   label: "Image",   Icon: ImageIcon },
-                { id: "video",   label: "Video",   Icon: Video },
-                { id: "sound",   label: "Sound",   Icon: Music2 },
-                { id: "link",    label: "Link",    Icon: Link2 },
-              ].map(({ id, label, Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  className="or-chip"
-                  data-active={composeMediaType === id || (id === "sound" && !!composeSound)}
-                  data-testid={`feed-composer-type-${id}`}
-                  onClick={() => {
-                    if (id === "sound") {
-                      setSoundPickerOpen(true);
-                      return;
-                    }
-                    setComposeMediaType(id);
-                    if (id === "thought") setComposeMediaUrl("");
-                    // Tapping "Image" opens the upload picker (device or URL).
-                    if (id === "image") setImagePickerOpen(true);
-                  }}
-                >
-                  <Icon size={12} /> {label}
-                </button>
-              ))}
-              {/* Phase 4B — Poll attachment */}
-              <button
-                type="button"
-                className="or-chip"
-                data-active={!!composePoll}
-                data-testid="feed-composer-poll"
-                onClick={() => setPollComposerOpen(true)}
-                title={composePoll ? "Edit poll" : "Add poll"}
-              >
-                <BarChart3 size={12} /> {composePoll ? "Poll attached" : "Poll"}
-              </button>
+                { id: "thought", label: "Thought", Icon: MessageSquare, kind: "media" },
+                { id: "image",   label: "Image",   Icon: ImageIcon,     kind: "media" },
+                { id: "poll",    label: "Poll",    Icon: BarChart3,     kind: "poll" },
+                { id: "video",   label: "Video",   Icon: Video,         kind: "media" },
+                { id: "sound",   label: "Sound",   Icon: Music2,        kind: "media" },
+                { id: "link",    label: "Link",    Icon: Link2,         kind: "media" },
+              ].map(({ id, label, Icon, kind }) => {
+                const isPoll = kind === "poll";
+                const active = isPoll
+                  ? !!composePoll
+                  : (composeMediaType === id || (id === "sound" && !!composeSound));
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className="or-chip justify-center"
+                    data-active={active}
+                    data-testid={isPoll ? "feed-composer-poll" : `feed-composer-type-${id}`}
+                    title={isPoll ? (composePoll ? "Edit poll" : "Add poll") : undefined}
+                    onClick={() => {
+                      if (isPoll) {
+                        setPollComposerOpen(true);
+                        return;
+                      }
+                      if (id === "sound") {
+                        setSoundPickerOpen(true);
+                        return;
+                      }
+                      setComposeMediaType(id);
+                      if (id === "thought") setComposeMediaUrl("");
+                      // Tapping "Image" opens the upload picker (device or URL).
+                      if (id === "image") setImagePickerOpen(true);
+                    }}
+                  >
+                    <Icon size={12} /> {isPoll ? (composePoll ? "Poll on" : label) : label}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Inline "remove" affordances live on their own row — they only
+                appear when something is attached, so they never push the
+                primary chip grid around. */}
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
               {composePoll && (
                 <button
                   type="button"
@@ -589,13 +591,10 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
   return (
     <article className="or-surface p-4 sm:p-5" data-testid={`feed-post-${p.id}`}>
       <header className="flex items-center gap-3 mb-3">
-        <img
-          src={absoluteImageUrl(p.author_avatar) || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(p.author_name)}`}
-          alt={p.author_name}
-          loading="lazy"
-          decoding="async"
-          className="rounded-full object-cover"
-          style={{ width: 40, height: 40, border: "1px solid var(--border-col)" }}
+        <UserAvatar
+          user={{ id: p.author_id, username: p.author_username, name: p.author_name, avatar_url: p.author_avatar }}
+          size={40}
+          testid={`feed-post-${p.id}-avatar`}
         />
         <div className="flex-1 min-w-0">
           {p.author_username ? (

@@ -5,6 +5,7 @@ import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import RadiusChips from "@/components/RadiusChips";
 import ZipRequiredModal from "@/components/ZipRequiredModal";
+import UserAvatar from "@/components/UserAvatar";
 
 const TABS = [
   { id: "friends",   label: "Friends" },
@@ -13,13 +14,12 @@ const TABS = [
 ];
 
 function Avatar({ user, size = 52, ring }) {
-  const src = user.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.name || user.username || "U")}`;
   return (
-    <img
-      src={src}
-      alt={user.username}
-      className="rounded-full object-cover"
-      style={{ width: size, height: size, border: ring ? `2px solid ${ring}` : "2px solid var(--border-col)" }}
+    <UserAvatar
+      user={user}
+      size={size}
+      ring={ring}
+      style={{ border: ring ? undefined : "2px solid var(--border-col)" }}
     />
   );
 }
@@ -516,11 +516,10 @@ function InnerEight({ friends, onChange, manageToken = 0 }) {
             );
           }
           const f = idToFriend.get(id);
-          const avatar = f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.name || f.username)}`;
           return (
             <div key={id} className="flex flex-col items-center gap-1.5 min-w-0 w-full" data-testid={`inner8-slot-${f.username}`} onPointerDown={() => onPressDown(id)} onPointerUp={onPressUp} onPointerLeave={onPressUp}>
               <button onClick={() => editing ? null : navigate(`/messages?to=${f.username}`)} className="rounded-full p-[3px] relative aspect-square w-full" style={{ background: ring, boxShadow: `0 0 14px ${ring}66`, maxWidth: 80 }} aria-label={`Inner 8 #${i + 1}: @${f.username}`}>
-                <img src={avatar} alt="" className="w-full h-full rounded-full object-cover" style={{ border: "3px solid var(--bgc)" }} />
+                <UserAvatar user={f} size={70} style={{ border: "3px solid var(--bgc)", width: "100%", height: "100%" }} testid={`inner8-avatar-${f.username}`} />
                 <span className="absolute -top-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[8px] font-extrabold" style={{ background: ring, color: "#fff", letterSpacing: "0.06em" }}>#{i + 1}</span>
                 {editing && (
                   <button className="absolute -top-1 -right-1 rounded-full w-5 h-5 flex items-center justify-center" style={{ background: "#FF3F5A", color: "#fff", border: "2px solid var(--bgc)" }} onClick={(e) => { e.stopPropagation(); remove(id); }} data-testid={`inner8-remove-${f.username}`} aria-label={`Remove @${f.username}`}>
@@ -572,7 +571,7 @@ function InnerEight({ friends, onChange, manageToken = 0 }) {
                 </div>
               ) : filteredCandidates.map((f) => (
                 <button key={f.id} onClick={() => add(f.id)} className="w-full flex items-center gap-3 p-2 text-left" data-testid={`inner8-pick-${f.username}`} style={{ borderBottom: "1px solid var(--border-col)" }}>
-                  <img src={f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.name || f.username)}`} alt="" className="rounded-full" style={{ width: 36, height: 36 }} />
+                  <UserAvatar user={f} size={36} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm truncate" style={{ color: "var(--text-main)" }}>@{f.username}</div>
                     <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{f.name}</div>

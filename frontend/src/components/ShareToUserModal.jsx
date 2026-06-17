@@ -12,19 +12,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Share2, X, Search, Loader2, Check, Send } from "lucide-react";
 import apiClient from "@/api/client";
+import UserAvatar from "@/components/UserAvatar";
 
 function MiniAvatar({ user }) {
-  const src =
-    user?.avatar_url ||
-    `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || user?.username || "u")}`;
-  return (
-    <img
-      src={src}
-      alt=""
-      className="rounded-full object-cover shrink-0"
-      style={{ width: 32, height: 32, border: "1px solid var(--border-col)" }}
-    />
-  );
+  return <UserAvatar user={user} size={32} />;
 }
 
 export default function ShareToUserModal({

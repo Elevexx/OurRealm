@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Sparkles, MessageCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import apiClient from "@/api/client";
+import UserAvatar from "@/components/UserAvatar";
 
 /**
  * TopEightWidget — renders the owner's Inner-8 friends as a small card grid.
@@ -59,12 +60,12 @@ export default function TopEightWidget({ username }) {
               className="flex flex-col items-center gap-1 min-w-0"
               data-testid={`top8-card-${f.username}`}
             >
-              <div className="rounded-full p-[2px] aspect-square w-full" style={{ background: "var(--primary)", maxWidth: 52 }}>
-                <img
-                  src={f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.name || f.username)}`}
-                  alt=""
-                  className="w-full h-full rounded-full object-cover"
-                  style={{ border: "2px solid var(--bgc)" }}
+              <div className="rounded-full p-[2px] aspect-square w-full" style={{ background: "var(--primary)", maxWidth: 52, position: "relative" }}>
+                <UserAvatar
+                  user={f}
+                  size={48}
+                  testid={`top8-avatar-${f.username}`}
+                  style={{ border: "2px solid var(--bgc)", display: "block", width: "100%", height: "100%" }}
                 />
               </div>
               <span className="text-[9px] font-semibold truncate w-full text-center" style={{ color: "var(--text-main)" }}>

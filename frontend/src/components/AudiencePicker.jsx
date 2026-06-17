@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Globe2, Users as UsersIcon, Lock, UserCheck, X, Check } from "lucide-react";
 import apiClient from "@/api/client";
+import UserAvatar from "@/components/UserAvatar";
 
 /**
  * AudiencePicker — modal that returns an audience object:
@@ -116,12 +117,7 @@ export default function AudiencePicker({ open, value, onChange, onClose }) {
                           border: selected ? "1px solid var(--primary)" : "1px solid transparent",
                         }}
                       >
-                        <img
-                          src={f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.name || f.username)}`}
-                          alt=""
-                          className="rounded-full"
-                          style={{ width: 32, height: 32 }}
-                        />
+                        <UserAvatar user={f} size={32} />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm truncate" style={{ color: "var(--text-main)" }}>@{f.username}</div>
                           <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{f.name}</div>

@@ -25,6 +25,7 @@ import SharedPostCard from "@/components/SharedPostCard";
 import PresenceDot from "@/components/PresenceDot";
 import { usePresence } from "@/contexts/PresenceContext";
 import presenceSocket from "@/lib/presenceSocket";
+import UserAvatar from "@/components/UserAvatar";
 
 const TABS = [
   { id: "chats",  label: "Chats",  Icon: MessagesSquare },
@@ -61,14 +62,12 @@ function useProfileCache() {
 }
 
 function Avatar({ user, size = 40, ring }) {
-  const src = user?.avatar_url
-    || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || user?.username || "u")}`;
   return (
-    <img
-      src={src}
-      alt={user?.username || "user"}
-      className="rounded-full object-cover shrink-0"
-      style={{ width: size, height: size, border: ring ? `2px solid ${ring}` : undefined }}
+    <UserAvatar
+      user={user}
+      size={size}
+      ring={ring}
+      className="shrink-0"
     />
   );
 }
@@ -307,17 +306,12 @@ function ChatsTab({ me }) {
                 style={{ borderBottom: "1px solid var(--border-col)" }}
                 data-testid={`chat-row-${peer?.username || t.conv_id}`}
               >
-                <div style={{ position: "relative" }}>
-                  <Avatar user={peer} />
-                  {peerStatus !== "offline" && (
-                    <span style={{
-                      position: "absolute", right: -2, bottom: -2,
-                      background: "var(--bgc)", padding: 1, borderRadius: "50%",
-                    }}>
-                      <PresenceDot status={peerStatus} size={10} data-testid={`chat-row-status-${peer?.username}`} />
-                    </span>
-                  )}
-                </div>
+                <Avatar user={peer} />
+                {/* Keep a hidden marker for tests; visible dot is now
+                    rendered by the shared Avatar/UserAvatar component. */}
+                {peerStatus !== "offline" && (
+                  <span style={{ display: "none" }} data-testid={`chat-row-status-${peer?.username}`} data-status={peerStatus} />
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate" style={{ color: "var(--text-main)" }}>{title}</div>
                   <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>

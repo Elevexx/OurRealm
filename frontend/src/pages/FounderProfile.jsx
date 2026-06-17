@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
+import PresenceDot from "@/components/PresenceDot";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
 } from "@dnd-kit/core";
@@ -292,6 +293,20 @@ export default function FounderProfile() {
               }}
               data-testid="founder-avatar"
             />
+            {/* Presence bubble — top-left so it doesn't collide with the
+                bottom-right verified badge. */}
+            <span
+              aria-hidden="true"
+              style={{
+                position: "absolute", top: 6, left: 6,
+                background: "var(--surface)",
+                borderRadius: "50%", padding: 2,
+                display: "inline-flex", lineHeight: 0,
+              }}
+              data-testid="founder-avatar-presence"
+            >
+              <PresenceDot status={profile.presence_status} size={14} />
+            </span>
             {profile.is_verified && (
               <span className="absolute bottom-2 right-2 w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, #2EA0FF, #10E670)", boxShadow: "0 0 12px rgba(46,160,255,0.6)" }} data-testid="founder-verified-badge">
                 <Icons.BadgeCheck size={16} style={{ color: "#fff" }} />

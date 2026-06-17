@@ -14,10 +14,10 @@ import apiClient from "@/api/client";
 const BACKEND = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
 const abs = (u) => (!u ? "" : (/^https?:\/\//i.test(u) ? u : (u.startsWith("/") ? `${BACKEND}${u}` : u)));
 
+import UserAvatar from "@/components/UserAvatar";
+
 function Avatar({ user, size = 32 }) {
-  const src = abs(user?.avatar_url)
-    || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || user?.username || "u")}`;
-  return <img src={src} alt={user?.username || "u"} className="rounded-full object-cover shrink-0" style={{ width: size, height: size }} />;
+  return <UserAvatar user={user} size={size} className="shrink-0" />;
 }
 
 export default function FriendMultiPicker({
