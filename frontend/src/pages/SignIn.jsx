@@ -4,8 +4,6 @@ import Logo from "@/components/Logo";
 import apiClient, { formatApiErrorDetail } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 
-const FOUNDER_EMAIL = "slopestyle2022@gmail.com";
-
 export default function SignIn() {
   const [email, setEmail] = useState("admin@ourrealm.app");
   const [password, setPassword] = useState("admin123");
@@ -14,16 +12,19 @@ export default function SignIn() {
   const { login, refreshMe } = useAuth();
   const navigate = useNavigate();
 
-  // OTP state
+  // OTP state — kept for any account that opts into a one-time code,
+  // but no longer auto-triggered for the founder. The founder now uses
+  // standard email/username + password authentication.
   const [otpMode, setOtpMode] = useState(false);
   const [otpDisplayed, setOtpDisplayed] = useState("");
   const [otpInput, setOtpInput] = useState("");
 
-  const isFounder = email.trim().toLowerCase() === FOUNDER_EMAIL;
-
   const onSubmit = async (e) => {
     e.preventDefault();
     setError(""); setLoading(true);
+    // login() in AuthContext POSTs to /api/auth/login which accepts EITHER
+    // an email (contains "@") OR a bare username — so users can type
+    // `stealth` or `slopestyle2022@gmail.com` interchangeably.
     const res = await login(email, password);
     setLoading(false);
     if (res.ok) navigate("/feed");
@@ -47,7 +48,7 @@ export default function SignIn() {
       const { data } = await apiClient.post("/auth/otp/verify", { email, code: otpInput });
       try { if (data.access_token) localStorage.setItem("ourrealm.access", data.access_token); } catch {/* */}
       await refreshMe();
-      navigate("/profile/stealth");
+      navigate("/feed");
     } catch (e) {
       setError(formatApiErrorDetail(e.response?.data?.detail) || e.message);
     } finally { setLoading(false); }
@@ -70,28 +71,30 @@ export default function SignIn() {
                 value={email} onChange={(e) => { setEmail(e.target.value); setOtpDisplayed(""); }}
                 className="or-input" data-testid="signin-email" autoComplete="username"
               />
-              {!isFounder && (
-                <input
-                  type="password" placeholder="Password" required
-                  value={password} onChange={(e) => setPassword(e.target.value)}
-                  className="or-input" data-testid="signin-password" autoComplete="current-password"
-                />
-              )}
+              <input
+                type="password" placeholder="Password" required
+                value={password} onChange={(e) => setPassword(e.target.value)}
+                className="or-input" data-testid="signin-password" autoComplete="current-password"
+              />
               {error && (
                 <div className="text-sm px-3 py-2" data-testid="signin-error"
                   style={{ background: "rgba(255,80,80,0.1)", border: "1px solid rgba(255,80,80,0.4)", color: "#ff8080", borderRadius: "var(--radius)" }}>
                   {error}
                 </div>
               )}
-              {isFounder ? (
-                <button type="button" disabled={loading} className="or-btn w-full" data-testid="signin-otp-request" onClick={requestOtp}>
-                  {loading ? "Sending…" : "Continue with OTP"}
-                </button>
-              ) : (
-                <button type="submit" disabled={loading} className="or-btn w-full" data-testid="signin-submit">
-                  {loading ? "Signing in…" : "Sign in"}
-                </button>
-              )}
+              <button type="submit" disabled={loading} className="or-btn w-full" data-testid="signin-submit">
+                {loading ? "Signing in…" : "Sign in"}
+              </button>
+              <button
+                type="button"
+                onClick={requestOtp}
+                disabled={loading || !email.trim()}
+                className="text-xs underline w-full text-center"
+                data-testid="signin-otp-request"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Use a one-time code instead
+              </button>
             </form>
           )}
 
