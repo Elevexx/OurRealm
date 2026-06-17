@@ -11,7 +11,7 @@
  * into absolute URLs against REACT_APP_BACKEND_URL via `absoluteImageUrl`.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { Upload, Link2, X, Loader2, Image as ImageIcon, AlertCircle } from "lucide-react";
+import { Upload, Link2, X, Loader2, Image as ImageIcon, AlertCircle, Trash2 } from "lucide-react";
 import apiClient from "@/api/client";
 
 const BACKEND = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
@@ -22,7 +22,7 @@ export function absoluteImageUrl(maybeRelative) {
   return maybeRelative;
 }
 
-export default function ImageUploadPicker({ open, onClose, onPicked, title = "Add an image", testid = "image-picker" }) {
+export default function ImageUploadPicker({ open, onClose, onPicked, onRemove, removeLabel = "Remove photo", title = "Add an image", testid = "image-picker" }) {
   const [tab, setTab] = useState("device"); // device | url
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -197,6 +197,18 @@ export default function ImageUploadPicker({ open, onClose, onPicked, title = "Ad
             >
               <AlertCircle size={14} /> {err}
             </div>
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              onClick={() => { onRemove(); onClose?.(); }}
+              disabled={busy}
+              className="or-btn or-btn-ghost w-full"
+              style={{ color: "#FF6B6B", borderColor: "rgba(255,107,107,0.4)" }}
+              data-testid={`${testid}-remove`}
+            >
+              <Trash2 size={14} /> {removeLabel}
+            </button>
           )}
         </div>
       </div>

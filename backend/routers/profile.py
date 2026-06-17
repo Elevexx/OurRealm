@@ -23,7 +23,10 @@ async def get_my_profile(current: CurrentUser):
 
 @router.patch("/me")
 async def update_profile(update: ProfileUpdate, current: CurrentUser):
-    set_doc = {k: v for k, v in update.model_dump(exclude_none=True).items()}
+    # `exclude_unset=True` so callers can explicitly send a field as
+    # `null` to clear it (e.g. {"avatar_url": null} for "Remove Photo").
+    # `exclude_none=True` would have hidden that signal.
+    set_doc = update.model_dump(exclude_unset=True)
     # Validate visibility value
     if "profile_visibility" in set_doc and set_doc["profile_visibility"] not in (
         "public", "friends", "private",

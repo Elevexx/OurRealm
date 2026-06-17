@@ -64,24 +64,32 @@ async def seed_admin():
 
 
 async def seed_founder() -> dict | None:
-    """Seeds or refreshes the Stealth founder profile. Returns the founder doc."""
+    """Seeds the Stealth founder profile.
+
+    Behaviour:
+      • On FIRST creation (no row in DB yet) — insert the full default
+        document including avatar_url, bio, social, widgets, etc.
+      • On subsequent boots — refresh ONLY the immutable structural
+        fields (role, is_founder, is_verified, featured_creator, email,
+        username). User-customizable fields (avatar_url, bio, name,
+        widgets, social, mode, interests) are NEVER overwritten so the
+        founder can change them via the normal profile UI and have those
+        changes persist across pod restarts.
+    """
     founder = await db.users.find_one({"email": FOUNDER_EMAIL})
-    founder_doc = {
+    # Identity / privilege flags that must always match the source of truth.
+    immutable_doc = {
         "email": FOUNDER_EMAIL,
         "username": FOUNDER_USERNAME,
-        "name": "Stealth",
         "role": "founder",
         "is_founder": True,
         "is_verified": True,
         "featured_creator": True,
-        "avatar_url": FOUNDER_AVATAR,
-        "bio": "OurRealm Founder",
-        "mode": "stealth",
-        "interests": ["dj", "music", "tech", "festivals"],
-        "widgets": FOUNDER_WIDGETS,
-        "social": {"tiktok": "stealth.hq", "instagram": "djstealthx"},
     }
     if founder is None:
+        # First-time seed only — defaults applied. After this initial
+        # insert the user owns these fields and they are NEVER touched
+        # by the seed job again.
         await db.users.insert_one({
             "id": str(uuid.uuid4()),
             "password_hash": hash_password(secrets.token_urlsafe(20)),
@@ -90,15 +98,25 @@ async def seed_founder() -> dict | None:
             "friend_requests_in": [],
             "friend_requests_out": [],
             "pinned_threads": [],
-            **founder_doc,
+            "name": "Stealth",
+            "avatar_url": FOUNDER_AVATAR,
+            "bio": "OurRealm Founder",
+            "mode": "stealth",
+            "interests": ["dj", "music", "tech", "festivals"],
+            "widgets": FOUNDER_WIDGETS,
+            "social": {"tiktok": "stealth.hq", "instagram": "djstealthx"},
+            **immutable_doc,
         })
         logger.info(f"Seeded founder: {FOUNDER_EMAIL} @{FOUNDER_USERNAME}")
         founder = await db.users.find_one({"email": FOUNDER_EMAIL})
     else:
+        # Refresh ONLY the immutable identity fields. Leave avatar_url,
+        # bio, name, widgets, social, mode, interests alone so user edits
+        # made via the UI persist across deploys.
         await db.users.update_one(
-            {"email": FOUNDER_EMAIL}, {"$set": founder_doc}
+            {"email": FOUNDER_EMAIL}, {"$set": immutable_doc}
         )
-        logger.info(f"Refreshed founder profile: {FOUNDER_EMAIL}")
+        logger.info(f"Refreshed founder structural fields (avatar/bio preserved): {FOUNDER_EMAIL}")
         # Phase 1: ensure @stealth always has a known password so the
         # founder can sign in with email/username + password in addition
         # to the existing OTP flow. The temporary value is reset only if

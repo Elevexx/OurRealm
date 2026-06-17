@@ -36,6 +36,17 @@ export default function AccountSettings() {
     }
   };
 
+  const onAvatarRemove = async () => {
+    try {
+      // Explicit null → server clears the field. Falls back to the
+      // dicebear initials placeholder client-side.
+      await apiClient.patch("/profile/me", { avatar_url: null });
+      await refreshMe?.();
+    } catch (e) {
+      // No-op
+    }
+  };
+
   // Account
   const [newUsername, setNewUsername] = useState("");
   const [unBusy, setUnBusy] = useState(false);
@@ -349,6 +360,8 @@ export default function AccountSettings() {
         open={avatarPicker}
         onClose={() => setAvatarPicker(false)}
         onPicked={onAvatarPicked}
+        onRemove={user.avatar_url ? onAvatarRemove : undefined}
+        removeLabel="Remove photo"
         title="Change profile image"
         testid="account-avatar-picker"
       />
