@@ -85,7 +85,7 @@ export default function InstallPrompt({ trigger = "auto", testid = "install-prom
       >
         <div className="flex items-start gap-3 mb-3">
           <img
-            src="/icon-192.png"
+            src="/icon-192.png?v=3"
             alt="OurRealm"
             className="rounded-2xl shrink-0"
             style={{ width: 56, height: 56, boxShadow: "0 6px 22px rgba(46,160,255,0.45)" }}
