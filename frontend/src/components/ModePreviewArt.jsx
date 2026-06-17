@@ -17,7 +17,7 @@ function NeonArt() {
         backgroundImage: "repeating-linear-gradient(0deg, transparent 0 5px, rgba(0,220,255,0.05) 5px 6px)",
       }} />
       {/* Floating hologram panels */}
-      <div className="absolute" style={{
+      <div className="absolute or-mode-anim-neon-panel" style={{
         top: "18%", left: "12%", width: "44%", height: "30%",
         background: "linear-gradient(135deg, rgba(178,38,255,0.28), rgba(46,160,255,0.18))",
         border: "1px solid rgba(178,38,255,0.55)",
@@ -40,7 +40,7 @@ function NeonArt() {
         borderRadius: 8,
       }} />
       {/* Particle dots */}
-      <div className="absolute inset-0" style={{
+      <div className="absolute inset-0 or-mode-anim-neon-dots" style={{
         backgroundImage: "radial-gradient(circle, rgba(178,38,255,0.8) 1px, transparent 1.5px), radial-gradient(circle, rgba(16,230,112,0.55) 1px, transparent 1.5px)",
         backgroundSize: "60px 60px, 90px 90px",
         backgroundPosition: "0 0, 30px 45px",
@@ -57,8 +57,10 @@ function BusinessArt() {
         background: "linear-gradient(135deg, #F5EFE0 0%, #DACFB6 100%)",
       }} />
       {/* Metallic shimmer band */}
-      <div className="absolute inset-0" style={{
+      <div className="absolute inset-0 or-mode-anim-biz-shimmer" style={{
         background: "linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.65) 50%, transparent 70%)",
+        backgroundSize: "200% 100%",
+        backgroundPosition: "-120% 0",
         mixBlendMode: "soft-light",
       }} />
       {/* Frosted dashboard card */}
@@ -106,7 +108,7 @@ function MillenniumArt() {
         background: "linear-gradient(180deg, #7FD9FF 0%, #B7F0E0 55%, #7CE5A6 100%)",
       }} />
       {/* Soft clouds */}
-      <div className="absolute" style={{
+      <div className="absolute or-mode-anim-mil-cloud" style={{
         top: "10%", left: "8%", width: "44%", height: "20%",
         background: "radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.85), rgba(255,255,255,0) 70%)",
         filter: "blur(2px)",
@@ -125,7 +127,7 @@ function MillenniumArt() {
         boxShadow: "0 12px 28px rgba(46,120,214,0.3), inset 0 2px 6px rgba(255,255,255,0.85)",
       }} />
       {/* Glossy 3D widget — green orb */}
-      <div className="absolute" style={{
+      <div className="absolute or-mode-anim-mil-orb" style={{
         bottom: "12%", right: "18%", width: "22%", height: "32%",
         background: "radial-gradient(circle at 30% 30%, #FFFFFF 0%, #93E7B3 50%, #2EA85F 100%)",
         borderRadius: "50%",
@@ -176,7 +178,7 @@ function StealthArt() {
           animation: "or-radar-sweep 5s linear infinite",
         }} />
         {/* Center dot */}
-        <div className="absolute" style={{
+        <div className="absolute or-mode-anim-stealth-dot" style={{
           left: "50%", top: "50%", transform: "translate(-50%,-50%)",
           width: 10, height: 10, borderRadius: "50%",
           background: "#00FF66",
@@ -201,7 +203,93 @@ function StealthArt() {
 
 const ART = { neon: NeonArt, business: BusinessArt, millennium: MillenniumArt, stealth: StealthArt };
 
+/**
+ * Shared CSS animations for the four mode previews.
+ * Pure CSS — no JS, no measurement, no re-renders. Animations are SCOPED
+ * to a parent button with `data-active="true"` or `:hover`. Idle quadrants
+ * stay completely still so the page is calm by default.
+ */
+function ModeArtAnimations() {
+  return (
+    <style>{`
+      /* Default — no motion */
+      .or-mode-anim { animation: none; }
+
+      /* NEON — particle drift + panel breathe */
+      button[data-testid="landing-quadrant-neon"][data-active="true"] .or-mode-anim-neon-dots,
+      button[data-testid="landing-quadrant-neon"]:hover .or-mode-anim-neon-dots {
+        animation: or-neon-drift 14s linear infinite;
+      }
+      button[data-testid="landing-quadrant-neon"][data-active="true"] .or-mode-anim-neon-panel,
+      button[data-testid="landing-quadrant-neon"]:hover .or-mode-anim-neon-panel {
+        animation: or-neon-breathe 3.6s ease-in-out infinite;
+      }
+      @keyframes or-neon-drift {
+        from { background-position: 0 0, 30px 45px; }
+        to   { background-position: 240px 180px, 270px 225px; }
+      }
+      @keyframes or-neon-breathe {
+        0%, 100% { box-shadow: 0 0 24px rgba(178,38,255,0.4); }
+        50%      { box-shadow: 0 0 36px rgba(178,38,255,0.65); }
+      }
+
+      /* BUSINESS — diagonal shimmer sweep */
+      button[data-testid="landing-quadrant-business"][data-active="true"] .or-mode-anim-biz-shimmer,
+      button[data-testid="landing-quadrant-business"]:hover .or-mode-anim-biz-shimmer {
+        animation: or-biz-shimmer 5s ease-in-out infinite;
+      }
+      @keyframes or-biz-shimmer {
+        0%   { background-position: -120% 0; }
+        100% { background-position: 220% 0; }
+      }
+
+      /* MILLENNIUM — gentle orb float */
+      button[data-testid="landing-quadrant-millennium"][data-active="true"] .or-mode-anim-mil-orb,
+      button[data-testid="landing-quadrant-millennium"]:hover .or-mode-anim-mil-orb {
+        animation: or-mil-float 4.2s ease-in-out infinite;
+      }
+      button[data-testid="landing-quadrant-millennium"][data-active="true"] .or-mode-anim-mil-cloud,
+      button[data-testid="landing-quadrant-millennium"]:hover .or-mode-anim-mil-cloud {
+        animation: or-mil-cloud 18s linear infinite;
+      }
+      @keyframes or-mil-float {
+        0%, 100% { transform: translateY(0); }
+        50%      { transform: translateY(-10px); }
+      }
+      @keyframes or-mil-cloud {
+        from { transform: translateX(-3%); }
+        to   { transform: translateX(8%); }
+      }
+
+      /* STEALTH — radar already sweeps; only pulse the centre dot on active/hover */
+      button[data-testid="landing-quadrant-stealth"][data-active="true"] .or-mode-anim-stealth-dot,
+      button[data-testid="landing-quadrant-stealth"]:hover .or-mode-anim-stealth-dot {
+        animation: or-stealth-pulse 1.6s ease-in-out infinite;
+      }
+      @keyframes or-stealth-pulse {
+        0%, 100% { box-shadow: 0 0 14px #00FF66; }
+        50%      { box-shadow: 0 0 26px #00FF66, 0 0 4px #00FF66; }
+      }
+
+      /* Respect users who prefer reduced motion */
+      @media (prefers-reduced-motion: reduce) {
+        .or-mode-anim-neon-dots,
+        .or-mode-anim-neon-panel,
+        .or-mode-anim-biz-shimmer,
+        .or-mode-anim-mil-orb,
+        .or-mode-anim-mil-cloud,
+        .or-mode-anim-stealth-dot { animation: none !important; }
+      }
+    `}</style>
+  );
+}
+
 export default function ModePreviewArt({ mode }) {
   const C = ART[mode] || NeonArt;
-  return <C />;
+  return (
+    <>
+      <C />
+      <ModeArtAnimations />
+    </>
+  );
 }
