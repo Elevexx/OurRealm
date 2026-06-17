@@ -99,7 +99,7 @@ export default function ShareToUserModal({
     });
     setSending(false);
     // Auto-close if everything went through and nothing remains selected.
-    if (succeeded.size === targets.length) setTimeout(() => onClose?.(), 700);
+    if (succeeded.size === targets.length) setTimeout(() => onClose?.(), 1500);
   };
 
   return createPortal(

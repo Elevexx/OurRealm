@@ -114,6 +114,12 @@ async def send_message(payload: MessageCreatePlus, current: CurrentUser):
             detail="You can only message friends. Send a friend request first.",
         )
     now_iso = datetime.now(timezone.utc).isoformat()
+    media_dict = payload.media.model_dump() if payload.media else None
+    # Defense-in-depth: post_share carries ONLY {kind, post_id}. If a
+    # caller sets url/preview, strip them server-side so private content
+    # can never leak via this surface even if a future client misbehaves.
+    if media_dict and media_dict.get("kind") == "post_share":
+        media_dict = {"kind": "post_share", "post_id": media_dict.get("post_id")}
     doc = {
         "id": str(uuid.uuid4()),
         "conv_id": conv_id(current["id"], target["id"]),
@@ -123,7 +129,7 @@ async def send_message(payload: MessageCreatePlus, current: CurrentUser):
         "from_username": current.get("username"),
         "to_username": target.get("username"),
         "text": payload.text,
-        "media": payload.media.model_dump() if payload.media else None,
+        "media": media_dict,
         "created_at": now_iso,
         "edited_at": None,
         "delivered_at": now_iso,   # delivered as soon as server accepts
