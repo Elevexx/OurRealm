@@ -10,6 +10,10 @@ import { Share, Plus, X, Smartphone, Download } from "lucide-react";
 
 const DISMISS_KEY = "or.installPromptDismissedAt";
 const DISMISS_TTL_DAYS = 14;
+// Session-level lock — prevents the modal from re-mounting in the same
+// SPA session after the user dismisses it (e.g. after closing a
+// different modal that triggered a re-render of the App tree).
+const SESSION_KEY = "or.installPromptDismissedSession";
 
 function isStandalone() {
   if (typeof window === "undefined") return false;
@@ -25,6 +29,7 @@ function isIOS() {
 
 function dismissedRecently() {
   try {
+    if (sessionStorage.getItem(SESSION_KEY) === "1") return true;
     const v = Number(localStorage.getItem(DISMISS_KEY) || 0);
     if (!v) return false;
     return (Date.now() - v) < DISMISS_TTL_DAYS * 24 * 3600 * 1000;
@@ -53,6 +58,7 @@ export default function InstallPrompt({ trigger = "auto", testid = "install-prom
 
   const close = (remember = true) => {
     setOpen(false);
+    try { sessionStorage.setItem(SESSION_KEY, "1"); } catch { /* ignore */ }
     if (remember) {
       try { localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch { /* ignore */ }
     }
