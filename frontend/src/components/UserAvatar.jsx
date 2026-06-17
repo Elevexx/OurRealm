@@ -77,33 +77,31 @@ export default function UserAvatar({
   const src = abs(u.avatar_url) || dicebear(u.name || u.username || "OurRealm");
   const m = dotMetrics(size);
   const imgClass = `rounded-full object-cover block ${className}`;
+  // Wrapper is intentionally **decoration-free**. Any background/border/
+  // shadow passed via `style` is forwarded to the circular <img> below
+  // so it can NEVER paint as a visible square behind the avatar.
   const wrapperStyle = {
     position: "relative",
     display: "inline-block",
     lineHeight: 0,
-    // Guarantees the wrapper is square so the circular border-radius
-    // never produces a stretched/elliptical avatar even when a parent
-    // passes width: 100% / height: 100%.
     aspectRatio: "1 / 1",
+  };
+  // Merge ring (legacy accent) + caller style onto the IMG itself. The
+  // image is the only element with `border-radius: 50%`, so every
+  // decoration lands on the circle, not a square wrapper.
+  const ringStyle = ring
+    ? { border: `2px solid ${ring}`, boxShadow: `0 0 10px ${ring}55` }
+    : {};
+  const imgStyle = {
+    width: size,
+    height: size,
+    aspectRatio: "1 / 1",
+    objectFit: "cover",
+    borderRadius: "50%",
+    overflow: "hidden",
+    ...ringStyle,
     ...style,
   };
-  // The img itself enforces perfect-circle geometry — never an ellipse,
-  // never with visible square corners.
-  const imgStyle = ring
-    ? {
-        width: size, height: size,
-        aspectRatio: "1 / 1",
-        border: `2px solid ${ring}`,
-        boxShadow: `0 0 10px ${ring}55`,
-        objectFit: "cover",
-        borderRadius: "50%",
-      }
-    : {
-        width: size, height: size,
-        aspectRatio: "1 / 1",
-        objectFit: "cover",
-        borderRadius: "50%",
-      };
 
   const Img = (
     <img
