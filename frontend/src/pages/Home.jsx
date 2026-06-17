@@ -115,12 +115,12 @@ export default function Home() {
         paddingBottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
       }}
     >
-      {/* Header — kept as required */}
+      {/* Header — Customize Feed (P5 rename) */}
       <div className="flex items-start justify-between mb-4">
         <div>
           <h1 className="text-3xl sm:text-4xl flex items-baseline gap-3 flex-wrap" style={{ fontFamily: "var(--font-display)" }}>
-            Home
-            <span className="text-xs uppercase tracking-[0.25em]" style={{ color: "var(--text-muted)" }}>Pick your interests</span>
+            Customize Feed
+            <span className="text-xs uppercase tracking-[0.25em]" style={{ color: "var(--text-muted)" }}>Pick your interest</span>
           </h1>
           <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
             Follow what you love. We'll personalize your experience.

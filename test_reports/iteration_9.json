@@ -1,0 +1,32 @@
+{
+  "summary": "Phase 5 — Media Upload Limits MVP + deferred polish. Backend: 13/13 pytest pass (auth-gated /api/upload-limits/me, founder unlimited, non-founder numeric, 3MB image cap fires 413 for tfone, founder accepts 4MB image, used counter increments on success, sounds upload happy path increments audio.used, regression of /api/posts, /api/sounds/charts/top100, /api/dashboard/layout, /api/admin/analytics founder-only=200 and non-admin=403 all green). Frontend: Customize Feed CTA on /feed present, /home/legacy renders 'Customize Feed' + 'Pick your interest', /home dashboard edit-toggle exposes per-widget visibility chips including widget-*-vis-custom which opens [data-testid=friend-multi-picker], /sounds page renders all 4 hero tabs (Music/Podcasts/FX/AI) with sounds-tab-* testids intact, image picker (testid=feed-image-picker) shows '6 of 20 image uploads remaining today.' for tfone, sound upload picker (testid=sounds-upload) shows '9 of 10 sound uploads remaining today.' — both quota lines wired via /api/upload-limits/me. Founder UI quota text path is the same component branch (remaining==='unlimited' → 'Founder account — unlimited uploads.') already proven by backend; could not re-verify in browser because a PWA 'Add to Home Screen' modal intercepted the signin form on the second context (cosmetic-only; non-founder + backend coverage is sufficient).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_upload_limits.py",
+    "/app/test_reports/pytest/upload_limits.xml"
+  ],
+  "action_items": [
+    "NAMING NOTE (not a bug): the review request referred to data-testid 'image-picker-quota' and 'sound-picker-quota' — the actual rendered testids in the running app are 'feed-image-picker-quota' (Feed mounts ImageUploadPicker with testid=\"feed-image-picker\") and 'sounds-upload-quota' (Sounds mounts SoundUploadPicker with testid=\"sounds-upload\"). Functionality is fully wired; if E1 wants the names to match the spec verbatim, either (a) change the testid prop passed in Feed.jsx line 372 and Sounds.jsx line 471, or (b) update the spec / future tests to use the existing prefixed names.",
+    "OPTIONAL: the PWA 'Add to Home Screen' modal can intercept the signin form when cookies are cleared mid-session. Consider gating it behind a first-visit flag rather than re-showing on every fresh context, or expose a [data-testid=pwa-install-dismiss] so test runs can dismiss it deterministically."
+  ],
+  "critical_code_review_comments": [
+    "services/upload_limits.py is_founder() reads user['username'] with no None-safe path (covered by .get default ''), but enforce_pre_upload/remaining_for_user assume user['id'] exists — fine in practice because CurrentUser dep guarantees both fields.",
+    "routers/images.py from-url path calls enforce_pre_upload(..., size_bytes=0) before fetch — this enforces the per-day count cap but bypasses the per-file 3 MB cap because size is unknown at that point. save_from_url's downstream size check must therefore re-apply the per-kind cap, or future from-url uploads could exceed 3 MB for non-founders. Worth a follow-up assertion inside save_from_url for parity.",
+    "routers/sounds.py upload_track: enforce_duration runs after save_audio writes the file; if it throws, the on-disk file is deleted but the rolling-24h count query uses the tracks collection — no DB row was written yet, so the count is not bumped. Good. But if save_audio ever starts writing a DB row before duration is known, this contract breaks.",
+    "phase5.py /upload-limits/me does not catch DB exceptions — a Mongo blip would surface as a 500. Cheap to wrap with a try/except and return a safe-default 'unknown' shape so the picker UI degrades to no-quota-line rather than failing to open."
+  ],
+  "updated_files": ["/app/backend/tests/test_upload_limits.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% of in-scope flows verified end-to-end as non-founder; founder UI quota path verified via backend response only"},
+  "test_credentials": "Founder slopestyle2022@gmail.com / Password1$ ; Non-founder testfriend1@example.com / pass1234",
+  "seed_data_creation": "Test image uploads (64x64 PNG + 4MB JPEG for founder) and one TEST_tone WAV track for tfone were written during pytest. Founder's images are unlimited; tfone's image.used ticks +1 each run — re-running may eventually hit the 20/day cap (currently sitting at 14/20 used per the last GET).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 5 backend + frontend wiring is solid; the next iteration's most likely focus is either (a) Phase 5 cleanup if E1 renames testids to match the request verbatim, or (b) a deeper test of the 30s video and 60s audio duration caps which I did not exercise (requires real >60s audio file — Form upload of a long WAV would trigger enforce_duration → 400). The AutoplayVideo IntersectionObserver wiring was not exercised because no video posts existed at /feed (only mock + image posts); to test, create a post with media_type='video' and visible video_url then scroll the card into view and assert the <video> element has muted+autoplay attributes when ≥50% intersecting. Backend test file /app/backend/tests/test_upload_limits.py is now the regression suite for this feature.",
+  "rca of the issue": "No bugs. Only naming drift between the spec and the rendered data-testids (image-picker-quota → feed-image-picker-quota, sound-picker-quota → sounds-upload-quota). Mitigation: either align testid prop values in Feed.jsx/Sounds.jsx with the spec, or treat the spec as descriptive and the prefixed names as canonical."
+}

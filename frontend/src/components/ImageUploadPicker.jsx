@@ -10,7 +10,7 @@
  * Note: the API returns relative `/api/images/...` paths. We turn them
  * into absolute URLs against REACT_APP_BACKEND_URL via `absoluteImageUrl`.
  */
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Upload, Link2, X, Loader2, Image as ImageIcon, AlertCircle } from "lucide-react";
 import apiClient from "@/api/client";
 
@@ -27,7 +27,21 @@ export default function ImageUploadPicker({ open, onClose, onPicked, title = "Ad
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [url, setUrl] = useState("");
+  const [quota, setQuota] = useState(null); // {used, remaining, per_day} | null
   const fileRef = useRef(null);
+
+  // Fetch remaining daily image quota every time the picker opens.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await apiClient.get("/upload-limits/me");
+        if (!cancelled) setQuota(data?.limits?.image || null);
+      } catch {/* non-fatal */}
+    })();
+    return () => { cancelled = true; };
+  }, [open]);
 
   const close = () => { if (!busy) onClose?.(); };
   const handle = (rec) => {
@@ -47,9 +61,15 @@ export default function ImageUploadPicker({ open, onClose, onPicked, title = "Ad
       const fd = new FormData();
       fd.append("file", file);
       const { data } = await apiClient.post("/images/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      // Refresh quota after success
+      apiClient.get("/upload-limits/me").then((r) => setQuota(r?.data?.limits?.image || null)).catch(() => {});
       handle(data);
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Upload failed.");
+      const code = e?.response?.status;
+      const detail = e?.response?.data?.detail;
+      if (code === 413) setErr(detail || "Image is too large — max 3 MB per upload.");
+      else if (code === 429) setErr(detail || "Daily image upload limit reached. Try again later.");
+      else setErr(detail || "Upload failed.");
     } finally { setBusy(false); }
   };
 
@@ -59,9 +79,14 @@ export default function ImageUploadPicker({ open, onClose, onPicked, title = "Ad
     setErr(""); setBusy(true);
     try {
       const { data } = await apiClient.post("/images/from-url", { url: u });
+      apiClient.get("/upload-limits/me").then((r) => setQuota(r?.data?.limits?.image || null)).catch(() => {});
       handle(data);
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Could not fetch that URL.");
+      const code = e?.response?.status;
+      const detail = e?.response?.data?.detail;
+      if (code === 413) setErr(detail || "Image is too large — max 3 MB per upload.");
+      else if (code === 429) setErr(detail || "Daily image upload limit reached. Try again later.");
+      else setErr(detail || "Could not fetch that URL.");
     } finally { setBusy(false); }
   };
 
@@ -128,8 +153,15 @@ export default function ImageUploadPicker({ open, onClose, onPicked, title = "Ad
                 {busy ? <><Loader2 size={14} className="animate-spin" /> Uploading…</> : <><Upload size={14} /> Choose image</>}
               </button>
               <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-                JPG, PNG, WebP, or GIF. Max 10 MB. We compress & rehost on our CDN for fast global delivery.
+                JPG, PNG, WebP, or GIF. Max 3 MB per image. We compress &amp; rehost on our CDN for fast global delivery.
               </p>
+              {quota && (
+                <p className="text-[11px]" style={{ color: "var(--text-muted)" }} data-testid={`${testid}-quota`}>
+                  {quota.remaining === "unlimited"
+                    ? "Founder account — unlimited uploads."
+                    : `${quota.remaining} of ${quota.per_day} image uploads remaining today.`}
+                </p>
+              )}
             </>
           )}
           {tab === "url" && (

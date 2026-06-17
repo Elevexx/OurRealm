@@ -236,8 +236,11 @@ export default function Sounds() {
         )}
       </header>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar" data-testid="sounds-tabs">
+      {/* Category hero cards — bigger, color-graphic per category (Phase 5 polish) */}
+      <div
+        className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3"
+        data-testid="sounds-tabs"
+      >
         {TABS.map(({ id, Icon, color }) => {
           const active = tab === id;
           return (
@@ -246,21 +249,52 @@ export default function Sounds() {
               data-testid={`sounds-tab-${id}`}
               data-active={active}
               onClick={() => setTab(id)}
-              className="shrink-0 px-4 py-2 flex items-center gap-2 transition-transform active:scale-[0.97]"
+              className="relative overflow-hidden flex flex-col items-start justify-between p-3 sm:p-4 transition-transform active:scale-[0.98]"
               style={{
-                borderRadius: "calc(var(--radius) - 4px)",
+                borderRadius: "var(--radius)",
+                minHeight: 92,
                 background: active
-                  ? `color-mix(in srgb, ${color} 22%, transparent)`
-                  : "transparent",
-                color: active ? color : "var(--text-muted)",
-                outline: active ? `1px solid ${color}` : "1px solid var(--border-col)",
-                fontWeight: active ? 700 : 500,
+                  ? `linear-gradient(135deg, color-mix(in srgb, ${color} 38%, var(--surface)) 0%, color-mix(in srgb, ${color} 12%, var(--surface)) 100%)`
+                  : `linear-gradient(135deg, color-mix(in srgb, ${color} 16%, var(--surface)) 0%, var(--surface) 100%)`,
+                outline: active ? `2px solid ${color}` : "1px solid var(--border-col)",
+                boxShadow: active
+                  ? `0 8px 26px color-mix(in srgb, ${color} 32%, transparent)`
+                  : "none",
+                color: active ? color : "var(--text-main)",
               }}
             >
-              <Icon size={14} /> {id}
-              {id === "AI" && (
-                <span className="text-[9px] uppercase tracking-widest opacity-80 ml-1">Soon</span>
-              )}
+              {/* Decorative orb */}
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  right: -14,
+                  bottom: -14,
+                  width: 78,
+                  height: 78,
+                  borderRadius: "50%",
+                  background: `radial-gradient(circle at 30% 30%, ${color}, transparent 70%)`,
+                  opacity: active ? 0.55 : 0.28,
+                  filter: "blur(2px)",
+                  pointerEvents: "none",
+                }}
+              />
+              <span
+                className="flex items-center justify-center"
+                style={{
+                  width: 36, height: 36, borderRadius: "calc(var(--radius) - 6px)",
+                  background: `color-mix(in srgb, ${color} 22%, transparent)`,
+                  color,
+                }}
+              >
+                <Icon size={18} />
+              </span>
+              <span className="flex items-baseline gap-2 mt-2 z-[1]" style={{ fontFamily: "var(--font-display)" }}>
+                <span className="text-base sm:text-lg font-semibold">{id}</span>
+                {id === "AI" && (
+                  <span className="text-[9px] uppercase tracking-widest opacity-80">Soon</span>
+                )}
+              </span>
             </button>
           );
         })}

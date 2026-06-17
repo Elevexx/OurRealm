@@ -15,6 +15,7 @@ import { setPost, getPost, usePostState } from "@/lib/postStore";
 import { useAuth } from "@/contexts/AuthContext";
 import UsernameLink from "@/components/UsernameLink";
 import { absoluteImageUrl } from "@/components/ImageUploadPicker";
+import AutoplayVideo from "@/components/AutoplayVideo";
 
 function fmtTime(iso) {
   if (!iso) return "";
@@ -208,7 +209,7 @@ export default function PostPopup() {
               )}
               {mediaVid && (
                 isVideoUrl(mediaVid) ? (
-                  <video src={mediaVid} controls className="rounded w-full" style={{ maxHeight: 480, border: "1px solid var(--border-col)" }} data-testid="post-popup-video" />
+                  <AutoplayVideo src={mediaVid} className="rounded w-full" style={{ maxHeight: 480, border: "1px solid var(--border-col)" }} testid="post-popup-video" />
                 ) : (
                   <a href={mediaVid} target="_blank" rel="noreferrer" className="or-chip text-sm" data-testid="post-popup-video-link">
                     <VideoIcon size={14} /> Watch video

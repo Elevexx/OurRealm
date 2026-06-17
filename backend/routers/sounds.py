@@ -31,6 +31,7 @@ from core.geo import (
 from services.audio_store import (
     MAX_BYTES, audio_dir, is_safe_audio_filename, media_type_for_ext, save_audio,
 )
+from services.upload_limits import enforce_pre_upload, enforce_duration
 from services.preferences import (
     bump as prefs_bump,
     summarise as prefs_summarise,
@@ -139,11 +140,24 @@ async def upload_track(
     raw = await file.read()
     if len(raw) > MAX_BYTES:
         raise HTTPException(status_code=413, detail=f"File exceeds {MAX_BYTES // (1024*1024)} MB limit")
+    # Centralized per-user caps (5 MB / 10-per-day / 60s for non-founder; @stealth exempt).
+    await enforce_pre_upload(current, "audio", len(raw))
 
     try:
         rec = await save_audio(raw, current["id"], declared_mime=file.content_type, filename=file.filename)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Duration cap is enforced AFTER mutagen reads the file. If it's over,
+    # delete the just-written file and surface a 400 so the user can re-encode.
+    try:
+        enforce_duration(current, "audio", rec.duration_seconds)
+    except HTTPException:
+        try:
+            (audio_dir() / f"{rec.id}.{rec.ext}").unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
 
     doc = {
         "id": rec.id,

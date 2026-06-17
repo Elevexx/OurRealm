@@ -171,17 +171,6 @@ def _extract_duration(raw: bytes, ext: str, on_disk_path: Optional[Path] = None)
     return 0.0
 
 
-async def _check_rate_limit(owner_id: str) -> None:
-    """At most 6 audio uploads per rolling 5 minutes per user."""
-    since = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
-    n = await db.tracks.count_documents({
-        "user_id": owner_id, "created_at": {"$gte": since},
-    })
-    if n >= 6:
-        raise ValueError("Too many uploads — please wait a few minutes before trying again.")
-
-
-# ── Public API ────────────────────────────────────────────────────────
 async def save_audio(
     raw: bytes,
     owner_id: str,
@@ -194,7 +183,6 @@ async def save_audio(
         raise ValueError("Empty or invalid audio file")
     mime = _resolve_mime(raw, declared_mime, filename)
     ext = ALLOWED_MIMES[mime]
-    await _check_rate_limit(owner_id)
 
     audio_id = uuid.uuid4().hex
     sha = hashlib.sha256(raw).hexdigest()

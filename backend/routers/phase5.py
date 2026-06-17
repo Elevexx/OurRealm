@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from core.db import db
 from core.deps import CurrentUser
+from services.upload_limits import remaining_for_user
 
 
 router = APIRouter(prefix="/api", tags=["dashboard", "admin"])
@@ -210,3 +211,13 @@ async def admin_analytics(current: CurrentUser, range: str = "7d"):
             "series": sounds_series,
         },
     }
+
+
+
+# ─── Upload limits (Phase 5 — Media Upload Limits MVP) ───────────────
+@router.get("/upload-limits/me")
+async def my_upload_limits(current: CurrentUser):
+    """Returns per-kind quota usage so the UI can show 'N left today' before
+    submit. Founder (@stealth) is exempt and gets `remaining: "unlimited"`.
+    """
+    return {"limits": await remaining_for_user(current)}

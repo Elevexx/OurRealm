@@ -141,15 +141,8 @@ def _normalize_and_save(raw: bytes, image_id: str, ext: str) -> Tuple[int, int, 
     )
 
 
-async def _check_rate_limit(owner_id: str) -> None:
-    """Simple per-user limit: at most 12 uploads per rolling 5 minutes."""
-    from datetime import timedelta
-    since = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
-    n = await db.images.count_documents({
-        "user_id": owner_id, "created_at": {"$gte": since},
-    })
-    if n >= 12:
-        raise ValueError("Too many uploads — please wait a minute before trying again.")
+# Note: per-user daily/size caps are enforced centrally via
+# `services.upload_limits.enforce_pre_upload` at the router layer.
 
 
 # ── Public API ────────────────────────────────────────────────────────
@@ -162,7 +155,6 @@ async def save_bytes(raw: bytes, owner_id: str, declared_mime: Optional[str] = N
     mime = sniffed or (declared_mime or "").lower()
     if mime not in ALLOWED_MIMES:
         raise ValueError("Unsupported image format. Allowed: JPEG, PNG, WebP, GIF.")
-    await _check_rate_limit(owner_id)
     ext = ALLOWED_MIMES[mime]
     image_id = uuid.uuid4().hex
     sha = hashlib.sha256(raw).hexdigest()

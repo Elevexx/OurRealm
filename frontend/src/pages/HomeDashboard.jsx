@@ -11,7 +11,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Plus, X, GripVertical, Layout, Cloud, Radio, Users as UsersIcon,
   Newspaper, Sparkles, Music as MusicIcon, Bell, Bookmark, Eye, Globe2, Calendar,
-  Heart, MessageSquare, Lock,
+  Heart, MessageSquare, Lock, UserPlus,
 } from "lucide-react";
 import {
   DndContext, PointerSensor, TouchSensor, KeyboardSensor,
@@ -26,6 +26,7 @@ import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { listGroups, listRealms } from "@/lib/messaging";
+import FriendMultiPicker from "@/components/FriendMultiPicker";
 
 const WIDGET_CATALOG = [
   { type: "for_you_feed",         label: "For You Feed",          Icon: Sparkles },
@@ -48,6 +49,7 @@ const VIS_OPTIONS = [
   { id: "public",  label: "Public",  Icon: Globe2 },
   { id: "friends", label: "Friends", Icon: UsersIcon },
   { id: "private", label: "Private", Icon: Lock },
+  { id: "custom",  label: "Custom",  Icon: UserPlus },
 ];
 
 export default function HomeDashboard() {
@@ -80,6 +82,11 @@ export default function HomeDashboard() {
   const remove = (id) => save(widgets.filter((w) => w.id !== id));
   const setVis = (id, vis) =>
     save(widgets.map((w) => (w.id === id ? { ...w, visibility: vis } : w)));
+  const setCustomIds = (id, ids) =>
+    save(widgets.map((w) => (w.id === id ? { ...w, visibility: "custom", custom_user_ids: ids } : w)));
+  // Which widget id (if any) is currently editing its custom friend list.
+  const [customEditingId, setCustomEditingId] = useState(null);
+  const customEditingWidget = widgets.find((w) => w.id === customEditingId) || null;
 
   // Drag-and-drop reorder (dnd-kit) — same pattern Top8Editor uses.
   const sensors = useSensors(
@@ -130,7 +137,11 @@ export default function HomeDashboard() {
                   edit={edit}
                   user={user}
                   onRemove={() => remove(w.id)}
-                  onVisChange={(vis) => setVis(w.id, vis)}
+                  onVisChange={(vis) => {
+                    setVis(w.id, vis);
+                    if (vis === "custom") setCustomEditingId(w.id);
+                  }}
+                  onEditCustom={() => setCustomEditingId(w.id)}
                 />
               ))}
               {/* Add Widgets tile */}
@@ -162,6 +173,18 @@ export default function HomeDashboard() {
           onClose={() => setShowLibrary(false)}
         />
       )}
+
+      {/* Custom-visibility multi-select picker (Phase 5 polish) */}
+      <FriendMultiPicker
+        open={!!customEditingWidget}
+        onClose={() => setCustomEditingId(null)}
+        title={customEditingWidget ? `Share "${(CATALOG_BY_TYPE[customEditingWidget.type]?.label) || customEditingWidget.type}" with…` : "Choose friends"}
+        initialSelectedIds={customEditingWidget?.custom_user_ids || []}
+        onConfirm={(ids) => {
+          if (customEditingId) setCustomIds(customEditingId, ids);
+          setCustomEditingId(null);
+        }}
+      />
     </div>
   );
 }
@@ -185,7 +208,7 @@ function SortableWidgetTile(props) {
   );
 }
 
-function WidgetTile({ widget, edit, user, onRemove, onVisChange, dragHandleProps }) {
+function WidgetTile({ widget, edit, user, onRemove, onVisChange, onEditCustom, dragHandleProps }) {
   const meta = CATALOG_BY_TYPE[widget.type] || { label: widget.type, Icon: Layout };
   const Body = WIDGETS[widget.type] || PlaceholderWidget;
   return (
@@ -214,7 +237,7 @@ function WidgetTile({ widget, edit, user, onRemove, onVisChange, dragHandleProps
         ) : null}
       </header>
       {edit && (
-        <div className="flex items-center gap-1 px-3 py-1.5" style={{ borderBottom: "1px solid var(--border-col)", background: "var(--surface-2)" }}>
+        <div className="flex items-center gap-1 px-3 py-1.5 flex-wrap" style={{ borderBottom: "1px solid var(--border-col)", background: "var(--surface-2)" }}>
           {VIS_OPTIONS.map(({ id, label, Icon }) => (
             <button
               key={id}
@@ -230,6 +253,25 @@ function WidgetTile({ widget, edit, user, onRemove, onVisChange, dragHandleProps
               <Icon size={10} /> {label}
             </button>
           ))}
+          {widget.visibility === "custom" && (
+            <button
+              type="button"
+              onClick={onEditCustom}
+              className="text-[10px] uppercase tracking-widest px-2 py-1 flex items-center gap-1 ml-auto"
+              style={{
+                borderRadius: 6,
+                background: "color-mix(in srgb, var(--primary) 14%, transparent)",
+                color: "var(--primary)",
+                border: "1px dashed var(--primary)",
+              }}
+              data-testid={`widget-${widget.id}-pick-friends`}
+            >
+              <UserPlus size={10} />
+              {(widget.custom_user_ids?.length || 0) > 0
+                ? `${widget.custom_user_ids.length} chosen`
+                : "Pick friends"}
+            </button>
+          )}
         </div>
       )}
       <div className="flex-1 overflow-hidden">

@@ -19,6 +19,7 @@ from core.deps import CurrentUser
 from services.image_store import (
     save_bytes, save_from_url, image_dir, MAX_BYTES,
 )
+from services.upload_limits import enforce_pre_upload
 
 
 router = APIRouter(prefix="/api/images", tags=["images"])
@@ -47,6 +48,8 @@ async def upload(current: CurrentUser, file: UploadFile = File(...)):
     raw = await file.read()
     if len(raw) > MAX_BYTES:
         raise HTTPException(status_code=413, detail=f"File exceeds {MAX_BYTES // (1024*1024)} MB limit")
+    # Centralized per-user cap (3 MB / 20-per-day for non-founder; @stealth exempt).
+    await enforce_pre_upload(current, "image", len(raw))
     try:
         rec = await save_bytes(raw, current["id"], declared_mime=file.content_type)
     except ValueError as e:
@@ -60,6 +63,9 @@ class FromUrlPayload(BaseModel):
 
 @router.post("/from-url")
 async def from_url(payload: FromUrlPayload, current: CurrentUser):
+    # `from-url` re-hosts a remote image — counts against the user's daily image quota.
+    # We can't know the size up-front, so we pass 0 (size check happens after fetch via save_bytes).
+    await enforce_pre_upload(current, "image", 0)
     try:
         rec = await save_from_url(payload.url.strip(), current["id"])
     except ValueError as e:

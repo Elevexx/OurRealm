@@ -14,6 +14,7 @@ import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPic
 import ZipRequiredModal from "@/components/ZipRequiredModal";
 import PollComposer from "@/components/PollComposer";
 import PollDisplay from "@/components/PollDisplay";
+import AutoplayVideo from "@/components/AutoplayVideo";
 
 const FILTER_KEY = "ourrealm.feedMedia";
 const INTEREST_KEY = "ourrealm.interests";
@@ -443,7 +444,7 @@ function FeedCard({ p, onGuestAction, isGuest }) {
       {mediaVid && (
         <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
           {isVideoFile(mediaVid) ? (
-            <video src={mediaVid} controls className="w-full" style={{ maxHeight: 480 }} data-testid={`feed-video-${p.id}`} />
+            <AutoplayVideo src={mediaVid} className="w-full" style={{ maxHeight: 480 }} testid={`feed-video-${p.id}`} />
           ) : (
             <a href={mediaVid} target="_blank" rel="noreferrer" className="or-chip text-sm m-3 inline-flex" data-testid={`feed-video-link-${p.id}`} onClick={(e) => e.stopPropagation()}>
               <Video size={14} /> Watch video

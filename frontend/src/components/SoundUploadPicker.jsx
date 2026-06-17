@@ -1,5 +1,5 @@
 // Reusable Sound Upload modal. Mirrors ImageUploadPicker's UX.
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Upload, X, Loader2, Music as MusicIcon, AlertCircle, Image as ImageIcon } from "lucide-react";
 import apiClient from "@/api/client";
 import ImageUploadPicker from "@/components/ImageUploadPicker";
@@ -8,7 +8,8 @@ const GENRES = ["Psytrance", "House", "Techno", "Drum & Bass", "Ambient", "Hip-H
 const MOODS  = ["Energetic", "Chill", "Dark", "Uplifting", "Focus", "Party"];
 
 const ACCEPT = "audio/mpeg,audio/mp3,audio/mp4,audio/x-m4a,audio/aac,audio/wav,audio/x-wav,audio/ogg,audio/flac,audio/x-flac,audio/webm,.mp3,.m4a,.aac,.wav,.ogg,.flac,.webm";
-const MAX_MB = 50;
+const MAX_MB = 50;       // hard ceiling — server enforces a tighter 5 MB cap for non-founder
+const SOFT_MB = 5;       // cap enforced for normal users (matches services/upload_limits)
 
 export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCategory = "Music", testid = "sound-picker" }) {
   const [busy, setBusy] = useState(false);
@@ -20,7 +21,20 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
   const [mood, setMood] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
   const [showCoverPicker, setShowCoverPicker] = useState(false);
+  const [quota, setQuota] = useState(null); // {used, remaining, per_day}
   const fileRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await apiClient.get("/upload-limits/me");
+        if (!cancelled) setQuota(data?.limits?.audio || null);
+      } catch {/* non-fatal */}
+    })();
+    return () => { cancelled = true; };
+  }, [open]);
 
   if (!open) return null;
   const close = () => { if (!busy) { reset(); onClose?.(); } };
@@ -57,11 +71,16 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
       const { data } = await apiClient.post("/sounds/upload", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+      apiClient.get("/upload-limits/me").then((r) => setQuota(r?.data?.limits?.audio || null)).catch(() => {});
       onUploaded?.(data.track);
       reset();
       onClose?.();
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Upload failed.");
+      const code = e?.response?.status;
+      const detail = e?.response?.data?.detail;
+      if (code === 413) setErr(detail || "Audio too large — max 5 MB per upload.");
+      else if (code === 429) setErr(detail || "Daily audio upload limit reached. Try again later.");
+      else setErr(detail || "Upload failed.");
     } finally { setBusy(false); }
   };
 
@@ -102,8 +121,15 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
             <Upload size={14} /> {file ? `Replace audio (${file.name.slice(0, 32)}${file.name.length > 32 ? "…" : ""})` : "Choose audio file"}
           </button>
           <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            MP3, M4A/AAC, WAV, OGG, FLAC, or WebM. Max {MAX_MB} MB. We rehost on our CDN for fast streaming.
+            MP3, M4A/AAC, WAV, OGG, FLAC, or WebM. Max {SOFT_MB} MB / 60s per track. We rehost on our CDN for fast streaming.
           </p>
+          {quota && (
+            <p className="text-[11px]" style={{ color: "var(--text-muted)" }} data-testid={`${testid}-quota`}>
+              {quota.remaining === "unlimited"
+                ? "Founder account — unlimited uploads."
+                : `${quota.remaining} of ${quota.per_day} sound uploads remaining today.`}
+            </p>
+          )}
 
           <div className="space-y-2">
             <label className="text-[11px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Title</label>
