@@ -15,6 +15,7 @@ import ZipRequiredModal from "@/components/ZipRequiredModal";
 import PollComposer from "@/components/PollComposer";
 import PollDisplay from "@/components/PollDisplay";
 import AutoplayVideo from "@/components/AutoplayVideo";
+import VideoUploadPicker from "@/components/VideoUploadPicker";
 import PostManagementMenu from "@/components/PostManagementMenu";
 import { getPostCharacterLimit } from "@/lib/postLimits";
 
@@ -307,6 +308,13 @@ export default function Feed() {
                 <Video size={12} /> Video will render in feed
               </div>
             )}
+            {composeMediaType === "video" && (
+              <VideoUploadPicker
+                videoUrl={composeMediaUrl}
+                onChange={(url) => setComposeMediaUrl(url)}
+                testid="feed-composer-video-upload"
+              />
+            )}
             {composeMediaType === "link" && composeMediaUrl && (
               <div className="mt-2 text-xs flex items-center gap-1.5" data-testid="feed-composer-preview-link" style={{ color: "var(--text-muted)" }}>
                 <Link2 size={12} /> <span className="truncate">{composeMediaUrl}</span>
@@ -484,7 +492,10 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
     openPopup();
   };
   const mediaImg = p.image_url || (p.media_type === "image" ? p.media_url : null);
-  const mediaVid = p.video_url || (p.media_type === "video" ? p.media_url : null);
+  const mediaVidRaw = p.video_url || (p.media_type === "video" ? p.media_url : null);
+  // Self-hosted videos arrive as relative `/api/videos/...` paths — promote
+  // to an absolute URL so the <video> element can stream them.
+  const mediaVid = mediaVidRaw ? absoluteImageUrl(mediaVidRaw) : null;
   const mediaLink = p.link_url || (p.media_type === "link" ? p.media_url : null);
   return (
     <article className="or-surface p-4 sm:p-5" data-testid={`feed-post-${p.id}`}>

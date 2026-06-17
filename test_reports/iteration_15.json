@@ -1,0 +1,69 @@
+{
+  "summary": "Tested Phase-5 video direct-upload feature end-to-end. Backend: 9/9 tests pass in /app/backend/tests/test_video_upload.py — GET /api/upload-limits/me reflects video {per_day:3} for testfriend1 and 'unlimited' for @stealth; POST /api/videos/upload returns {video:{id,ext,bytes,url:/api/videos/{32hex}.mp4}, url} for a 1KB MP4 stub; GET /api/videos/{name} streams 200 with content-type=video/mp4 and exact byte length; 101 MB stub → 413 'File exceeds 100 MB limit'; duration=75 → 400 with '60 seconds' in detail; duration=45 → 200; .jpg upload → 400 with 'Unsupported video format. Allowed: MP4, MOV, WebM.'; testfriend2 4th upload → 429 'Daily video upload limit reached (3 per 24h)'; GET /api/videos/me/list contains prior uploads; POST /api/posts with media_type=video + video_url=/api/videos/{id}.mp4 returns the post and GET /api/posts surfaces it with video_url intact. Regression /app/backend/tests/test_upload_limits.py = 13/13 pass (image cap 3MB/founder-exempt, sounds upload, posts list, sounds charts, dashboard layout, admin analytics gating). Frontend: composer Video chip mounts BOTH data-testid=feed-composer-media-url AND data-testid=feed-composer-video-upload with its sub-testids pick/quota/file-input/preview/clear/error all wired. Programmatic file-input change with a 1KB MP4 stub completes upload, writes /api/videos/{32hex}.mp4 into the media-url input, decrements quota from '3 of 3' → '2 of 3' → '1 of 3', and the feed renders the new post with an ABSOLUTE src=https://realm-deploy.preview.emergentagent.com/api/videos/{id}.mp4 confirming absoluteImageUrl promotion. Wrong-format upload (.gif) shows data-testid=feed-composer-video-upload-error with exact spec text 'Unsupported video format. Use MP4, MOV, or WebM.'. External-URL fallback (paste mov_bbb.mp4) still creates a post with that URL.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "VideoUploadPicker",
+        "issue": "Preview <video> keeps the local blob: URL after upload completes (showLocalPreview retains priority because localPreview is never cleared once the server URL is available). Spec asks the preview src to start with REACT_APP_BACKEND_URL+/api/videos/... after upload. The feed post itself does render the absolute server URL correctly — only the in-composer preview keeps the blob.",
+        "selector": "[data-testid=\"feed-composer-video-upload-preview\"] video",
+        "priority": "LOW"
+      },
+      {
+        "component": "VideoUploadPicker — Clear button",
+        "issue": "After a successful upload + post submit, clicking data-testid=feed-composer-video-upload-clear did NOT empty data-testid=feed-composer-media-url (value remained '/api/videos/{id}.mp4'). Either (a) onChange('') propagated but the parent's composeMediaUrl was already re-populated, OR (b) Share submit didn't clear composeMediaUrl and Clear's onChange('') call did not flush before the assertion. Quota refetch and preview removal worked. Worth main agent verifying clear() actually resets composeMediaUrl in Feed.jsx.",
+        "selector": "[data-testid=\"feed-composer-video-upload-clear\"]",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_against_spec": {
+    "backend_upload_limits_me_user1_video_per_day_3": "PASS",
+    "backend_upload_limits_me_stealth_video_unlimited": "PASS",
+    "backend_post_upload_happy_path_returns_url_and_streams": "PASS (Content-Type video/mp4, exact byte length, 32-hex stem)",
+    "backend_413_over_100MB": "PASS (detail contains '100 MB')",
+    "backend_400_duration_75_60s_cap": "PASS (detail contains '60' and 'seconds')",
+    "backend_200_duration_45": "PASS",
+    "backend_400_jpeg_unsupported": "PASS (detail = 'Unsupported video format. Allowed: MP4, MOV, WebM.')",
+    "backend_429_4th_upload_for_user2": "PASS (detail = 'Daily video upload limit reached (3 per 24h)...')",
+    "backend_me_list_returns_uploads": "PASS",
+    "backend_post_create_with_uploaded_video_url": "PASS (post wrapped in {post:{...}}, video_url preserved on GET /api/posts)",
+    "frontend_composer_shows_url_input_and_picker": "PASS",
+    "frontend_pick_and_quota_visible": "PASS (quota text matches '{N} of 3 video uploads left today.')",
+    "frontend_file_input_change_writes_to_media_url": "PASS (media-url = /api/videos/{32hex}.mp4 after upload)",
+    "frontend_preview_renders_video_element": "PASS-with-nit (keeps blob: src — see ui_bugs[0])",
+    "frontend_share_creates_post_with_absolute_url_in_feed": "PASS (src starts with REACT_APP_BACKEND_URL + /api/videos/)",
+    "frontend_unsupported_format_error_text": "PASS (exact 'Unsupported video format. Use MP4, MOV, or WebM.')",
+    "frontend_clear_button": "PARTIAL — preview disappears & quota stays; media-url did NOT clear in my run (see ui_bugs[1])",
+    "frontend_url_fallback": "PASS (external mov_bbb.mp4 URL post visible in feed)",
+    "regression_upload_limits_endpoint": "PASS (13/13 — image 3MB cap, founder exempt, audio increments, posts list, sounds charts, dashboard layout, admin analytics gating)"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_video_upload.py",
+    "/app/backend/tests/test_upload_limits.py",
+    "/app/test_reports/pytest/video_upload.xml",
+    "/app/test_reports/pytest/upload_limits.xml"
+  ],
+  "action_items": [
+    "FIX (low): VideoUploadPicker should null-out localPreview after the upload resolves so the preview <video> swaps to the absolute server URL (matches spec exactly). Add `setLocalPreview(null)` (and revoke its objectURL) in the success branch of onFileChange right before the onChange call, or compute showLocalPreview = !!localPreview && !videoUrl.",
+    "VERIFY (medium): Clear button. Confirm Feed.jsx's onChange handler actually empties composeMediaUrl when picker fires onChange(''). In my run, after a successful upload + Share, clicking Clear left data-testid=feed-composer-media-url populated with the prior /api/videos/{id}.mp4 path. Possibly Share doesn't reset composeMediaUrl, so the post-Share state retained the URL and Clear's effect was masked. Either way, the spec requires the media-url input to clear on Clear click."
+  ],
+  "critical_code_review_comments": [
+    "VideoUploadPicker.jsx (line ~130): `showLocalPreview = !!localPreview` is set BEFORE the network call resolves and is never cleared on success — this is why the preview keeps the blob: URL forever after upload. Suggested guard: `const showLocalPreview = !!localPreview && !videoUrl;` (already-correct showUploadedPreview = videoUrl && !localPreview is symmetric but unreachable until localPreview clears).",
+    "VideoUploadPicker.jsx: success branch calls `onChange?.(next)` but does NOT update progress to 100% before flipping busy off; the progress bar disappears the moment the awaited POST resolves. Cosmetic — fine for tiny stubs but feels abrupt for real uploads. Consider setProgress(100) right before setBusy(false).",
+    "videos.py (POST /upload): file.read() loads the ENTIRE file into memory before the 100 MB check — for the 101 MB rejection path the test had to send 101 MB over the wire. Acceptable for a 100 MB ceiling but worth a streaming check (Content-Length pre-flight) before reading the body if you ever want to support larger ceilings.",
+    "video_store.save_video raises ValueError('Empty or invalid video file') for files < 512 bytes; router converts to 400. That's a hidden floor — fine but not documented in the picker's error UI."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_video_upload.py (new)"
+  ],
+  "success_rate": { "backend": "100% (9/9 new + 13/13 regression)", "frontend": "92% — 1 minor preview nit + 1 Clear-clears-media-url behavior to verify" },
+  "test_credentials": "tfone=testfriend1@example.com/pass1234, tftwo=testfriend2@example.com/pass1234, stealth=slopestyle2022@gmail.com/Password1$",
+  "seed_data_creation": "Cleaned db.videos for testfriend1 and testfriend2 user_ids twice during the run to keep the 24h cap window deterministic. Some test posts (content='vid') by testfriend1 referencing the uploaded /api/videos/{id}.mp4 are now in the feed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The 24h video cap is sticky across runs: cleanup with `db.videos.delete_many({user_id: <tfone/tftwo id>})` before re-running anything that needs the cap free. The PWA InstallPrompt re-shows after navigation — dismiss via get_by_role('button', name='NOT NOW') or [data-testid=install-prompt-close] right after every page.goto. Use API login (POST /api/auth/login) + localStorage.setItem('access_token', token) + page.reload to skip the UI login screen when the install prompt blocks it.",
+  "rca of the issue": "VideoUploadPicker preview src: showLocalPreview state is only flipped to false on Clear (or never if upload succeeds and the user posts immediately). The component sets localPreview=URL.createObjectURL(f) on pick to give instant feedback, but the success branch of onFileChange does not reset localPreview when the server URL becomes authoritative. Result: the <video> in [data-testid=feed-composer-video-upload-preview] keeps src=blob:... even after media-url already shows /api/videos/{32hex}.mp4. Functionally OK (user still sees their video) but violates the spec assertion 'src starting with REACT_APP_BACKEND_URL + /api/videos/...'."
+}

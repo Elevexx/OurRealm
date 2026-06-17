@@ -25,6 +25,7 @@ from routers import profile as profile_router_mod
 from routers import posts as posts_router_mod
 from routers import notifications as notifications_router_mod
 from routers import images as images_router_mod
+from routers import videos as videos_router_mod
 from routers import threads as threads_router_mod
 from routers import sounds as sounds_router_mod
 from routers import phase5 as phase5_router_mod
@@ -56,6 +57,7 @@ app.include_router(messages_router_mod.router)
 app.include_router(posts_router_mod.router)
 app.include_router(notifications_router_mod.router)
 app.include_router(images_router_mod.router)
+app.include_router(videos_router_mod.router)
 app.include_router(threads_router_mod.router)
 app.include_router(sounds_router_mod.router)
 app.include_router(phase5_router_mod.router)

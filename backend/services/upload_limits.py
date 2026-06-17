@@ -4,7 +4,7 @@ Server-enforced caps applied to all users except the founder `@stealth`.
 
 Caps (per rolling 24h):
     images : 3 MB / file, 20 uploads / 24h
-    videos : 10 MB / file, 3 uploads / 24h, 30s max
+    videos : 100 MB / file, 3 uploads / 24h, 60s max
     sounds : 5 MB / file, 10 uploads / 24h, 60s max
 
 Per-post caps are enforced where posts are composed:
@@ -26,15 +26,15 @@ from core.db import db
 FOUNDER_USERNAME = "stealth"
 
 LIMITS = {
-    "image": {"max_bytes": 3  * 1024 * 1024, "per_day": 20, "max_seconds": None},
-    "video": {"max_bytes": 10 * 1024 * 1024, "per_day":  3, "max_seconds": 30},
-    "audio": {"max_bytes": 5  * 1024 * 1024, "per_day": 10, "max_seconds": 60},
+    "image": {"max_bytes": 3   * 1024 * 1024, "per_day": 20, "max_seconds": None},
+    "video": {"max_bytes": 100 * 1024 * 1024, "per_day":  3, "max_seconds": 60},
+    "audio": {"max_bytes": 5   * 1024 * 1024, "per_day": 10, "max_seconds": 60},
 }
 
 # Mongo collections keyed by kind — must exist for the count window to work.
 _COLLECTION = {
     "image": "images",
-    "video": "posts",     # videos live as media_type=video on posts; counted separately
+    "video": "videos",    # uploaded videos (independent of whether a post was created)
     "audio": "tracks",
 }
 
@@ -61,11 +61,7 @@ async def enforce_pre_upload(user: dict, kind: str, size_bytes: int) -> None:
     since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     collection_name = _COLLECTION[kind]
     coll = getattr(db, collection_name)
-    if kind == "video":
-        q = {"author_id": user["id"], "media_type": "video",
-             "created_at": {"$gte": since}}
-    else:
-        q = {"user_id": user["id"], "created_at": {"$gte": since}}
+    q = {"user_id": user["id"], "created_at": {"$gte": since}}
     n = await coll.count_documents(q)
     if n >= cfg["per_day"]:
         raise HTTPException(
@@ -101,10 +97,7 @@ async def remaining_for_user(user: dict) -> dict:
     for kind, cfg in LIMITS.items():
         collection_name = _COLLECTION[kind]
         coll = getattr(db, collection_name)
-        if kind == "video":
-            q = {"author_id": user["id"], "media_type": "video", "created_at": {"$gte": since}}
-        else:
-            q = {"user_id": user["id"], "created_at": {"$gte": since}}
+        q = {"user_id": user["id"], "created_at": {"$gte": since}}
         used = await coll.count_documents(q)
         out[kind] = {
             "used": used,

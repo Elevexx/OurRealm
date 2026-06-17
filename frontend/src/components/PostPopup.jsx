@@ -150,7 +150,8 @@ export default function PostPopup() {
   if (!state) return null;
 
   const mediaImg = post?.image_url || (post?.media_type === "image" ? post?.media_url : null);
-  const mediaVid = post?.video_url || (post?.media_type === "video" ? post?.media_url : null);
+  const mediaVidRaw = post?.video_url || (post?.media_type === "video" ? post?.media_url : null);
+  const mediaVid = mediaVidRaw ? absoluteImageUrl(mediaVidRaw) : null;
   const mediaLink = post?.link_url || (post?.media_type === "link" ? post?.media_url : null);
   const remaining = 178 - draft.length;
 
