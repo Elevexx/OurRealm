@@ -223,6 +223,12 @@ def serialize_user(doc: dict) -> dict:
         # the server has on file — may be offline if no socket attached.
         "presence_status_choice": (doc.get("presence_status_choice") or "online"),
         "presence_status": (doc.get("presence_status") or "offline"),
+        # Phase G — additional presence fields surfaced for every user.
+        # `is_live` is gated behind the live-streaming feature flag and
+        # currently always false until that ships. `last_seen_at` is
+        # exposed for clients that want to render a "last active" hint.
+        "is_live": bool(doc.get("is_live", False)),
+        "last_seen_at": doc.get("presence_last_seen"),
         # Number of friends — used by Trending. Falls back to live count.
         "follower_count": int(doc.get("follower_count")
                               if doc.get("follower_count") is not None

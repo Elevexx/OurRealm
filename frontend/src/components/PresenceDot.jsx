@@ -10,6 +10,7 @@
  * pulsing green dot for back-compatibility.
  */
 import React from "react";
+import { ENABLE_LIVE_PRESENCE } from "@/lib/presence";
 
 const COLORS = {
   live:      "#FF3F5A",
@@ -30,7 +31,10 @@ export default function PresenceDot({
   showOffline = false,
   "data-testid": testid,
 }) {
-  const effective = status || "online";
+  // Defense-in-depth: collapse "live" to "online" while the live feature
+  // is gated off, so a red dot can never appear via any code path.
+  let effective = status || "online";
+  if (effective === "live" && !ENABLE_LIVE_PRESENCE) effective = "online";
   // Hide completely when offline and not explicitly requested
   if (effective === "offline" && !showOffline) return null;
   const dotColor = color || COLORS[effective] || COLORS.online;
@@ -47,20 +51,10 @@ export default function PresenceDot({
       <style>{`@keyframes or-radar { 0% { transform: scale(0.6); opacity: 0.85 } 80% { transform: scale(2.2); opacity: 0 } 100% { transform: scale(2.2); opacity: 0 } }`}</style>
       <span style={{
         position: "absolute", top: 2, left: 2, width: size, height: size, borderRadius: "50%",
-        background: dotColor, boxShadow: `0 0 8px ${dotColor}`,
+        background: dotColor,
       }} />
-      {isAnimated && (
-        <>
-          <span style={{
-            position: "absolute", top: 2, left: 2, width: size, height: size, borderRadius: "50%",
-            background: dotColor, opacity: 0.6, animation: "or-radar 1.8s ease-out infinite",
-          }} />
-          <span style={{
-            position: "absolute", top: 2, left: 2, width: size, height: size, borderRadius: "50%",
-            background: dotColor, opacity: 0.4, animation: "or-radar 1.8s ease-out infinite", animationDelay: "0.9s",
-          }} />
-        </>
-      )}
+      {/* Radar/glow intentionally omitted — the requirement is a small,
+          subtle dot with NO large glow or translucent bubble. */}
     </span>
   );
 }

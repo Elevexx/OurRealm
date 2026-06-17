@@ -20,6 +20,7 @@
 import React from "react";
 import PresenceDot from "@/components/PresenceDot";
 import { usePresence } from "@/contexts/PresenceContext";
+import { resolvePresence, shouldRenderPresenceDot } from "@/lib/presence";
 
 const BACKEND = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
 
@@ -35,13 +36,16 @@ function dicebear(seed) {
 }
 
 // Bubble metrics — small, subtle status dot at the bottom-right *edge*
-// of the circular avatar (sits ON the border, partially overlapping it
-// like the original OurRealm online indicator).
+// of the circular avatar. Sized like a classic IM online indicator
+// (~10-12 % of the avatar, never huge).
 function dotMetrics(size) {
-  // ~22 % of the avatar — keeps the dot readable but never huge.
-  const dot = Math.max(7, Math.round(size * 0.22));
-  // 1-px punch-out ring on small avatars, 2-px on larger ones.
-  const pad = size <= 36 ? 1 : 2;
+  // ~11 % of the avatar with a 7 px floor, capped at 16 px so very large
+  // profile photos still get a compact dot (matches the iPhone reference
+  // mockup the founder shared).
+  const dot = Math.min(16, Math.max(7, Math.round(size * 0.11)));
+  // 2-3 px border matching the surrounding card background — keeps the
+  // dot crisp against any photo without a translucent halo.
+  const pad = size <= 36 ? 1 : (size <= 80 ? 2 : 3);
   // Inset from the wrapper's right/bottom edge so the dot sits on the
   // lower-right of the circle, partially overlapping the border.
   const inset = Math.max(0, Math.round(size * 0.04));
@@ -65,10 +69,10 @@ export default function UserAvatar({
   // useContext is safe even without a PresenceProvider — falls back to
   // the default {statuses: {}} value baked into the context.
   const { statuses } = usePresence();
-  const liveStatus = status
-    || (u.id && statuses ? statuses[u.id] : undefined)
-    || u.presence_status
-    || "offline";
+  // Single source of truth for presence color/visibility. Funnels every
+  // call site through the feature-flagged resolver so red NEVER renders
+  // while ENABLE_LIVE_PRESENCE is off.
+  const liveStatus = resolvePresence({ user: u, statuses, override: status });
 
   const src = abs(u.avatar_url) || dicebear(u.name || u.username || "OurRealm");
   const m = dotMetrics(size);
@@ -121,7 +125,7 @@ export default function UserAvatar({
       data-avatar-user-id={u.id || undefined}
     >
       {Img}
-      {showPresence && liveStatus && liveStatus !== "offline" && liveStatus !== "invisible" && (
+      {showPresence && shouldRenderPresenceDot(liveStatus) && (
         <span
           aria-hidden="true"
           style={{

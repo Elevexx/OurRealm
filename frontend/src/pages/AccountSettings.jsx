@@ -389,11 +389,22 @@ function Card({ title, Icon, children }) {
 // ─────────────────────────────────────────────────────────────────────
 function StatusSelectorCard() {
   const { myStatus, setMyStatus } = usePresence();
-  const OPTIONS = [
-    { id: "live",      label: "Live",      desc: "Show others you're live.",        color: "#FF3F5A" },
+  // Hide "Live" until live streaming actually ships
+  // (ENABLE_LIVE_PRESENCE feature flag in /lib/presence).
+  const ALL_OPTIONS = [
+    { id: "live",      label: "Live",      desc: "Show others you're live.",        color: "#FF3F5A", flag: "live" },
     { id: "online",    label: "Online",    desc: "Available across the app.",       color: "var(--brand-green)" },
     { id: "invisible", label: "Invisible", desc: "Appear offline to everyone.",     color: "#5A6378" },
   ];
+  // eslint-disable-next-line global-require
+  const { ENABLE_LIVE_PRESENCE } = require("@/lib/presence");
+  const OPTIONS = ALL_OPTIONS.filter((o) => o.flag !== "live" || ENABLE_LIVE_PRESENCE);
+  // If the user's stored choice is "live" but the flag is off, snap them
+  // to "online" silently so their visible status is correct.
+  React.useEffect(() => {
+    if (!ENABLE_LIVE_PRESENCE && myStatus === "live") setMyStatus("online");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myStatus]);
   return (
     <div className="or-surface p-4" data-testid="settings-status-card">
       <div className="flex items-center gap-2 mb-2">
