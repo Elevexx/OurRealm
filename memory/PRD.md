@@ -1,80 +1,62 @@
 # OurRealm — Product Requirements Document (PRD)
 
 ## Mission
-Premium social platform rebranded from the original "widget-stage" / Orbit prototype.
-Multi-mode visual system + drag-and-drop widget profiles + unified messaging + Sounds library + Polls + personalization.
-
-## Core Modes
-Neon, Business, Millennium, Stealth.
+Premium social platform with multi-mode UI, widget profiles, unified messaging, Sounds library, Polls, personalization, Home Dashboard, and Admin analytics.
 
 ## Tech Stack
-- **Frontend**: React 19, TailwindCSS, lucide-react, framer-motion, @dnd-kit, @supabase/supabase-js v2
-- **Backend**: FastAPI + MongoDB (Motor) for users, profiles, posts (+polls), friends, images, geo, sounds, preferences
-- **Messaging (Phase 3)**: **Supabase** (Postgres + Realtime) — single unified system for Chats/Groups/Realms
-- **Audio (Phase 4A)**: FastAPI + disk-backed `services.audio_store`, `mutagen` duration extraction
-- **Geo**: `pgeocode` — `ALLOWED_RADII = {10,20,50,100,250,500}`
+React 19 · FastAPI · MongoDB (Motor) · Supabase (Postgres + Realtime for messaging only) · Mutagen · pgeocode.
 
-## Architecture: dual-store (unchanged)
+## Architecture: dual-store
 | Domain | Storage |
 |---|---|
-| Users, auth (JWT), profiles, widgets, friends, posts (with optional polls), comments, likes, notifications, images, tracks, track_likes, preferences, ZIP/radius | MongoDB |
+| Users, auth (JWT), profiles, widgets, friends, posts (+polls), comments, likes, notifications, images, tracks, track_likes, preferences, **dashboards** (Phase 5), ZIP/radius | MongoDB |
 | Chats, Groups, Realms, Messages | Supabase Postgres + Realtime |
 
 ## Completed Phases
-- Phase 1, 2, 2.5, 3, 4A, 4A follow-up (Share to Chat) and Phase 4B (Polls, Personalization, Search) — all shipped & curl-verified.
-- **Phase 4B follow-up (Feb 2026 — SHIPPED)**: "Made for You" rail above Top 100.
-- **Landing + Modes refresh (Feb 2026 — SHIPPED)**: pure CSS/SVG mode previews + preview-only Landing selector.
+- 1, 2, 2.5, 3, 4A (+ Share to Chat follow-up), 4B (Polls/Personalization/Search), 4B follow-up (Made for You rail), Landing/Modes refresh, PWA icon update, mode animations.
+- **Phase 5 (Feb 2026 — SHIPPED foundation)**: Home Dashboard, Admin Analytics, PWA install prompt, media autoplay hook.
 
-## Phase 4B follow-up — "Made for You" rail
-- New endpoint `GET /api/sounds/me/personalized` → `{ active, total_plays, total_likes }` using existing `prefs_summarise` + `personalization_active`.
-- Sounds page renders horizontally-scrollable rail above Top 100 **only when** the user has crossed the activation threshold (`total_plays + 2·total_likes ≥ 5`).
-- Reuses existing `/api/sounds/feed` endpoint with the 70/30 personalization blend — no new ranking system, no duplicated feed logic.
-- Mobile-first horizontal scroll, 180 px cards, single click → play via the singleton audio player.
+## Phase 5 — what shipped this round
+### PWA install prompt (`components/InstallPrompt.jsx`)
+- Globally mounted in `App.js`. Auto-shows ~5.5s after first paint for non-standalone visitors; remembers dismissal in localStorage for 14 days.
+- Android: uses `beforeinstallprompt` for one-tap install.
+- iOS/Safari: Share → Add to Home Screen → Add walkthrough (3 steps with icons).
+- Themed via existing OurRealm surfaces; shows `/icon-192.png` (the new transparent maskable icon).
+- Detects standalone mode and never shows when already installed.
 
-## Landing + Modes preview refresh
-- **No backend or routing changes.** Mode names unchanged. Saved app mode persistence flow untouched.
-- New component `components/ModePreviewArt.jsx` — CSS/SVG-only themed art for each mode (zero external images, zero copyright risk, fast loading, mobile-first).
-  - **Neon**: deep purple→cyan base, hologram panels, particle grid
-  - **Business**: cream gradient, frosted dashboard with gold analytics bars, silver pill
-  - **Millennium**: sky-blue→green sky, soft clouds, glossy 3D chat-bubble & green orb, translucent card (original — no copy of any existing OS)
-  - **Stealth**: dark grid + scan lines + animated radar sweep + telemetry chip (no IP references)
-- `Landing.jsx`:
-  - 2x2 full-screen quadrants (TL/TR/BL/BR).
-  - **Preview-only click model**: clicking a quadrant updates LOCAL `previewMode` state — does NOT call `setMode`. Saved app mode unchanged until normal /modes flow.
-  - Center widget re-skins on click: ambient halo, preview pill ("NEON MODE · PREVIEW"), logo drop-shadow, headline gradient, and welcome-text glow all reactively use the active preview's accent.
-  - Sign up / Sign in / Browse-as-guest functionality preserved exactly.
-- `ModesPage.jsx`: same `<ModePreviewArt>` swapped in for the previous external image. All mode selection + apply behavior preserved.
+### Home Dashboard (`pages/HomeDashboard.jsx`, `routers/phase5.py`)
+- New `/home` route now renders the dashboard. Legacy interest-picker home preserved at `/home/legacy`.
+- Backend persistence: `GET/PUT /api/dashboard/layout` (per-user widget list). First call seeds 5 defaults.
+- Customize mode: reorder (up/down arrows), remove, per-widget visibility (Public/Friends/Private — Custom shape stored, multi-select UI deferred).
+- Widget library modal with all 14 widget types from spec.
+- Live widgets implemented: **For You Feed**, **Weather** (ZIP-aware placeholder structure), **Realms** (reads Supabase), **Groups** (reads Supabase), **Top News** (placeholder rows), **Trending Sounds** (reads `/sounds/charts/top100`). Remaining widget types render a clean "structurally ready" placeholder.
+- "Add Home Widgets" outlined dashed tile at end of grid.
 
-## Phase 3 Auth bridging (unchanged)
-RLS commented out — enable via Supabase Auth signin OR custom JWT signed with project secret.
+### Admin Analytics (`pages/AdminAnalytics.jsx`, `/api/admin/analytics`)
+- **Server-side guarded** — checks `current["username"] == "stealth"`; non-admin gets HTTP 403 (curl-verified).
+- Aggregated user metrics (total/new signups/DAU/MAU/retention), content (posts series + media distribution + likes/comments), messaging (messages/chats/groups/realms), sounds (uploads series + category distribution + total plays + top 10).
+- Time range selector: 24h / 7d / 30d / all time.
+- Inline SVG line charts + horizontal bar charts (zero chart-lib weight).
+- Accessible at `/admin` and `/admin/analytics`.
 
-## Performance
-- All mode-preview art is pure CSS/SVG → near-zero network cost vs. previous Unsplash images.
-- "Made for You" rail uses the existing `/sounds/feed` endpoint — one extra HTTP request only when the user is activated.
-- Sounds search debounced 300 ms; polls live-refresh every 8 s while open.
+### Media autoplay hook (`lib/useAutoplayOnVisible.js`)
+- `IntersectionObserver`-based; threshold 0.5. Auto-plays muted video when ≥50% visible; pauses when off-screen. Ready to drop into feed cards, profile media, etc.
 
-## Roadmap
-| Priority | Item | Status |
-|---|---|---|
-| P1 | Track detail modal | not started |
-| P1 | Group/Realm Member Directory | deferred |
-| P1 | Pinned Chats | deferred |
-| P1 | RLS enforcement | deferred |
-| P2 | Sent/Delivered/Read indicators | deferred |
-| P2 | Playlists (schema reserved) | not started |
-| P2 | Wallet integrations | deferred |
-| P3 | Voice/video Calls | deferred |
-| P3 | AI Sounds (Phase 4C+) | placeholder shipped |
-| P3 | Live audio rooms | schema reserved |
-| P3 | Remixing | schema reserved |
+### Existing endpoints + Phase 3 messenger: untouched.
 
-## Known Mocked
-- Calls tab (UI placeholder)
-- Wallet payments
-- Featured carousel mock fallback only when zero uploads platform-wide
+## ⚠️ Explicitly deferred in Phase 5 (next pass)
+These are written into the spec but not yet implemented — flagging so they're not assumed shipped:
+
+1. **Custom-visibility multi-select friends UI** — schema stores `custom_user_ids[]` but the multi-select picker is not wired (visibility currently chooses among Public/Friends/Private).
+2. **Widget resize** — `size` field is persisted (`sm/md/lg/xl`), but no drag-to-resize UI yet.
+3. **Feed Customize page rename + "Pick your interest" subtitle + icon-only small-mobile bars** — current Feed page already has a "Customize Feed" CTA, but the legacy /home/legacy page wasn't fully re-titled.
+4. **Sounds UI polish — bigger category cards with unique colors/graphics** — tabs already colored & iconed; full "card hero" treatment not done.
+5. **Mode visual updates — additional representative imagery beyond CSS art** — the CSS-art previews already shipped; no extra imagery added this pass.
+6. **Media autoplay wired into every feed card** — the hook ships, but I did NOT touch all consumer components in this pass (Feed, Profile, RealmDetail). Drop `useAutoplayOnVisible` into the `<video>` JSX where needed.
+7. **Real weather + news API integration** — placeholders exist; pick provider keys next.
 
 ## Test Credentials
 See `/app/memory/test_credentials.md`.
 
 ---
-*Last updated: Feb 2026 — "Made for You" rail + Landing/Modes CSS-art refresh shipped. Lint clean across all changes.*
+*Last updated: Feb 2026 — Phase 5 foundation shipped (PWA install prompt, Home Dashboard, Admin analytics, autoplay hook). Deferred items documented above.*

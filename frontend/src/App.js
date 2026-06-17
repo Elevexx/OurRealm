@@ -7,6 +7,8 @@ import Landing from "@/pages/Landing";
 import SignUp from "@/pages/SignUp";
 import SignIn from "@/pages/SignIn";
 import Home from "@/pages/Home";
+import HomeDashboard from "@/pages/HomeDashboard";
+import AdminAnalytics from "@/pages/AdminAnalytics";
 import Feed from "@/pages/Feed";
 import Discover from "@/pages/Discover";
 import Sounds from "@/pages/Sounds";
@@ -27,6 +29,7 @@ import AccountSettings from "@/pages/AccountSettings";
 import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage } from "@/pages/LegalPages";
 import PostPopup from "@/components/PostPopup";
 import MiniPlayer from "@/components/MiniPlayer";
+import InstallPrompt from "@/components/InstallPrompt";
 
 function ShellRoute({ children }) {
   const { isLoading } = useAuth();
@@ -49,7 +52,10 @@ function App() {
             <Route path="/" element={<Landing />} />
             <Route path="/signup" element={<SignUp />} />
             <Route path="/signin" element={<SignIn />} />
-            <Route path="/home" element={<ShellRoute><Home /></ShellRoute>} />
+            <Route path="/home" element={<ShellRoute><HomeDashboard /></ShellRoute>} />
+            <Route path="/home/legacy" element={<ShellRoute><Home /></ShellRoute>} />
+            <Route path="/admin" element={<ShellRoute><AdminAnalytics /></ShellRoute>} />
+            <Route path="/admin/analytics" element={<ShellRoute><AdminAnalytics /></ShellRoute>} />
             <Route path="/featured" element={<ShellRoute><Featured /></ShellRoute>} />
             <Route path="/realms" element={<ShellRoute><Realms /></ShellRoute>} />
             <Route path="/realms/:id" element={<ShellRoute><RealmDetail /></ShellRoute>} />
@@ -76,6 +82,7 @@ function App() {
           </Routes>
           <PostPopup />
           <MiniPlayer />
+          <InstallPrompt trigger="auto" />
         </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>

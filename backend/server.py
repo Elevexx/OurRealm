@@ -27,6 +27,7 @@ from routers import notifications as notifications_router_mod
 from routers import images as images_router_mod
 from routers import threads as threads_router_mod
 from routers import sounds as sounds_router_mod
+from routers import phase5 as phase5_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -57,6 +58,7 @@ app.include_router(notifications_router_mod.router)
 app.include_router(images_router_mod.router)
 app.include_router(threads_router_mod.router)
 app.include_router(sounds_router_mod.router)
+app.include_router(phase5_router_mod.router)
 
 app.add_middleware(
     CORSMiddleware,
