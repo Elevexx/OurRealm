@@ -511,6 +511,16 @@ export default function Profile() {
             {!isGuest && user && (
               <button
                 className="or-btn or-btn-ghost"
+                onClick={() => navigate("/profile/support")}
+                data-testid="profile-support-link"
+                title="OurRealm Support"
+              >
+                <Icons.LifeBuoy size={14} /> Support
+              </button>
+            )}
+            {!isGuest && user && (
+              <button
+                className="or-btn or-btn-ghost"
                 onClick={() => { setEditing(true); setAddOpen(true); }}
                 data-testid="profile-edit-widgets"
                 title="Manage widgets"

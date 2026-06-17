@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from core.db import db
-from core.deps import CurrentUser
+from core.deps import CurrentUser, require_admin
 from services.moderation import (
     REASONS, STATUS_APPROVED, STATUS_HIDDEN, STATUS_PENDING_REVIEW,
     STATUS_REJECTED, log_action, scan_content,
@@ -31,8 +31,7 @@ CONTENT_TYPES = {"post": "posts", "comment": "comments", "profile": "users",
 
 
 def _require_admin(user: dict) -> None:
-    if not ((user.get("username") or "").lower() == "stealth" or user.get("is_founder")):
-        raise HTTPException(status_code=403, detail="Admin only")
+    require_admin(user)
 
 
 # ─── User-facing report endpoint ──────────────────────────────────────
@@ -189,6 +188,25 @@ async def take_action(content_type: str, content_id: str, payload: ActionPayload
     doc = await coll.find_one({"id": content_id}, {"_id": 0})
     if not doc and payload.action != "acknowledge":
         raise HTTPException(status_code=404, detail="Not found")
+
+    # Phase B — protect the @support / @stealth system accounts from
+    # destructive admin actions (ban, delete on a profile doc).
+    if doc and payload.action in ("ban", "delete"):
+        target_id = doc.get("author_id") or doc.get("user_id") or doc.get("id")
+        if target_id:
+            target = await db.users.find_one(
+                {"id": target_id},
+                {"_id": 0, "username": 1, "is_protected": 1, "is_founder": 1},
+            )
+            if target and (
+                target.get("is_protected")
+                or target.get("is_founder")
+                or (target.get("username") or "").lower() in ("support", "stealth")
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="This account is protected and cannot be banned or deleted.",
+                )
 
     now = datetime.now(timezone.utc).isoformat()
     status_map = {

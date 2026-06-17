@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from core.db import db
-from core.deps import CurrentUser
+from core.deps import CurrentUser, require_admin
 from services.upload_limits import remaining_for_user
 
 
@@ -117,8 +117,7 @@ async def _series(collection, since: Optional[datetime], days: int, date_field: 
 
 
 def _require_admin(current: dict):
-    if (current.get("username") or "").lower() != ADMIN_USERNAME:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    require_admin(current)
 
 
 @router.get("/admin/analytics")

@@ -172,6 +172,7 @@ function Header() {
 // available without a schema change.
 // ─────────────────────────────────────────────────────────────────────
 function ChatsTab({ me }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState(null); // a "thread" row from /api/messages/threads
@@ -196,6 +197,36 @@ function ChatsTab({ me }) {
   }, [resolve]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Phase B — deep link: /messages?dm=<username> auto-opens the DM
+  // overlay with that peer (used by /profile/support → "Create Ticket").
+  useEffect(() => {
+    const dm = searchParams.get("dm");
+    if (!dm || !me?.id || active) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await apiClient.get(`/profile/by-username/${dm}`);
+        const peer = data?.user || data;
+        if (cancelled || !peer?.id) return;
+        setActive({
+          conv_id: [me.id, peer.id].sort().join(":"),
+          peer,
+          last_text: null,
+          last_at: null,
+          is_pinned: false,
+        });
+      } catch (e) {
+        console.warn("dm deep link failed", e);
+      } finally {
+        // Strip the param so refreshing doesn't reopen the same modal.
+        const p = new URLSearchParams(searchParams);
+        p.delete("dm");
+        setSearchParams(p, { replace: true });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [searchParams, me?.id, active, setSearchParams]);
 
   const onStartChat = useCallback((friend) => {
     // Synthesise an "active" thread so the DM overlay opens immediately.

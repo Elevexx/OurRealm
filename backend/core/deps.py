@@ -34,6 +34,27 @@ async def get_current_user(request: Request) -> dict:
 CurrentUser = Annotated[dict, Depends(get_current_user)]
 
 
+# Admin gate — used by every /api/admin/* router. Both @stealth (founder)
+# and @support (system account) have full admin access. Regular users
+# never do. Keep this in one place so we can't drift across routers.
+ADMIN_USERNAMES = {"stealth", "support"}
+
+
+def is_admin_user(user: dict | None) -> bool:
+    if not user:
+        return False
+    if user.get("is_founder"):
+        return True
+    if (user.get("role") or "").lower() == "admin":
+        return True
+    return (user.get("username") or "").lower() in ADMIN_USERNAMES
+
+
+def require_admin(user: dict) -> None:
+    if not is_admin_user(user):
+        raise HTTPException(status_code=403, detail="Admin only")
+
+
 # ----- Brute-force lockout -----
 async def check_lockout(identifier: str) -> None:
     record = await db.login_attempts.find_one({"identifier": identifier})

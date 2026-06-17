@@ -26,6 +26,8 @@ import WidgetLibrary from "@/pages/WidgetLibrary";
 import Profile from "@/pages/Profile";
 import Settings from "@/pages/Settings";
 import AccountSettings from "@/pages/AccountSettings";
+import Support from "@/pages/Support";
+import AdminSupport from "@/pages/AdminSupport";
 import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage } from "@/pages/LegalPages";
 import PostPopup from "@/components/PostPopup";
 import MiniPlayer from "@/components/MiniPlayer";
@@ -76,6 +78,8 @@ function App() {
             <Route path="/profile" element={<ShellRoute><Profile /></ShellRoute>} />
             <Route path="/settings" element={<ShellRoute><Settings /></ShellRoute>} />
             <Route path="/settings/account" element={<ShellRoute><AccountSettings /></ShellRoute>} />
+            <Route path="/profile/support" element={<ShellRoute><Support /></ShellRoute>} />
+            <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
             <Route path="/terms" element={<TermsOfServicePage />} />
             <Route path="/terms-conditions" element={<TermsConditionsPage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />

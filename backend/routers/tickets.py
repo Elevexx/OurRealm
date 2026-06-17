@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from core.db import db
-from core.deps import CurrentUser
+from core.deps import CurrentUser, require_admin
 
 
 router = APIRouter(tags=["support"])
@@ -37,8 +37,7 @@ STATUS_MESSAGES = {
 
 
 def _require_admin(user: dict) -> None:
-    if not ((user.get("username") or "").lower() == "stealth" or user.get("is_founder")):
-        raise HTTPException(status_code=403, detail="Admin only")
+    require_admin(user)
 
 
 async def _support_user() -> Optional[dict]:
@@ -112,6 +111,7 @@ async def ensure_ticket(payload: EnsurePayload, current: CurrentUser):
         "updated_at":     now,
     }
     await db.tickets.insert_one(ticket)
+    ticket.pop("_id", None)
     await _send_support_message(
         support_id=support["id"],
         user_id=current["id"],

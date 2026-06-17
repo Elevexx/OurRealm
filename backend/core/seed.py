@@ -301,6 +301,10 @@ async def seed_support_account():
         )
     log.info(f"Auto-friended @support with {n_users} existing users")
     return existing
+
+
+async def run_startup():
+    """Single entry point invoked from `server.on_startup`."""
     await ensure_indexes()
     await seed_admin()
     founder = await seed_founder()

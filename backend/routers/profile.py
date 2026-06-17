@@ -71,6 +71,9 @@ async def change_username(payload: UsernameChangePayload, current: CurrentUser):
     new_un = payload.username.lower().strip()
     if new_un == (current.get("username") or "").lower():
         return {"ok": True, "user": serialize_user(current)}
+    # Phase B — @support is a protected system account; refuse rename.
+    if current.get("is_protected") or (current.get("username") or "").lower() == "support":
+        raise HTTPException(status_code=403, detail="This account is protected and cannot be renamed.")
     # Cooldown
     last = current.get("username_changed_at")
     if last:
