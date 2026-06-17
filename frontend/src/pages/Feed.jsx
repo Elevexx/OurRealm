@@ -381,6 +381,8 @@ export default function Feed() {
                     <span
                       className="absolute right-0 text-[11px] whitespace-nowrap px-2 py-1 sm:hidden"
                       data-testid="feed-composer-vip-tooltip-mobile"
+                      role="status"
+                      aria-live="polite"
                       style={{
                         top: "calc(100% + 4px)",
                         borderRadius: "calc(var(--radius) - 6px)",
