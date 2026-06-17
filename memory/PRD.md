@@ -124,6 +124,7 @@ Native helpdesk riding on the existing MongoDB DM messenger. No new third-party 
 ### Polish
 - **`InstallPrompt.jsx`** session-storage gate already shipped in Phase 8; documented here for completeness.
 - `ShareToUserModal` success-Sent visible duration bumped to 1500 ms.
+- **iOS Safari uploaded-video regression hotfix (Feb 2026)** — `AutoplayVideo` now sets `autoPlay`, `muted`, `playsInline`, `controls`, `preload="metadata"` plus `webkit-playsinline` / `x5-playsinline` directly on the JSX so iOS does not short-circuit playback and render the crossed-out play badge. `VideoEmbed.classifyVideoUrl` strips `?query` / `#fragment` before matching and treats any URL containing `/api/videos/` as a file — uploaded videos can never accidentally route to the iframe branch even with query strings appended.
 
 ### What's NOT in Phase 5
 - WelcomeChooser deep-link passthrough — when the user is authenticated, hitting `/messages/<peer>` directly should bypass the chooser. (Backlog — affects deep-link landing UX only.)

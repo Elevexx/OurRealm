@@ -20,7 +20,12 @@ import AutoplayVideo from "@/components/AutoplayVideo";
 export function classifyVideoUrl(raw) {
   if (!raw) return { kind: "none" };
   const url = String(raw);
-  if (/\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(url) || url.startsWith("/api/videos/")) {
+  // PRIORITY ORDER — uploaded files (or our own video server) always win
+  // over the iframe/embed branch, even if the URL happens to contain a
+  // "vimeo.com" query parameter or similar. iOS Safari needs the native
+  // <video> path with autoplay + playsInline, not an iframe.
+  const stripped = url.split("?")[0].split("#")[0];
+  if (/\.(mp4|webm|ogg|mov|m4v)$/i.test(stripped) || url.includes("/api/videos/")) {
     return { kind: "file", url };
   }
   // YouTube
