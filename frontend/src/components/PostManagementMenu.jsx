@@ -112,99 +112,102 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
   const tid = testid || `post-manage-${post.id}`;
 
   // ── Menu content (used in both mobile and desktop overlays) ─────────
-  const VisGrid = isOwner ? (
-    <>
-      <div
-        className="text-[10px] uppercase tracking-widest mb-2"
-        style={{ color: "var(--text-muted)" }}
-        data-testid={`${tid}-title`}
-      >
-        Who can see this
-      </div>
-      <div
-        className="grid grid-cols-2 gap-1.5"
-        data-testid={`${tid}-vis-grid`}
-      >
-        {VIS_OPTIONS.map(({ id, label, Icon }) => {
-          const active = vis === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              disabled={busy}
-              onClick={() => (id === "custom" ? setPickFriends(true) : updateVisibility(id))}
-              className="text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-2 py-2"
-              style={{
-                borderRadius: 6,
-                background: active ? "color-mix(in srgb, var(--primary) 22%, transparent)" : "transparent",
-                color: active ? "var(--primary)" : "var(--text-main)",
-                border: active ? "1px solid var(--primary)" : "1px solid var(--border-col)",
-                opacity: busy ? 0.6 : 1,
-                wordBreak: "break-word",
-                overflowWrap: "anywhere",
-                whiteSpace: "normal",
-                maxWidth: "100%",
-                minWidth: 0,
-              }}
-              data-testid={`${tid}-vis-${id}`}
-            >
-              <Icon size={11} /> {label}
-            </button>
-          );
-        })}
-      </div>
-    </>
-  ) : null;
-
-  const DeleteSection = (
-    <div
-      className="mt-3 pt-3"
-      style={{ borderTop: isOwner ? "1px solid var(--border-col)" : "none" }}
-    >
-      <button
-        type="button"
-        disabled={busy}
-        onClick={remove}
-        className="w-full text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-3 py-2.5"
-        style={{
-          borderRadius: 6,
-          background: "color-mix(in srgb, #FF3F5A 16%, transparent)",
-          color: "#FF8080",
-          border: "1px solid color-mix(in srgb, #FF3F5A 35%, transparent)",
-          wordBreak: "break-word",
-          overflowWrap: "anywhere",
-          whiteSpace: "normal",
-          maxWidth: "100%",
-        }}
-        data-testid={`${tid}-delete`}
-      >
-        {busy ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Delete
-      </button>
-    </div>
-  );
-
-  // The menu body (without its outer positioning container).
-  const MenuBody = (
-    <>
-      {VisGrid}
-      {DeleteSection}
-      {err && (
-        <div className="w-full text-[11px] mt-2" style={{ color: "#FF8080" }} data-testid={`${tid}-error`}>
-          {err}
+  // `idScope` lets each variant own a distinct child-testid namespace so
+  // automated tests can target one without ambiguous duplicates.
+  const renderMenu = (idScope = tid) => {
+    const VisGrid = isOwner ? (
+      <>
+        <div
+          className="text-[10px] uppercase tracking-widest mb-2"
+          style={{ color: "var(--text-muted)" }}
+          data-testid={`${idScope}-title`}
+        >
+          Who can see this
         </div>
-      )}
-      <button
-        type="button"
-        onClick={closeMenu}
-        className="absolute -top-2 -right-2 rounded-full"
-        style={{ width: 22, height: 22, background: "var(--surface-2)", border: "1px solid var(--border-col)", color: "var(--text-muted)" }}
-        aria-label="Close menu"
-        data-testid={`${tid}-close`}
+        <div
+          className="grid grid-cols-2 gap-1.5"
+          data-testid={`${idScope}-vis-grid`}
+        >
+          {VIS_OPTIONS.map(({ id, label, Icon }) => {
+            const active = vis === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                disabled={busy}
+                onClick={() => (id === "custom" ? setPickFriends(true) : updateVisibility(id))}
+                className="text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-2 py-2"
+                style={{
+                  borderRadius: 6,
+                  background: active ? "color-mix(in srgb, var(--primary) 22%, transparent)" : "transparent",
+                  color: active ? "var(--primary)" : "var(--text-main)",
+                  border: active ? "1px solid var(--primary)" : "1px solid var(--border-col)",
+                  opacity: busy ? 0.6 : 1,
+                  wordBreak: "break-word",
+                  overflowWrap: "anywhere",
+                  whiteSpace: "normal",
+                  maxWidth: "100%",
+                  minWidth: 0,
+                }}
+                data-testid={`${idScope}-vis-${id}`}
+              >
+                <Icon size={11} /> {label}
+              </button>
+            );
+          })}
+        </div>
+      </>
+    ) : null;
+
+    const DeleteSection = (
+      <div
+        className="mt-3 pt-3"
+        style={{ borderTop: isOwner ? "1px solid var(--border-col)" : "none" }}
       >
-        <X size={12} style={{ margin: "0 auto" }} />
-      </button>
-    </>
-  );
+        <button
+          type="button"
+          disabled={busy}
+          onClick={remove}
+          className="w-full text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-3 py-2.5"
+          style={{
+            borderRadius: 6,
+            background: "color-mix(in srgb, #FF3F5A 16%, transparent)",
+            color: "#FF8080",
+            border: "1px solid color-mix(in srgb, #FF3F5A 35%, transparent)",
+            wordBreak: "break-word",
+            overflowWrap: "anywhere",
+            whiteSpace: "normal",
+            maxWidth: "100%",
+          }}
+          data-testid={`${idScope}-delete`}
+        >
+          {busy ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Delete
+        </button>
+      </div>
+    );
+
+    return (
+      <>
+        {VisGrid}
+        {DeleteSection}
+        {err && (
+          <div className="w-full text-[11px] mt-2" style={{ color: "#FF8080" }} data-testid={`${idScope}-error`}>
+            {err}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={closeMenu}
+          className="absolute -top-2 -right-2 rounded-full"
+          style={{ width: 22, height: 22, background: "var(--surface-2)", border: "1px solid var(--border-col)", color: "var(--text-muted)" }}
+          aria-label="Close menu"
+          data-testid={`${idScope}-close`}
+        >
+          <X size={12} style={{ margin: "0 auto" }} />
+        </button>
+      </>
+    );
+  };
 
   // ── Portal-based overlay (viewport-level — never anchored to the post)
   const Overlay = open && createPortal(
@@ -242,7 +245,7 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
         onClick={(e) => e.stopPropagation()}
         data-testid={tid}
       >
-        {MenuBody}
+        {renderMenu(tid)}
       </div>
       {/* Desktop popover (≥640px) — anchored just below the toggle button
           using the rect we captured on open. */}
@@ -268,7 +271,7 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
           onClick={(e) => e.stopPropagation()}
           data-testid={`${tid}-desktop`}
         >
-          {MenuBody}
+          {renderMenu(`${tid}-desktop`)}
         </div>
       )}
     </>,
