@@ -299,8 +299,14 @@ async def presence_socket(ws: WebSocket):
                 if focused:
                     await _set_status(user_id, "messenger")
                 else:
-                    # Revert to user preference
-                    pref = (user.get("presence_status_choice") or "online").lower()
+                    # Revert to user preference. Re-read from DB in case the
+                    # user updated their pref via REST during this socket's
+                    # lifetime.
+                    fresh = await db.users.find_one(
+                        {"id": user_id},
+                        {"_id": 0, "presence_status_choice": 1},
+                    )
+                    pref = ((fresh or {}).get("presence_status_choice") or "online").lower()
                     if pref not in USER_PICKABLE_STATUSES:
                         pref = "online"
                     await _set_status(user_id, pref)
