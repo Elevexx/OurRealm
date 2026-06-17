@@ -183,7 +183,7 @@ export default function Feed() {
         </div>
         <button
           className="or-btn"
-          onClick={() => navigate("/home")}
+          onClick={() => navigate("/interests")}
           data-testid="feed-customize-feed"
           title="Re-select interests"
         >

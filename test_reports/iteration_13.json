@@ -1,0 +1,65 @@
+{
+  "summary": "Launch fixes verified end-to-end. Backend 14/14 pytest cases pass (regression smoke, register compliance, dashboard PUT sync, profile avatar PATCH, images upload + from-url, non-owner post mgmt). Frontend Playwright assertions pass for routing (/home, /feed, /discover, /interests), HomeDashboard Customize/Done + widget visibility persistence after reload, mobile bottom-sheet 2x2 grid + Delete fully visible at 375x800 + backdrop close, desktop right-anchored popover, @stealth on tfone post sees Delete only (no vis-grid), @tftwo sees no manage toggles on tfone posts, and AvatarPicker opens with all parts + URL save updates avatar.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": {
+    "backend_pytest_14_pass": [
+      "TestRegressionSmoke::test_auth_me (envelope {user:{...}})",
+      "TestRegressionSmoke::test_posts_list",
+      "TestRegressionSmoke::test_messages_threads",
+      "TestRegressionSmoke::test_upload_limits",
+      "TestRegressionSmoke::test_dashboard_layout_get",
+      "TestRegisterCompliance::test_register_with_all_4_booleans (200/201, username echoed)",
+      "TestRegisterCompliance::test_register_missing_compliance_rejected (400 when accepted_privacy=false)",
+      "TestDashboardSync::test_put_layout_returns_widgets (response echoes widgets with visibility, ids)",
+      "TestDashboardSync::test_layout_persisted_on_reload",
+      "TestDashboardSync::test_change_visibility_persists (public→friends, persists on GET)",
+      "TestAvatarFlow::test_profile_patch_avatar_url (PATCH /profile/me {avatar_url} → GET /auth/me reflects)",
+      "TestAvatarFlow::test_images_from_url_endpoint (returns url)",
+      "TestAvatarFlow::test_images_upload_endpoint (64x64 PNG via PIL, returns hosted url)",
+      "TestNonOwnerPostManagement::test_tftwo_cannot_delete_tfone_post (403)"
+    ],
+    "frontend_playwright_pass": [
+      "Login tfone → bottom-home navigates to /home and home-dashboard-edit-toggle visible",
+      "bottom-foryou → /feed",
+      "bottom-discover → /discover",
+      "/feed feed-customize-feed → /interests (NOT /home)",
+      "/interests page shows heading 'Customize Feed' and 'PICK YOUR INTEREST'",
+      "HomeDashboard Customize toggle text Customize→Done, click vis-public chip, PUT /dashboard/layout completes, Done→Customize→Done re-enters edit ok",
+      "After reload /home: widget visibility chip still selected (state synced with server)",
+      "375x800 /feed: feed-manage-{id}-backdrop=1, vis-grid=1 (grid-cols-2), all 4 vis chips (public/friends/custom/stealth), delete button fully visible (bottom <= 800), tapping backdrop closes menu",
+      "1280x900 /feed: menu width=420 right-anchored (x=373, mid=583≠vp_mid=640), backdrop NOT visible (sm:hidden)",
+      "@stealth on @tfone post: vis-grid count=0, delete count=1 (founder Delete-only)",
+      "@tftwo on /feed: manage toggle count <= count of own posts (zero on tfone-authored posts)",
+      "/profile (tfone, edit default): data-testid=profile-avatar-change visible → click → avatar-picker modal opens with preview + device tab + url tab",
+      "AvatarPicker URL tab: paste gstatic webp URL → url-save → modal closes; profile-avatar src updates to /api/images/...webp"
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_launch_fixes.py",
+    "/app/test_reports/pytest/launch_fixes.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PostManagementMenu.jsx mobile bottom-sheet correctly uses paddingBottom: calc(0.75rem + env(safe-area-inset-bottom)) and maxHeight 80vh so Delete is never cut off on iPhones; verified delete bbox bottom <= 800 at 375x800.",
+    "HomeDashboard.save() now syncs setWidgets(data.widgets) from PUT response — confirmed the visibility chip stays active after PUT and across full reload.",
+    "SignUp.jsx onSubmit routes to /interests on success — verified the /interests alias renders the legacy interest picker (Customize Feed / PICK YOUR INTEREST). Feed.jsx Customize Feed button also routes to /interests now.",
+    "AvatarPicker uses absoluteImageUrl on preview and PATCHes /profile/me { avatar_url } then refreshMe() — global user.avatar_url updates immediately and persists across reloads.",
+    "Non-owner permission gating in PostManagementMenu.canManagePost is enforced correctly: non-owner non-founder users see zero toggles; @stealth (founder) sees Delete but not the visibility chips, matching the documented spec.",
+    "Minor (not blocking): the small initial Playwright force-click on Customize Feed swallowed the navigation in one run; using a real click() worked. The button itself is fully functional — observed in retry. No code change needed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_launch_fixes.py (NEW)"
+  ],
+  "success_rate": { "backend": "100% (14/14)", "frontend": "100% (13/13 UI assertions)" },
+  "test_credentials": "tfone=testfriend1@example.com/pass1234, tftwo=testfriend2@example.com/pass1234, stealth=slopestyle2022@gmail.com/Password1$",
+  "seed_data_creation": "Ephemeral: one TEST_ post (deleted in teardown), one fresh registered user per run (test_iter13_*), one dashboard layout mutation on tfone (acceptable — layout is per-user and overwritable).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All launch-fix items pass. Tests live at /app/backend/tests/test_launch_fixes.py (14 cases, junit at /app/test_reports/pytest/launch_fixes.xml). The /api/images/upload endpoint requires a valid PNG — using PIL to build a real 64x64 png is the cleanest approach (a hand-crafted 1x1 hex stream returns 500 'broken data stream'). PostManagementMenu testid pattern is feed-manage-{post_id}-{toggle|vis-grid|vis-{level}|delete|backdrop|close}. AvatarPicker testids are avatar-picker, -close, -preview, -tab-device, -tab-url, -file-input, -url-input, -url-save, -error. HomeDashboard PUT response now echoes server-cleaned widgets — the UI relies on that to stay in sync; do not regress.",
+  "rca of the issue": "n/a — no defects found. All review-request items confirmed working."
+}

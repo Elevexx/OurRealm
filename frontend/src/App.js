@@ -54,6 +54,7 @@ function App() {
             <Route path="/signin" element={<SignIn />} />
             <Route path="/home" element={<ShellRoute><HomeDashboard /></ShellRoute>} />
             <Route path="/home/legacy" element={<ShellRoute><Home /></ShellRoute>} />
+            <Route path="/interests" element={<ShellRoute><Home /></ShellRoute>} />
             <Route path="/admin" element={<ShellRoute><AdminAnalytics /></ShellRoute>} />
             <Route path="/admin/analytics" element={<ShellRoute><AdminAnalytics /></ShellRoute>} />
             <Route path="/featured" element={<ShellRoute><Featured /></ShellRoute>} />

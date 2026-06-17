@@ -82,7 +82,14 @@ export default function HomeDashboard() {
 
   const save = useCallback(async (next) => {
     setWidgets(next);
-    try { await apiClient.put("/dashboard/layout", { widgets: next }); } catch { /* ignore */ }
+    try {
+      // Use the server-cleaned response so local state stays in sync with
+      // anything the server normalized (size enum, visibility enum, etc.).
+      // This prevents the "after save the widget isn't customizable" symptom
+      // where local + server state silently diverged.
+      const { data } = await apiClient.put("/dashboard/layout", { widgets: next });
+      if (Array.isArray(data?.widgets)) setWidgets(data.widgets);
+    } catch { /* keep optimistic state on transient errors */ }
   }, []);
 
   const add = (type) => {

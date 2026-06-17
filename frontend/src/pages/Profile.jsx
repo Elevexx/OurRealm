@@ -18,6 +18,7 @@ import TopEightWidget from "@/components/TopEightWidget";
 import Top8Editor from "@/components/Top8Editor";
 import PresenceDot from "@/components/PresenceDot";
 import VipBadge from "@/components/VipBadge";
+import AvatarPicker from "@/components/AvatarPicker";
 
 const SIZE_TO_CLASS = {
   small:  "col-span-2 sm:col-span-1 row-span-1",
@@ -362,6 +363,7 @@ export default function Profile() {
   const [form, setForm] = useState({ name: "", bio: "" });
   const [widgets, setWidgets] = useState(user?.widgets?.length ? user.widgets : DEFAULT_WIDGETS);
   const [addOpen, setAddOpen] = useState(false);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
 
   useEffect(() => { if (searchParams.get("edit") === "1") setEditing(true); }, [searchParams]);
   useEffect(() => {
@@ -428,13 +430,36 @@ export default function Profile() {
           background: "linear-gradient(135deg, color-mix(in srgb, var(--primary) 50%, transparent), color-mix(in srgb, var(--secondary) 50%, transparent))",
         }} />
         <div className="px-5 sm:px-8 pb-6 -mt-12 sm:-mt-14 flex flex-col sm:flex-row sm:items-end gap-4">
-          <img
-            src={user?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || "Guest")}`}
-            alt="avatar"
-            className="rounded-full object-cover"
-            style={{ width: 110, height: 110, border: "4px solid var(--surface)", background: "var(--surface)" }}
-            data-testid="profile-avatar"
-          />
+          <div className="relative shrink-0">
+            <img
+              src={user?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || "Guest")}`}
+              alt="avatar"
+              className="rounded-full object-cover"
+              style={{ width: 110, height: 110, border: "4px solid var(--surface)", background: "var(--surface)" }}
+              data-testid="profile-avatar"
+            />
+            {/* Avatar change CTA — visible only while editing the profile. */}
+            {editing && !isGuest && (
+              <button
+                type="button"
+                onClick={() => setAvatarPickerOpen(true)}
+                className="absolute -bottom-1 -right-1 flex items-center justify-center"
+                style={{
+                  width: 34, height: 34, borderRadius: "50%",
+                  background: "var(--primary)", color: "var(--primary-fg)",
+                  border: "2px solid var(--surface)",
+                  boxShadow: "0 4px 14px rgba(0,0,0,0.4)",
+                }}
+                aria-label={user?.avatar_url ? "Change profile picture" : "Add profile picture"}
+                title={user?.avatar_url ? "Change Profile Pic" : "Add Profile Pic"}
+                data-testid="profile-avatar-change"
+              >
+                {user?.avatar_url
+                  ? <Icons.Camera size={16} />
+                  : <Icons.Plus size={18} />}
+              </button>
+            )}
+          </div>
           <div className="flex-1 min-w-0">
             {/* VIP badge always rendered next to identity, including edit mode */}
             {user?.is_vip && (
@@ -526,6 +551,11 @@ export default function Profile() {
       </DndContext>
 
       <AddWidgetPicker open={addOpen} onClose={() => setAddOpen(false)} onPick={addWidget} />
+      <AvatarPicker
+        open={avatarPickerOpen}
+        onClose={() => setAvatarPickerOpen(false)}
+        onSaved={() => setAvatarPickerOpen(false)}
+      />
     </div>
   );
 }

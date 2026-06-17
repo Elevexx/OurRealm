@@ -6,10 +6,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import GuestPrompt from "@/components/GuestPrompt";
 
 const ITEMS_LEFT = [
-  // The Home button on the bottom navigation opens the For You feed
-  // (per the latest spec). The interest-picker page is reached via
-  // "Customize Feed" inside /feed itself.
-  { to: "/feed",     label: "Home",     Icon: Home,     testid: "bottom-home" },
+  // Home → new Home Dashboard (widget board). For You → personalized feed.
+  // Customize Feed (interest picker) is a separate page reached from /feed.
+  { to: "/home",     label: "Home",     Icon: Home,     testid: "bottom-home" },
   { to: "/discover", label: "Discover", Icon: Search,   testid: "bottom-discover" },
   { to: "/feed",     label: "For You",  Icon: Sparkles, testid: "bottom-foryou" },
 ];

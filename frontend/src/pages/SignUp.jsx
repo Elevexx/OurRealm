@@ -63,7 +63,7 @@ export default function SignUp() {
       policy_version: "2026-02-1",
     });
     setLoading(false);
-    if (res.ok) navigate("/home");
+    if (res.ok) navigate("/interests");
     else setError(res.error);
   };
 
