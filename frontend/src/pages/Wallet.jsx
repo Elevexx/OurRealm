@@ -1,9 +1,28 @@
-import React from "react";
+import React, { useState } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from "recharts";
-import { TrendingUp, ArrowUpRight, Wallet as WalletIcon, Clock, History } from "lucide-react";
-import { WALLET } from "@/data/mockData";
+import { TrendingUp, ArrowUpRight, Wallet as WalletIcon, Clock, History, X, Info } from "lucide-react";
+import { WALLET as RAW_WALLET } from "@/data/mockData";
+
+// Phase A — wallet is reset to $0.00 across the board until real payments
+// ship. We deep-clone the mockData object and zero every numeric value so
+// the existing layout, recharts, and grids render identically with empty
+// state. NO historical values remain visible.
+const WALLET = {
+  ...RAW_WALLET,
+  balance: 0,
+  pending: 0,
+  thirty_day: 0,
+  lifetime: 0,
+  monthly_change_pct: 0,
+  rows: RAW_WALLET.rows.map((r) => ({ ...r, amount: 0 })),
+  history: RAW_WALLET.history.map((h) => ({
+    month: h.month, creator: 0, merch: 0, music: 0, subscription: 0, ads: 0, tips: 0,
+  })),
+  transactions: [],
+};
 
 export default function Wallet() {
+  const [modalOpen, setModalOpen] = useState(true);
   return (
     <div className="max-w-7xl mx-auto" data-testid="wallet-page">
       <div className="mb-6 flex items-center gap-3">
@@ -12,6 +31,22 @@ export default function Wallet() {
           <div className="text-xs uppercase tracking-[0.25em]" style={{ color: "var(--text-muted)" }}>Creator economy</div>
           <h1 className="text-3xl sm:text-4xl" style={{ fontFamily: "var(--font-display)" }}>Wallet</h1>
         </div>
+      </div>
+
+      {/* Persistent "coming soon" notice — stays visible after the modal
+          is dismissed. Doesn't intrude on the existing layout. */}
+      <div
+        className="or-surface p-3 mb-4 flex items-center gap-2"
+        style={{
+          background: "color-mix(in srgb, var(--primary) 10%, transparent)",
+          border: "1px solid color-mix(in srgb, var(--primary) 35%, transparent)",
+        }}
+        data-testid="wallet-coming-soon-banner"
+      >
+        <Info size={14} style={{ color: "var(--primary)", flexShrink: 0 }} />
+        <span className="text-sm" style={{ color: "var(--text-main)" }}>
+          Support for wallet and payments is coming soon.
+        </span>
       </div>
 
       {/* Headline cards */}

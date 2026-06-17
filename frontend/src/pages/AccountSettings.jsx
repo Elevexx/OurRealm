@@ -5,6 +5,7 @@ import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, G
 import apiClient from "@/api/client";
 import VipBadge from "@/components/VipBadge";
 import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPicker";
+import { usePresence } from "@/contexts/PresenceContext";
 
 /**
  * Account Settings — Phase C. Implements:
@@ -269,6 +270,8 @@ export default function AccountSettings() {
               </button>
             </div>
           </Card>
+
+          <StatusSelectorCard />
         </div>
       )}
 
@@ -361,6 +364,57 @@ function Card({ title, Icon, children }) {
         <h3 className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>{title}</h3>
       </div>
       {children}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase C — Status Selector. The user picks one of:
+//    live | online | invisible
+// `messenger` is auto-set client-side when the user is actively in
+// /messages. `offline` is implicit (no socket).
+// ─────────────────────────────────────────────────────────────────────
+function StatusSelectorCard() {
+  const { myStatus, setMyStatus } = usePresence();
+  const OPTIONS = [
+    { id: "live",      label: "Live",      desc: "Show others you're live.",        color: "#FF3F5A" },
+    { id: "online",    label: "Online",    desc: "Available across the app.",       color: "var(--brand-green)" },
+    { id: "invisible", label: "Invisible", desc: "Appear offline to everyone.",     color: "#5A6378" },
+  ];
+  return (
+    <div className="or-surface p-4" data-testid="settings-status-card">
+      <div className="flex items-center gap-2 mb-2">
+        <span style={{ width: 14, height: 14, display: "inline-block", borderRadius: "50%", background: "var(--primary)" }} />
+        <h3 className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>Status</h3>
+      </div>
+      <div className="text-[12px] mb-3" style={{ color: "var(--text-muted)" }}>
+        Choose how you appear to friends across OurRealm. While in Messenger you&apos;ll automatically show as <strong>In Messenger</strong>.
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {OPTIONS.map((o) => (
+          <button
+            key={o.id}
+            onClick={() => setMyStatus(o.id)}
+            data-active={myStatus === o.id}
+            data-testid={`status-option-${o.id}`}
+            className="or-surface p-3 text-left flex items-center gap-2"
+            style={{
+              background: myStatus === o.id ? "color-mix(in srgb, var(--primary) 18%, transparent)" : "var(--surface)",
+              outline: myStatus === o.id ? "1px solid var(--primary)" : "none",
+            }}
+          >
+            <span style={{
+              width: 10, height: 10, borderRadius: "50%",
+              background: o.color, boxShadow: `0 0 8px ${o.color}`,
+              display: "inline-block",
+            }} />
+            <div>
+              <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>{o.label}</div>
+              <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{o.desc}</div>
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

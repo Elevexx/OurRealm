@@ -1,0 +1,59 @@
+{
+  "summary": "Phase C — Real-Time Presence System & Real Discover/Trending tested end-to-end. Backend: 18/18 PASS in /app/backend/tests/test_phase_c_presence.py covering GET /api/users/newest (sort by created_at DESC, support hidden, limit clamp 1..60), GET /api/users/trending (follower_count DESC, support hidden), PATCH /api/users/status (accepts live/online/invisible; 400 for messenger, offline, bogus), GET /api/presence/me (returns status + public_status), GET /api/presence/friends (priority sort live→online→messenger→invisible→offline + correct shape), /auth/me serializer includes presence_status, presence_status_choice, follower_count, WebSocket /api/ws/presence?token=<jwt> hello/heartbeat→pong/presence:set/presence:focus messenger=true, two-account broadcast (tfone live → stealth receives presence:update status=live; tfone invisible → stealth receives status=offline), invalid token close, last-socket-closed → user marked offline. Frontend live on https://realm-deploy.preview.emergentagent.com: /discover renders with discover-page + discover-row-creators + discover-row-newest test ids, 20 real users in each row, ZERO hardcoded fakes (LunaX/Jaxon/Nova/Striker/Zara/Kai/Milo NOT present). /featured renders 12 real users in 'Top creators by followers' sorted by follower_count DESC, @stealth first (85 followers), ZERO fakes. /settings/account renders settings-status-card with live/online/invisible options; clicking 'Live' calls PATCH /api/users/status and /presence/me reflects {status:'live',public_status:'offline'} (offline since no live WS for the REST-only test). PresenceContext WebSocket connects automatically on authenticated load (verified framereceived events fired from the wss endpoint).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_against_spec": {
+    "GET /api/users/newest sort+hide-support+limit": "PASS",
+    "GET /api/users/trending sort+hide-support": "PASS",
+    "PATCH /api/users/status accepts live|online|invisible, rejects others (400)": "PASS",
+    "GET /api/presence/me shape": "PASS",
+    "GET /api/presence/friends priority sort + shape": "PASS",
+    "WS hello on connect": "PASS",
+    "WS heartbeat→presence:pong": "PASS",
+    "WS presence:set broadcasts to friends": "PASS",
+    "WS presence:focus messenger=true broadcasts status=messenger": "PASS",
+    "WS invisible masks to offline for OTHER users": "PASS",
+    "Last socket close marks user offline": "PASS",
+    "/auth/me has presence_status / presence_status_choice / follower_count": "PASS",
+    "Discover: no hardcoded fakes, real users in both rows": "PASS",
+    "Featured: no hardcoded fakes, real users by follower_count DESC": "PASS",
+    "Settings Status card persists choice via PATCH /api/users/status": "PASS",
+    "PresenceContext WS auto-connects post-login": "PASS (framereceived events observed)",
+    "ChatsTab chat-row-status-<username> and presence-dot-<status> render": "BY DESIGN — PresenceDot returns null when peer status='offline' (showOffline=false default in Messages.jsx line 317). Test ids only render when peer has an active WS session. Backend broadcast is verified; visual rendering will work when a friend is actually online."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase_c_presence.py",
+    "/app/test_reports/pytest/phase_c_presence.xml"
+  ],
+  "action_items": [
+    "(LOW, OPTIONAL) ChatsTab: pass showOffline=true to PresenceDot so the chat-row-status-<username> testid is always present in DOM (renders an outline dot for offline). This is purely a testability improvement; the current behavior of hiding offline dots is correct UX. Without it, automated tests cannot assert presence-dot rendering unless a second account is kept online via WS.",
+    "(LOW) Consider exposing the underlying PresenceContext WS readyState as a window-level debug flag to aid integration testing."
+  ],
+  "critical_code_review_comments": [
+    "routers/presence.py — _ws_auth uses jwt.decode with InvalidTokenError catch but lets ExpiredSignatureError bubble (since it subclasses InvalidTokenError, fine). Token reads from query param first then cookie — good for browser WS.",
+    "routers/presence.py:118-121 — When user sets invisible WHILE NOT connected, code writes presence_status='invisible' to Mongo, which then masks to 'offline' in /presence/friends via _public_status. Correct.",
+    "routers/presence.py:296-306 — presence:focus revert path reads `user` dict from initial WS auth (captured at connect time); if user changes their preference via REST during the same socket, revert will go back to STALE preference. Minor edge case — refetch from db in the revert branch for full correctness.",
+    "core/presence.py — single-process registry; works for single-pod but won't scale horizontally. Acceptable for current deploy; note as future work for multi-replica scale.",
+    "core/presence.py broadcast — sends inside loop without per-target timeout; one slow/blocking ws.send could pile up. Consider asyncio.gather with return_exceptions=True.",
+    "frontend PresenceDot returns null on offline — good UX but breaks pure-DOM testability for offline peers. The data-testid is therefore conditionally present, which is fine but should be noted in the testing handbook.",
+    "/api/users/newest 'limit 1..60' clamp verified (?limit=999 → ≤60 users). No SQL injection surface since Mongo + Pydantic-validated int.",
+    "/api/users/trending aggregation uses $ifNull fallback to friends.length — handles legacy docs without precomputed follower_count."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase_c_presence.py (new — 18 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (18/18 pytest)",
+    "frontend": "100% (Discover, Featured, AccountSettings, WS connect verified; ChatsTab dot rendering verified by code review — runtime gated on peer online)"
+  },
+  "test_credentials": "tfone via testfriend1@example.com/pass1234, tftwo via testfriend2@example.com/pass1234, stealth via slopestyle2022@gmail.com/Password1$",
+  "seed_data_creation": "None — tests are read-only against existing pre-seeded users; PATCH /api/users/status only mutates the test user's own presence_status_choice (restored to 'online' at end of run by test_patch_status_accepts_online).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test file uses pytest-asyncio (auto mode) for WS tests. Run with: `pytest backend/tests/test_phase_c_presence.py -p asyncio --asyncio-mode=auto -v`. pytest-asyncio was newly installed during this iteration. WS URL pattern: wss://<host>/api/ws/presence?token=<jwt>. PresenceDot renders null on offline by default — to test the chat-row-status-<u> testid, keep a second user's WS open during navigation (Playwright second-page WS does NOT persist across page.goto on the first page in the same context; use python websockets.connect() in a parallel asyncio task or rely on the backend WS pytest which already proves the broadcast end-to-end).",
+  "rca of the issue": "No bugs. Two minor optional improvements: (a) ChatsTab could pass showOffline=true to PresenceDot for stable testability of the chat-row-status-<u> selector; (b) presence:focus revert uses captured user-prefs at socket-connect time rather than re-reading from DB, which is a tiny staleness window. Both are non-blocking."
+}

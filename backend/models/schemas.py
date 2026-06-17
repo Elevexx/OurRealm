@@ -194,6 +194,16 @@ def serialize_user(doc: dict) -> dict:
         "inner_8": doc.get("inner_8", []),
         # Phase-2 — presence indicator visibility (default ON).
         "presence_visible": doc.get("presence_visible", True),
+        # Phase C — Real-Time Presence System
+        # `presence_status_choice` is what the USER picked
+        # (live/online/invisible). `presence_status` is the live status
+        # the server has on file — may be offline if no socket attached.
+        "presence_status_choice": (doc.get("presence_status_choice") or "online"),
+        "presence_status": (doc.get("presence_status") or "offline"),
+        # Number of friends — used by Trending. Falls back to live count.
+        "follower_count": int(doc.get("follower_count")
+                              if doc.get("follower_count") is not None
+                              else len(doc.get("friends") or [])),
         # PRIVATE — only returned via `/auth/me` (the owner). The public
         # `/profile/by-username/...` route MUST omit this field. See
         # routers/profile.py:public_profile() for the redaction.

@@ -22,6 +22,9 @@ import ImageUploadPicker from "@/components/ImageUploadPicker";
 import MessageActionMenu from "@/components/MessageActionMenu";
 import ReportButton from "@/components/ReportButton";
 import SharedPostCard from "@/components/SharedPostCard";
+import PresenceDot from "@/components/PresenceDot";
+import { usePresence } from "@/contexts/PresenceContext";
+import presenceSocket from "@/lib/presenceSocket";
 
 const TABS = [
   { id: "chats",  label: "Chats",  Icon: MessagesSquare },
@@ -95,6 +98,12 @@ export default function Messages() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState(searchParams.get("tab") || "chats");
+
+  // Phase C — mark user as "In Messenger" while on this page.
+  useEffect(() => {
+    presenceSocket.setMessengerFocus(true);
+    return () => presenceSocket.setMessengerFocus(false);
+  }, []);
 
   const onTab = (id) => {
     setTab(id);
@@ -181,6 +190,12 @@ function ChatsTab({ me }) {
   const [active, setActive] = useState(null); // a "thread" row from /api/messages/threads
   const [showNew, setShowNew] = useState(false);
   const { cache, resolve } = useProfileCache();
+  const { statuses } = usePresence();
+
+  // Phase C — sort priority by peer status.
+  const STATUS_PRIORITY = useMemo(() => ({
+    live: 0, online: 1, messenger: 2, invisible: 3, offline: 4,
+  }), []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -270,9 +285,20 @@ function ChatsTab({ me }) {
         />
       ) : (
         <div data-testid="chats-list">
-          {threads.map((t) => {
+          {[...threads].sort((a, b) => {
+            const sa = statuses[a?.peer?.id] || "offline";
+            const sb = statuses[b?.peer?.id] || "offline";
+            const pa = STATUS_PRIORITY[sa] ?? 9;
+            const pb = STATUS_PRIORITY[sb] ?? 9;
+            if (pa !== pb) return pa - pb;
+            // tie-break by last activity (more recent first)
+            const ta = a.last_at ? new Date(a.last_at).getTime() : 0;
+            const tb = b.last_at ? new Date(b.last_at).getTime() : 0;
+            return tb - ta;
+          }).map((t) => {
             const peer = t.peer || cache[t?.peer?.id];
             const title = peer ? (peer.name || `@${peer.username}`) : "Loading…";
+            const peerStatus = statuses[peer?.id] || "offline";
             return (
               <button
                 key={t.conv_id}
@@ -281,7 +307,17 @@ function ChatsTab({ me }) {
                 style={{ borderBottom: "1px solid var(--border-col)" }}
                 data-testid={`chat-row-${peer?.username || t.conv_id}`}
               >
-                <Avatar user={peer} />
+                <div style={{ position: "relative" }}>
+                  <Avatar user={peer} />
+                  {peerStatus !== "offline" && (
+                    <span style={{
+                      position: "absolute", right: -2, bottom: -2,
+                      background: "var(--bgc)", padding: 1, borderRadius: "50%",
+                    }}>
+                      <PresenceDot status={peerStatus} size={10} data-testid={`chat-row-status-${peer?.username}`} />
+                    </span>
+                  )}
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate" style={{ color: "var(--text-main)" }}>{title}</div>
                   <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>

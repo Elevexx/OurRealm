@@ -353,6 +353,37 @@ async def run_startup():
     await migrate_inject_top8_widget()
     await migrate_text_posts_to_thoughts()
     await migrate_video_urls_to_relative()
+    await migrate_backfill_presence()
+
+
+async def migrate_backfill_presence():
+    """Phase C — Real-Time Presence System.
+
+    Backfills `presence_status`, `presence_status_choice`, and
+    `follower_count` on any pre-existing user that lacks them. Idempotent —
+    subsequent boots match 0 docs.
+    """
+    res = await db.users.update_many(
+        {"presence_status": {"$exists": False}},
+        {"$set": {"presence_status": "offline"}},
+    )
+    res2 = await db.users.update_many(
+        {"presence_status_choice": {"$exists": False}},
+        {"$set": {"presence_status_choice": "online"}},
+    )
+    # Recompute follower_count from friends array length for all users.
+    # Single aggregate-style $set per doc.
+    cursor = db.users.find({}, {"_id": 0, "id": 1, "friends": 1, "follower_count": 1})
+    updated = 0
+    async for u in cursor:
+        target = len(u.get("friends") or [])
+        if u.get("follower_count") != target:
+            await db.users.update_one({"id": u["id"]}, {"$set": {"follower_count": target}})
+            updated += 1
+    logger.info(
+        f"[presence migration] presence_status:{res.modified_count} "
+        f"choice:{res2.modified_count} follower_count:{updated}"
+    )
 
 
 async def migrate_text_posts_to_thoughts():

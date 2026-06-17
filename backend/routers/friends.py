@@ -127,6 +127,9 @@ async def friend_accept(payload: FriendActionPayload, current: CurrentUser):
         raise HTTPException(status_code=500, detail="Friendship not persisted — please retry")
 
     log.info(f"[accept] friendship created {current.get('username')} ↔ {target_user.get('username')}")
+    # Phase C — keep `follower_count` in sync (used by Trending).
+    await db.users.update_one({"id": me_id}, {"$set": {"follower_count": len(me_doc.get("friends") or [])}})
+    await db.users.update_one({"id": tg_id}, {"$set": {"follower_count": len(tg_doc.get("friends") or [])}})
     # Notify the original requester that their request was accepted
     await emit_notification(
         tg_id, "follow",  # use 'follow' kind so UI shows it under "Friends"
@@ -218,7 +221,7 @@ async def users_search(q: str = "", radius: Optional[str] = None, viewer: Option
 @router.get("/users/featured")
 async def users_featured(limit: int = 12, radius: Optional[str] = None, viewer: Optional[str] = None):
     cursor = db.users.find(
-        {"username": {"$ne": None}},
+        {"username": {"$ne": None, "$nin": ["support"]}},
         {"_id": 0, "password_hash": 0},
     ).sort([("is_founder", -1), ("is_verified", -1), ("created_at", -1)]).limit(limit)
     users = []

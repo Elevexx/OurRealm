@@ -78,6 +78,11 @@ async def register(payload: RegisterPayload, response: Response):
         # ── VIP ──
         "is_vip": is_vip,
         "vip_joined_at": now_iso if is_vip else None,
+        # Phase C — Presence
+        "presence_status": "offline",
+        "presence_status_choice": "online",
+        "presence_last_seen": now_iso,
+        "follower_count": 0,
         # ── Friend groups (placeholder for future feature; safe no-op) ──
         "friend_groups": [],
         "social": {},

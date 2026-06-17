@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { PresenceProvider } from "@/contexts/PresenceContext";
 import Layout from "@/components/Layout";
 import Landing from "@/pages/Landing";
 import SignUp from "@/pages/SignUp";
@@ -50,7 +51,8 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <BrowserRouter>
+        <PresenceProvider>
+          <BrowserRouter>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/signup" element={<SignUp />} />
@@ -91,6 +93,7 @@ function App() {
           <MiniPlayer />
           <InstallPrompt trigger="auto" />
         </BrowserRouter>
+        </PresenceProvider>
       </AuthProvider>
     </ThemeProvider>
   );
