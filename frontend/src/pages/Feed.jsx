@@ -75,6 +75,18 @@ export default function Feed() {
   useEffect(() => { try { localStorage.setItem(RADIUS_KEY, radius); } catch { /* ignore */ } }, [radius]);
   const [guestPrompt, setGuestPrompt] = useState(null);
   const [posting, setPosting] = useState(false);
+  // VIP tooltip peek — toggled on tap (mobile) or always-visible at ≥260 chars (desktop).
+  const [vipPeek, setVipPeek] = useState(false);
+  useEffect(() => {
+    if (!vipPeek) return;
+    const t = setTimeout(() => setVipPeek(false), 3500);
+    return () => clearTimeout(t);
+  }, [vipPeek]);
+  useEffect(() => {
+    // Reset the mobile peek whenever the user drops back below the threshold
+    // (so it can re-trigger next time they approach the cap).
+    if (composeText.length < 260) setVipPeek(false);
+  }, [composeText.length]);
 
   useEffect(() => { try { localStorage.setItem(FILTER_KEY, JSON.stringify(media)); } catch { /* ignore */ } }, [media]);
 
@@ -330,10 +342,29 @@ export default function Feed() {
                 {composeAudience.visibility === "private" && <><Lock size={12} /> Private</>}
                 {composeAudience.visibility === "custom" && <><UserCheck size={12} /> Custom ({composeAudience.user_ids?.length || 0})</>}
               </button>
-              <div className="flex items-center gap-3 ml-auto">
+              <div className="flex items-center gap-3 ml-auto relative">
+                {/* VIP conversion nudge — only for standard 300-cap users approaching the limit. */}
+                {charLimit === 300 && composeText.length >= 260 && (
+                  <span
+                    className="text-[11px] whitespace-nowrap px-2 py-1 hidden sm:inline-flex items-center gap-1"
+                    data-testid="feed-composer-vip-tooltip"
+                    role="tooltip"
+                    style={{
+                      borderRadius: "calc(var(--radius) - 6px)",
+                      background: "color-mix(in srgb, var(--primary) 14%, transparent)",
+                      border: "1px solid color-mix(in srgb, var(--primary) 35%, transparent)",
+                      color: "var(--text-main)",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    👑 unlock 500-char posts with VIP
+                  </span>
+                )}
                 <span
-                  className="text-xs"
+                  className="text-xs relative"
                   data-testid="feed-composer-charcount"
+                  // Mobile tap-target: tap the counter to peek the tooltip briefly.
+                  onClick={() => setVipPeek(true)}
                   style={{
                     color: composeText.length > charLimit
                       ? "#FF5C5C"
@@ -341,9 +372,28 @@ export default function Feed() {
                         ? "#FFB72E"
                         : "var(--text-muted)",
                     fontVariantNumeric: "tabular-nums",
+                    cursor: charLimit === 300 && composeText.length >= 260 ? "help" : "default",
                   }}
                 >
                   {composeText.length} / {charLimit}
+                  {/* Mobile peek bubble — fades after a few seconds. */}
+                  {charLimit === 300 && composeText.length >= 260 && vipPeek && (
+                    <span
+                      className="absolute right-0 text-[11px] whitespace-nowrap px-2 py-1 sm:hidden"
+                      data-testid="feed-composer-vip-tooltip-mobile"
+                      style={{
+                        top: "calc(100% + 4px)",
+                        borderRadius: "calc(var(--radius) - 6px)",
+                        background: "color-mix(in srgb, var(--primary) 18%, var(--surface))",
+                        border: "1px solid color-mix(in srgb, var(--primary) 40%, transparent)",
+                        color: "var(--text-main)",
+                        boxShadow: "0 6px 18px rgba(0,0,0,0.25)",
+                        zIndex: 5,
+                      }}
+                    >
+                      👑 unlock 500-char posts with VIP
+                    </span>
+                  )}
                 </span>
                 <button
                   data-testid="feed-composer-submit"

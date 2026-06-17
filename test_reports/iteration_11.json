@@ -1,0 +1,44 @@
+{
+  "summary": "Phase 5+ polish — verified (1) VIP conversion tooltip on /feed composer for 300-cap users only, including desktop always-visible + mobile tap-peek auto-hide behaviour; and (2) dedicated 'Manage Top 8' header CTA on /friends that enters Close Realm edit mode and conditionally opens the friend picker based on available slots. 100% of UI assertions passed across guest/VIP/founder roles and desktop/mobile viewports.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": [
+    {"case": "Guest (300-cap) desktop — type 270 chars → feed-composer-vip-tooltip visible with exact text '👑 unlock 500-char posts with VIP'", "result": "PASS"},
+    {"case": "Guest desktop — drop back to 200 chars → tooltip disappears", "result": "PASS"},
+    {"case": "Guest counter shows '/ 300'", "result": "PASS"},
+    {"case": "VIP @testfriend1 (500-cap) — tooltip NOT shown at 270 or 480 chars", "result": "PASS"},
+    {"case": "VIP counter shows '/ 500'", "result": "PASS"},
+    {"case": "Founder @stealth (2000-cap) — tooltip NOT shown at 500 chars", "result": "PASS"},
+    {"case": "Founder counter shows '/ 2000'", "result": "PASS"},
+    {"case": "Mobile (375x800) 300-cap — desktop tooltip hidden via 'hidden sm:inline-flex'", "result": "PASS"},
+    {"case": "Mobile — tap feed-composer-charcount → feed-composer-vip-tooltip-mobile appears with correct text", "result": "PASS"},
+    {"case": "Mobile peek auto-hides within ~4s (3.5s setTimeout)", "result": "PASS"},
+    {"case": "/friends desktop — friends-manage-top8 visible top-right in header with full 'Manage Top 8' label", "result": "PASS"},
+    {"case": "/friends mobile (375) — button visible with shortened 'Top 8' label", "result": "PASS"},
+    {"case": "Click Manage Top 8 with inner_8 empty → inner8-edit-toggle data-active='true', label 'Done', inner8-picker-search visible (picker auto-opened)", "result": "PASS"},
+    {"case": "Click Manage Top 8 with 8 inner_8 slots filled (stealth, 71 friends) → edit mode active, picker DOES NOT auto-open", "result": "PASS"},
+    {"case": "Widget scrolled into view on click (visible without further scroll)", "result": "PASS"}
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Feed.jsx tooltip logic correctly uses charLimit === 300 && composeText.length >= 260 — clean single-source-of-truth via getPostCharacterLimit helper.",
+    "Mobile peek useEffect cleanly clears via setTimeout 3500ms and resets when composeText drops below 260 — no stale timers.",
+    "Friends.jsx manageTop8Token bump pattern is idiomatic React (forces InnerEight useEffect re-run without parent passing imperative refs); InnerEight checks `(user?.inner_8?.length || 0) < 8` for picker auto-open which is correct.",
+    "Tailwind responsive classes (hidden sm:inline-flex / sm:hidden) cleanly separate desktop+mobile variants; both data-testids coexist in DOM but only one is visible at the sm breakpoint.",
+    "Minor: button label on mobile renders both spans in DOM ('Manage Top 8Top 8' when innerText not filtered by hidden) — this is purely cosmetic and Tailwind correctly hides the desktop span via display:none on <sm. Confirmed innerText resolves to just 'Top 8' on mobile viewport.",
+    "Suggestion (non-blocking): consider aria-live='polite' on the mobile peek bubble so screen readers announce the upsell when it appears."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (frontend-only review)", "frontend": "100% (15/15 UI cases)" },
+  "test_credentials": "Used credentials from /app/memory/test_credentials.md — slopestyle2022@gmail.com / Password1$ (founder), testfriend1@example.com / pass1234 (VIP). Guest path covered the 300-cap branch (charLimit defaults to 300 when no user is logged in), which is functionally equivalent to a freshly-registered standard user per the agent-to-agent context note.",
+  "seed_data_creation": "Temporarily set stealth's inner_8 to 8 existing friend ids to verify the 'no room → picker stays closed' branch, then reset to []. testfriend1's inner_8 was reset to [] before each picker-open test, then restored to [].",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Both Phase 5+ polish features are fully verified across all relevant role/viewport combinations. Tooltip uses standard Tailwind responsive hidden/sm:hidden split; mobile peek auto-hides via 3500ms timer (tested with 4s wait). The Manage Top 8 CTA uses a token-bump pattern via manageTop8Token state → InnerEight useEffect → conditional setPickerOpen(true) only when slot count < 8. No regressions observed in existing flows (composer counter colours, audience picker, friend cards, Close Realm slots all render normally).",
+  "rca of the issue": "n/a — no bugs found"
+}

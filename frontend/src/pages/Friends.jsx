@@ -166,20 +166,44 @@ export default function Friends() {
     (f.name || "").toLowerCase().includes(q.toLowerCase())
   );
 
+  // "Manage Top 8" CTA — bumps a token InnerEight reacts to (enters edit mode
+  // and opens the picker if there's room) and scrolls the widget into view.
+  const [manageTop8Token, setManageTop8Token] = useState(0);
+  const innerEightRef = useRef(null);
+  const manageTop8 = () => {
+    setManageTop8Token((t) => t + 1);
+    try {
+      innerEightRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch { /* ignore */ }
+  };
+
   return (
     <div className="max-w-6xl mx-auto" data-testid="friends-page">
-      <div className="mb-6 flex items-baseline justify-between">
+      <div className="mb-6 flex items-baseline justify-between gap-3">
         <div>
           <div className="text-xs uppercase tracking-[0.25em]" style={{ color: "var(--text-muted)" }}>Your network</div>
           <h1 className="text-3xl sm:text-4xl flex items-center gap-3" style={{ fontFamily: "var(--font-display)" }}>
             <UsersIcon size={28} style={{ color: "var(--primary)" }} /> Friends
           </h1>
         </div>
-        <span className="mode-badge hidden sm:inline-flex">{friends.length} connections</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            className="or-chip"
+            onClick={manageTop8}
+            data-testid="friends-manage-top8"
+            title="Manage your Top 8"
+          >
+            <Star size={12} /> <span className="hidden sm:inline">Manage Top 8</span><span className="sm:hidden">Top 8</span>
+          </button>
+          <span className="mode-badge hidden sm:inline-flex">{friends.length} connections</span>
+        </div>
       </div>
 
       {/* Close Realm / Inner 8 — backed by /api/profile/me { inner_8 } */}
-      <InnerEight friends={friends} onChange={loadFriends} />
+      <div ref={innerEightRef}>
+        <InnerEight friends={friends} onChange={loadFriends} manageToken={manageTop8Token} />
+      </div>
 
       {/* Tabs */}
       <div className="flex items-center gap-2 mb-4 overflow-x-auto no-scrollbar">
@@ -406,7 +430,7 @@ export default function Friends() {
 // ─────────────────────────────────────────────────────────────────────
 // Inner 8 — editable Close Realm widget (max 8 friends, ordered).
 // ─────────────────────────────────────────────────────────────────────
-function InnerEight({ friends, onChange }) {
+function InnerEight({ friends, onChange, manageToken = 0 }) {
   const { user, refreshMe } = useAuth();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
@@ -416,6 +440,16 @@ function InnerEight({ friends, onChange }) {
   const [pickerQuery, setPickerQuery] = useState("");
 
   useEffect(() => { if (!pickerOpen) setPickerQuery(""); }, [pickerOpen]);
+
+  // Parent ("Manage Top 8" CTA) bumps manageToken — we enter edit mode and,
+  // if there's still room, open the friend picker so the user can add right away.
+  useEffect(() => {
+    if (!manageToken) return;
+    setEditing(true);
+    const hasRoom = (user?.inner_8?.length || 0) < 8;
+    if (hasRoom) setPickerOpen(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manageToken]);
 
   const idToFriend = new Map(friends.map((f) => [f.id, f]));
   const ids = (user?.inner_8 || []).filter((id) => idToFriend.has(id)).slice(0, 8);
