@@ -18,6 +18,7 @@ import { absoluteImageUrl } from "@/components/ImageUploadPicker";
 import AutoplayVideo from "@/components/AutoplayVideo";
 import VideoEmbed from "@/components/VideoEmbed";
 import ReportButton from "@/components/ReportButton";
+import ImageLightbox from "@/components/ImageLightbox";
 import ShareToUserModal from "@/components/ShareToUserModal";
 
 function fmtTime(iso) {
@@ -178,6 +179,7 @@ export default function PostPopup() {
   // 'incoming' | 'declined' | 'none' | null (unknown / not loaded yet).
   const [friendStatus, setFriendStatus] = useState(null);
   const [friendBusy, setFriendBusy] = useState(false);
+  const [imageLightbox, setImageLightbox] = useState(false);
   const [posting, setPosting] = useState(false);
   const { user } = useAuth();
   const viewerLiked = !!(user?.id && Array.isArray(post?.liked_by) && post.liked_by.includes(user.id));
@@ -453,7 +455,16 @@ export default function PostPopup() {
                 </p>
               )}
               {mediaImg && (
-                <img src={absoluteImageUrl(mediaImg)} alt="" loading="lazy" decoding="async" className="rounded w-full object-cover" style={{ maxHeight: 480, border: "1px solid var(--border-col)" }} data-testid="post-popup-image" />
+                <img
+                  src={absoluteImageUrl(mediaImg)}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="rounded w-full object-cover cursor-zoom-in"
+                  style={{ maxHeight: 480, border: "1px solid var(--border-col)" }}
+                  data-testid="post-popup-image"
+                  onClick={() => setImageLightbox(true)}
+                />
               )}
               {mediaVid && (
                 <VideoEmbed url={mediaVid} testid="post-popup-video" />
@@ -557,6 +568,13 @@ export default function PostPopup() {
         postPreview={post?.content || ""}
         onClose={() => setShareOpen(false)}
         testid="post-popup-share-modal"
+      />
+      <ImageLightbox
+        open={imageLightbox && !!mediaImg}
+        src={mediaImg ? absoluteImageUrl(mediaImg) : null}
+        alt={post?.content || ""}
+        onClose={() => setImageLightbox(false)}
+        testid="post-popup-image-lightbox"
       />
     </div>
   );

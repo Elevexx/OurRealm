@@ -17,6 +17,7 @@ import PollDisplay from "@/components/PollDisplay";
 import AutoplayVideo from "@/components/AutoplayVideo";
 import VideoEmbed from "@/components/VideoEmbed";
 import ShareToUserModal from "@/components/ShareToUserModal";
+import ImageLightbox from "@/components/ImageLightbox";
 import VideoUploadPicker from "@/components/VideoUploadPicker";
 import PostManagementMenu from "@/components/PostManagementMenu";
 import ReportButton from "@/components/ReportButton";
@@ -495,6 +496,7 @@ function isVideoFile(u) { return !!u && /\.(mp4|webm|ogg)$/i.test(u); }
 function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
   const { user } = useAuth();
   const [shareOpen, setShareOpen] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const viewerLiked = !!(user?.id && Array.isArray(p.liked_by) && p.liked_by.includes(user.id));
   const live = usePostState(p.id, { liked: viewerLiked, likes: p.likes || 0, comments: p.comments || 0 });
   const openPopup = () => openPostPopup(p);
@@ -569,7 +571,15 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
       )}
       {mediaImg && (
         <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
-          <img src={absoluteImageUrl(mediaImg)} alt="" loading="lazy" decoding="async" className="w-full h-72 sm:h-96 object-cover" data-testid={`feed-image-${p.id}`} />
+          <img
+            src={absoluteImageUrl(mediaImg)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="w-full h-72 sm:h-96 object-cover cursor-zoom-in"
+            data-testid={`feed-image-${p.id}`}
+            onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
+          />
         </div>
       )}
       {mediaVid && (
@@ -620,6 +630,13 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
         postPreview={p.content || p.title || ""}
         onClose={() => setShareOpen(false)}
         testid={`feed-share-modal-${p.id}`}
+      />
+      <ImageLightbox
+        open={lightboxOpen && !!mediaImg}
+        src={mediaImg ? absoluteImageUrl(mediaImg) : null}
+        alt={p.content || ""}
+        onClose={() => setLightboxOpen(false)}
+        testid={`feed-image-lightbox-${p.id}`}
       />
     </article>
   );

@@ -4,6 +4,7 @@ user_id references (safe for username renames).
 """
 import logging
 import os
+import re
 import secrets
 import uuid
 from datetime import datetime, timezone
@@ -306,6 +307,39 @@ async def seed_support_account():
     return existing
 
 
+async def migrate_video_urls_to_relative():
+    """One-time fix (Feb 2026 production hotfix): strip the absolute host
+    prefix from any post URL pointing at `/api/videos/` or `/api/images/`.
+
+    Posts created in preview were storing
+    `https://realm-deploy.preview.emergentagent.com/api/videos/<id>.mp4`,
+    which 404s when viewed from production (`ourrealm.social`). Rewriting
+    to the bare `/api/videos/<id>.mp4` makes the URL resolve against
+    whatever origin the browser is currently on.
+    """
+    re_strip = re.compile(r"^https?://[^/]+(/api/(?:videos|images)/.+)$")
+    fields = ("video_url", "image_url", "media_url")
+    fixed = 0
+    cursor = db.posts.find(
+        {"$or": [{f: {"$regex": "^https?://"}} for f in fields]},
+        {"_id": 0, "id": 1, **{f: 1 for f in fields}},
+    )
+    async for doc in cursor:
+        update = {}
+        for f in fields:
+            v = doc.get(f)
+            if not v:
+                continue
+            m = re_strip.match(v)
+            if m:
+                update[f] = m.group(1)
+        if update:
+            await db.posts.update_one({"id": doc["id"]}, {"$set": update})
+            fixed += 1
+    if fixed:
+        logger.info(f"Migrated {fixed} post(s) with absolute video/image URLs → relative")
+
+
 async def run_startup():
     """Single entry point invoked from `server.on_startup`."""
     await ensure_indexes()
@@ -318,6 +352,7 @@ async def run_startup():
     await migrate_inject_myfeed_widget()
     await migrate_inject_top8_widget()
     await migrate_text_posts_to_thoughts()
+    await migrate_video_urls_to_relative()
 
 
 async def migrate_text_posts_to_thoughts():

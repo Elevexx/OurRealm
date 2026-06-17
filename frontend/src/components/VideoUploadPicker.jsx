@@ -105,12 +105,16 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
       if (localPreview) URL.revokeObjectURL(localPreview);
       setLocalPreview(null);
       setProgress(100);
-      // Production fix: backend returns a relative `/api/videos/<id>.<ext>`
-      // path. When the frontend is deployed on a different origin than the
-      // API (e.g. `ourrealm.social` → `api.ourrealm.social`), the relative
-      // URL would resolve against the frontend origin and 404. We persist
-      // an ABSOLUTE URL so the post document survives any future re-host.
-      onChange?.(absUrl(next));
+      // Persist as a RELATIVE path (e.g. `/api/videos/<id>.mp4`). The
+      // browser resolves it against the current document origin at render
+      // time, so the same post document works in BOTH preview and
+      // production — even when the deployed REACT_APP_BACKEND_URL differs
+      // from the upload-time one. Absolutising at upload was the cause of
+      // "video failed to load after refresh" on ourrealm.social.
+      const stripped = next.startsWith("http")
+        ? next.replace(/^https?:\/\/[^/]+/, "")
+        : next;
+      onChange?.(stripped);
       // Refresh quota so the visible "N left today" decrements live.
       apiClient.get("/upload-limits/me")
         .then(({ data: q }) => setQuota(q?.limits?.video || null))
