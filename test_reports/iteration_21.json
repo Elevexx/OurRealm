@@ -1,0 +1,67 @@
+{
+  "summary": "Phase D — Home ➕ Composer rebuild backend + UI verified. Backend pytest 10/10 PASS in /app/backend/tests/test_phase_d_composer.py covering (a) POST /api/posts persists image_urls (array), sound_track_id, sound_url, sound_title, sound_cover_url, sound_duration — all readable via GET /api/posts/{id} AND visible in GET /api/posts?media_type=sound; (b) empty-payload validation returns 400 'Post is empty' for {} / whitespace-only content / empty image_urls list; (c) image_urls-only post (no other field) is VALID; (d) GET /api/sounds/file/{name} returns 200 + Accept-Ranges: bytes + Content-Length on full GET (existing wav assets present at /app/backend/uploads/audio/); (e) invalid hex filename → 400, missing valid-format filename → 404. Frontend live on https://realm-deploy.preview.emergentagent.com after stealth/Password1$ login: bottom-nav ➕ opens 'What are you creating?' dialog with 5 testids create-live / create-video / create-image / create-sound / create-thought. Tapping 'Image' opens create-workflow-image; ALL SIX slots create-image-slot-0..5 render and ZERO <img> elements are inside them (confirmed no demo/picsum content). Tapping any slot opens create-image-picker showing 'Add image to album' panel with CHOOSE IMAGE + Upload via URL tabs. create-image-submit button is present. Feed composer Sound chip data-testid='feed-composer-type-sound' renders alongside Thought/Image/Video/Link/Poll on /feed for authenticated users.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/sounds/file/{name}", "issue": "Code comment claims FastAPI FileResponse 'handles HTTP Range requests automatically', but observed behavior is 200 + full body even when Range header is sent. Accept-Ranges: bytes is advertised but no 206 partial-content responses are emitted. Modern Chromium/Safari still play because they request full file; iOS Safari mobile may scrub-seek inefficiently. Recommend adding starlette.responses.Response with explicit Range parsing OR using a streaming endpoint that returns 206 with Content-Range when a Range header is present."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home + Image picker modal", "issues": ["The spec lists data-testid='create-image-picker-pick-device' but the rendered button label is 'CHOOSE IMAGE' / 'Upload from device' tab — no such testid was found. The file-input is presumably hidden behind the CHOOSE IMAGE button; add data-testid='create-image-picker-pick-device' to the CHOOSE IMAGE button (or to its hidden file input) for Playwright reachability."]}
+    ]
+  },
+  "verified_against_spec": {
+    "POST /api/posts persists image_urls": "PASS",
+    "POST /api/posts persists sound_* fields": "PASS",
+    "Empty payload returns 400 'Post is empty'": "PASS",
+    "image_urls-only post (no other field) valid": "PASS",
+    "Sound post appears in /api/posts?media_type=sound": "PASS",
+    "GET /api/sounds/file serves with Accept-Ranges": "PASS (full 200 + Accept-Ranges: bytes)",
+    "GET /api/sounds/file Range → 206 partial": "FAIL (returns 200 full body instead — see minor backend issue)",
+    "Home + opens 5-type create dialog": "PASS (create-live/video/image/sound/thought)",
+    "create-workflow-image opens with 6 empty slots, no demo images": "PASS",
+    "Tapping slot opens create-image-picker": "PASS",
+    "create-image-submit button present": "PASS",
+    "Feed composer Sound chip (feed-composer-type-sound)": "PASS"
+  },
+  "tested_but_not_fully_exercised": [
+    "Full publish round-trip from Image composer (file upload via Playwright into hidden <input type=file>) — testid for pick button missing prevented headless file injection",
+    "create-workflow-sound launch click — workflow opened but Sound picker file-upload not exercised in the same headless session (no test audio file available in /tmp on the browser worker)",
+    "Multi-card no-conflict audio auto-pause logic in SoundPlayerCard (would require two sound posts in feed which were not yet seeded)",
+    "Live/Video/Thought workflows end-to-end publish — modal launchers visible but publish flow not executed"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_phase_d_composer.py",
+    "/app/test_reports/pytest/phase_d_composer.xml"
+  ],
+  "action_items": [
+    "(P2) Backend: implement true HTTP Range support on /api/sounds/file/{name} — return 206 with Content-Range + correct partial body when Range header is present. This is required for iOS Safari scrub-seek and avoids re-downloading the full file when the user drags the progress bar.",
+    "(P3) Frontend: add data-testid='create-image-picker-pick-device' to the CHOOSE IMAGE button (or its hidden file input) in ImageUploadPicker so automated tests can deterministically trigger file selection.",
+    "(P3) Frontend: confirm SoundPlayerCard multi-card auto-pause is wired (module-level WeakSet) by seeding two sound posts and asserting only one <audio> has .paused === false at any moment."
+  ],
+  "critical_code_review_comments": [
+    "backend/routers/posts.py:74-83 — create_post empty-check ANDs together the absence of content with the absence of EVERY media field. This is correct, but the chained `and not` reads awkwardly; consider a single helper `has_any_media(payload)` for clarity and to prevent future fields being missed (e.g., a future `gif_url` would silently fall through).",
+    "backend/routers/posts.py:103 — `image_urls`: payload.image_urls or [] stores empty array on absent. Good — frontend can safely .map without null check.",
+    "backend/routers/posts.py:107-112 — sound_* fields are flat on the post doc. Consider grouping under a `sound: { track_id, url, title, cover_url, duration }` sub-doc for future schema cleanliness, but flat is fine for now.",
+    "backend/routers/sounds.py:196-209 — comment says FileResponse handles Range automatically; it does not in this starlette version. Either upgrade starlette or implement Range manually.",
+    "backend/services/audio_store.py:211 — filename regex `^[a-f0-9]{32}\\.(mp3|m4a|aac|wav|ogg|flac|webm)$` correctly prevents path traversal. Good.",
+    "frontend BottomNav.jsx CreateWorkflow — testid coverage is excellent (create-workflow-image, create-image-slot-{i}, create-image-slot-{i}-remove, create-image-submit, create-workflow-sound, create-sound-launch, create-sound-picker, create-sound-submit, create-sound-selected). The single gap is create-image-picker-pick-device which lives inside ImageUploadPicker.",
+    "frontend Feed.jsx composer — Sound chip correctly rendered with data-testid='feed-composer-type-sound'; the SoundUploadPicker is reused (no duplicate upload system as required by spec)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase_d_composer.py (new — 10 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (10/10 pytest passing)",
+    "frontend": "85% (workflows render & open correctly; full publish round-trip not headless-exercised due to file-input testability gap)"
+  },
+  "test_credentials": "Founder: stealth / Password1$ (via /login → SIGN IN). Test users tfone/tftwo at testfriend1@example.com / testfriend2@example.com (pass1234).",
+  "seed_data_creation": "Test class creates 3 posts (2 image, 1 sound) and deletes them at end of each test. No persistent seed data added.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests run via `pytest backend/tests/test_phase_d_composer.py -v`. Frontend login flow: /login → click [data-testid='landing-signin-button'] → fill [data-testid='signin-email'] with 'stealth' (NOT email) + [data-testid='signin-password']='Password1$' → click button:has-text('Sign in'). DISMISS the 'GET THE APP / Add OurRealm to your Home Screen' banner each navigation via button:has-text('NOT NOW'). + composer launchers use testids create-live / create-video / create-image / create-sound / create-thought (singular, no -launcher suffix). Image workflow testids: create-workflow-image, create-image-slot-0..5, create-image-slot-{i}-remove, create-image-picker, create-image-submit. Sound workflow testids: create-workflow-sound, create-sound-launch, create-sound-picker, create-sound-selected, create-sound-submit. Feed composer Sound chip: feed-composer-type-sound. Two pre-existing wav files live at /app/backend/uploads/audio/ (32-char hex .wav names) — use them for /api/sounds/file/{name} validation.",
+  "rca of the issue": "No P0/P1 issues found. P2: /api/sounds/file/{name} does not honor HTTP Range headers (returns 200 + full body even when Range header is sent). Root cause: FastAPI FileResponse on the current starlette version does not implement Range — the code comment is incorrect. Mitigation: implement explicit Range parsing in routers/sounds.py:serve() to return 206 Partial Content with Content-Range header, OR upgrade starlette to a version that supports Range in FileResponse. Impact is minor for desktop Chrome/Firefox (they still play the full body) but suboptimal for iOS Safari scrub-seek which expects 206. P3: create-image-picker-pick-device testid missing on the CHOOSE IMAGE button in ImageUploadPicker.jsx — purely a testability gap, does not affect user flow."
+}

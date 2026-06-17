@@ -77,7 +77,8 @@ async def create_post(payload: PostCreate, current: CurrentUser):
     # the previous schema-level `min_length=1` on content so video/image/
     # link uploads with no caption are still allowed.
     if not (payload.content or "").strip() \
-       and not (payload.media_url or payload.image_url or payload.video_url or payload.link_url) \
+       and not (payload.media_url or payload.image_url or payload.video_url or payload.link_url
+                or payload.sound_url or (payload.image_urls and len(payload.image_urls) > 0)) \
        and not payload.poll:
         raise HTTPException(status_code=400, detail="Post is empty — add text, media, or a poll.")
 
@@ -99,8 +100,16 @@ async def create_post(payload: PostCreate, current: CurrentUser):
         "media_url": payload.media_url,
         # Optional rich-media URLs (any combination, all additive).
         "image_url": payload.image_url,
+        "image_urls": payload.image_urls or [],
         "video_url": payload.video_url,
         "link_url": payload.link_url,
+        # Sound post fields — when media_type='sound' these reference
+        # an existing track uploaded via /api/sounds/upload.
+        "sound_track_id": payload.sound_track_id,
+        "sound_url": payload.sound_url,
+        "sound_title": payload.sound_title,
+        "sound_cover_url": payload.sound_cover_url,
+        "sound_duration": payload.sound_duration,
         "tags": payload.tags,
         "audience": audience,
         "likes": 0,

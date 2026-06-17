@@ -55,14 +55,24 @@ export async function play(track) {
   if (!audio) return;
   const next = track || current.track;
   if (!next?.file_url) return;
-  // If same track and paused, resume rather than reload
+  // If same track and just paused, resume rather than re-load.
   if (current.track?.id === next.id && audio.src) {
-    try { await audio.play(); } catch { /* user gesture required */ }
-    emit({ playing: !audio.paused });
+    try {
+      await audio.play();
+      emit({ playing: !audio.paused });
+    } catch {
+      emit({ playing: false, error: "Tap play to start (autoplay blocked)." });
+    }
     return;
   }
   emit({ track: next, loading: true, position: 0, duration: 0, error: null });
+  // Switch source. Some mobile browsers (iOS Safari in particular)
+  // require an explicit load() after assigning a new `src` for the new
+  // media to actually start buffering. Without it, the play() promise
+  // resolves but no `timeupdate` events fire and the audio never plays.
+  audio.preload = "auto";
   audio.src = absUrl(next.file_url);
+  try { audio.load(); } catch { /* not all UAs implement load() */ }
   try {
     await audio.play();
     // Best-effort play counter — fire & forget
@@ -95,7 +105,13 @@ export async function resume() {
   try { await audio.play(); emit({ playing: true }); } catch { /* ignore */ }
 }
 
-export function toggle() { current.playing ? pause() : resume(); }
+export function toggle() {
+  if (!audio) return;
+  // Trust the live <audio> element rather than the cached `current.playing`
+  // flag — the latter can lag behind when the browser fires "play"/"pause"
+  // events asynchronously (especially on iOS Safari).
+  if (audio.paused) resume(); else pause();
+}
 
 export function seek(seconds) {
   if (!audio) return;

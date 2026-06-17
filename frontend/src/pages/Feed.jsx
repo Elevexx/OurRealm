@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, Users as UsersIcon, Lock, UserCheck, MessageSquare, Image as ImageIcon, Video, Link2, BarChart3 } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, Users as UsersIcon, Lock, UserCheck, MessageSquare, Image as ImageIcon, Video, Link2, BarChart3, Music2 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { makeMockPosts } from "@/data/mockData";
@@ -11,6 +11,8 @@ import UsernameLink from "@/components/UsernameLink";
 import { openPostPopup } from "@/lib/postPopupController";
 import { usePostState, setPost } from "@/lib/postStore";
 import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPicker";
+import SoundUploadPicker from "@/components/SoundUploadPicker";
+import SoundPlayerCard from "@/components/SoundPlayerCard";
 import ZipRequiredModal from "@/components/ZipRequiredModal";
 import PollComposer from "@/components/PollComposer";
 import PollDisplay from "@/components/PollDisplay";
@@ -73,6 +75,10 @@ export default function Feed() {
   const [pollComposerOpen, setPollComposerOpen] = useState(false);
   const [audiencePickerOpen, setAudiencePickerOpen] = useState(false);
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const [soundPickerOpen, setSoundPickerOpen] = useState(false);
+  // Sound attachment — populated by SoundUploadPicker (the same picker
+  // used on the Sounds page) when the user picks "Sound" in the composer.
+  const [composeSound, setComposeSound] = useState(null);
   // Phase-2 — Radius filter ("any" | "10" | "20" | "50" | "100" | "250" | "500").
   const [radius, setRadius] = useState(() => {
     try { return localStorage.getItem(RADIUS_KEY) || "any"; } catch { return "any"; }
@@ -158,11 +164,12 @@ export default function Feed() {
     // one of content / media_url / image_url / video_url / link_url / poll
     // is present).
     const hasMedia = !!(composeMediaUrl);
-    if (!composeText.trim() && !composePoll && !hasMedia) return;
+    const hasSound = !!composeSound;
+    if (!composeText.trim() && !composePoll && !hasMedia && !hasSound) return;
     if (composeText.length > charLimit) return;  // safety net; Share is already disabled
     setPosting(true);
     try {
-      await apiClient.post("/posts", {
+      const body = {
         content: composeText.trim() || (composePoll?.question || ""),
         media_type: composeMediaType || "thought",
         media_url: composeMediaUrl || null,
@@ -171,12 +178,23 @@ export default function Feed() {
         link_url: composeMediaType === "link" ? (composeMediaUrl || null) : null,
         audience: composeAudience,
         poll: composePoll || undefined,
-      });
+      };
+      if (composeSound) {
+        body.media_type = "sound";
+        body.sound_track_id = composeSound.id;
+        body.sound_url = composeSound.file_url;
+        body.media_url = composeSound.file_url;
+        body.sound_title = composeSound.title;
+        body.sound_cover_url = composeSound.cover_url || null;
+        body.sound_duration = composeSound.duration_seconds || null;
+      }
+      await apiClient.post("/posts", body);
       setComposeText("");
       setComposeMediaType("thought");
       setComposeMediaUrl("");
       setComposeAudience({ visibility: "public", user_ids: [] });
       setComposePoll(null);
+      setComposeSound(null);
       await loadPosts();
     } catch (e) {
       // Surface the server's reason so users don't see a silently-closed
@@ -265,15 +283,20 @@ export default function Feed() {
                 { id: "thought", label: "Thought", Icon: MessageSquare },
                 { id: "image",   label: "Image",   Icon: ImageIcon },
                 { id: "video",   label: "Video",   Icon: Video },
+                { id: "sound",   label: "Sound",   Icon: Music2 },
                 { id: "link",    label: "Link",    Icon: Link2 },
               ].map(({ id, label, Icon }) => (
                 <button
                   key={id}
                   type="button"
                   className="or-chip"
-                  data-active={composeMediaType === id}
+                  data-active={composeMediaType === id || (id === "sound" && !!composeSound)}
                   data-testid={`feed-composer-type-${id}`}
                   onClick={() => {
+                    if (id === "sound") {
+                      setSoundPickerOpen(true);
+                      return;
+                    }
                     setComposeMediaType(id);
                     if (id === "thought") setComposeMediaUrl("");
                     // Tapping "Image" opens the upload picker (device or URL).
@@ -304,6 +327,18 @@ export default function Feed() {
                   style={{ color: "var(--text-muted)" }}
                 >
                   Remove poll
+                </button>
+              )}
+              {composeSound && (
+                <button
+                  type="button"
+                  className="or-chip"
+                  onClick={() => setComposeSound(null)}
+                  data-testid="feed-composer-sound-clear"
+                  title="Remove sound"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Remove sound
                 </button>
               )}
             </div>
@@ -340,6 +375,24 @@ export default function Feed() {
             {composeMediaType === "link" && composeMediaUrl && (
               <div className="mt-2 text-xs flex items-center gap-1.5" data-testid="feed-composer-preview-link" style={{ color: "var(--text-muted)" }}>
                 <Link2 size={12} /> <span className="truncate">{composeMediaUrl}</span>
+              </div>
+            )}
+            {composeSound && (
+              <div className="mt-2 p-2 text-xs flex items-center gap-2"
+                style={{
+                  borderRadius: "calc(var(--radius) - 4px)",
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--border-col)",
+                }}
+                data-testid="feed-composer-sound-preview"
+              >
+                <Music2 size={14} style={{ color: "var(--primary)" }} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold truncate" style={{ color: "var(--text-main)" }}>{composeSound.title}</div>
+                  <div className="truncate" style={{ color: "var(--text-muted)" }}>
+                    {composeSound.category}{composeSound.genre ? ` · ${composeSound.genre}` : ""}{composeSound.duration_seconds ? ` · ${Math.round(composeSound.duration_seconds)}s` : ""}
+                  </div>
+                </div>
               </div>
             )}
             {composePoll && (
@@ -475,6 +528,16 @@ export default function Feed() {
         title="Add an image to your post"
         testid="feed-image-picker"
       />
+      <SoundUploadPicker
+        open={soundPickerOpen}
+        onClose={() => setSoundPickerOpen(false)}
+        onUploaded={(track) => {
+          setComposeSound(track);
+          setSoundPickerOpen(false);
+        }}
+        defaultCategory="Music"
+        testid="feed-sound-picker"
+      />
       <PollComposer
         open={pollComposerOpen}
         initial={composePoll ? {
@@ -516,11 +579,13 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
     openPopup();
   };
   const mediaImg = p.image_url || (p.media_type === "image" ? p.media_url : null);
+  const mediaImgs = Array.isArray(p.image_urls) && p.image_urls.length > 0 ? p.image_urls : null;
   const mediaVidRaw = p.video_url || (p.media_type === "video" ? p.media_url : null);
   // Self-hosted videos arrive as relative `/api/videos/...` paths — promote
   // to an absolute URL so the <video> element can stream them.
   const mediaVid = mediaVidRaw ? absoluteImageUrl(mediaVidRaw) : null;
   const mediaLink = p.link_url || (p.media_type === "link" ? p.media_url : null);
+  const isSound = p.media_type === "sound" && (p.sound_url || p.media_url);
   return (
     <article className="or-surface p-4 sm:p-5" data-testid={`feed-post-${p.id}`}>
       <header className="flex items-center gap-3 mb-3">
@@ -569,7 +634,31 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
           {p.content}
         </p>
       )}
-      {mediaImg && (
+      {mediaImgs ? (
+        <div
+          className="grid gap-1 mb-3 overflow-hidden"
+          style={{
+            borderRadius: "var(--radius)",
+            border: "1px solid var(--border-col)",
+            gridTemplateColumns: mediaImgs.length === 1 ? "1fr" : mediaImgs.length === 2 ? "1fr 1fr" : "1fr 1fr 1fr",
+          }}
+          data-testid={`feed-image-album-${p.id}`}
+        >
+          {mediaImgs.slice(0, 6).map((u, idx) => (
+            <img
+              key={idx}
+              src={absoluteImageUrl(u)}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="w-full object-cover cursor-zoom-in"
+              style={{ height: mediaImgs.length === 1 ? 384 : 200 }}
+              data-testid={`feed-image-${p.id}-${idx}`}
+              onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
+            />
+          ))}
+        </div>
+      ) : mediaImg && (
         <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
           <img
             src={absoluteImageUrl(mediaImg)}
@@ -581,6 +670,9 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
             onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
           />
         </div>
+      )}
+      {isSound && (
+        <SoundPlayerCard post={p} testid={`feed-sound-${p.id}`} />
       )}
       {mediaVid && (
         <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
@@ -632,8 +724,8 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
         testid={`feed-share-modal-${p.id}`}
       />
       <ImageLightbox
-        open={lightboxOpen && !!mediaImg}
-        src={mediaImg ? absoluteImageUrl(mediaImg) : null}
+        open={lightboxOpen && !!(mediaImg || (mediaImgs && mediaImgs[0]))}
+        src={absoluteImageUrl(mediaImgs?.[0] || mediaImg)}
         alt={p.content || ""}
         onClose={() => setLightboxOpen(false)}
         testid={`feed-image-lightbox-${p.id}`}

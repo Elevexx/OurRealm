@@ -17,6 +17,7 @@ import UsernameLink from "@/components/UsernameLink";
 import { absoluteImageUrl } from "@/components/ImageUploadPicker";
 import AutoplayVideo from "@/components/AutoplayVideo";
 import VideoEmbed from "@/components/VideoEmbed";
+import SoundPlayerCard from "@/components/SoundPlayerCard";
 import ReportButton from "@/components/ReportButton";
 import ImageLightbox from "@/components/ImageLightbox";
 import ShareToUserModal from "@/components/ShareToUserModal";
@@ -364,9 +365,11 @@ export default function PostPopup() {
   if (!state) return null;
 
   const mediaImg = post?.image_url || (post?.media_type === "image" ? post?.media_url : null);
+  const mediaImgs = Array.isArray(post?.image_urls) && post.image_urls.length > 0 ? post.image_urls : null;
   const mediaVidRaw = post?.video_url || (post?.media_type === "video" ? post?.media_url : null);
   const mediaVid = mediaVidRaw ? absoluteImageUrl(mediaVidRaw) : null;
   const mediaLink = post?.link_url || (post?.media_type === "link" ? post?.media_url : null);
+  const isSound = post?.media_type === "sound" && (post?.sound_url || post?.media_url);
   const remaining = 178 - draft.length;
 
   return (
@@ -454,7 +457,31 @@ export default function PostPopup() {
                   {post.content}
                 </p>
               )}
-              {mediaImg && (
+              {mediaImgs ? (
+                <div
+                  className="grid gap-1 overflow-hidden"
+                  style={{
+                    borderRadius: "var(--radius)",
+                    border: "1px solid var(--border-col)",
+                    gridTemplateColumns: mediaImgs.length === 1 ? "1fr" : mediaImgs.length === 2 ? "1fr 1fr" : "1fr 1fr 1fr",
+                  }}
+                  data-testid="post-popup-image-album"
+                >
+                  {mediaImgs.slice(0, 6).map((u, idx) => (
+                    <img
+                      key={idx}
+                      src={absoluteImageUrl(u)}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full object-cover cursor-zoom-in"
+                      style={{ height: mediaImgs.length === 1 ? 360 : 200 }}
+                      data-testid={`post-popup-image-${idx}`}
+                      onClick={() => setImageLightbox(true)}
+                    />
+                  ))}
+                </div>
+              ) : mediaImg && (
                 <img
                   src={absoluteImageUrl(mediaImg)}
                   alt=""
@@ -465,6 +492,9 @@ export default function PostPopup() {
                   data-testid="post-popup-image"
                   onClick={() => setImageLightbox(true)}
                 />
+              )}
+              {isSound && (
+                <SoundPlayerCard post={post} testid="post-popup-sound" />
               )}
               {mediaVid && (
                 <VideoEmbed url={mediaVid} testid="post-popup-video" />
@@ -570,8 +600,8 @@ export default function PostPopup() {
         testid="post-popup-share-modal"
       />
       <ImageLightbox
-        open={imageLightbox && !!mediaImg}
-        src={mediaImg ? absoluteImageUrl(mediaImg) : null}
+        open={imageLightbox && !!(mediaImg || mediaImgs?.[0])}
+        src={absoluteImageUrl(mediaImgs?.[0] || mediaImg)}
         alt={post?.content || ""}
         onClose={() => setImageLightbox(false)}
         testid="post-popup-image-lightbox"

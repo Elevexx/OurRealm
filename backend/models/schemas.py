@@ -144,8 +144,21 @@ class PostCreate(BaseModel):
     # (or instead of) the legacy media_url/media_type pair. Existing posts
     # without these fields continue to render text-only.
     image_url: Optional[str] = None
+    # Album support — list of additional image URLs (the "album" view in
+    # the feed). When set, the feed renders a grid of all images. Stored
+    # alongside `image_url` (the primary thumbnail) for back-compat.
+    image_urls: Optional[List[str]] = None
     video_url: Optional[str] = None
     link_url: Optional[str] = None
+    # Sound post — references an uploaded track from /api/sounds/upload.
+    # `sound_track_id` is the track's id (used to bump plays, fetch
+    # cover/meta on demand). `sound_url` is the streaming URL for the
+    # in-feed audio element. Either may be present.
+    sound_track_id: Optional[str] = None
+    sound_url: Optional[str] = None
+    sound_title: Optional[str] = None
+    sound_cover_url: Optional[str] = None
+    sound_duration: Optional[float] = None
     tags: List[str] = []
     audience: Optional[AudiencePayload] = None
     poll: Optional[PollPayload] = None   # Phase 4B — optional poll attached

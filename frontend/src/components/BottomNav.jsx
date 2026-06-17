@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Home, Search, Sparkles, Plus, Wallet, Users, User, Radio, Video, Image as ImageIcon, MessageSquare, X, Music2, Send } from "lucide-react";
+import { Home, Search, Sparkles, Plus, Wallet, Users, User, Radio, Video, Image as ImageIcon, MessageSquare, X, Music2, Send, Trash2 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import GuestPrompt from "@/components/GuestPrompt";
 import VideoUploadPicker from "@/components/VideoUploadPicker";
+import ImageUploadPicker from "@/components/ImageUploadPicker";
+import SoundUploadPicker from "@/components/SoundUploadPicker";
 
 const ITEMS_LEFT = [
   // Home → new Home Dashboard (widget board). For You → personalized feed.
@@ -27,13 +29,50 @@ const CREATE_OPTIONS = [
   { id: "thought", label: "Thought", Icon: MessageSquare, color: "#F4C84A", desc: "Quick text from your mind" },
 ];
 
+const MAX_ALBUM_IMAGES = 6;
+
 function CreateWorkflow({ option, onClose, onDone }) {
   const [text, setText] = useState("");
   const [title, setTitle] = useState("");
   const [posting, setPosting] = useState(false);
-  const [videoUrl, setVideoUrl] = useState(""); // populated by VideoUploadPicker
+  // Video: relative `/api/videos/...` URL populated by VideoUploadPicker.
+  const [videoUrl, setVideoUrl] = useState("");
+  // Images: array of {url, thumbnailUrl?} from ImageUploadPicker.
+  // Initialised EMPTY — no demo/placeholder content.
+  const [images, setImages] = useState([]);
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const [imagePickerSlot, setImagePickerSlot] = useState(null); // index being added/replaced
+  // Sound: track record returned by SoundUploadPicker after /sounds/upload.
+  const [sound, setSound] = useState(null);
+  const [soundPickerOpen, setSoundPickerOpen] = useState(false);
+
   if (!option) return null;
   const Icon = option.Icon;
+
+  const handleImagePicked = ({ url, thumbnailUrl }) => {
+    setImages((prev) => {
+      const next = [...prev];
+      if (typeof imagePickerSlot === "number" && imagePickerSlot < next.length) {
+        // Replace at slot
+        next[imagePickerSlot] = { url, thumbnailUrl };
+      } else if (next.length < MAX_ALBUM_IMAGES) {
+        // Append
+        next.push({ url, thumbnailUrl });
+      }
+      return next;
+    });
+    setImagePickerOpen(false);
+    setImagePickerSlot(null);
+  };
+
+  const removeImage = (idx) => {
+    setImages((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const openImagePicker = (idx) => {
+    setImagePickerSlot(idx);
+    setImagePickerOpen(true);
+  };
 
   const submit = async () => {
     setPosting(true);
@@ -41,16 +80,28 @@ function CreateWorkflow({ option, onClose, onDone }) {
       const content = option.id === "thought"
         ? text.trim()
         : `${title.trim() || option.label}${text.trim() ? " — " + text.trim() : ""}`;
-      // Production-bug fix: a Video workflow requires the uploaded video URL,
-      // not just a caption. Without it the post was being created with
-      // media_type='video' + video_url=null and the feed couldn't render it.
+
+      // Per-workflow validation guards.
       if (option.id === "video" && !videoUrl) {
         // eslint-disable-next-line no-alert
         alert("Pick a video file before sharing.");
         setPosting(false);
         return;
       }
-      if (!content && !videoUrl) { setPosting(false); return; }
+      if (option.id === "image" && images.length === 0) {
+        // eslint-disable-next-line no-alert
+        alert("Add at least one image to publish.");
+        setPosting(false);
+        return;
+      }
+      if (option.id === "sound" && !sound) {
+        // eslint-disable-next-line no-alert
+        alert("Upload a sound file to publish.");
+        setPosting(false);
+        return;
+      }
+      if (option.id === "thought" && !content) { setPosting(false); return; }
+
       const mediaType = option.id === "thought" ? "thought"
         : option.id === "image" ? "image"
         : option.id === "video" ? "video"
@@ -58,6 +109,21 @@ function CreateWorkflow({ option, onClose, onDone }) {
         : "sound";
       const body = { content, media_type: mediaType };
       if (videoUrl) { body.video_url = videoUrl; body.media_url = videoUrl; }
+      if (images.length > 0) {
+        body.image_url = images[0].url;          // primary thumbnail
+        body.media_url = images[0].url;
+        body.image_urls = images.map((i) => i.url); // album
+      }
+      if (sound) {
+        // The sound is already uploaded — we attach its track id + URL
+        // to the post. The feed renders the player inline.
+        body.sound_track_id = sound.id;
+        body.sound_url = sound.file_url;
+        body.media_url = sound.file_url;
+        body.sound_title = sound.title;
+        body.sound_cover_url = sound.cover_url || null;
+        body.sound_duration = sound.duration_seconds || null;
+      }
       await apiClient.post("/posts", body);
       onDone();
     } catch (e) {
@@ -65,7 +131,7 @@ function CreateWorkflow({ option, onClose, onDone }) {
       console.error("[CreateWorkflow] /posts failed", {
         status: e?.response?.status,
         detail: e?.response?.data?.detail,
-        body: { id: option.id, hasVideo: !!videoUrl },
+        body: { id: option.id, hasVideo: !!videoUrl, images: images.length, hasSound: !!sound },
       });
       // eslint-disable-next-line no-alert
       alert(e?.response?.data?.detail || "Could not publish post.");
@@ -79,7 +145,7 @@ function CreateWorkflow({ option, onClose, onDone }) {
       onClick={onClose}
       data-testid={`create-workflow-${option.id}`}
     >
-      <div className="or-surface w-full max-w-lg p-6 grain" onClick={(e) => e.stopPropagation()}>
+      <div className="or-surface w-full max-w-lg p-6 grain max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-3 mb-4">
           <div
             className="rounded-full flex items-center justify-center"
@@ -126,15 +192,59 @@ function CreateWorkflow({ option, onClose, onDone }) {
         {option.id === "image" && (
           <>
             <div className="grid grid-cols-3 gap-2 mb-3">
-              {[0,1,2,3,4,5].map((i) => (
-                <button key={i} className="aspect-square or-surface overflow-hidden" style={{ background: "var(--surface-2)", borderStyle: i < 2 ? "solid" : "dashed" }} data-testid={`create-image-slot-${i}`}>
-                  {i < 2 ? (
-                    <img src={`https://picsum.photos/200/200?random=${i + 80}`} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <ImageIcon size={20} style={{ color: option.color, margin: "0 auto" }} className="mt-6" />
-                  )}
-                </button>
-              ))}
+              {Array.from({ length: MAX_ALBUM_IMAGES }).map((_, i) => {
+                const img = images[i];
+                const isFilled = !!img;
+                return (
+                  <div
+                    key={i}
+                    className="aspect-square or-surface overflow-hidden relative"
+                    style={{ background: "var(--surface-2)", borderStyle: isFilled ? "solid" : "dashed" }}
+                  >
+                    {isFilled ? (
+                      <>
+                        <img src={img.thumbnailUrl || img.url} alt="" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => openImagePicker(i)}
+                          className="absolute inset-0"
+                          aria-label="Replace image"
+                          data-testid={`create-image-slot-${i}`}
+                          style={{ background: "transparent" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); removeImage(i); }}
+                          className="absolute top-1 right-1 rounded-full"
+                          style={{
+                            width: 24, height: 24,
+                            background: "rgba(0,0,0,0.65)",
+                            color: "#fff",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                          aria-label="Remove image"
+                          data-testid={`create-image-slot-${i}-remove`}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openImagePicker(null)}
+                        className="w-full h-full flex items-center justify-center"
+                        aria-label="Add image"
+                        data-testid={`create-image-slot-${i}`}
+                      >
+                        <ImageIcon size={20} style={{ color: option.color }} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="text-[11px] mb-2" style={{ color: "var(--text-muted)" }}>
+              {images.length}/{MAX_ALBUM_IMAGES} images — tap an empty tile to add, tap a filled tile to replace, or use the trash icon to remove.
             </div>
             <input className="or-input mb-2" placeholder="Album title" value={title} onChange={(e) => setTitle(e.target.value)} data-testid="create-image-title" />
             <textarea className="or-input resize-none" rows={2} placeholder="Caption (optional)" value={text} onChange={(e) => setText(e.target.value)} />
@@ -142,19 +252,68 @@ function CreateWorkflow({ option, onClose, onDone }) {
         )}
         {option.id === "sound" && (
           <>
-            <div className="or-surface p-5 mb-3" style={{ background: "var(--surface-2)" }}>
-              <div className="flex items-end gap-1 h-12 mb-2">
-                {Array.from({ length: 28 }).map((_, i) => (
-                  <div key={i} className="flex-1 rounded-sm" style={{
-                    height: `${20 + Math.abs(Math.sin(i * 0.7)) * 80}%`,
-                    background: option.color, opacity: 0.7 + (i % 3) * 0.1,
-                  }} />
-                ))}
+            {sound ? (
+              <div className="or-surface p-4 mb-3" style={{ background: "var(--surface-2)" }} data-testid="create-sound-selected">
+                <div className="flex items-center gap-3">
+                  {sound.cover_url ? (
+                    <img src={sound.cover_url} alt="" className="rounded shrink-0 object-cover" style={{ width: 48, height: 48 }} />
+                  ) : (
+                    <div className="rounded shrink-0 flex items-center justify-center" style={{ width: 48, height: 48, background: "var(--bgc)", color: option.color }}>
+                      <Music2 size={20} />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold truncate" style={{ color: "var(--text-main)" }}>{sound.title}</div>
+                    <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                      {sound.category}{sound.genre ? ` · ${sound.genre}` : ""}{sound.duration_seconds ? ` · ${Math.round(sound.duration_seconds)}s` : ""}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSound(null)}
+                    className="starbar-icon"
+                    style={{ width: 32, height: 32 }}
+                    aria-label="Remove sound"
+                    data-testid="create-sound-remove"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                {/* HTML5 preview using the just-uploaded file URL. */}
+                {sound.file_url && (
+                  <audio
+                    controls
+                    preload="metadata"
+                    src={sound.file_url.startsWith("http") ? sound.file_url : `${process.env.REACT_APP_BACKEND_URL || ""}${sound.file_url}`}
+                    className="w-full mt-3"
+                    data-testid="create-sound-preview"
+                  />
+                )}
               </div>
-              <div className="text-xs text-center" style={{ color: "var(--text-muted)" }}>Drop audio file or record</div>
-            </div>
-            <input className="or-input mb-2" placeholder="Track title" value={title} onChange={(e) => setTitle(e.target.value)} data-testid="create-sound-title" />
-            <textarea className="or-input resize-none" rows={2} placeholder="Description (optional)" value={text} onChange={(e) => setText(e.target.value)} />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSoundPickerOpen(true)}
+                className="or-surface p-5 mb-3 w-full text-left"
+                style={{ background: "var(--surface-2)" }}
+                data-testid="create-sound-launch"
+              >
+                <div className="flex items-end gap-1 h-12 mb-2">
+                  {Array.from({ length: 28 }).map((_, i) => (
+                    <div key={i} className="flex-1 rounded-sm" style={{
+                      height: `${20 + Math.abs(Math.sin(i * 0.7)) * 80}%`,
+                      background: option.color, opacity: 0.7 + (i % 3) * 0.1,
+                    }} />
+                  ))}
+                </div>
+                <div className="text-xs text-center" style={{ color: "var(--text-muted)" }}>Tap to choose an audio file</div>
+              </button>
+            )}
+            {sound && (
+              <>
+                <input className="or-input mb-2" placeholder="Caption (optional)" value={text} onChange={(e) => setText(e.target.value)} data-testid="create-sound-caption" />
+              </>
+            )}
           </>
         )}
         {option.id === "thought" && (
@@ -174,6 +333,26 @@ function CreateWorkflow({ option, onClose, onDone }) {
           </button>
           <button className="or-btn or-btn-ghost" onClick={onClose}>Cancel</button>
         </div>
+
+        {/* Mounted pickers — share the existing app-wide upload pipelines. */}
+        <ImageUploadPicker
+          open={imagePickerOpen}
+          onClose={() => { setImagePickerOpen(false); setImagePickerSlot(null); }}
+          onPicked={handleImagePicked}
+          title={typeof imagePickerSlot === "number" ? "Replace image" : "Add image to album"}
+          testid="create-image-picker"
+        />
+        <SoundUploadPicker
+          open={soundPickerOpen}
+          onClose={() => setSoundPickerOpen(false)}
+          onUploaded={(track) => {
+            setSound(track);
+            setSoundPickerOpen(false);
+            if (!title) setTitle(track.title || "");
+          }}
+          defaultCategory="Music"
+          testid="create-sound-picker"
+        />
       </div>
     </div>
   );
