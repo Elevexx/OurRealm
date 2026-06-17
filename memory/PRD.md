@@ -15,7 +15,38 @@ React 19 · FastAPI · MongoDB (Motor) · Supabase (Postgres + Realtime for mess
 ## Completed Phases
 Phase 1 · 2 · 2.5 · 3 · 4A · 4A follow-up · 4B (Polls/Personalization) · 4B follow-up (Made for You) · Landing/Modes refresh · PWA icon · mode animations · Phase 5 foundation (Home Dashboard + Admin Analytics + PWA prompt + autoplay) · **Phase 5 MVP + deferred polish (Feb 2026)** · **Phase 5+ Parts 0/1/2/3 (Feb 2026)**.
 
-## Phase 5+ — Critical Hotfix (Feb 2026)
+## Phase 5+ — Launch Fixes (Feb 2026)
+
+### Routing
+- **Bottom nav**: `Home` → `/home` (HomeDashboard widgets), `Discover` → `/discover`, `For You` → `/feed` (was previously routing Home → /feed).
+- **New signup**: `SignUp.jsx` now routes to `/interests` after registration.
+- **Interest picker** is now reachable at both `/interests` (canonical) and `/home/legacy` (back-compat).
+- **Feed → Customize Feed** button now routes to `/interests` (was `/home`).
+- **Widget save sync**: `HomeDashboard.save()` now uses the server-cleaned response (`PUT /api/dashboard/layout` echoes `widgets`) so local + server state can't diverge — fixes the "widgets no longer customizable after save" symptom.
+
+### Mobile post-management menu
+- `components/PostManagementMenu.jsx` now renders as a **centered bottom sheet** under 640px:
+  - 2×2 visibility grid (Public / Friends Only / Custom / Stealth)
+  - Delete in its own destructive section below, separated by a top divider
+  - `max-width: calc(100vw - 32px)`, `max-height: 80vh`, `paddingBottom: env(safe-area-inset-bottom)`
+  - Backdrop tap closes (`{tid}-backdrop`)
+- Desktop (≥640px) retains the right-anchored popover unchanged.
+- Permission gating preserved: owners see grid + Delete; `@stealth` on others' posts sees Delete only; everyone else sees nothing.
+
+### Profile picture upload
+- New `components/AvatarPicker.jsx` — modal with two tabs:
+  - **Upload Photo** → `POST /api/images/upload` (CDN-rehosted, respects daily limits)
+  - **Post Image URL** → `POST /api/images/from-url` (server fetches + rehosts)
+- Persists via `PATCH /api/profile/me { avatar_url }` and calls `refreshMe()` so the avatar updates everywhere (posts, comments, friend lists, messages, notifications) via the global user state.
+- Profile page (in edit mode) shows a **Camera** overlay if `avatar_url` is set, a **Plus** icon otherwise.
+
+### Test coverage
+- Backend 14/14 pytest pass · Frontend 13/13 Playwright assertions pass · zero defects.
+- New regression suite: `/app/backend/tests/test_launch_fixes.py`. Report: `/app/test_reports/iteration_13.json`.
+
+---
+
+
 
 ### Messaging restoration
 - **Root cause of missing chats**: `pages/Messages.jsx` `ChatsTab` was querying ONLY the Supabase `chats` table; the 9 historical conversations in MongoDB `db.messages` were invisible.
