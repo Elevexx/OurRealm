@@ -15,7 +15,7 @@
  */
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Edit3, Trash2, Globe2, Users as UsersIcon, UserCheck, Eye, EyeOff, X, Loader2 } from "lucide-react";
+import { Edit3, Trash2, Globe2, Users as UsersIcon, UserCheck, Eye, EyeOff, X, Loader2, Pin } from "lucide-react";
 import apiClient from "@/api/client";
 import FriendMultiPicker from "@/components/FriendMultiPicker";
 
@@ -36,6 +36,9 @@ export function canManagePost(post, user) {
   if (!post || !user) return false;
   if (post.author_id === user.id) return true;
   if ((user.username || "").toLowerCase() === "stealth" || user.is_founder) return true;
+  // Phase F.6 — @support gets the menu so they can Pin/Unpin global
+  // announcements on any user's post.
+  if ((user.username || "").toLowerCase() === "support") return true;
   return false;
 }
 
@@ -107,6 +110,31 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
       setErr(e?.response?.data?.detail || "Failed to delete");
       setBusy(false);
     }
+  };
+
+  // Phase F.6 — Founder-only "Pin to For You" toggle. Singleton: pinning
+  // a new post auto-replaces any current pinned announcement on the
+  // server. Unpin clears the global pin entirely.
+  const isPinAdmin = user && ["stealth", "support"].includes((user.username || "").toLowerCase());
+  const pinPost = async () => {
+    setBusy(true); setErr("");
+    try {
+      await apiClient.post(`/announcements/pin`, { post_id: post.id });
+      onUpdated?.({ ...post, is_pinned: true, pinned_by: user.username });
+      closeMenu();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Failed to pin");
+    } finally { setBusy(false); }
+  };
+  const unpinPost = async () => {
+    setBusy(true); setErr("");
+    try {
+      await apiClient.post(`/announcements/unpin`);
+      onUpdated?.({ ...post, is_pinned: false, pinned_by: null });
+      closeMenu();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Failed to unpin");
+    } finally { setBusy(false); }
   };
 
   const tid = testid || `post-manage-${post.id}`;
@@ -189,6 +217,26 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
     return (
       <>
         {VisGrid}
+        {isPinAdmin && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={post.is_pinned ? unpinPost : pinPost}
+            className="w-full text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-3 py-2.5 mt-2"
+            style={{
+              borderRadius: 6,
+              background: post.is_pinned
+                ? "color-mix(in srgb, var(--primary) 22%, transparent)"
+                : "color-mix(in srgb, var(--primary) 12%, transparent)",
+              color: "var(--primary)",
+              border: "1px solid color-mix(in srgb, var(--primary) 40%, transparent)",
+            }}
+            data-testid={`${idScope}-pin`}
+          >
+            {busy ? <Loader2 size={11} className="animate-spin" /> : <Pin size={11} />}
+            {post.is_pinned ? "Unpin from For You" : "Pin to For You"}
+          </button>
+        )}
         {DeleteSection}
         {err && (
           <div className="w-full text-[11px] mt-2" style={{ color: "#FF8080" }} data-testid={`${idScope}-error`}>

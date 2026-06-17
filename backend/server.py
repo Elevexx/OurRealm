@@ -33,6 +33,8 @@ from routers import phase5 as phase5_router_mod
 from routers import tickets as tickets_router_mod
 from routers import faq as faq_router_mod
 from routers import presence as presence_router_mod
+from routers import hashtags as hashtags_router_mod
+from routers import announcements as announcements_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -69,6 +71,8 @@ app.include_router(phase5_router_mod.router)
 app.include_router(tickets_router_mod.router)
 app.include_router(faq_router_mod.router)
 app.include_router(presence_router_mod.router)
+app.include_router(hashtags_router_mod.router)
+app.include_router(announcements_router_mod.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -119,6 +123,18 @@ async def on_startup():
     import asyncio
     global _mod_task
     await seed_mod.run_startup()
+    # Phase F — ensure hashtag indexes exist + retroactively index any
+    # legacy posts that pre-date the hashtag system.
+    try:
+        await hashtags_router_mod.ensure_indexes()
+        # Only run the migration if at least one post has no hashtag
+        # field at all — keeps subsequent restarts O(1).
+        from core.db import db as _db
+        needs = await _db.posts.find_one({"hashtags": {"$exists": False}}, {"_id": 0, "id": 1})
+        if needs:
+            await hashtags_router_mod.migrate_index_all_posts()
+    except Exception as e:
+        logger.warning(f"[hashtags] startup index/migration error: {e}")
     _mod_task = asyncio.create_task(_moderation_loop())
     logger.info("OurRealm startup complete (moderation loop armed)")
 

@@ -1,4 +1,5 @@
 """Post endpoints (/api/posts/*)."""
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -13,6 +14,8 @@ from models.schemas import PostCreate
 from routers.notifications import emit_notification
 from services.post_limits import enforce_post_content_limit
 from services.moderation import scan_and_apply
+
+log = logging.getLogger("ourrealm.posts")
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
 
@@ -126,6 +129,12 @@ async def create_post(payload: PostCreate, current: CurrentUser):
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.posts.insert_one(doc)
+    # Phase F — hashtag indexing.
+    try:
+        from routers.hashtags import index_post_hashtags
+        await index_post_hashtags(doc["id"], doc.get("content") or "")
+    except Exception as e:
+        log.warning(f"[hashtags] indexing failed for post {doc.get('id')}: {e}")
     # Moderation scan — sets moderation_* fields on the just-inserted doc.
     await scan_and_apply(
         coll_name="posts",
@@ -371,7 +380,37 @@ async def list_posts(
         )
 
     viewer_id = viewer_doc.get("id") if viewer_doc else None
+    # Phase F.4 — Interest-based 48-hour prioritisation. Pure re-rank: no
+    # items added or removed, no engagement score, still time-based.
+    try:
+        from routers.hashtags import interest_hashtags_for_user, boost_posts_by_interest
+        if viewer_doc:
+            # Need the full user doc for interests.
+            viewer_full = await db.users.find_one({"id": viewer_id}, {"_id": 0, "interests": 1})
+            interests = interest_hashtags_for_user(viewer_full or {})
+            items = boost_posts_by_interest(items, interests, window_hours=48)
+    except Exception as e:
+        log.warning(f"[interest-boost] failed: {e}")
+
     items = [_public_post(p, viewer_id=viewer_id) for p in items]
+
+    # Phase F.6 — prepend the global pinned announcement, if any. Decoded
+    # to the same _public_post shape and tagged with `is_pinned: true` so
+    # the client can render the Founder-Announcement banner.
+    try:
+        from routers.announcements import fetch_active_pin
+        active = await fetch_active_pin()
+        if active and (not media_type or media_type == "all" or
+                       active["post"].get("media_type") == media_type):
+            pinned_post = _public_post(active["post"], viewer_id=viewer_id)
+            pinned_post["is_pinned"] = True
+            pinned_post["pinned_by"] = active["pin"].get("pinned_by")
+            pinned_post["pinned_at"] = active["pin"].get("pinned_at")
+            # De-duplicate if the pinned post also surfaced naturally.
+            items = [pinned_post] + [p for p in items if p.get("id") != pinned_post.get("id")]
+    except Exception as e:
+        log.warning(f"[pinned-post] failed: {e}")
+
     return {"posts": items}
 
 

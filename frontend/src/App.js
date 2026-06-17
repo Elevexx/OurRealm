@@ -30,6 +30,7 @@ import AccountSettings from "@/pages/AccountSettings";
 import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
 import AdminFAQ from "@/pages/AdminFAQ";
+import HashtagFeed from "@/pages/HashtagFeed";
 import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage } from "@/pages/LegalPages";
 import PostPopup from "@/components/PostPopup";
 import MiniPlayer from "@/components/MiniPlayer";
@@ -69,6 +70,7 @@ function App() {
             <Route path="/profile/:username" element={<ShellRoute><FounderProfile /></ShellRoute>} />
             <Route path="/public/:username" element={<ShellRoute><FounderProfile /></ShellRoute>} />
             <Route path="/feed" element={<ShellRoute><Feed /></ShellRoute>} />
+            <Route path="/hashtag/:tag" element={<ShellRoute><HashtagFeed /></ShellRoute>} />
             <Route path="/discover" element={<ShellRoute><Discover /></ShellRoute>} />
             <Route path="/sounds" element={<ShellRoute><Sounds /></ShellRoute>} />
             <Route path="/music" element={<Navigate to="/sounds" replace />} />

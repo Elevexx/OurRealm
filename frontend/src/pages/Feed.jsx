@@ -14,6 +14,7 @@ import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPic
 import SoundUploadPicker from "@/components/SoundUploadPicker";
 import SoundPlayerCard from "@/components/SoundPlayerCard";
 import UserAvatar from "@/components/UserAvatar";
+import HashtagText from "@/components/HashtagText";
 import ZipRequiredModal from "@/components/ZipRequiredModal";
 import PollComposer from "@/components/PollComposer";
 import PollDisplay from "@/components/PollDisplay";
@@ -589,7 +590,21 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
   const mediaLink = p.link_url || (p.media_type === "link" ? p.media_url : null);
   const isSound = p.media_type === "sound" && (p.sound_url || p.media_url);
   return (
-    <article className="or-surface p-4 sm:p-5" data-testid={`feed-post-${p.id}`}>
+    <article className="or-surface p-4 sm:p-5" data-testid={`feed-post-${p.id}`} data-pinned={p.is_pinned ? "true" : undefined}>
+      {p.is_pinned && (
+        <div
+          className="flex items-center gap-2 mb-3 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-widest"
+          style={{
+            background: "color-mix(in srgb, var(--primary) 18%, transparent)",
+            color: "var(--primary)",
+            border: "1px solid var(--primary)",
+            width: "fit-content",
+          }}
+          data-testid={`feed-post-${p.id}-pinned-banner`}
+        >
+          <Sparkles size={11} /> Founder Announcement
+        </div>
+      )}
       <header className="flex items-center gap-3 mb-3">
         <UserAvatar
           user={{ id: p.author_id, username: p.author_username, name: p.author_name, avatar_url: p.author_avatar }}
@@ -630,7 +645,7 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
             minWidth: 0,
           }}
         >
-          {p.content}
+          <HashtagText text={p.content} testid={`feed-post-content-${p.id}`} />
         </p>
       )}
       {mediaImgs ? (
