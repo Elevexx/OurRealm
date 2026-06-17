@@ -9,10 +9,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  Plus, X, ChevronUp, ChevronDown, Layout, Cloud, Radio, Users as UsersIcon,
+  Plus, X, GripVertical, Layout, Cloud, Radio, Users as UsersIcon,
   Newspaper, Sparkles, Music as MusicIcon, Bell, Bookmark, Eye, Globe2, Calendar,
   Heart, MessageSquare, Lock,
 } from "lucide-react";
+import {
+  DndContext, PointerSensor, TouchSensor, KeyboardSensor,
+  useSensor, useSensors, closestCenter,
+} from "@dnd-kit/core";
+import {
+  SortableContext, useSortable, arrayMove,
+  rectSortingStrategy, sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -69,15 +78,22 @@ export default function HomeDashboard() {
     setShowLibrary(false);
   };
   const remove = (id) => save(widgets.filter((w) => w.id !== id));
-  const move = (idx, delta) => {
-    const next = [...widgets];
-    const j = idx + delta;
-    if (j < 0 || j >= next.length) return;
-    [next[idx], next[j]] = [next[j], next[idx]];
-    save(next);
-  };
   const setVis = (id, vis) =>
     save(widgets.map((w) => (w.id === id ? { ...w, visibility: vis } : w)));
+
+  // Drag-and-drop reorder (dnd-kit) — same pattern Top8Editor uses.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 180, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  const onDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    const from = widgets.findIndex((w) => w.id === active.id);
+    const to   = widgets.findIndex((w) => w.id === over.id);
+    if (from < 0 || to < 0) return;
+    save(arrayMove(widgets, from, to));
+  };
 
   if (!user) {
     return <div className="max-w-5xl mx-auto or-surface p-6 text-center" style={{ color: "var(--text-muted)" }} data-testid="home-dashboard-signin">Sign in to view your Home dashboard.</div>;
@@ -104,37 +120,39 @@ export default function HomeDashboard() {
       {loading ? (
         <div className="or-surface p-10 text-center" style={{ color: "var(--text-muted)" }}>Loading your dashboard…</div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {widgets.map((w, i) => (
-            <WidgetTile
-              key={w.id}
-              widget={w}
-              edit={edit}
-              user={user}
-              onRemove={() => remove(w.id)}
-              onMoveUp={() => move(i, -1)}
-              onMoveDown={() => move(i, +1)}
-              onVisChange={(vis) => setVis(w.id, vis)}
-            />
-          ))}
-          {/* Add Widgets tile */}
-          <button
-            onClick={() => setShowLibrary(true)}
-            className="or-surface text-center flex flex-col items-center justify-center gap-2 p-6 transition-transform active:scale-[0.99]"
-            style={{
-              borderStyle: "dashed",
-              minHeight: 220,
-              background: "transparent",
-              color: "var(--text-muted)",
-              border: "2px dashed var(--border-col)",
-            }}
-            data-testid="home-add-widget"
-          >
-            <Plus size={28} style={{ color: "var(--primary)" }} />
-            <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>Add Home Widgets</div>
-            <div className="text-xs">Pick from the widget library</div>
-          </button>
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={widgets.map((w) => w.id)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {widgets.map((w) => (
+                <SortableWidgetTile
+                  key={w.id}
+                  widget={w}
+                  edit={edit}
+                  user={user}
+                  onRemove={() => remove(w.id)}
+                  onVisChange={(vis) => setVis(w.id, vis)}
+                />
+              ))}
+              {/* Add Widgets tile */}
+              <button
+                onClick={() => setShowLibrary(true)}
+                className="or-surface text-center flex flex-col items-center justify-center gap-2 p-6 transition-transform active:scale-[0.99]"
+                style={{
+                  borderStyle: "dashed",
+                  minHeight: 220,
+                  background: "transparent",
+                  color: "var(--text-muted)",
+                  border: "2px dashed var(--border-col)",
+                }}
+                data-testid="home-add-widget"
+              >
+                <Plus size={28} style={{ color: "var(--primary)" }} />
+                <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>Add Home Widgets</div>
+                <div className="text-xs">Pick from the widget library</div>
+              </button>
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       {showLibrary && (
@@ -149,7 +167,25 @@ export default function HomeDashboard() {
 }
 
 // ───────── Widget Tile ─────────
-function WidgetTile({ widget, edit, user, onRemove, onMoveUp, onMoveDown, onVisChange }) {
+function SortableWidgetTile(props) {
+  const {
+    attributes, listeners, setNodeRef, transform, transition, isDragging,
+  } = useSortable({ id: props.widget.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.55 : 1,
+    boxShadow: isDragging ? "0 14px 40px rgba(46,160,255,0.35)" : undefined,
+    zIndex: isDragging ? 5 : "auto",
+  };
+  return (
+    <div ref={setNodeRef} style={style}>
+      <WidgetTile {...props} dragHandleProps={{ ...attributes, ...listeners }} />
+    </div>
+  );
+}
+
+function WidgetTile({ widget, edit, user, onRemove, onVisChange, dragHandleProps }) {
   const meta = CATALOG_BY_TYPE[widget.type] || { label: widget.type, Icon: Layout };
   const Body = WIDGETS[widget.type] || PlaceholderWidget;
   return (
@@ -159,14 +195,22 @@ function WidgetTile({ widget, edit, user, onRemove, onMoveUp, onMoveDown, onVisC
       data-testid={`widget-${widget.type}-${widget.id}`}
     >
       <header className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: "1px solid var(--border-col)" }}>
+        {edit && (
+          <button
+            {...dragHandleProps}
+            className="starbar-icon cursor-grab active:cursor-grabbing"
+            style={{ width: 24, height: 24, color: "var(--text-muted)", touchAction: "none" }}
+            aria-label="Drag to reorder"
+            data-testid={`widget-${widget.id}-drag`}
+            onClick={(e) => e.preventDefault()}
+          >
+            <GripVertical size={14} />
+          </button>
+        )}
         <meta.Icon size={14} style={{ color: "var(--primary)" }} />
         <div className="text-sm font-semibold flex-1" style={{ color: "var(--text-main)" }}>{meta.label}</div>
         {edit ? (
-          <div className="flex items-center gap-1">
-            <button className="starbar-icon" style={{ width: 24, height: 24 }} onClick={onMoveUp} aria-label="Move up" data-testid={`widget-${widget.id}-up`}><ChevronUp size={12} /></button>
-            <button className="starbar-icon" style={{ width: 24, height: 24 }} onClick={onMoveDown} aria-label="Move down" data-testid={`widget-${widget.id}-down`}><ChevronDown size={12} /></button>
-            <button className="starbar-icon" style={{ width: 24, height: 24 }} onClick={onRemove} aria-label="Remove" data-testid={`widget-${widget.id}-remove`}><X size={12} /></button>
-          </div>
+          <button className="starbar-icon" style={{ width: 24, height: 24 }} onClick={onRemove} aria-label="Remove" data-testid={`widget-${widget.id}-remove`}><X size={12} /></button>
         ) : null}
       </header>
       {edit && (
