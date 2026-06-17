@@ -275,9 +275,25 @@ async def list_posts(
     coords within the requested miles. Posts without author coords are
     EXCLUDED from a non-Any radius (cannot be measured).
     """
+    # Lookup viewer up-front so we can apply visibility filtering even when
+    # no radius is requested. Hardens /api/posts against bypassing private/
+    # custom audience rules via the raw list endpoint.
+    viewer_doc = None
+    if viewer:
+        viewer_doc = await db.users.find_one(
+            {"username": (viewer or "").lower()},
+            {"_id": 0, "id": 1, "zip_lat": 1, "zip_lng": 1, "friends": 1},
+        )
+
     query: dict = {}
     if media_type and media_type != "all":
         query["media_type"] = media_type
+    # Compose the visibility filter directly into the Mongo query so private
+    # posts authored by others never travel over the wire.
+    vis_clause = _visibility_query(viewer_doc)
+    if vis_clause:
+        query = {"$and": [query, vis_clause]} if query else vis_clause
+
     cursor = db.posts.find(query, {"_id": 0}).sort("created_at", -1).limit(limit)
     items: list = []
     async for p in cursor:
@@ -289,12 +305,6 @@ async def list_posts(
         items.append(p)
 
     miles = parse_radius(radius)
-    viewer_doc = None
-    if viewer:
-        viewer_doc = await db.users.find_one(
-            {"username": (viewer or "").lower()},
-            {"_id": 0, "id": 1, "zip_lat": 1, "zip_lng": 1},
-        )
     if miles is not None:
         if not viewer_doc or viewer_doc.get("zip_lat") is None or viewer_doc.get("zip_lng") is None:
             # The frontend is responsible for blocking the radius UI until
