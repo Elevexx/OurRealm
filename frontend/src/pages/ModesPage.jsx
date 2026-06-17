@@ -7,40 +7,44 @@ import ModePreviewArt from "@/components/ModePreviewArt";
 const MODE_INFO = {
   neon: {
     label: "NEON",
-    sub: "Holographic Future",
+    sub: "The future is yours to create.",
     Icon: Zap,
     accent: "#2EA0FF",
     glow: "rgba(46,160,255,0.55)",
+    description: "Immerse yourself in a high-energy digital world where creators, communities, and ideas shine brighter. Neon Mode delivers a vibrant, always-on experience built for discovery, expression, and connection.",
     bullets: ["Holographic widgets", "Floating glass panels", "Particle field + grid", "Futuristic creator aesthetic"],
     gradient: "linear-gradient(135deg, #2EA0FF 0%, #10E670 100%)",
     family: "'Unbounded', sans-serif",
   },
   business: {
     label: "BUSINESS",
-    sub: "Executive Luxury",
+    sub: "Elevate your network. Accelerate your goals.",
     Icon: Crown,
     accent: "#C8A24A",
     glow: "rgba(200,162,74,0.55)",
+    description: "Step into a refined environment designed for professionals, entrepreneurs, and creators. Business Mode transforms OurRealm into a space for meaningful connections, collaboration, and opportunity.",
     bullets: ["White + cream backgrounds", "Gold and silver accents", "Frosted luxury cards", "Executive dashboards"],
     gradient: "linear-gradient(135deg, #D5B05A 0%, #8C7A3E 100%)",
     family: "'Playfair Display', serif",
   },
   millennium: {
     label: "MILLENNIUM",
-    sub: "Y2K Optimism",
+    sub: "Rediscover the magic of the early internet.",
     Icon: Sparkles,
     accent: "#2EA0FF",
     glow: "rgba(46,160,255,0.55)",
+    description: "Bright, optimistic, and endlessly creative, Millennium Mode captures the excitement of a time when profiles were personal, communities felt genuine, and every click led to a new adventure.",
     bullets: ["Bright sky-blue gradients", "Glossy rounded panels", "Playful chrome buttons", "Original — never copies any OS"],
     gradient: "linear-gradient(180deg, #6CC4FF 0%, #2E78D6 100%)",
     family: "'Fredoka', sans-serif",
   },
   stealth: {
     label: "STEALTH",
-    sub: "Tactical Intelligence",
+    sub: "Move with focus. Connect with purpose.",
     Icon: Shield,
     accent: "#00FF66",
     glow: "rgba(0,255,102,0.55)",
+    description: "Stealth Mode creates a sleek, tactical environment designed for clarity and control. Minimize distractions, stay locked in, and navigate your realm with precision.",
     bullets: ["Grid + scan-line backdrop", "Terminal monospace fonts", "Corner-bracketed surfaces", "Radar widget signature"],
     gradient: "linear-gradient(135deg, #00FF66 0%, #00B23E 100%)",
     family: "'Share Tech Mono', monospace",
@@ -118,6 +122,9 @@ export default function ModesPage() {
                 </div>
               </div>
               <div className="p-5">
+                <p className="text-sm mb-3" style={{ color: "var(--text-main)", lineHeight: 1.55 }} data-testid={`modes-description-${m}`}>
+                  {info.description}
+                </p>
                 <ul className="space-y-1.5 mb-4">
                   {info.bullets.map((b) => (
                     <li key={b} className="text-sm flex items-center gap-2" style={{ color: "var(--text-main)" }}>

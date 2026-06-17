@@ -10,8 +10,8 @@
  *  - Reorder (◀/▶ arrows on a filled slot → instant)
  *  - Replace (tap a filled slot → picker offers candidates → swaps in)
  */
-import React, { useEffect, useState } from "react";
-import { Plus, X, Sparkles } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Plus, X, Sparkles, Search } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -26,8 +26,12 @@ export default function Top8Editor() {
 
   // Local optimistic copy so save() can be fire-and-forget while UI moves.
   const [ids, setIds] = useState(user?.inner_8 || []);
+  // Phase 5 — search inside the picker.
+  const [pickerQuery, setPickerQuery] = useState("");
 
   useEffect(() => { setIds(user?.inner_8 || []); }, [user?.inner_8]);
+  // Reset search every time the picker opens/closes.
+  useEffect(() => { if (!picker.open) setPickerQuery(""); }, [picker.open]);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +59,18 @@ export default function Top8Editor() {
         : !ids.filter((_, i) => i !== replaceIndex).includes(f.id),
     );
 
+  // Apply the client-side search filter to the picker list.
+  const filteredCandidates = useMemo(() => {
+    const list = candidates(picker.replaceIndex);
+    const term = pickerQuery.trim().toLowerCase();
+    if (!term) return list;
+    return list.filter((f) =>
+      (f.username || "").toLowerCase().includes(term)
+      || (f.name || "").toLowerCase().includes(term)
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickerQuery, friends, ids, picker.replaceIndex]);
+
   const save = async (next) => {
     setBusy(true); setErr("");
     setIds(next);
@@ -70,7 +86,7 @@ export default function Top8Editor() {
   const add = (id, index = null) => {
     let next;
     if (index === null) {
-      if (ids.length >= 8) { setErr("Remove a friend from Top 8 to add a new one"); return; }
+      if (ids.length >= 8) { setErr("Please remove friend from top 8 to add more"); return; }
       next = [...ids, id];
     } else {
       next = [...ids];
@@ -187,14 +203,32 @@ export default function Top8Editor() {
               </h3>
               <button type="button" className="starbar-icon" style={{ width: 32, height: 32 }} onClick={() => setPicker({ open: false, replaceIndex: null })} data-testid="top8-picker-close"><X size={14} /></button>
             </div>
+            {/* Search bar (Phase 5) */}
+            <div className="px-3 pt-3">
+              <div className="or-surface p-2.5 flex items-center gap-2" style={{ background: "var(--surface-2)" }}>
+                <Search size={14} style={{ color: "var(--text-muted)" }} />
+                <input
+                  autoFocus
+                  type="text"
+                  value={pickerQuery}
+                  onChange={(e) => setPickerQuery(e.target.value)}
+                  placeholder="Search friends by name or @username…"
+                  className="bg-transparent flex-1 outline-none border-none text-sm"
+                  style={{ color: "var(--text-main)" }}
+                  data-testid="top8-picker-search"
+                />
+              </div>
+            </div>
             <div className="p-3 flex-1 overflow-y-auto">
-              {candidates(picker.replaceIndex).length === 0 ? (
+              {filteredCandidates.length === 0 ? (
                 <div className="text-sm text-center" style={{ color: "var(--text-muted)" }}>
                   {friends.length === 0
                     ? "Add some friends first."
-                    : "All your friends are already in Top 8."}
+                    : pickerQuery.trim()
+                      ? "No matches."
+                      : "All your friends are already in Top 8."}
                 </div>
-              ) : candidates(picker.replaceIndex).map((f) => (
+              ) : filteredCandidates.map((f) => (
                 <button
                   key={f.id}
                   type="button"

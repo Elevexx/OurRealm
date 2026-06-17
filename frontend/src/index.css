@@ -609,3 +609,115 @@ html[data-mode="millennium"] .y2k-title {
 }
 
 @layer base { [data-debug-wrapper="true"] { display: contents !important; } }
+
+/* ============================================================
+   PHASE 5 — Mode visual enhancements (additive, CSS-only).
+   These rules layer ON TOP of the existing mode treatments without
+   replacing them. We intentionally avoid `.or-surface::before/::after`
+   selectors that are already in use earlier in this stylesheet.
+============================================================ */
+
+@keyframes neon-particle-drift {
+  0%   { transform: translate3d(0,   0, 0); opacity: 0.7; }
+  50%  { transform: translate3d(8px, -14px, 0); opacity: 1; }
+  100% { transform: translate3d(0,   0, 0); opacity: 0.7; }
+}
+@keyframes neon-glow-pulse {
+  0%, 100% { box-shadow:
+    0 0 24px rgba(46,160,255,0.25),
+    0 0 0 1px rgba(46,160,255,0.18) inset; }
+  50%      { box-shadow:
+    0 0 36px rgba(16,230,112,0.35),
+    0 0 0 1px rgba(16,230,112,0.28) inset; }
+}
+@keyframes biz-sheen-pulse {
+  0%, 100% { box-shadow:
+    0 1px 0 rgba(255,255,255,0.9) inset,
+    0 14px 38px rgba(45,35,15,0.08),
+    0 0 0 1px rgba(255,255,255,0.7) inset; }
+  50%      { box-shadow:
+    0 1px 0 rgba(255,255,255,1) inset,
+    0 18px 44px rgba(200,162,74,0.18),
+    0 0 0 1px rgba(212,175,55,0.30) inset; }
+}
+@keyframes millen-chrome-shine {
+  0%   { background-position: -150% 0; }
+  100% { background-position:  150% 0; }
+}
+@keyframes millen-star-twinkle {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+@keyframes stealth-pulse-ring {
+  0%   { transform: scale(0.95); opacity: 0.55; }
+  100% { transform: scale(1.35); opacity: 0;    }
+}
+
+/* ── NEON: particle drift on existing star field + subtle glow pulse on surfaces ── */
+html[data-mode="neon"] body::after {
+  animation: neon-particle-drift 12s ease-in-out infinite;
+}
+html[data-mode="neon"] .or-surface {
+  animation: neon-glow-pulse 9s ease-in-out infinite;
+}
+
+/* ── BUSINESS: subtle gold sheen pulse on surfaces (luxury breathing) ── */
+html[data-mode="business"] .or-surface {
+  animation: biz-sheen-pulse 11s ease-in-out infinite;
+}
+
+/* ── MILLENNIUM: chrome highlight sweep on or-btn + twinkling stars overlay ── */
+html[data-mode="millennium"] .or-btn {
+  position: relative;
+  overflow: hidden;
+}
+html[data-mode="millennium"] .or-btn::before {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 35%,
+    rgba(255,255,255,0.5) 50%,
+    transparent 65%
+  );
+  background-size: 200% 100%;
+  animation: millen-chrome-shine 6s linear infinite;
+}
+html[data-mode="millennium"] body::after {
+  content: "";
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(circle 1.5px at 12% 18%, #FFFFFF, transparent 70%),
+    radial-gradient(circle 1.2px at 84% 30%, #FFFAD0, transparent 70%),
+    radial-gradient(circle 1.5px at 28% 60%, #FFE38A, transparent 70%),
+    radial-gradient(circle 1px   at 70% 78%, #FFFFFF, transparent 70%),
+    radial-gradient(circle 1.2px at 50% 12%, #FFFFFF, transparent 70%);
+  animation: millen-star-twinkle 4s ease-in-out infinite;
+}
+
+/* ── STEALTH: pulsing tactical ring around primary CTAs ── */
+html[data-mode="stealth"] .or-btn {
+  position: relative;
+}
+html[data-mode="stealth"] .or-btn::after {
+  content: "";
+  position: absolute; inset: -2px;
+  pointer-events: none;
+  border: 1px solid rgba(0,255,102,0.45);
+  border-radius: inherit;
+  animation: stealth-pulse-ring 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Respect users who explicitly want less motion. */
+@media (prefers-reduced-motion: reduce) {
+  html[data-mode="neon"] body::after,
+  html[data-mode="neon"] .or-surface,
+  html[data-mode="business"] .or-surface,
+  html[data-mode="millennium"] .or-btn::before,
+  html[data-mode="millennium"] body::after,
+  html[data-mode="stealth"] .or-btn::after {
+    animation: none !important;
+  }
+}
+

@@ -11,7 +11,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Plus, X, GripVertical, Layout, Cloud, Radio, Users as UsersIcon,
   Newspaper, Sparkles, Music as MusicIcon, Bell, Bookmark, Eye, Globe2, Calendar,
-  Heart, MessageSquare, Lock, UserPlus,
+  Heart, MessageSquare, Lock, UserPlus, Maximize2,
 } from "lucide-react";
 import {
   DndContext, PointerSensor, TouchSensor, KeyboardSensor,
@@ -52,6 +52,17 @@ const VIS_OPTIONS = [
   { id: "custom",  label: "Custom",  Icon: UserPlus },
 ];
 
+// Phase 5 — widget size → grid span / min-height. Keeps the existing
+// `size` enum the dashboard layout already persists ("sm" | "md" | "lg" | "xl").
+const SIZE_DIM = {
+  sm: { col: 1, minH: 180 },
+  md: { col: 1, minH: 240 },
+  lg: { col: 2, minH: 300 },
+  xl: { col: 2, minH: 420 },
+};
+const SIZE_ORDER = ["sm", "md", "lg", "xl"];
+const RESIZE_STEP_PX = 70;  // px of pointer delta required to advance one size
+
 export default function HomeDashboard() {
   const { user } = useAuth();
   const [widgets, setWidgets] = useState([]);
@@ -84,6 +95,8 @@ export default function HomeDashboard() {
     save(widgets.map((w) => (w.id === id ? { ...w, visibility: vis } : w)));
   const setCustomIds = (id, ids) =>
     save(widgets.map((w) => (w.id === id ? { ...w, visibility: "custom", custom_user_ids: ids } : w)));
+  const setSize = (id, size) =>
+    save(widgets.map((w) => (w.id === id ? { ...w, size } : w)));
   // Which widget id (if any) is currently editing its custom friend list.
   const [customEditingId, setCustomEditingId] = useState(null);
   const customEditingWidget = widgets.find((w) => w.id === customEditingId) || null;
@@ -142,6 +155,7 @@ export default function HomeDashboard() {
                     if (vis === "custom") setCustomEditingId(w.id);
                   }}
                   onEditCustom={() => setCustomEditingId(w.id)}
+                  onResize={(size) => setSize(w.id, size)}
                 />
               ))}
               {/* Add Widgets tile */}
@@ -194,12 +208,14 @@ function SortableWidgetTile(props) {
   const {
     attributes, listeners, setNodeRef, transform, transition, isDragging,
   } = useSortable({ id: props.widget.id });
+  const dim = SIZE_DIM[props.widget.size] || SIZE_DIM.md;
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.55 : 1,
     boxShadow: isDragging ? "0 14px 40px rgba(46,160,255,0.35)" : undefined,
     zIndex: isDragging ? 5 : "auto",
+    gridColumn: dim.col === 2 ? "span 2 / span 2" : undefined,
   };
   return (
     <div ref={setNodeRef} style={style}>
@@ -208,14 +224,51 @@ function SortableWidgetTile(props) {
   );
 }
 
-function WidgetTile({ widget, edit, user, onRemove, onVisChange, onEditCustom, dragHandleProps }) {
+function WidgetTile({ widget, edit, user, onRemove, onVisChange, onEditCustom, onResize, dragHandleProps }) {
   const meta = CATALOG_BY_TYPE[widget.type] || { label: widget.type, Icon: Layout };
   const Body = WIDGETS[widget.type] || PlaceholderWidget;
+  const dim = SIZE_DIM[widget.size] || SIZE_DIM.md;
+
+  // ── Phase 5 — pointer-drag resize handle (SE corner).
+  // We track cumulative deltaX/deltaY and translate it into a size index
+  // along SIZE_ORDER. Final size is committed on pointer-up so we only
+  // hit the API once per gesture.
+  const [resizing, setResizing] = useState(false);
+  const startRef = React.useRef({ x: 0, y: 0, idx: 0 });
+
+  const onResizeDown = (e) => {
+    if (!edit) return;
+    e.stopPropagation(); e.preventDefault();
+    const idx = SIZE_ORDER.indexOf(widget.size || "md");
+    startRef.current = { x: e.clientX, y: e.clientY, idx: idx >= 0 ? idx : 1, lastIdx: idx };
+    setResizing(true);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onResizeMove = (e) => {
+    if (!resizing) return;
+    const { x, y, idx } = startRef.current;
+    const dx = e.clientX - x;
+    const dy = e.clientY - y;
+    // The more the user drags, the larger the widget. Diagonal pulls grow it
+    // faster than single-axis pulls (Math.max picks whichever axis moved most).
+    const steps = Math.round(Math.max(dx, dy) / RESIZE_STEP_PX);
+    const nextIdx = Math.max(0, Math.min(SIZE_ORDER.length - 1, idx + steps));
+    if (nextIdx !== startRef.current.lastIdx) {
+      startRef.current.lastIdx = nextIdx;
+      onResize?.(SIZE_ORDER[nextIdx]);
+    }
+  };
+  const onResizeUp = (e) => {
+    if (!resizing) return;
+    setResizing(false);
+    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
+  };
   return (
     <div
-      className="or-surface overflow-hidden flex flex-col"
-      style={{ minHeight: 220 }}
+      className="or-surface overflow-hidden flex flex-col relative"
+      style={{ minHeight: dim.minH }}
       data-testid={`widget-${widget.type}-${widget.id}`}
+      data-size={widget.size || "md"}
     >
       <header className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: "1px solid var(--border-col)" }}>
         {edit && (
@@ -277,6 +330,35 @@ function WidgetTile({ widget, edit, user, onRemove, onVisChange, onEditCustom, d
       <div className="flex-1 overflow-hidden">
         <Body widget={widget} user={user} />
       </div>
+      {/* Phase 5 — drag-to-resize handle (visible in edit mode only) */}
+      {edit && (
+        <button
+          type="button"
+          aria-label="Drag to resize widget"
+          data-testid={`widget-${widget.id}-resize`}
+          onPointerDown={onResizeDown}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeUp}
+          onPointerCancel={onResizeUp}
+          className="absolute"
+          style={{
+            right: 4, bottom: 4,
+            width: 22, height: 22,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            borderRadius: 6,
+            background: resizing
+              ? "color-mix(in srgb, var(--primary) 30%, transparent)"
+              : "color-mix(in srgb, var(--surface) 70%, transparent)",
+            border: "1px solid var(--border-col)",
+            color: "var(--text-muted)",
+            cursor: "nwse-resize",
+            touchAction: "none",
+            zIndex: 4,
+          }}
+        >
+          <Maximize2 size={11} style={{ transform: "rotate(90deg)" }} />
+        </button>
+      )}
     </div>
   );
 }

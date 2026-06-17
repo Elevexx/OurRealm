@@ -15,6 +15,7 @@ import ZipRequiredModal from "@/components/ZipRequiredModal";
 import PollComposer from "@/components/PollComposer";
 import PollDisplay from "@/components/PollDisplay";
 import AutoplayVideo from "@/components/AutoplayVideo";
+import { getPostCharacterLimit } from "@/lib/postLimits";
 
 const FILTER_KEY = "ourrealm.feedMedia";
 const INTEREST_KEY = "ourrealm.interests";
@@ -40,6 +41,7 @@ function timeAgo(iso) {
 export default function Feed() {
   const { user, isGuest } = useAuth();
   const navigate = useNavigate();
+  const charLimit = getPostCharacterLimit(user);
   const [media, setMedia] = useState(() => {
     try { return JSON.parse(localStorage.getItem(FILTER_KEY) || "[]"); } catch { return []; }
   });
@@ -134,6 +136,7 @@ export default function Feed() {
   const submitPost = async () => {
     if (!user || isGuest) { setGuestPrompt("post a thought"); return; }
     if (!composeText.trim() && !composePoll) return;
+    if (composeText.length > charLimit) return;  // safety net; Share is already disabled
     setPosting(true);
     try {
       await apiClient.post("/posts", {
@@ -327,15 +330,31 @@ export default function Feed() {
                 {composeAudience.visibility === "private" && <><Lock size={12} /> Private</>}
                 {composeAudience.visibility === "custom" && <><UserCheck size={12} /> Custom ({composeAudience.user_ids?.length || 0})</>}
               </button>
-              <button
-                data-testid="feed-composer-submit"
-                className="or-btn"
-                disabled={posting}
-                onClick={submitPost}
-                style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }}
-              >
-                {posting ? "Posting…" : "Share"}
-              </button>
+              <div className="flex items-center gap-3 ml-auto">
+                <span
+                  className="text-xs"
+                  data-testid="feed-composer-charcount"
+                  style={{
+                    color: composeText.length > charLimit
+                      ? "#FF5C5C"
+                      : composeText.length > charLimit - 30
+                        ? "#FFB72E"
+                        : "var(--text-muted)",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {composeText.length} / {charLimit}
+                </span>
+                <button
+                  data-testid="feed-composer-submit"
+                  className="or-btn"
+                  disabled={posting || composeText.length > charLimit}
+                  onClick={submitPost}
+                  style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }}
+                >
+                  {posting ? "Posting…" : "Share"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

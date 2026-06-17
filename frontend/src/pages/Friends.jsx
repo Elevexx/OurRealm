@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { UserPlus, MessageCircle, UserCheck, Search, Check, X, Sparkles, Users as UsersIcon, Loader2, Clock, Edit3, Plus } from "lucide-react";
+import { UserPlus, MessageCircle, UserCheck, Search, Check, X, Sparkles, Users as UsersIcon, Loader2, Clock, Edit3, Plus, Star } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -41,7 +41,26 @@ export default function Friends() {
   const [actionId, setActionId] = useState("");
   const [actionErr, setActionErr] = useState("");
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, refreshMe } = useAuth();
+
+  // Phase 5 — quick "Add to Top 8" action surfaced on every friend card.
+  // Uses the existing PATCH /profile/me { inner_8: [...] } API.
+  const innerIds = user?.inner_8 || [];
+  const isInTop8 = (id) => innerIds.includes(id);
+  const addToTop8 = async (id) => {
+    if (isInTop8(id)) return;
+    if (innerIds.length >= 8) {
+      setActionErr("Please remove friend from top 8 to add more");
+      return;
+    }
+    setActionErr("");
+    try {
+      await apiClient.patch("/profile/me", { inner_8: [...innerIds, id] });
+      if (refreshMe) await refreshMe();
+    } catch (e) {
+      setActionErr(e?.response?.data?.detail || "Could not add to Top 8");
+    }
+  };
 
   const loadFriends = useCallback(async () => {
     if (!user) return;
@@ -239,6 +258,31 @@ export default function Friends() {
                   <UserCheck size={14} /> Profile
                 </button>
               </div>
+              {/* Phase 5 — Add to Top 8 quick action (existing friends only) */}
+              {f.id !== user?.id && (
+                isInTop8(f.id) ? (
+                  <button
+                    type="button"
+                    className="or-chip mt-2"
+                    disabled
+                    data-testid={`friend-in-top8-${f.username}`}
+                    style={{ width: "100%", justifyContent: "center", opacity: 0.85 }}
+                  >
+                    <Star size={12} style={{ fill: "currentColor" }} /> In Top 8
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="or-chip mt-2"
+                    onClick={() => addToTop8(f.id)}
+                    data-testid={`friend-add-top8-${f.username}`}
+                    style={{ width: "100%", justifyContent: "center" }}
+                    title="Add to Top 8"
+                  >
+                    <Star size={12} /> Add to Top 8
+                  </button>
+                )
+              )}
             </div>
           ))}
         </div>
@@ -363,12 +407,15 @@ export default function Friends() {
 // Inner 8 — editable Close Realm widget (max 8 friends, ordered).
 // ─────────────────────────────────────────────────────────────────────
 function InnerEight({ friends, onChange }) {
-  const { user } = useAuth();
+  const { user, refreshMe } = useAuth();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [pickerQuery, setPickerQuery] = useState("");
+
+  useEffect(() => { if (!pickerOpen) setPickerQuery(""); }, [pickerOpen]);
 
   const idToFriend = new Map(friends.map((f) => [f.id, f]));
   const ids = (user?.inner_8 || []).filter((id) => idToFriend.has(id)).slice(0, 8);
@@ -378,6 +425,7 @@ function InnerEight({ friends, onChange }) {
     setBusy(true); setErr("");
     try {
       await apiClient.patch("/profile/me", { inner_8: next });
+      if (refreshMe) await refreshMe();
       if (onChange) await onChange();
     } catch (e) {
       setErr(e?.response?.data?.detail || "Could not save Inner 8");
@@ -385,7 +433,7 @@ function InnerEight({ friends, onChange }) {
   };
   const remove = (id) => save(ids.filter((x) => x !== id));
   const add = (id) => {
-    if (ids.length >= 8) { setErr("Remove a friend from Inner 8 to add a new one"); return; }
+    if (ids.length >= 8) { setErr("Please remove friend from top 8 to add more"); return; }
     save([...ids, id]);
     setPickerOpen(false);
   };
@@ -401,6 +449,13 @@ function InnerEight({ friends, onChange }) {
 
   const slots = Array.from({ length: 8 }, (_, i) => ids[i] || null);
   const candidates = friends.filter((f) => !ids.includes(f.id));
+  const filteredCandidates = pickerQuery.trim()
+    ? candidates.filter((f) => {
+        const term = pickerQuery.trim().toLowerCase();
+        return (f.username || "").toLowerCase().includes(term)
+          || (f.name || "").toLowerCase().includes(term);
+      })
+    : candidates;
 
   return (
     <div className="or-surface p-4 sm:p-5 mb-5" data-testid="friends-inner-eight">
@@ -456,13 +511,32 @@ function InnerEight({ friends, onChange }) {
         <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center px-3 pb-24 sm:pb-0" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)" }} onClick={() => setPickerOpen(false)} data-testid="inner8-picker">
           <div className="or-surface w-full max-w-md max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between p-3" style={{ borderBottom: "1px solid var(--border-col)" }}>
-              <h3 className="text-base" style={{ fontFamily: "var(--font-display)" }}>Add to Inner 8</h3>
+              <h3 className="text-base" style={{ fontFamily: "var(--font-display)" }}>Add to Top 8</h3>
               <button className="starbar-icon" style={{ width: 32, height: 32 }} onClick={() => setPickerOpen(false)} data-testid="inner8-picker-close"><X size={14} /></button>
             </div>
+            <div className="px-3 pt-3">
+              <div className="or-surface p-2.5 flex items-center gap-2" style={{ background: "var(--surface-2)" }}>
+                <Search size={14} style={{ color: "var(--text-muted)" }} />
+                <input
+                  autoFocus
+                  type="text"
+                  value={pickerQuery}
+                  onChange={(e) => setPickerQuery(e.target.value)}
+                  placeholder="Search friends by name or @username…"
+                  className="bg-transparent flex-1 outline-none border-none text-sm"
+                  style={{ color: "var(--text-main)" }}
+                  data-testid="inner8-picker-search"
+                />
+              </div>
+            </div>
             <div className="p-3 flex-1 overflow-y-auto">
-              {candidates.length === 0 ? (
-                <div className="text-sm text-center" style={{ color: "var(--text-muted)" }}>All your friends are already in Inner 8.</div>
-              ) : candidates.map((f) => (
+              {filteredCandidates.length === 0 ? (
+                <div className="text-sm text-center" style={{ color: "var(--text-muted)" }}>
+                  {candidates.length === 0
+                    ? "All your friends are already in Top 8."
+                    : "No matches."}
+                </div>
+              ) : filteredCandidates.map((f) => (
                 <button key={f.id} onClick={() => add(f.id)} className="w-full flex items-center gap-3 p-2 text-left" data-testid={`inner8-pick-${f.username}`} style={{ borderBottom: "1px solid var(--border-col)" }}>
                   <img src={f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.name || f.username)}`} alt="" className="rounded-full" style={{ width: 36, height: 36 }} />
                   <div className="flex-1 min-w-0">

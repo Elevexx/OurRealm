@@ -10,6 +10,7 @@ from core.deps import CurrentUser
 from core.geo import parse_radius, radius_filter
 from models.schemas import PostCreate
 from routers.notifications import emit_notification
+from services.post_limits import enforce_post_content_limit
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
 
@@ -46,6 +47,10 @@ def _build_poll(payload_poll) -> Optional[dict]:
 
 @router.post("")
 async def create_post(payload: PostCreate, current: CurrentUser):
+    # Role-based content cap (founder 2000 / VIP 500 / default 300).
+    # Applies to text content only — media-only posts (image/video/link/poll)
+    # with no text are exempt.
+    enforce_post_content_limit(current, payload.content or "")
     audience = payload.audience.model_dump() if payload.audience else {
         "visibility": "public", "user_ids": [], "friend_group_ids": None,
     }

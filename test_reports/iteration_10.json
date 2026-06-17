@@ -1,0 +1,41 @@
+{
+  "summary": "Phase 5+ (Parts 0/1/2/3) — Tested role-based post char limits, Modes taglines/descriptions, Friends Add-to-Top8 + picker search, HomeDashboard resize handles, and regressions. Backend pytest: 13/13 PASS (founder 1500 ok, founder 2100 rejected via Pydantic 422, VIP @600 rejected with detail mentioning 500 cap, VIP @500 boundary ok, unit assertion confirms default cap=300 + rejects 301, exact 300 boundary post ok for tfone, short-content regression ok, /api/upload-limits/me ok, /api/dashboard/layout ok, /api/admin/analytics founder=200 + non-admin=403, PATCH /api/profile/me inner_8 persists, GET /api/auth/me returns inner_8 under user key). Frontend Playwright: all 4 ModesPage descriptions match spec substrings (neon/business/millennium/stealth), guest /feed charcount shows '0 / 300', founder /feed shows '0 / 2000' and live-updates to '5 / 2000' on typing, Add to Top 8 button present on 70 friend cards (1 already In Top 8), clicking 'Add to Top 8' on qaprof527427 immediately switched card to friend-in-top8-qaprof527427, Top 8 picker opens via 'Add Friend' empty slot in Close Realm widget and exposes data-testid='inner8-picker-search' with header 'Add to Top 8', search filtering works, HomeDashboard Customize mode exposes 5 resize handles (sample: widget-for_you_feed-resize), no console pageerrors across all 4 mode switches.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/profile/me (inner_8)", "issue": "When PATCHing inner_8 with USERNAME strings (e.g. 'stealth') instead of UUID ids, server returns 400 'Inner 8 entry is not a friend' — correct behavior, but error message could be clearer that ids are required. Frontend currently uses ids so this is invisible to users."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_post_limits_phase5p.py",
+    "/app/test_reports/pytest/post_limits_phase5p.xml"
+  ],
+  "action_items": [
+    "NONE — all Part 0/1/2/3 review items verified. tfone is is_vip=true (backfilled by core/seed.py on every boot promoting all pre-existing users to VIP), so the 300-char default cap cannot be exercised end-to-end against tfone. Coverage achieved via: (a) tfone VIP @500 boundary + @600 rejection asserting '500' in error detail, (b) unit-level character_limit_for/enforce_post_content_limit assertion confirming default=300 and 301 → HTTPException(400) with '300' in detail."
+  ],
+  "critical_code_review_comments": [
+    "services/post_limits.py character_limit_for treats `username == 'stealth'` OR `is_founder` as founder — this is robust to the case where the stealth account loses the is_founder flag accidentally, but conversely any NEW user that registers username 'stealth' would inherit the 2000 cap. Consider gating purely on is_founder once the seed is stable.",
+    "routers/posts.py models/schemas.PostCreate.content has Pydantic max_length=2000. That means the founder 2000 cap is the absolute hard ceiling — if the product ever raises founder to 5000, the Pydantic constraint must move in lockstep. Worth a comment in schemas.py linking to POST_LIMITS.",
+    "frontend Feed.jsx charLimit is derived from useAuth().user via getPostCharacterLimit. If the user object lacks is_founder/is_vip (e.g. stale cache) the UI will show /300 but server will accept up to 2000 silently — minor mismatch only, not a bug.",
+    "Top 8 picker open path (Friends.jsx): the only way to reach the inner8 picker is to click an empty 'Add Friend' slot in the Close Realm widget — there is no dedicated 'Open Picker' affordance. Consider exposing a 'Manage Top 8' button with [data-testid='friends-open-inner8'] for discoverability and easier test targeting."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_post_limits_phase5p.py"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13)",
+    "frontend": "100% of in-scope flows (modes descriptions x4, mode-switch console-clean, guest /feed /300, founder /feed /2000 live, friends Add-to-Top8 button present + click flips to In-Top-8, inner8-picker-search present after open, HomeDashboard resize handles present)"
+  },
+  "test_credentials": "Founder slopestyle2022@gmail.com / Password1$ (username stealth) ; VIP testfriend1@example.com / pass1234 (username tfone, auto-promoted is_vip=true by seed) ; VIP testfriend2@example.com / pass1234 (tftwo)",
+  "seed_data_creation": "Test posts created during pytest: 5 posts by tfone (300, 500, short, and 600/400 chars), 2 posts by stealth (1500 chars). All within audience visibility=public so they appear on the For You feed. inner_8 for tfone was temporarily set and restored to [] within the test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 5+ is fully green. Backend regression suite for this feature: /app/backend/tests/test_post_limits_phase5p.py (13 tests, ~2s). Note tfone is is_vip=true due to the VIP backfill in core/seed.py — to exercise the pure 300 default cap end-to-end via API you must register a NEW user via /api/auth/register (with all 4 compliance booleans true) and post a 301-char body. The unit-level test in test_default_unit_cap_300 already covers that path without needing a fresh account. Drag-to-resize was verified at the static level (5 resize handles render in customize mode with correct testids); a true pointer-down + drag + release flow was NOT exercised end-to-end because Playwright pointer drag on dnd-kit-managed surfaces frequently flakes — recommend a manual smoke or a dedicated Playwright drag test with page.mouse.move + steps=15 if a future iteration needs hard proof of size persistence via PUT /api/dashboard/layout (the endpoint itself is regression-tested as 200).",
+  "rca of the issue": "No bugs. One environmental quirk worth knowing: tfone's effective cap is 500, not 300, because core/seed.py:267-275 backfills is_vip=true on all pre-existing users without that flag on every backend boot. The 300-char default is correctly enforced for true default users; verified via unit assertion against character_limit_for({}) and enforce_post_content_limit on a plain dict."
+}
