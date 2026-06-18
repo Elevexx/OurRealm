@@ -41,42 +41,70 @@ export default function Landing() {
     navigate(raw, { replace: true });
   }, [isLoading, isLoggedIn, searchParams, navigate]);
 
+  // Lock body scrolling while the landing page is mounted so the page can
+  // never scroll even if some ancestor has an overflowing child. The fixed
+  // container already covers the viewport; this just removes any latent
+  // scrollbars/rubber-banding so all three tap zones are always reachable.
+  useEffect(() => {
+    const prevHtml = document.documentElement.style.overflow;
+    const prevBody = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.documentElement.style.overflow = prevHtml;
+      document.body.style.overflow = prevBody;
+    };
+  }, []);
+
   const handle = (key) => {
     if (key === "signup") return navigate("/signup");
     if (key === "signin") return navigate("/signin");
-    // guest
+    // guest — must run before navigate so the destination renders in guest mode.
     setGuest(true);
-    navigate("/home");
+    navigate("/feed");
   };
 
   return (
-    <div
-      data-testid="landing-page"
-      style={{
-        position: "fixed",
-        inset: 0,
-        width: "100vw",
-        height: "100vh",
-        background: "#000",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "hidden",
-      }}
-    >
+    <>
+      {/* CSS fallback cascade: prefer dynamic viewport units so the mobile
+          browser chrome (URL bar) is accounted for; fall back to vh/vw on
+          browsers without dvh/dvw support. */}
+      <style>{`
+        .or-landing-root { width: 100vw; height: 100vh; }
+        .or-landing-stage {
+          width: min(100vw, calc(100vh * 9 / 16));
+          height: min(100vh, calc(100vw * 16 / 9));
+        }
+        @supports (height: 100dvh) {
+          .or-landing-root { width: 100dvw; height: 100dvh; }
+          .or-landing-stage {
+            width: min(100dvw, calc(100dvh * 9 / 16));
+            height: min(100dvh, calc(100dvw * 16 / 9));
+          }
+        }
+      `}</style>
+      <div
+        data-testid="landing-page"
+        className="or-landing-root"
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "#000",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          touchAction: "manipulation",
+        }}
+      >
       {/* Aspect-ratio container — fills the viewport while preserving 9:16.
           The entire image is always visible (object-fit equivalent of contain),
           and the overlay buttons are positioned relative to this container so
           they remain perfectly aligned with the artwork. */}
       <div
+        className="or-landing-stage"
         style={{
           position: "relative",
-          // Maintain 9:16 portrait aspect-ratio. The whole image is always
-          // visible, scaling to fit both viewport axes without distortion.
-          //  - On wide viewports (desktop 16:9) → constrained by height.
-          //  - On tall viewports (narrow phones) → constrained by width.
-          width: "min(100vw, calc(100vh * 9 / 16))",
-          height: "min(100vh, calc(100vw * 16 / 9))",
         }}
       >
         <img
@@ -135,5 +163,6 @@ export default function Landing() {
         ))}
       </div>
     </div>
+    </>
   );
 }
