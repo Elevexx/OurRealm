@@ -33,34 +33,55 @@ async def ensure_indexes():
 
 
 async def seed_admin():
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@ourrealm.app").lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
-    existing = await db.users.find_one({"email": admin_email})
-    if existing is None:
-        await db.users.insert_one({
-            "id": str(uuid.uuid4()),
-            "email": admin_email,
-            "password_hash": hash_password(admin_password),
-            "name": "Realm Admin",
-            "role": "admin",
-            "avatar_url": None,
-            "bio": "Curator of OurRealm.",
-            "interests": ["technology", "music"],
-            "mode": "cypher",
-            "widgets": [],
-            "friends": [],
-            "friend_requests_in": [],
-            "friend_requests_out": [],
-            "pinned_threads": [],
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-        logger.info(f"Seeded admin: {admin_email}")
-    elif not verify_password(admin_password, existing["password_hash"]):
-        await db.users.update_one(
-            {"email": admin_email},
-            {"$set": {"password_hash": hash_password(admin_password)}},
-        )
-        logger.info(f"Updated admin password for: {admin_email}")
+    """[REMOVED — Phase H Security Incident, Feb 17 2026]
+
+    Historical: this used to seed `admin@ourrealm.app` with a hardcoded
+    password (`admin123` by default) on every boot, granting role="admin".
+    That created a publicly-known credential pair, which led to one
+    fresh-install report of an unauthorized auto-login.
+
+    NEW BEHAVIOUR — fully neutralised:
+      • The auto-seed is permanently disabled (this function is a no-op).
+      • Any legacy `admin@ourrealm.app` row already in the DB has its
+        password and role wiped so it can never authenticate again.
+      • All existing access/refresh sessions for that email are revoked.
+      • All administrative power now belongs exclusively to `@stealth`
+        (see seed_founder + routes that gate on `username == "stealth"`).
+
+    `ADMIN_EMAIL` / `ADMIN_PASSWORD` env vars are no longer read.
+    """
+    legacy_email = "admin@ourrealm.app"
+    legacy = await db.users.find_one({"email": legacy_email})
+    if legacy is None:
+        return
+    # Neutralise the row: unrecoverable random password hash, drop the
+    # admin role, drop founder/verified/featured flags, blank the username
+    # so it doesn't appear in lookups / discovery / mentions.
+    await db.users.update_one(
+        {"email": legacy_email},
+        {"$set": {
+            "password_hash": hash_password(secrets.token_urlsafe(48)),
+            "role": "user",
+            "is_founder": False,
+            "is_verified": False,
+            "featured_creator": False,
+            "username": None,
+            "disabled": True,
+            "disabled_reason": "Phase H security incident — legacy admin account neutralised",
+            "disabled_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    # Revoke every session that ever issued for this account.
+    legacy_id = legacy.get("id")
+    revoked_a = await db.refresh_tokens.delete_many({"user_id": legacy_id}) if legacy_id else None
+    revoked_b = await db.password_reset_tokens.delete_many({"user_id": legacy_id}) if legacy_id else None
+    revoked_c = await db.login_attempts.delete_many({"identifier": legacy_email})
+    logger.warning(
+        "[security] legacy admin@ourrealm.app neutralised — refresh:%s pwreset:%s login_attempts:%s",
+        revoked_a.deleted_count if revoked_a else 0,
+        revoked_b.deleted_count if revoked_b else 0,
+        revoked_c.deleted_count,
+    )
 
 
 async def seed_founder() -> dict | None:

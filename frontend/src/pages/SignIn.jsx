@@ -5,8 +5,8 @@ import apiClient, { formatApiErrorDetail } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function SignIn() {
-  const [email, setEmail] = useState("admin@ourrealm.app");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login, refreshMe } = useAuth();

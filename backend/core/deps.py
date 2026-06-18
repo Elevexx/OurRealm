@@ -28,6 +28,9 @@ async def get_current_user(request: Request) -> dict:
     user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    # Phase H — disabled accounts cannot authenticate any request.
+    if user.get("disabled"):
+        raise HTTPException(status_code=401, detail="Account disabled")
     return user
 
 
@@ -41,12 +44,15 @@ ADMIN_USERNAMES = {"stealth", "support"}
 
 
 def is_admin_user(user: dict | None) -> bool:
-    if not user:
+    """Admin gate — ONLY @stealth (founder) and @support (system).
+
+    Phase H security tightening: we no longer trust the `role` or
+    `is_founder` flags on a user document, because those could be set by
+    a future seed bug or a tampered import. The single source of truth
+    is the immutable username allow-list. Disabled accounts are blocked.
+    """
+    if not user or user.get("disabled"):
         return False
-    if user.get("is_founder"):
-        return True
-    if (user.get("role") or "").lower() == "admin":
-        return True
     return (user.get("username") or "").lower() in ADMIN_USERNAMES
 
 

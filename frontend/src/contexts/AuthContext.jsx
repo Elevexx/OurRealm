@@ -77,8 +77,29 @@ export function AuthProvider({ children }) {
   }, [setGuest]);
 
   const logout = useCallback(async () => {
+    // Phase H — fully clear ALL client-side authentication state. The
+    // server clears its httpOnly cookies; we also wipe every OurRealm
+    // localStorage / sessionStorage key, plus any non-httpOnly cookie
+    // the browser happens to have for this origin.
     try { await apiClient.post("/auth/logout"); } catch { /* ignore */ }
-    try { localStorage.removeItem("ourrealm.access"); } catch { /* ignore */ }
+    try {
+      for (const k of Object.keys(localStorage)) {
+        if (k.startsWith("ourrealm.")) localStorage.removeItem(k);
+      }
+    } catch { /* ignore */ }
+    try {
+      for (const k of Object.keys(sessionStorage)) {
+        if (k.startsWith("ourrealm.")) sessionStorage.removeItem(k);
+      }
+    } catch { /* ignore */ }
+    try {
+      // Best-effort wipe of any non-httpOnly cookie still on the page.
+      document.cookie.split(";").forEach((c) => {
+        const name = c.split("=")[0].trim();
+        if (!name) return;
+        document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      });
+    } catch { /* ignore */ }
     setUser(null);
     setGuest(false);
   }, [setGuest]);

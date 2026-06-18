@@ -20,7 +20,7 @@ const COLORS = {
   offline:   "#5A6378",
 };
 
-const ANIMATED = new Set(["live", "online"]);
+const ANIMATED = new Set(["live", "online", "messenger"]);
 
 const wrapStyle = { position: "relative", display: "inline-block", verticalAlign: "middle" };
 
@@ -48,11 +48,25 @@ export default function PresenceDot({
       data-status={effective}
       style={{ ...wrapStyle, width: size + 4, height: size + 4 }}
     >
-      <style>{`@keyframes or-radar { 0% { transform: scale(0.6); opacity: 0.85 } 80% { transform: scale(2.2); opacity: 0 } 100% { transform: scale(2.2); opacity: 0 } }`}</style>
-      <span style={{
-        position: "absolute", top: 2, left: 2, width: size, height: size, borderRadius: "50%",
-        background: dotColor,
-      }} />
+      <style>{`
+        @keyframes or-pulse-soft {
+          0%   { box-shadow: 0 0 0 0 var(--orp-color, ${dotColor}AA); }
+          70%  { box-shadow: 0 0 0 6px transparent; }
+          100% { box-shadow: 0 0 0 0 transparent; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .or-presence-dot { animation: none !important; }
+        }
+      `}</style>
+      <span
+        className="or-presence-dot"
+        style={{
+          position: "absolute", top: 2, left: 2, width: size, height: size, borderRadius: "50%",
+          background: dotColor,
+          "--orp-color": dotColor,
+          animation: isAnimated ? "or-pulse-soft 2.4s ease-out infinite" : "none",
+        }}
+      />
       {/* Radar/glow intentionally omitted — the requirement is a small,
           subtle dot with NO large glow or translucent bubble. */}
     </span>

@@ -148,10 +148,40 @@ async def login(payload: LoginPayload, request: Request, response: Response):
     rate_key = f"{ip}:{lookup}"
     await check_lockout(rate_key)
 
+    # Phase H — hard-block the legacy admin email regardless of password.
+    # This account was previously seeded with a hardcoded credential pair
+    # and has been neutralised. No code path may ever re-issue tokens for
+    # it. Logged for the security audit trail.
+    if is_email and lookup == "admin@ourrealm.app":
+        try:
+            await db.audit_log.insert_one({
+                "kind": "blocked_legacy_admin_login",
+                "ip": ip,
+                "at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+        await register_failed(rate_key)
+        raise HTTPException(status_code=401, detail="Invalid email/username or password")
+
     if is_email:
         user = await db.users.find_one({"email": lookup})
     else:
         user = await db.users.find_one({"username": lookup})
+    # Refuse login for any account marked disabled (covers the legacy
+    # admin and any future banned accounts).
+    if user and user.get("disabled"):
+        try:
+            await db.audit_log.insert_one({
+                "kind": "blocked_disabled_login",
+                "user_id": user.get("id"),
+                "ip": ip,
+                "at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+        await register_failed(rate_key)
+        raise HTTPException(status_code=401, detail="Invalid email/username or password")
     if not user or not verify_password(payload.password, user.get("password_hash", "")):
         await register_failed(rate_key)
         raise HTTPException(status_code=401, detail="Invalid email/username or password")
@@ -164,7 +194,15 @@ async def login(payload: LoginPayload, request: Request, response: Response):
 
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(request: Request, response: Response):
+    # Phase H — best-effort revocation of the refresh token presented by
+    # the caller, so a stolen cookie can't be replayed after logout.
+    rt = request.cookies.get("refresh_token")
+    if rt:
+        try:
+            await db.refresh_tokens.delete_many({"token": rt})
+        except Exception:
+            pass
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/")
     return {"ok": True}
@@ -189,6 +227,11 @@ async def refresh_token(request: Request, response: Response):
     user = await db.users.find_one({"id": payload["sub"]})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    # Phase H — never re-issue tokens for disabled accounts.
+    if user.get("disabled"):
+        response.delete_cookie("access_token", path="/")
+        response.delete_cookie("refresh_token", path="/")
+        raise HTTPException(status_code=401, detail="Account disabled")
     access = create_access_token(user["id"], user["email"])
     response.set_cookie(
         "access_token", access, httponly=True, secure=False, samesite="lax",
