@@ -59,10 +59,19 @@ export default function Landing() {
   const handle = (key) => {
     if (key === "signup") return navigate("/signup");
     if (key === "signin") return navigate("/signin");
+    if (key === "continue") return navigate("/feed");
     // guest — set context flag first so the destination renders in guest mode.
     setGuest(true);
     navigate("/feed");
   };
+
+  // For authenticated users, hide Sign Up + Browse as Guest and repurpose the
+  // middle (Sign In) tap zone as a "Continue" → /feed entry. The visual
+  // artwork is intentionally unchanged per spec; only the click behaviour
+  // shifts based on auth state.
+  const activeButtons = isLoggedIn
+    ? [{ key: "continue", centerY: 76.20, label: "Continue" }]
+    : BUTTONS;
 
   return (
     <>
@@ -121,7 +130,7 @@ export default function Landing() {
             }}
           />
 
-          {BUTTONS.map((b) => (
+          {activeButtons.map((b) => (
             <button
               key={b.key}
               type="button"
@@ -132,6 +141,8 @@ export default function Landing() {
                   ? "Sign Up"
                   : b.key === "signin"
                   ? "Sign In"
+                  : b.key === "continue"
+                  ? "Continue"
                   : "Browse as Guest"
               }
               style={{

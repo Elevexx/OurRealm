@@ -4,7 +4,7 @@ import Logo from "@/components/Logo";
 import ModeSwitcher from "@/components/ModeSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
 import apiClient from "@/api/client";
-import { Check, X, Loader2, ArrowRight, LogOut } from "lucide-react";
+import { Check, X, Loader2, LogOut } from "lucide-react";
 
 export default function SignUp() {
   const [name, setName] = useState("");
@@ -89,14 +89,6 @@ export default function SignUp() {
             <span className="text-xs flex-1 min-w-0" style={{ color: "var(--text-muted)" }}>
               You're signed in as <b style={{ color: "var(--text-main)" }}>@{user.username}</b>
             </span>
-            <button
-              className="or-btn"
-              onClick={() => navigate("/feed")}
-              data-testid="signup-continue-as"
-              style={{ padding: "0.45rem 0.85rem", fontSize: "0.82rem" }}
-            >
-              Continue <ArrowRight size={14} />
-            </button>
             <button
               className="or-btn or-btn-ghost"
               onClick={async () => { await logout(); window.location.reload(); }}
