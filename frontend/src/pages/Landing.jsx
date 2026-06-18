@@ -2,37 +2,30 @@ import React, { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
-// Static landing artwork — single full-screen image with three invisible,
-// transparent click zones laid exactly over the artwork's buttons.
-//
-// The image's intrinsic dimensions are 1024 × 1536 → aspect ratio 2 : 3
-// (NOT 9 : 16). The button-center positions below were measured directly
-// from the source PNG via pixel scan, so overlays land exactly over the
-// visible artwork pills at every viewport size.
+// Static landing artwork — single full-screen image with three click zones
+// laid exactly over the artwork's pill buttons. Image dimensions are
+// 1024 × 1536 (2 : 3); pill positions below were measured from the source
+// PNG by pixel scan so overlays align with the visible artwork at every
+// viewport size.
 const LANDING_IMAGE_URL =
   "https://customer-assets.emergentagent.com/job_realm-deploy/artifacts/4ivnshz0_B1C6C04B-2956-4B67-A6C4-7D5A87E77D8A.png";
 
-// Pill geometry as % of the image (measured from 1024×1536 source).
-// Generous horizontal width and slightly taller hit-zone for forgiving taps
-// without overlapping the adjacent button.
-const BUTTON_LEFT_PCT = 24;     // left edge
-const BUTTON_WIDTH_PCT = 52;    // covers ~25%..77% horizontally
-const BUTTON_HEIGHT_PCT = 7.5;  // ~7% measured + tiny pad; no overlap (gap ≈ 1.8%)
-const BUTTONS = [
-  { key: "signup", centerY: 67.45 },
-  { key: "signin", centerY: 76.20 },
-  { key: "guest",  centerY: 84.90 },
-];
+// Pill geometry as % of the image. Same geometry is used for both signed-in
+// and signed-out states — layout never shifts; only the button text and
+// click handlers change.
+const BUTTON_LEFT_PCT = 24;
+const BUTTON_WIDTH_PCT = 52;
+const BUTTON_HEIGHT_PCT = 7.5;
+const CENTERS = { top: 67.45, mid: 76.20, bot: 84.90 };
 
 export default function Landing() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, isGuest, isLoading, setGuest } = useAuth();
+  const { user, isGuest, isLoading, setGuest, logout } = useAuth();
   const isLoggedIn = !!user && !isGuest;
 
-  // Deep-link passthrough — when an authenticated user arrives at `/` with
-  // ?to=/messages?dm=support (or ?next=…), bounce them straight to their
-  // intended page so the landing never blocks the destination.
+  // Deep-link passthrough — authenticated users hitting `/` with ?to=… or
+  // ?next=… get bounced to their destination immediately.
   useEffect(() => {
     if (isLoading || !isLoggedIn) return;
     const raw = searchParams.get("to") || searchParams.get("next");
@@ -41,10 +34,8 @@ export default function Landing() {
     navigate(raw, { replace: true });
   }, [isLoading, isLoggedIn, searchParams, navigate]);
 
-  // Lock body scrolling while the landing is mounted so the page can never
-  // scroll even if an ancestor has overflowing children. The fixed container
-  // covers the viewport — this just neutralises rubber-banding / latent
-  // scrollbars so all three tap zones remain fully reachable on iOS Safari.
+  // Lock body scrolling while the landing is mounted so all three tap zones
+  // remain reachable on iOS Safari (no rubber-banding / latent scrollbars).
   useEffect(() => {
     const prevHtml = document.documentElement.style.overflow;
     const prevBody = document.body.style.overflow;
@@ -56,42 +47,90 @@ export default function Landing() {
     };
   }, []);
 
-  const handle = (key) => {
-    if (key === "signup") return navigate("/signup");
-    if (key === "signin") return navigate("/signin");
-    if (key === "continue") return navigate("/feed");
-    // guest — set context flag first so the destination renders in guest mode.
-    setGuest(true);
-    navigate("/feed");
+  // ---------- Click handlers ----------
+  const signedOutHandlers = {
+    signup: () => navigate("/signup"),
+    signin: () => navigate("/signin"),
+    guest: () => {
+      setGuest(true);
+      navigate("/feed");
+    },
   };
 
-  // For authenticated users, hide Sign Up + Browse as Guest and repurpose the
-  // middle (Sign In) tap zone as a "Continue" → /feed entry. The visual
-  // artwork is intentionally unchanged per spec; only the click behaviour
-  // shifts based on auth state.
-  const activeButtons = isLoggedIn
-    ? [{ key: "continue", centerY: 76.20, label: "Continue" }]
-    : BUTTONS;
+  const signedInHandlers = {
+    continue: () => navigate("/feed"),
+    signout: async () => {
+      try { await logout(); } catch { /* ignore */ }
+      setGuest(false);
+      navigate("/", { replace: true });
+    },
+    guest: async () => {
+      // Drop the authenticated session, enter guest mode, then continue to feed.
+      try { await logout(); } catch { /* ignore */ }
+      setGuest(true);
+      navigate("/feed");
+    },
+  };
+
+  // ---------- Button definitions ----------
+  // Each button uses the same pill geometry; only label / subtext / handler
+  // changes based on auth state. Signed-out buttons stay fully transparent
+  // (the artwork pills are visible underneath). Signed-in buttons render a
+  // masking pill that covers the underlying artwork text and shows the new
+  // label + subtext.
+  const buttons = isLoggedIn
+    ? [
+        {
+          key: "continue",
+          centerY: CENTERS.top,
+          label: `CONTINUE AS @${user?.username || "you"}`,
+          sub: "Return to your realm",
+          tone: "cyan", // matches Sign Up pill outline tint
+          onClick: signedInHandlers.continue,
+        },
+        {
+          key: "signout",
+          centerY: CENTERS.mid,
+          label: "SIGN OUT",
+          sub: "Leave this account",
+          tone: "blue", // matches Sign In pill outline tint
+          onClick: signedInHandlers.signout,
+        },
+        {
+          key: "guest",
+          centerY: CENTERS.bot,
+          label: "BROWSE AS GUEST",
+          sub: "",
+          tone: "purple", // matches Browse as Guest pill outline tint
+          onClick: signedInHandlers.guest,
+        },
+      ]
+    : [
+        { key: "signup", centerY: CENTERS.top, label: "", sub: "", tone: "transparent", onClick: signedOutHandlers.signup,  aria: "Sign Up" },
+        { key: "signin", centerY: CENTERS.mid, label: "", sub: "", tone: "transparent", onClick: signedOutHandlers.signin,  aria: "Sign In" },
+        { key: "guest",  centerY: CENTERS.bot, label: "", sub: "", tone: "transparent", onClick: signedOutHandlers.guest,   aria: "Browse as Guest" },
+      ];
+
+  // Map tone → solid black masking colour (kept consistent with the artwork
+  // background so the original button text underneath is fully hidden when
+  // a label is rendered on top).
+  const maskBg = "rgba(2,6,14,0.96)";
 
   return (
     <>
-      {/* CSS fallback cascade: prefer dynamic viewport units so mobile
-          browser chrome (URL bar) is accounted for. Falls back to vh/vw on
-          older browsers without dvh/dvw support.
-          The stage uses the image's TRUE 2:3 aspect ratio (1024×1536), so the
-          rendered image fills the stage exactly with no letterboxing — that
-          means absolute-positioned overlays map perfectly onto the artwork. */}
       <style>{`
         .or-landing-root { width: 100vw; height: 100vh; }
         .or-landing-stage {
           width: min(100vw, calc(100vh * 2 / 3));
           height: min(100vh, calc(100vw * 3 / 2));
+          container-type: size;
         }
         @supports (height: 100dvh) {
           .or-landing-root { width: 100dvw; height: 100dvh; }
           .or-landing-stage {
             width: min(100dvw, calc(100dvh * 2 / 3));
             height: min(100dvh, calc(100dvw * 3 / 2));
+            container-type: size;
           }
         }
       `}</style>
@@ -109,12 +148,7 @@ export default function Landing() {
           touchAction: "manipulation",
         }}
       >
-        <div
-          className="or-landing-stage"
-          style={{
-            position: "relative",
-          }}
-        >
+        <div className="or-landing-stage" style={{ position: "relative" }}>
           <img
             src={LANDING_IMAGE_URL}
             alt="OurRealm — Live. Connect. Experience."
@@ -130,48 +164,101 @@ export default function Landing() {
             }}
           />
 
-          {activeButtons.map((b) => (
-            <button
-              key={b.key}
-              type="button"
-              onClick={() => handle(b.key)}
-              data-testid={`landing-${b.key}-button`}
-              aria-label={
-                b.key === "signup"
-                  ? "Sign Up"
-                  : b.key === "signin"
-                  ? "Sign In"
-                  : b.key === "continue"
-                  ? "Continue"
-                  : "Browse as Guest"
-              }
-              style={{
-                position: "absolute",
-                left: `${BUTTON_LEFT_PCT}%`,
-                width: `${BUTTON_WIDTH_PCT}%`,
-                top: `${b.centerY - BUTTON_HEIGHT_PCT / 2}%`,
-                height: `${BUTTON_HEIGHT_PCT}%`,
-                background: "transparent",
-                border: "none",
-                outline: "none",
-                padding: 0,
-                margin: 0,
-                cursor: "pointer",
-                zIndex: 10,
-                pointerEvents: "auto",
-                borderRadius: 9999,
-                boxShadow: "none",
-                WebkitTapHighlightColor: "transparent",
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.boxShadow =
-                  "0 0 0 2px rgba(255,255,255,0.35)";
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.boxShadow = "none";
-              }}
-            />
-          ))}
+          {buttons.map((b) => {
+            const showsLabel = !!b.label;
+            // Per-tone outline colour to keep the pill visually consistent
+            // with the artwork beneath when signed in.
+            const outlineColor =
+              b.tone === "cyan"
+                ? "rgba(54,227,110,0.95)"
+                : b.tone === "blue"
+                ? "rgba(46,182,255,0.95)"
+                : b.tone === "purple"
+                ? "rgba(201,123,255,0.95)"
+                : "transparent";
+            return (
+              <button
+                key={b.key}
+                type="button"
+                onClick={b.onClick}
+                data-testid={`landing-${b.key}-button`}
+                aria-label={b.aria || b.label || b.key}
+                style={{
+                  position: "absolute",
+                  left: `${BUTTON_LEFT_PCT}%`,
+                  width: `${BUTTON_WIDTH_PCT}%`,
+                  top: `${b.centerY - BUTTON_HEIGHT_PCT / 2}%`,
+                  height: `${BUTTON_HEIGHT_PCT}%`,
+                  background: showsLabel ? maskBg : "transparent",
+                  border: showsLabel ? `1.5px solid ${outlineColor}` : "none",
+                  outline: "none",
+                  padding: 0,
+                  margin: 0,
+                  cursor: "pointer",
+                  zIndex: 10,
+                  pointerEvents: "auto",
+                  borderRadius: 9999,
+                  boxShadow: showsLabel
+                    ? `0 0 18px 1px ${outlineColor.replace("0.95", "0.35")}`
+                    : "none",
+                  WebkitTapHighlightColor: "transparent",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#fff",
+                  fontFamily: "inherit",
+                  textTransform: "none",
+                  lineHeight: 1.15,
+                  overflow: "hidden",
+                  whiteSpace: "nowrap",
+                }}
+                onFocus={(e) => {
+                  if (!showsLabel) {
+                    e.currentTarget.style.boxShadow =
+                      "0 0 0 2px rgba(255,255,255,0.35)";
+                  }
+                }}
+                onBlur={(e) => {
+                  if (!showsLabel) e.currentTarget.style.boxShadow = "none";
+                }}
+              >
+                {showsLabel && (
+                  <>
+                    <span
+                      data-testid={`landing-${b.key}-label`}
+                      style={{
+                        fontWeight: 700,
+                        // Scale text to ~38% of pill height for readability
+                        // across all viewports without manual breakpoints.
+                        fontSize: "clamp(11px, 2.4cqh, 18px)",
+                        letterSpacing: "0.04em",
+                        maxWidth: "92%",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {b.label}
+                    </span>
+                    {b.sub && (
+                      <span
+                        style={{
+                          fontSize: "clamp(8px, 1.55cqh, 12px)",
+                          opacity: 0.78,
+                          marginTop: 2,
+                          maxWidth: "92%",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {b.sub}
+                      </span>
+                    )}
+                  </>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     </>
