@@ -38,6 +38,7 @@ from routers import hashtags as hashtags_router_mod
 from routers import announcements as announcements_router_mod
 from routers import realm_pulse as realm_pulse_router_mod
 from routers import communities as communities_router_mod
+from routers import admin_user_control as admin_user_control_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -79,6 +80,7 @@ app.include_router(hashtags_router_mod.router)
 app.include_router(announcements_router_mod.router)
 app.include_router(realm_pulse_router_mod.router)
 app.include_router(communities_router_mod.router)
+app.include_router(admin_user_control_router_mod.router)
 
 app.add_middleware(
     CORSMiddleware,

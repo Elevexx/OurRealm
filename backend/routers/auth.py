@@ -169,6 +169,22 @@ async def login(payload: LoginPayload, request: Request, response: Response):
         user = await db.users.find_one({"email": lookup})
     else:
         user = await db.users.find_one({"username": lookup})
+    # Auto-resolve elapsed suspensions on login (mirrors get_current_user).
+    if user and user.get("suspended_until"):
+        try:
+            until = datetime.fromisoformat(user["suspended_until"].replace("Z", "+00:00"))
+            if until <= datetime.now(timezone.utc):
+                await db.users.update_one(
+                    {"id": user["id"]},
+                    {"$set": {"disabled": False},
+                     "$unset": {"suspended_until": "", "suspended_at": "",
+                                "suspended_by": "", "suspension_reason": "",
+                                "suspension_notes": ""}},
+                )
+                user["disabled"] = False
+                user.pop("suspended_until", None)
+        except Exception:
+            pass
     # Refuse login for any account marked disabled (covers the legacy
     # admin and any future banned accounts).
     if user and user.get("disabled"):
@@ -182,6 +198,11 @@ async def login(payload: LoginPayload, request: Request, response: Response):
         except Exception:
             pass
         await register_failed(rate_key)
+        # Surface the suspension end date when available so the client
+        # can render the spec-mandated message.
+        susp_until = user.get("suspended_until")
+        if susp_until:
+            raise HTTPException(status_code=401, detail=f"Account suspended until {susp_until}")
         raise HTTPException(status_code=401, detail="Invalid email/username or password")
     if not user or not verify_password(payload.password, user.get("password_hash", "")):
         await register_failed(rate_key)

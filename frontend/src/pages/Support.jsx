@@ -13,6 +13,8 @@ import { ChevronDown, ChevronUp, HelpCircle, LifeBuoy, Loader2, MessageSquare, P
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdmin } from "@/lib/isAdmin";
+import AdminUserControlWidget from "@/components/AdminUserControlWidget";
+import AdminPasswordResetWidget from "@/components/AdminPasswordResetWidget";
 
 const STATUS_COLORS = {
   Submitted:     { fg: "#FFD166", bg: "rgba(255,209,102,0.12)" },
@@ -104,6 +106,12 @@ export default function Support() {
           </button>
         )}
       </header>
+
+      {/* Admin-only widgets — rendered at the very top so admins can act
+          on issues before scrolling through their own ticket list. The
+          components return null when the viewer is not an admin. */}
+      <AdminUserControlWidget />
+      <AdminPasswordResetWidget />
 
       {faq.length > 0 && (
         <section className="or-surface p-4 mb-5" data-testid="support-faq">

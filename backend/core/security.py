@@ -21,11 +21,13 @@ def verify_password(password: str, hashed: str) -> bool:
 
 
 def create_access_token(user_id: str, email: str) -> str:
+    now = datetime.now(timezone.utc)
     return jwt.encode(
         {
             "sub": user_id,
             "email": email,
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_MINUTES),
+            "iat": int(now.timestamp()),
+            "exp": now + timedelta(minutes=ACCESS_TOKEN_MINUTES),
             "type": "access",
         },
         get_jwt_secret(), algorithm=JWT_ALGORITHM,

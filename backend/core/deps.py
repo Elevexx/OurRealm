@@ -29,8 +29,48 @@ async def get_current_user(request: Request) -> dict:
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     # Phase H — disabled accounts cannot authenticate any request.
+    # Phase α (admin user control): a `suspended_until` field that has
+    # already elapsed clears the disable + suspension fields so the
+    # user is unlocked automatically on their next request.
+    susp = user.get("suspended_until")
+    if susp:
+        try:
+            until = datetime.fromisoformat(susp.replace("Z", "+00:00"))
+            if until <= datetime.now(timezone.utc):
+                await db.users.update_one(
+                    {"id": user["id"]},
+                    {"$set": {"disabled": False},
+                     "$unset": {"suspended_until": "", "suspended_at": "",
+                                "suspended_by": "", "suspension_reason": "",
+                                "suspension_notes": ""}},
+                )
+                user["disabled"] = False
+                user.pop("suspended_until", None)
+        except Exception:
+            pass
     if user.get("disabled"):
+        # Surface a friendly suspended message when applicable so the
+        # client can render it verbatim.
+        if user.get("suspended_until"):
+            raise HTTPException(
+                status_code=401,
+                detail=f"Account suspended until {user['suspended_until']}",
+            )
         raise HTTPException(status_code=401, detail="Account disabled")
+    # Phase α (admin user control): tokens issued before the user's
+    # `password_changed_at` are invalid. This fires after a password
+    # reset OR a forced suspension to nuke active sessions immediately.
+    pc = user.get("password_changed_at")
+    iat = payload.get("iat")
+    if pc and iat:
+        try:
+            pc_ts = datetime.fromisoformat(pc.replace("Z", "+00:00")).timestamp()
+            if int(iat) < int(pc_ts):
+                raise HTTPException(status_code=401, detail="Session invalidated")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
     return user
 
 
