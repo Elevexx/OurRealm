@@ -15,11 +15,13 @@ Categories map 1:1 to slugified hashtag (lowercase, alphanumerics only).
 from __future__ import annotations
 
 import re
+import uuid
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from core.db import db
 from core.deps import CurrentUser
@@ -120,6 +122,12 @@ async def ensure_indexes() -> None:
     await db.hashtags.create_index("tag", unique=True)
     await db.hashtags.create_index([("usage_count", -1)])
     await db.hashtags.create_index([("last_used_at", -1)])
+    # Featured interest cards (promoted hashtags).
+    try:
+        await db.interest_cards.create_index("label", unique=True)
+        await db.interest_cards.create_index([("sort_order", 1)])
+    except Exception:  # noqa: BLE001 — defensive on legacy data
+        pass
 
 
 async def migrate_index_all_posts() -> dict:
@@ -236,6 +244,193 @@ async def hashtag_analytics(current: CurrentUser, window: str = "30d"):
 async def trigger_migration(current: CurrentUser):
     require_founder(current)
     return await migrate_index_all_posts()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# P1 — Promote hashtag → Interest Card
+# ──────────────────────────────────────────────────────────────────────
+# Storage:
+#   db.interest_cards : {
+#       id, label (lowercase, no '#'), source ('hashtag'|'static'),
+#       use_count, is_enabled, is_featured, sort_order,
+#       promoted_by, created_at, updated_at,
+#   }
+# `label` is the canonical key — uniqueness enforced via a unique
+# index so re-promoting an existing hashtag is a no-op (idempotent).
+
+async def _ensure_interest_index() -> None:
+    try:
+        await db.interest_cards.create_index("label", unique=True)
+        await db.interest_cards.create_index([("sort_order", 1)])
+    except Exception:  # noqa: BLE001 — startup never crashes on index
+        pass
+
+
+@router.post("/{tag}/promote-to-interest")
+async def promote_hashtag_to_interest(tag: str, current: CurrentUser):
+    """Promote a raw hashtag to a Featured Interest Card.
+
+    Idempotent — re-promoting an existing tag refreshes the timestamp /
+    promoter / popularity but never creates a duplicate card. Cards
+    surface to the onboarding interest picker via
+    `GET /api/hashtags/interest-cards`.
+    """
+    require_analytics_access(current)
+    await _ensure_interest_index()
+    label = (tag or "").strip().lstrip("#").lower()
+    if not label or len(label) < 2 or len(label) > 40:
+        raise HTTPException(400, "Tag must be 2–40 chars")
+
+    now = datetime.now(timezone.utc).isoformat()
+    # Carry the hashtag's popularity onto the card.
+    h = await db.hashtags.find_one({"tag": label}, {"_id": 0, "usage_count": 1})
+    use_count = (h or {}).get("usage_count", 0)
+
+    existing = await db.interest_cards.find_one({"label": label})
+    if existing:
+        await db.interest_cards.update_one(
+            {"label": label},
+            {"$set": {
+                "promoted_by": current["id"],
+                "updated_at":  now,
+                "use_count":   use_count,
+                "is_enabled":  True,
+                "is_featured": True,
+            }},
+        )
+        card = await db.interest_cards.find_one({"label": label}, {"_id": 0})
+        return {"card": card, "created": False}
+
+    # New card → assign the next sort_order so it appears at the END of
+    # the featured row by default (admin can reorder).
+    max_doc = await db.interest_cards.find(
+        {}, {"_id": 0, "sort_order": 1},
+    ).sort("sort_order", -1).limit(1).to_list(1)
+    next_order = ((max_doc[0]["sort_order"] if max_doc and "sort_order" in max_doc[0] else 0) + 1)
+
+    card = {
+        "id":          uuid.uuid4().hex,
+        "label":       label,
+        "source":      "hashtag",
+        "use_count":   use_count,
+        "is_enabled":  True,
+        "is_featured": True,
+        "sort_order":  next_order,
+        "promoted_by": current["id"],
+        "created_at":  now,
+        "updated_at":  now,
+    }
+    await db.interest_cards.insert_one(card)
+    card.pop("_id", None)
+    return {"card": card, "created": True}
+
+
+@router.delete("/interest-cards/{label}")
+async def remove_interest_card(label: str, current: CurrentUser):
+    """Un-promote / disable a Featured Interest Card. Founder + admin only."""
+    require_analytics_access(current)
+    key = (label or "").strip().lstrip("#").lower()
+    if not key:
+        raise HTTPException(400, "Label required")
+    res = await db.interest_cards.delete_one({"label": key})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "No promoted interest card with that label")
+    return {"ok": True, "removed": key}
+
+
+class ReorderPayload(BaseModel):
+    order: list[str]  # ordered list of interest-card labels
+
+
+@router.patch("/interest-cards/reorder")
+async def reorder_interest_cards(payload: ReorderPayload, current: CurrentUser):
+    """Persist a manual ordering of the promoted/featured interest cards.
+
+    Only labels included in `order` are updated; any missing card keeps
+    its prior `sort_order` (so partial reorders are safe).
+    """
+    require_analytics_access(current)
+    if not payload.order:
+        raise HTTPException(400, "order list required")
+    now = datetime.now(timezone.utc).isoformat()
+    seen: set[str] = set()
+    updated = 0
+    for i, raw in enumerate(payload.order):
+        key = (raw or "").strip().lstrip("#").lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        res = await db.interest_cards.update_one(
+            {"label": key},
+            {"$set": {"sort_order": i, "updated_at": now}},
+        )
+        updated += res.modified_count
+    return {"ok": True, "updated": updated}
+
+
+@router.get("/interest-cards")
+async def list_interest_cards():
+    """Public list of enabled Interest Cards, sorted by manual `sort_order`
+    (ascending) then by popularity. Used by the onboarding interest
+    selector alongside the static labels."""
+    cursor = db.interest_cards.find(
+        {"is_enabled": True}, {"_id": 0},
+    ).sort([("sort_order", 1), ("use_count", -1)])
+    return {"cards": [c async for c in cursor]}
+
+
+@router.get("/interest-cards/analytics")
+async def interest_card_analytics(current: CurrentUser, window: str = "7d"):
+    """Per-promoted-card metrics — users selecting it, posts under the
+    same hashtag, engagement, and growth in the rolling window.
+
+    All counts come from existing collections — no new write paths
+    introduced here.
+    """
+    require_analytics_access(current)
+    days = {"1d": 1, "7d": 7, "30d": 30, "all": 36500}.get(window, 7)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cards = [c async for c in db.interest_cards.find(
+        {"is_enabled": True}, {"_id": 0},
+    ).sort([("sort_order", 1)])]
+    out: list[dict] = []
+    for c in cards:
+        label = c["label"]
+        # Users who chose this label as an interest (case-insensitive).
+        users_selecting = await db.users.count_documents({
+            "interests": {"$elemMatch": {"$regex": f"^{re.escape(label)}$", "$options": "i"}}
+        })
+        # Posts tagged with the matching hashtag (lowercase canonical).
+        post_count = await db.posts.count_documents({"hashtags": label})
+        growth_posts = await db.posts.count_documents({
+            "hashtags": label, "created_at": {"$gte": cutoff},
+        })
+        # Engagement = likes + comments across posts containing this tag.
+        eng_pipe = [
+            {"$match": {"hashtags": label}},
+            {"$project": {
+                "likes_c":    {"$size": {"$ifNull": ["$likes", []]}},
+                "comments_c": {"$size": {"$ifNull": ["$comments", []]}},
+            }},
+            {"$group": {"_id": None,
+                        "likes":    {"$sum": "$likes_c"},
+                        "comments": {"$sum": "$comments_c"}}},
+        ]
+        eng_doc = await db.posts.aggregate(eng_pipe).to_list(1)
+        likes = (eng_doc[0]["likes"]    if eng_doc else 0) or 0
+        comments = (eng_doc[0]["comments"] if eng_doc else 0) or 0
+        out.append({
+            **c,
+            "metrics": {
+                "users_selecting": users_selecting,
+                "post_count":      post_count,
+                "engagement":      {"likes": likes, "comments": comments,
+                                     "total": likes + comments},
+                "growth_posts":    growth_posts,
+                "window":          window,
+            },
+        })
+    return {"window": window, "cards": out}
 
 
 # ──────────────────────────────────────────────────────────────────

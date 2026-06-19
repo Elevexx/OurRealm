@@ -5,17 +5,19 @@ import { INTERESTS, CHARACTERS } from "@/data/mockData";
 import { useAuth } from "@/contexts/AuthContext";
 import MediaTypeBar from "@/components/MediaTypeBar";
 import { Sparkles, Edit3 } from "lucide-react";
+import apiClient from "@/api/client";
 
 const STORAGE_KEY = "ourrealm.interests";
 const MEDIA_STORAGE = "ourrealm.homeMedia";
 const FEED_FILTER_KEY = "ourrealm.feedMedia";
 
-function InterestCard({ interest, active, onClick }) {
+function InterestCard({ interest, active, onClick, featured }) {
   const Icon = Icons[interest.icon] || Icons.Sparkles;
   return (
     <button
       onClick={onClick}
       data-active={active}
+      data-featured={featured || undefined}
       data-testid={`interest-${interest.id}`}
       className="or-surface p-3 sm:p-4 text-left transition-all duration-200 relative overflow-hidden"
       style={{
@@ -25,6 +27,13 @@ function InterestCard({ interest, active, onClick }) {
         minHeight: 132,
       }}
     >
+      {featured && (
+        <div
+          className="absolute top-2 left-2 text-[8px] uppercase tracking-widest px-1.5 py-0.5 rounded-full"
+          style={{ background: "color-mix(in srgb, var(--primary) 25%, transparent)", color: "var(--primary)" }}
+          data-testid={`interest-${interest.id}-featured-badge`}
+        >★ Featured</div>
+      )}
       {active && (
         <div
           className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
@@ -51,6 +60,29 @@ function InterestCard({ interest, active, onClick }) {
   );
 }
 
+// Build interest-card objects from promoted Featured cards. We re-use
+// the static INTERESTS shape so existing rendering / selection logic
+// works unchanged. De-dupe rule: a featured card whose canonical id
+// already matches a static card is skipped (the static one will pick
+// up the "Featured" badge instead).
+const FEATURED_GLOW_CYCLE = ["#C26BFF", "#10E670", "#F4C84A", "#2EA0FF", "#FF6BA0", "#6BD3FF"];
+function slugifyLabel(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function buildFeaturedCards(featuredApi, staticInterests) {
+  const staticIds = new Set(staticInterests.map((i) => i.id));
+  return (featuredApi || [])
+    .filter((c) => !staticIds.has(slugifyLabel(c.label)))
+    .map((c, i) => ({
+      id:    slugifyLabel(c.label) || `tag-${i}`,
+      label: c.label.charAt(0).toUpperCase() + c.label.slice(1),
+      icon:  "Sparkles",
+      glow:  FEATURED_GLOW_CYCLE[i % FEATURED_GLOW_CYCLE.length],
+      desc:  `Trending hashtag · #${c.label}`,
+      _featured: true,
+    }));
+}
+
 export default function Home() {
   const navigate = useNavigate();
   const { user, isGuest, updateProfile } = useAuth();
@@ -60,6 +92,14 @@ export default function Home() {
   const [selected, setSelected] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")); } catch { return new Set(); }
   });
+  // Featured interest cards promoted by admins (merged at top, de-duped
+  // against the static INTERESTS list).
+  const [featured, setFeatured] = useState([]);
+  useEffect(() => {
+    apiClient.get("/hashtags/interest-cards")
+      .then((r) => setFeatured(r.data?.cards || []))
+      .catch(() => setFeatured([]));
+  }, []);
   // When user data arrives, prefer the server-persisted interests over local
   useEffect(() => {
     if (user?.interests?.length) {
@@ -130,11 +170,22 @@ export default function Home() {
       </div>
 
       {/* Category selection — moved up, responsive grid (3 cols mobile, more on larger screens) */}
-      <Section title="Recommended for you" testid="recommended" items={INTERESTS.slice(0, 6)} selected={selected} toggle={toggle} />
-      <Section title="Explore more"        testid="explore"     items={INTERESTS.slice(6, 12)} selected={selected} toggle={toggle} />
-      {INTERESTS.length > 12 && (
-        <Section title="Dive deeper" testid="deeper" items={INTERESTS.slice(12)} selected={selected} toggle={toggle} />
-      )}
+      {(() => {
+        const featuredNew = buildFeaturedCards(featured, INTERESTS);
+        const featuredIds = new Set(featured.map((c) => slugifyLabel(c.label)));
+        return (
+          <>
+            {featuredNew.length > 0 && (
+              <Section title="Featured by OurRealm" testid="featured" items={featuredNew} selected={selected} toggle={toggle} featuredIds={featuredIds} />
+            )}
+            <Section title="Recommended for you" testid="recommended" items={INTERESTS.slice(0, 6)} selected={selected} toggle={toggle} featuredIds={featuredIds} />
+            <Section title="Explore more"        testid="explore"     items={INTERESTS.slice(6, 12)} selected={selected} toggle={toggle} featuredIds={featuredIds} />
+            {INTERESTS.length > 12 && (
+              <Section title="Dive deeper" testid="deeper" items={INTERESTS.slice(12)} selected={selected} toggle={toggle} featuredIds={featuredIds} />
+            )}
+          </>
+        );
+      })()}
 
       {/* Floating Media Selection Bar — unchanged behavior */}
       <div
@@ -172,7 +223,7 @@ export default function Home() {
   );
 }
 
-function Section({ title, testid, items, selected, toggle }) {
+function Section({ title, testid, items, selected, toggle, featuredIds }) {
   return (
     <div className="mb-6" data-testid={`section-${testid}`}>
       <div className="flex items-center justify-between mb-2.5">
@@ -183,7 +234,13 @@ function Section({ title, testid, items, selected, toggle }) {
       {/* 3 per row on mobile, more on larger screens */}
       <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3">
         {items.map((it) => (
-          <InterestCard key={it.id} interest={it} active={selected.has(it.id)} onClick={() => toggle(it.id)} />
+          <InterestCard
+            key={it.id}
+            interest={it}
+            active={selected.has(it.id)}
+            featured={it._featured || (featuredIds && featuredIds.has(it.id))}
+            onClick={() => toggle(it.id)}
+          />
         ))}
       </div>
     </div>

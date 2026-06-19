@@ -168,12 +168,19 @@ async def on_startup():
     # it obvious whether uploads are landing on a persistent volume or
     # the ephemeral fallback.
     try:
-        from services.storage import uploads_root, is_persistent_storage_configured
+        from services.storage import uploads_root, is_persistent_storage_configured, migrate_legacy_uploads
         root = uploads_root()
         persistent = is_persistent_storage_configured()
         msg = f"[storage] uploads_root={root}  persistent={persistent}"
         if persistent:
             logger.info(msg)
+            try:
+                copied = migrate_legacy_uploads()
+                total = sum(v for v in copied.values() if isinstance(v, int))
+                if total:
+                    logger.info(f"[storage] migrated {total} legacy files: {copied}")
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[storage] legacy migration skipped: {e}")
         else:
             logger.warning(msg + "  ← EPHEMERAL FALLBACK; set UPLOADS_ROOT to a persistent volume mount in production.")
     except Exception as e:  # noqa: BLE001

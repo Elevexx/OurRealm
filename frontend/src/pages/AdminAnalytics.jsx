@@ -1,6 +1,6 @@
 /** Admin Analytics — server-side guarded; only @stealth can view. */
 import React, { useEffect, useState } from "react";
-import { ShieldCheck, Loader2 } from "lucide-react";
+import { ShieldCheck, Loader2, AlertTriangle, ChevronDown, ChevronRight, EyeOff, Trash2, Check } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import ModerationPanel from "@/components/ModerationPanel";
@@ -160,6 +160,142 @@ export default function AdminAnalytics() {
       {/* Phase A moderation widget — vertical scroll allowed for future
           widgets per spec. */}
       <ModerationPanel />
+
+      {/* PART 2 — Copyright moderation queue (founder-only actions). */}
+      <CopyrightQueueCard />
     </div>
+  );
+}
+
+function CopyrightQueueCard() {
+  const { user } = useAuth();
+  const isFounder = (user?.username || "").toLowerCase() === "stealth";
+  const [open, setOpen] = useState(true);
+  const [status, setStatus] = useState("open");
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(""); // report id being acted on
+
+  const load = async () => {
+    setLoading(true); setErr("");
+    try {
+      const r = await apiClient.get(`/admin/moderation/copyright/queue?status=${status}`);
+      setItems(r.data?.reports || []);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Failed to load copyright queue");
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { if (open) load(); }, [open, status]);
+
+  const act = async (report, action) => {
+    if (!isFounder) return;
+    setBusy(report.id || `${report.content_type}-${report.content_id}`);
+    try {
+      await apiClient.post(`/admin/moderation/${report.content_type}/${report.content_id}/action`, {
+        action,
+      });
+      await load();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || `Failed to ${action}`);
+    } finally { setBusy(""); }
+  };
+
+  return (
+    <section className="or-surface p-4 mt-5" data-testid="copyright-queue-card">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 mb-2"
+        data-testid="copyright-queue-toggle"
+      >
+        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <AlertTriangle size={16} style={{ color: "#ff8080" }} />
+        <h3 className="text-lg" style={{ fontFamily: "var(--font-display)", color: "#ff8080" }}>Copyright queue</h3>
+        <span className="ml-auto text-[11px]" style={{ color: "var(--text-muted)" }}>{items.length} {status}</span>
+      </button>
+      {open && (
+        <>
+          <div className="flex gap-1.5 mb-3" data-testid="copyright-queue-status-filter">
+            {["open", "resolved", "all"].map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatus(s)}
+                data-active={status === s}
+                className="or-chip text-xs"
+                data-testid={`copyright-status-${s}`}
+              >{s}</button>
+            ))}
+            <button onClick={load} className="or-chip ml-auto text-xs" data-testid="copyright-queue-refresh">
+              {loading ? <Loader2 size={12} className="animate-spin" /> : "Refresh"}
+            </button>
+          </div>
+          {err && <div className="text-sm mb-2" style={{ color: "#ff8080" }} data-testid="copyright-queue-error">{err}</div>}
+          {loading ? (
+            <div className="text-center py-6" style={{ color: "var(--text-muted)" }}><Loader2 size={18} className="inline animate-spin" /></div>
+          ) : items.length === 0 ? (
+            <div className="text-sm text-center py-4" style={{ color: "var(--text-muted)" }} data-testid="copyright-queue-empty">
+              No copyright reports {status === "all" ? "yet" : `in ${status} status`}.
+            </div>
+          ) : (
+            <ul className="space-y-1.5" data-testid="copyright-queue-list">
+              {items.map((r) => {
+                const key = r.id || `${r.content_type}-${r.content_id}`;
+                return (
+                  <li
+                    key={key}
+                    className="p-2.5 rounded-md flex items-start gap-3"
+                    style={{ background: "color-mix(in srgb, #ff8080 6%, transparent)", border: "1px solid rgba(255,128,128,0.25)" }}
+                    data-testid={`copyright-report-${key}`}
+                  >
+                    <div className="flex-1 min-w-0 text-sm">
+                      <div className="font-semibold flex items-center gap-2" style={{ color: "var(--text-main)" }}>
+                        <span className="uppercase text-[10px] px-1.5 py-0.5 rounded-full"
+                          style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>{r.content_type}</span>
+                        <span className="truncate" title={r.content_id}>{(r.content_id || "").slice(0, 16)}…</span>
+                        {r.resolution_status && (
+                          <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                            {r.resolution_status}
+                          </span>
+                        )}
+                      </div>
+                      {r.detail && (
+                        <div className="text-xs mt-1 line-clamp-2" style={{ color: "var(--text-muted)" }}>{r.detail}</div>
+                      )}
+                      <div className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+                        Reported {r.created_at ? new Date(r.created_at).toLocaleString() : "—"} · by {r.reporter_id?.slice(0, 8) || "—"}
+                      </div>
+                    </div>
+                    {r.status === "open" && isFounder && (
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <button
+                          onClick={() => act(r, "delete")}
+                          disabled={busy === key}
+                          className="or-chip"
+                          style={{ color: "#ff8080", borderColor: "rgba(255,128,128,0.4)" }}
+                          data-testid={`copyright-action-delete-${key}`}
+                        ><Trash2 size={12} /> Remove</button>
+                        <button
+                          onClick={() => act(r, "hide")}
+                          disabled={busy === key}
+                          className="or-chip"
+                          data-testid={`copyright-action-hide-${key}`}
+                        ><EyeOff size={12} /> Hide</button>
+                        <button
+                          onClick={() => act(r, "approve")}
+                          disabled={busy === key}
+                          className="or-chip"
+                          style={{ color: "var(--brand-green)", borderColor: "rgba(16,230,112,0.4)" }}
+                          data-testid={`copyright-action-approve-${key}`}
+                        ><Check size={12} /> Keep</button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
   );
 }

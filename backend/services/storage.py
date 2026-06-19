@@ -74,3 +74,44 @@ def is_persistent_storage_configured() -> bool:
     """True when uploads are NOT being written under the ephemeral
     legacy fallback. Used by admin diagnostics / startup logs."""
     return uploads_root() != _LEGACY_FALLBACK
+
+
+def migrate_legacy_uploads() -> dict:
+    """One-time copy of any files still living at the historical
+    ephemeral path (`/app/backend/uploads/<kind>`) into the resolved
+    persistent root. Safe to run on every boot — already-present files
+    are left untouched (we only copy when the destination doesn't
+    exist). Returns per-kind counts so the startup log records the
+    outcome.
+    """
+    if not is_persistent_storage_configured():
+        return {"skipped": "no persistent root configured"}
+    out: dict = {}
+    for kind in ("audio", "images", "videos"):
+        src = _LEGACY_FALLBACK / kind
+        dst = uploads_root() / kind
+        if not src.exists() or src.resolve() == dst.resolve():
+            out[kind] = 0
+            continue
+        dst.mkdir(parents=True, exist_ok=True)
+        n = 0
+        try:
+            for f in src.iterdir():
+                if not f.is_file():
+                    continue
+                target = dst / f.name
+                if target.exists():
+                    continue
+                try:
+                    # Use copy2 so mtime/permissions are preserved; the
+                    # source file is left in place so any in-flight
+                    # request can still resolve through the legacy path.
+                    import shutil
+                    shutil.copy2(f, target)
+                    n += 1
+                except (PermissionError, OSError):
+                    continue
+        except (PermissionError, OSError):
+            pass
+        out[kind] = n
+    return out
