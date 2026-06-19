@@ -1,0 +1,64 @@
+{
+  "summary": "Frontend-only verification of the new service worker (sw.js) + sw-register.js cache-bust / stale-bundle recovery flow. All 8 SW behaviors specified in the review request pass against the live preview URL. No new console errors introduced by the SW on 14 core routes; only pre-existing 401s from backend auth (stealth login form never surfaced inputs to playwright — app rendered Notifications view from an existing localStorage session, which itself is unrelated to the SW change).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "sw_test_results": {
+    "sw_js_served": {
+      "status": 200,
+      "content_type": "application/javascript; charset=UTF-8",
+      "contains_SW_VERSION_ourrealm_v1": true,
+      "contains_skipWaiting": true,
+      "contains_clients_claim": true,
+      "contains_RELOAD_REQUIRED": true,
+      "contains_caches_keys": true,
+      "ourrealm_header_comment": true
+    },
+    "registration": {
+      "scope": "https://realm-deploy.preview.emergentagent.com/",
+      "scriptURL_endsWith_sw_js": true,
+      "active_state": "activated",
+      "controller_present_after_first_visit": true
+    },
+    "old_caches_removed_on_activate": {
+      "seeded": ["legacy-cache-1", "legacy-cache-2"],
+      "after_reregister_keys": [],
+      "legacy_present": false
+    },
+    "navigation_network_first": {
+      "initiatorType": "navigation",
+      "transferSize_gt_0": true,
+      "main_bundle_precached": false
+    },
+    "postMessage_unknown_type_ignored": true,
+    "asset_fail_listener_session_flag_guard": {
+      "url_changed_after_synthetic_error": false,
+      "asset_fail_log_emitted": true
+    },
+    "registration_update_callable": true,
+    "route_smoke_test": {
+      "routes_tested": ["/home", "/feed", "/sounds", "/realms", "/realms/dj", "/friends", "/messages", "/admin", "/admin/support", "/settings/account", "/profile", "/featured", "/discover", "/notifications"],
+      "page_errors_total": 0,
+      "new_console_errors_unrelated_to_sw": "Only 401 backend-auth errors from unauthenticated stealth session; no script/asset/network-related new errors caused by SW. No JS exceptions on any route."
+    }
+  },
+  "test_report_links": ["/app/test_reports/iteration_34.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "sw.js intentionally lean and does NOT precache the React bundle — correct, this is the exact fix for the stale-hash bug.",
+    "sw-register.js safeReloadOnce() correctly guards with sessionStorage('ourrealm.sw.reloaded.once') to prevent reload loops; verified that an already-set flag suppresses the reload while still emitting [asset-fail] log.",
+    "controllerchange handler triggered the expected reload during the first re-register cycle (seen in console: '[asset-fail] {reason: controllerchange, action: reload}') — confirms clients.claim() handoff works.",
+    "Hourly reg.update() polling timer is fire-and-forget with a `.catch(() => {})`, which silently swallows any update failure; consider logging at low severity for production monitoring (non-blocking).",
+    "window 'error' listener uses capture-phase and filters by /static/(js|css|media)/ regex — robust and won't trigger reloads on unrelated image/asset errors."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (skipped per request)", "frontend": "100% on SW behaviors (8/8)" },
+  "test_credentials": "stealth / Password1$ (login form auto-fill attempts via playwright did not surface inputs because the preview was already in a logged-in session via localStorage('ourrealm.access'); regression check still ran on all 14 routes)",
+  "seed_data_creation": "None. Two ephemeral CacheStorage entries (legacy-cache-1, legacy-cache-2) created in-browser to verify activate-time eviction; both were removed by the SW on activate as expected.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "SW is live and functioning at https://realm-deploy.preview.emergentagent.com/sw.js (Content-Type: application/javascript). scope='/'. clients.claim() works on first visit. Legacy CacheStorage entries are evicted on activate. The main React bundle is NOT precached (by design). Synthetic stale-bundle 404 path can only be exercised via dispatchEvent in dev (CRA dev server does not emit hashed bundle paths). The sessionStorage('ourrealm.sw.reloaded.once') flag correctly prevents reload loops. All 14 critical routes render without new console errors attributable to the SW."
+}
