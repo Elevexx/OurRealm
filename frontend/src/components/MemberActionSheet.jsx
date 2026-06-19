@@ -92,7 +92,7 @@ export default function MemberActionSheet({ member, onClose, onOpenChat }) {
               ><UserPlus size={14} /> Request Friend</button>
             )}
             <button
-              onClick={() => { navigate(`/@${member.username}`); onClose && onClose(); }}
+              onClick={() => { navigate(`/profile/${member.username}`); onClose && onClose(); }}
               className="or-chip w-full justify-center"
               data-testid="member-action-profile"
             ><User size={12} /> View profile</button>

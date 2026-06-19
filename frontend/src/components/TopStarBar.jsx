@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Star, Bell, MessageSquare, User } from "lucide-react";
+import { Star, Globe, Bell, MessageSquare, User } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import apiClient from "@/api/client";
 
-// Top-right star bar — Trending (Featured), Notifications, Messages, and
-// Edit Profile only. The Sounds shortcut moved to the bottom-nav (where
-// it replaced the legacy Wallet slot). Wallet has no top-bar entry.
+// Top-right Star Bar — required order:
+// 1. ⭐ Featured · 2. 🌎 Discover · 3. 🔔 Notifications · 4. ✉️ Messages · 5. 👤 Profile (Edit View)
 const ITEMS = [
-  { to: "/featured",      label: "Trending",      Icon: Star,         testid: "star-featured",      color: "#F4C84A" },
+  { to: "/featured",      label: "Featured",      Icon: Star,         testid: "star-featured",      color: "#F4C84A" },
+  { to: "/discover",      label: "Discover",      Icon: Globe,        testid: "star-discover",      color: "var(--brand-blue)" },
   { to: "/notifications", label: "Notifications", Icon: Bell,         testid: "star-notifications", color: "#FF8AC2", isNotif: true },
   { to: "/messages",      label: "Messages",      Icon: MessageSquare,testid: "star-messages",      color: "var(--brand-blue)" },
 ];

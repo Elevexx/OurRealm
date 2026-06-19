@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Home, Search, Sparkles, Plus, Music2 as SoundsIcon, Users, User, Radio, Video, Image as ImageIcon, MessageSquare, X, Music2, Send, Trash2 } from "lucide-react";
+import { Home, Sparkles, Plus, Music2 as SoundsIcon, Users, User, Sparkle, Radio, Video, Image as ImageIcon, MessageSquare, X, Music2, Send, Trash2 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import GuestPrompt from "@/components/GuestPrompt";
@@ -8,18 +8,15 @@ import VideoUploadPicker from "@/components/VideoUploadPicker";
 import ImageUploadPicker from "@/components/ImageUploadPicker";
 import SoundUploadPicker from "@/components/SoundUploadPicker";
 
+// Bottom nav — required order:
+//   1. 🏠 Home  2. ✨ For You  3. 🎵 Sounds  4. ➕ Create  5. 🌌 Realms  6. 👥 Friends  7. 👤 Profile (Public)
 const ITEMS_LEFT = [
-  // Home → new Home Dashboard (widget board). For You → personalized feed.
-  // Customize Feed (interest picker) is a separate page reached from /feed.
-  { to: "/home",     label: "Home",     Icon: Home,     testid: "bottom-home" },
-  { to: "/discover", label: "Discover", Icon: Search,   testid: "bottom-discover" },
-  { to: "/feed",     label: "For You",  Icon: Sparkles, testid: "bottom-foryou" },
+  { to: "/home",    label: "Home",    Icon: Home,       testid: "bottom-home" },
+  { to: "/feed",    label: "For You", Icon: Sparkles,   testid: "bottom-foryou" },
+  { to: "/sounds",  label: "Sounds",  Icon: SoundsIcon, testid: "bottom-sounds" },
 ];
 const ITEMS_RIGHT = [
-  // Sounds replaces the legacy Wallet slot in the exact same position
-  // and routes to the existing /sounds page. No other bottom-nav order
-  // or labels change.
-  { to: "/sounds",  label: "Sounds",  Icon: SoundsIcon, testid: "bottom-sounds" },
+  { to: "/realms",  label: "Realms",  Icon: Sparkle,    testid: "bottom-realms" },
   { to: "/friends", label: "Friends", Icon: Users,      testid: "bottom-friends" },
   { to: "/profile", label: "Profile", Icon: User,       testid: "bottom-profile" },
 ];

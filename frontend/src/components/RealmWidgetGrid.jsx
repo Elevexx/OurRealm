@@ -1,39 +1,66 @@
 /**
- * RealmWidgetGrid — admin-aware grid that renders each widget with an
- * optional resize chip (cycles small → medium → large → wide) and an
- * HTML5-drag reorder handle. Members see the same grid without the
- * admin controls.
+ * RealmWidgetGrid — admin-aware grid with explicit per-widget size
+ * controls.
  *
- * Resize maps to CSS span:
- *   small  → 1 col / 1 row
- *   medium → 1 col / 2 rows (default)
- *   large  → 2 col / 2 rows
- *   wide   → 3 col / 1 row
- *   tall   → 1 col / 3 rows
+ * Edit-mode contract:
+ *   • When `editMode` is FALSE, NO size controls or drag handles are
+ *     visible — the grid renders read-only.
+ *   • When `editMode` is TRUE (admin only), each tile gets a row of
+ *     four size buttons [S | M | L | XL] and a drag handle for
+ *     re-ordering. The currently-active size is highlighted via
+ *     `data-active="true"`. Tapping a size button immediately PATCHes
+ *     the new value and the grid reflows.
  *
- * Mobile / narrow viewports: every widget falls back to 1 col so the
- * grid stacks vertically — admin-defined size is preserved in storage
- * but ignored visually until the viewport grows.
+ * Layout invariants (mobile-first, no horizontal overflow):
+ *   • Every widget always occupies exactly ONE column. Sizes only
+ *     change the VERTICAL row span so widgets never extend past the
+ *     viewport width on 320–430px screens.
+ *   • Grid uses `repeat(auto-fit, minmax(min(280px, 100%), 1fr))` so
+ *     a single widget can shrink below 280px on tiny viewports
+ *     without spilling out.
+ *   • Saved size preferences (including legacy "wide" / "tall" values)
+ *     are preserved and rendered as their nearest modern equivalent.
  *
- * Reorder uses native drag/drop (no extra deps). Final position is
- * persisted via POST /api/communities/realm/:id/widgets/reorder which
- * already exists. While dragging, only the local order changes; the
- * server is called once on drop.
+ * Reorder uses native HTML5 drag/drop on the drag handle. Final order
+ * is persisted via POST /api/communities/realm/:id/widgets/reorder.
  */
 import React, { useMemo, useState } from "react";
-import { GripVertical, Maximize2, ChevronUp, ChevronDown } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import apiClient from "@/api/client";
 
-const SIZE_CYCLE  = ["small", "medium", "large", "wide", "tall"];
+// Only these four sizes are user-selectable.
+const SIZES = ["small", "medium", "large", "xl"];
+
+// All sizes pin to 1 column → vertical-only growth.
 const SIZE_SPAN = {
   small:  { col: "span 1", row: "span 1" },
   medium: { col: "span 1", row: "span 2" },
-  large:  { col: "span 2", row: "span 2" },
-  wide:   { col: "span 3", row: "span 1" },
-  tall:   { col: "span 1", row: "span 3" },
+  large:  { col: "span 1", row: "span 3" },
+  xl:     { col: "span 1", row: "span 4" },
+  // Legacy back-compat (read-only mappings, never re-saved):
+  wide:   { col: "span 1", row: "span 3" },
+  tall:   { col: "span 1", row: "span 4" },
 };
 
-export default function RealmWidgetGrid({ realmId, widgets, isAdmin, renderWidget, onChanged }) {
+const SIZE_LABEL = { small: "S", medium: "M", large: "L", xl: "XL" };
+
+// Returns the current size normalised into the modern S/M/L/XL set,
+// so legacy "wide" / "tall" widgets highlight a sensible button.
+const normalised = (s) => {
+  if (SIZES.includes(s)) return s;
+  if (s === "wide") return "large";
+  if (s === "tall") return "xl";
+  return "medium";
+};
+
+export default function RealmWidgetGrid({
+  realmId,
+  widgets,
+  isAdmin,
+  editMode = false,        // NEW — controls visibility of resize/drag handles
+  renderWidget,
+  onChanged,
+}) {
   const [order, setOrder] = useState(widgets);
   const [dragId, setDragId] = useState(null);
 
@@ -42,16 +69,17 @@ export default function RealmWidgetGrid({ realmId, widgets, isAdmin, renderWidge
   React.useEffect(() => { setOrder(widgets); }, [widgets]);
 
   const sorted = useMemo(() => order, [order]);
+  const showControls = isAdmin && editMode;
 
   const onDragStart = (e, w) => {
-    if (!isAdmin) return;
+    if (!showControls) return;
     setDragId(w.id);
     e.dataTransfer.effectAllowed = "move";
     try { e.dataTransfer.setData("text/plain", w.id); } catch { /* */ }
   };
-  const onDragOver = (e) => { if (isAdmin) e.preventDefault(); };
+  const onDragOver = (e) => { if (showControls) e.preventDefault(); };
   const onDrop = (e, target) => {
-    if (!isAdmin || !dragId || dragId === target.id) return;
+    if (!showControls || !dragId || dragId === target.id) return;
     e.preventDefault();
     const src = sorted.findIndex((x) => x.id === dragId);
     const dst = sorted.findIndex((x) => x.id === target.id);
@@ -66,61 +94,77 @@ export default function RealmWidgetGrid({ realmId, widgets, isAdmin, renderWidge
     }).catch(() => { /* */ });
   };
 
-  const cycleSize = async (w) => {
-    const idx = SIZE_CYCLE.indexOf(w.size || "medium");
-    const next = SIZE_CYCLE[(idx + 1) % SIZE_CYCLE.length];
+  const setSize = async (w, size) => {
+    if (!SIZES.includes(size)) return;
+    if (normalised(w.size) === size) return;   // no-op on same size
     try {
-      const { data } = await apiClient.patch(`/communities/realm/${realmId}/widgets/${w.id}`, { size: next });
+      const { data } = await apiClient.patch(
+        `/communities/realm/${realmId}/widgets/${w.id}`,
+        { size },
+      );
       onChanged && onChanged(data);
     } catch { /* */ }
-  };
-
-  // Move-up / move-down arrows — same persistence as drag-reorder
-  // and keyboard-accessible. Used by admins and headless tests where
-  // HTML5 drag synth events aren't reliable.
-  const moveBy = (w, delta) => {
-    const i = sorted.findIndex((x) => x.id === w.id);
-    const j = i + delta;
-    if (i < 0 || j < 0 || j >= sorted.length) return;
-    const next = [...sorted];
-    [next[i], next[j]] = [next[j], next[i]];
-    setOrder(next);
-    apiClient.post(`/communities/realm/${realmId}/widgets/reorder`, {
-      order: next.map((x) => x.id),
-    }).catch(() => { /* */ });
   };
 
   return (
     <div
       className="grid gap-4 mt-5"
-      style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gridAutoRows: "minmax(120px, auto)" }}
+      style={{
+        // minmax(min(280px, 100%), 1fr) prevents a 280px min-width
+        // from forcing a horizontal scroll on viewports < 296px,
+        // while still letting desktops grow to multiple columns.
+        gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))",
+        gridAutoRows: "minmax(110px, auto)",
+        maxWidth: "100%",
+      }}
       data-testid="realm-widgets-grid"
     >
       {sorted.map((w) => {
+        const activeSize = normalised(w.size);
         const span = SIZE_SPAN[w.size || "medium"] || SIZE_SPAN.medium;
         return (
           <div
             key={w.id}
-            className="relative"
+            className="relative min-w-0"
             style={{ gridColumn: span.col, gridRow: span.row, opacity: dragId === w.id ? 0.5 : 1 }}
-            draggable={isAdmin}
+            draggable={showControls}
             onDragStart={(e) => onDragStart(e, w)}
             onDragOver={onDragOver}
             onDrop={(e) => onDrop(e, w)}
             data-testid={`realm-widget-tile-${w.id}`}
           >
-            {isAdmin && (
-              <div className="absolute -top-1 -right-1 z-10 flex gap-1" data-testid={`realm-widget-controls-${w.id}`}>
-                <button onClick={() => moveBy(w, -1)} className="or-chip" title="Move up" data-testid={`realm-widget-move-up-${w.id}`} disabled={sorted[0]?.id === w.id}>
-                  <ChevronUp size={11} />
-                </button>
-                <button onClick={() => moveBy(w, +1)} className="or-chip" title="Move down" data-testid={`realm-widget-move-down-${w.id}`} disabled={sorted[sorted.length - 1]?.id === w.id}>
-                  <ChevronDown size={11} />
-                </button>
-                <button onClick={() => cycleSize(w)} className="or-chip" title={`Size: ${w.size || "medium"} → cycle next`} data-testid={`realm-widget-size-${w.id}`}>
-                  <Maximize2 size={11} />
-                </button>
-                <span className="or-chip cursor-grab" title="Drag to reorder" data-testid={`realm-widget-drag-${w.id}`}>
+            {showControls && (
+              <div
+                className="absolute -top-1 -right-1 z-10 flex gap-1 flex-wrap justify-end"
+                data-testid={`realm-widget-controls-${w.id}`}
+                style={{ maxWidth: "100%" }}
+              >
+                {SIZES.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setSize(w, s)}
+                    className="or-chip"
+                    data-active={activeSize === s}
+                    data-testid={`realm-widget-size-${s}-${w.id}`}
+                    title={`Set size: ${SIZE_LABEL[s]}`}
+                    aria-pressed={activeSize === s}
+                    aria-label={`Set widget size to ${SIZE_LABEL[s]}`}
+                    style={{
+                      touchAction: "manipulation",
+                      minHeight: 28,
+                      minWidth: 28,
+                      fontWeight: activeSize === s ? 800 : 600,
+                    }}
+                  >
+                    {SIZE_LABEL[s]}
+                  </button>
+                ))}
+                <span
+                  className="or-chip cursor-grab"
+                  title="Drag to reorder"
+                  data-testid={`realm-widget-drag-${w.id}`}
+                  style={{ touchAction: "none", minHeight: 28, minWidth: 28 }}
+                >
                   <GripVertical size={11} />
                 </span>
               </div>

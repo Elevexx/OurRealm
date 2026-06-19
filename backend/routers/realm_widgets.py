@@ -116,8 +116,8 @@ async def add_widget(realm_id: str, payload: WidgetCreate, current: CurrentUser)
         raise HTTPException(404, "Realm not found")
     if not _is_admin(realm, current):
         raise HTTPException(403, "Admin only")
-    if payload.size not in {"small", "medium", "large", "wide", "tall"}:
-        raise HTTPException(400, "size must be small | medium | large | wide | tall")
+    if payload.size not in {"small", "medium", "large", "xl", "wide", "tall"}:
+        raise HTTPException(400, "size must be small | medium | large | xl")
     max_doc = await db.community_widgets.find(
         {"community_type": "realm", "community_id": realm["id"]},
         {"_id": 0, "position": 1},
@@ -162,7 +162,7 @@ async def patch_widget(realm_id: str, widget_id: str, payload: WidgetPatch, curr
         raise HTTPException(403, "Admin only")
     update = {}
     for k, v in payload.dict(exclude_unset=True).items():
-        if k == "size" and v not in {"small", "medium", "large", "wide", "tall"}:
+        if k == "size" and v not in {"small", "medium", "large", "xl", "wide", "tall"}:
             raise HTTPException(400, "Invalid size")
         update[k] = v
     if not update:

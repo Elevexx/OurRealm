@@ -73,6 +73,9 @@ export default function RealmDetail() {
     try { return JSON.parse(localStorage.getItem(BANNER_KEY(id)) || "null"); } catch { return null; }
   });
   const [bannerEditorOpen, setBannerEditorOpen] = useState(false);
+  // Phase 2 — widget edit mode. When false, the grid is read-only
+  // (no resize/drag handles). Admin-only toggle in the toolbar.
+  const [editMode, setEditMode] = useState(false);
 
   // Load live realm + main chat + widget list (Phase 2).
   useEffect(() => {
@@ -184,8 +187,8 @@ export default function RealmDetail() {
           ) : (
             <img src={realm.banner} alt="" className="w-full h-full object-cover" />
           )}
-          <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, transparent 20%, ${accent}22 60%, rgba(0,0,0,0.7))` }} />
-          <button className="absolute top-3 left-3 starbar-icon" style={{ width: 36, height: 36 }} onClick={() => navigate("/realms")} data-testid="realm-back">
+          <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, transparent 20%, ${accent}22 60%, rgba(0,0,0,0.7))`, pointerEvents: "none" }} />
+          <button className="absolute top-3 left-3 starbar-icon" style={{ width: 36, height: 36, zIndex: 2 }} onClick={() => navigate("/realms")} data-testid="realm-back">
             <ArrowLeft size={16} />
           </button>
           {canEditBanner && (
@@ -193,7 +196,7 @@ export default function RealmDetail() {
               className="absolute top-3 right-3 or-chip"
               onClick={() => setBannerEditorOpen(true)}
               data-testid="realm-banner-edit"
-              style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)" }}
+              style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)", zIndex: 2, touchAction: "manipulation" }}
             >
               <ImageIcon size={12} /> {banner?.banner_url ? "Change banner" : "Add banner"}
             </button>
@@ -267,35 +270,50 @@ export default function RealmDetail() {
               onMemberClick={(m) => setMemberSheet(m)}
             />
           </div>
-          {/* Phase 2 — widget grid below the chat. Admins can resize
-              + drag-reorder; members see read-only widgets. Default
-              Poll widget is auto-created for every realm. */}
+          {/* Phase 2 — widget grid below the chat. Admins toggle Edit
+              mode to reveal per-widget size controls + drag handles;
+              members and admins out of edit mode see a clean grid.
+              Default Poll widget is auto-created for every realm. */}
           {isAdmin && (
             <div className="mt-5 flex items-center gap-2 flex-wrap" data-testid="realm-widgets-toolbar">
-              <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Add widget:</span>
-              {[
-                { type: "hub",           label: "Community Hub" },
-                { type: "poll",          label: "Poll" },
-                { type: "announcements", label: "Announcement" },
-                { type: "rules",         label: "Rules" },
-              ].map((opt) => (
-                <button
-                  key={opt.type}
-                  className="or-chip"
-                  data-testid={`realm-widget-add-${opt.type}`}
-                  onClick={async () => {
-                    try {
-                      const { data } = await apiClient.post(
-                        `/communities/realm/${realm.id}/widgets`,
-                        { type: opt.type, size: "medium" },
-                      );
-                      setWidgets((prev) => [...prev, data]);
-                    } catch { /* */ }
-                  }}
-                >
-                  <Plus size={11} /> {opt.label}
-                </button>
-              ))}
+              <button
+                className="or-chip"
+                data-active={editMode}
+                data-testid="realm-widgets-edit-toggle"
+                onClick={() => setEditMode((v) => !v)}
+                aria-pressed={editMode}
+                style={{ touchAction: "manipulation" }}
+              >
+                {editMode ? "Done" : "Edit widgets"}
+              </button>
+              {editMode && (
+                <>
+                  <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Add:</span>
+                  {[
+                    { type: "hub",           label: "Community Hub" },
+                    { type: "poll",          label: "Poll" },
+                    { type: "announcements", label: "Announcement" },
+                    { type: "rules",         label: "Rules" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.type}
+                      className="or-chip"
+                      data-testid={`realm-widget-add-${opt.type}`}
+                      onClick={async () => {
+                        try {
+                          const { data } = await apiClient.post(
+                            `/communities/realm/${realm.id}/widgets`,
+                            { type: opt.type, size: "medium" },
+                          );
+                          setWidgets((prev) => [...prev, data]);
+                        } catch { /* */ }
+                      }}
+                    >
+                      <Plus size={11} /> {opt.label}
+                    </button>
+                  ))}
+                </>
+              )}
             </div>
           )}
           {widgets.length > 0 && (
@@ -303,6 +321,7 @@ export default function RealmDetail() {
               realmId={realm.id}
               widgets={widgets}
               isAdmin={isAdmin}
+              editMode={editMode}
               onChanged={(updated) => setWidgets((prev) => prev.map((x) => x.id === updated.id ? updated : x))}
               renderWidget={(w) => {
                 if (w.type === "poll") {
