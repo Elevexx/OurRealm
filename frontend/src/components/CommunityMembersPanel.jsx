@@ -16,6 +16,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Search, Users, Loader2 } from "lucide-react";
 import apiClient from "@/api/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const ORDER = { live: 0, online: 1, messenger: 2, away: 3, offline: 4 };
 
@@ -24,6 +25,7 @@ export default function CommunityMembersPanel({
   communityId,
   onMemberClick,
 }) {
+  const { user } = useAuth();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -120,7 +122,12 @@ export default function CommunityMembersPanel({
             {q ? "No matching members." : "No members yet."}
           </div>
         ) : sorted.map((m) => (
-          <MemberRow key={m.user_id} member={m} onClick={() => onMemberClick && onMemberClick(m)} />
+          <MemberRow
+            key={m.user_id}
+            member={m}
+            isSelf={!!user && m.user_id === user.id}
+            onClick={() => onMemberClick && onMemberClick(m)}
+          />
         ))}
       </div>
     </aside>
@@ -132,7 +139,7 @@ function statusOf(m) {
   return (m.presence_choice || "online").toLowerCase();
 }
 
-function MemberRow({ member, onClick }) {
+function MemberRow({ member, isSelf, onClick }) {
   const s = statusOf(member);
   const colour = {
     online:    "var(--brand-green)",
@@ -141,6 +148,37 @@ function MemberRow({ member, onClick }) {
     away:      "#F4C84A",
     offline:   "transparent",
   }[s];
+  // Self-row is rendered as a static badge so automation can deterministically
+  // skip it AND so clicking your own avatar doesn't open the action sheet.
+  if (isSelf) {
+    return (
+      <div
+        className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left"
+        style={{ background: "color-mix(in srgb, var(--primary) 4%, transparent)" }}
+        data-testid="community-member-self"
+      >
+        <div className="relative shrink-0">
+          <img src={member.avatar_url || "/avatar-placeholder.svg"} alt="" className="rounded-full" style={{ width: 26, height: 26 }} />
+          {s !== "offline" && (
+            <span
+              aria-label={`Status: ${s}`}
+              style={{
+                position: "absolute", right: -1, bottom: -1, width: 9, height: 9,
+                borderRadius: "50%", background: colour,
+                border: "2px solid var(--surface)",
+                animation: "or-pulse-soft 3s ease-out infinite",
+                "--orp-color": colour,
+              }}
+            />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold truncate" style={{ color: "var(--text-main)" }}>{member.display_name || member.username}</div>
+          <div className="text-[10px] truncate" style={{ color: "var(--primary)" }}>You</div>
+        </div>
+      </div>
+    );
+  }
   return (
     <button
       onClick={onClick}

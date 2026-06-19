@@ -180,8 +180,10 @@ export default function RealmDetail() {
               <div className="text-4xl mb-2">{realm.emoji}</div>
               <h1 className="text-3xl sm:text-4xl" style={{ fontFamily: "var(--font-display)", color: "#fff", textShadow: `0 0 18px ${accent}` }}>{realm.name}</h1>
               <div className="text-sm mt-1 flex items-center gap-3" style={{ color: "#cfe3ff" }}>
-                <span><Users size={12} className="inline" /> {Number(memberCount || 0).toLocaleString()}</span>
-                <span style={{ color: "#10E670" }}>● {onlineCount} online</span>
+                <span data-testid="realm-header-members"><Users size={12} className="inline" /> {Number(memberCount || 0).toLocaleString()}</span>
+                {onlineCount > 0 && (
+                  <span data-testid="realm-header-online" style={{ color: "#10E670" }}>● {onlineCount} online</span>
+                )}
               </div>
             </div>
             <div className="flex gap-2 flex-wrap">
