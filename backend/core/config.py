@@ -51,4 +51,27 @@ def get_jwt_secret() -> str:
 
 
 def get_cors_origins() -> list[str]:
-    return [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",")]
+    """Trusted CORS origins.
+
+    Production must configure CORS_ORIGINS explicitly — we never fall
+    back to `*` in production HTTPS. If the env var is missing we return
+    the production hostname plus the known preview hostname as a safe
+    default; wildcard is only honoured when CORS_ALLOW_WILDCARD=true
+    (intended for local docker / dev runs only).
+    """
+    raw = os.environ.get("CORS_ORIGINS")
+    if raw:
+        origins = [o.strip() for o in raw.split(",") if o.strip()]
+        if origins == ["*"] and os.environ.get("CORS_ALLOW_WILDCARD", "false").lower() != "true":
+            # Reject wildcard unless explicitly opted-in. Fall through to
+            # the trusted default list below.
+            origins = []
+        if origins:
+            return origins
+    # Trusted default — production domain + preview domain. Add new
+    # trusted origins via CORS_ORIGINS=... env var.
+    return [
+        "https://ourrealm.social",
+        "https://www.ourrealm.social",
+        "https://realm-deploy.preview.emergentagent.com",
+    ]

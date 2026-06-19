@@ -51,4 +51,4 @@ You agree to indemnify OurRealm against claims arising out of your use of the Se
 We may update these Terms; the new version takes effect on its effective date. Continued use constitutes acceptance.
 
 ## 16. Contact
-legal@ourrealm.social
+OurRealmSocial@gmail.com

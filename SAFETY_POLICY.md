@@ -59,4 +59,4 @@ Uploaded media is validated only for file type, file size, duration, and suspici
 Moderation audit logs are retained for up to **90 days** unless needed for active investigation. Internal webhook event logs are retained for up to **30 days**.
 
 ## Urgent safety
-safety@ourrealm.social. If you or someone else is in immediate danger, contact local emergency services.
+OurRealmSocial@gmail.com. If you or someone else is in immediate danger, contact local emergency services.

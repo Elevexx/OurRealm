@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Home, Search, Sparkles, Plus, Wallet, Users, User, Radio, Video, Image as ImageIcon, MessageSquare, X, Music2, Send, Trash2 } from "lucide-react";
+import { Home, Search, Sparkles, Plus, Music2 as SoundsIcon, Users, User, Radio, Video, Image as ImageIcon, MessageSquare, X, Music2, Send, Trash2 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import GuestPrompt from "@/components/GuestPrompt";
@@ -16,9 +16,12 @@ const ITEMS_LEFT = [
   { to: "/feed",     label: "For You",  Icon: Sparkles, testid: "bottom-foryou" },
 ];
 const ITEMS_RIGHT = [
-  { to: "/wallet",  label: "Wallet",  Icon: Wallet, testid: "bottom-wallet" },
-  { to: "/friends", label: "Friends", Icon: Users,  testid: "bottom-friends" },
-  { to: "/profile", label: "Profile", Icon: User,   testid: "bottom-profile" },
+  // Sounds replaces the legacy Wallet slot in the exact same position
+  // and routes to the existing /sounds page. No other bottom-nav order
+  // or labels change.
+  { to: "/sounds",  label: "Sounds",  Icon: SoundsIcon, testid: "bottom-sounds" },
+  { to: "/friends", label: "Friends", Icon: Users,      testid: "bottom-friends" },
+  { to: "/profile", label: "Profile", Icon: User,       testid: "bottom-profile" },
 ];
 
 const CREATE_OPTIONS = [

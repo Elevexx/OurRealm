@@ -45,7 +45,7 @@ export default function Wallet() {
       >
         <Info size={14} style={{ color: "var(--primary)", flexShrink: 0 }} />
         <span className="text-sm" style={{ color: "var(--text-main)" }}>
-          Support for wallet and payments is coming soon.
+          <b>Wallet Support Coming Soon.</b> Payments, deposits, withdrawals, payouts, and creator earnings are not currently active.
         </span>
       </div>
 
@@ -75,11 +75,42 @@ export default function Wallet() {
         </div>
       </div>
 
-      {/* Action buttons */}
+      {/* Action buttons — disabled until wallet/payments are legally
+          ready. The structure is kept (no layout change) so the page can
+          be re-enabled in one commit when the backing payment provider
+          ships, but every action button is now an inert, read-only
+          placeholder with a tooltip. */}
       <div className="flex flex-wrap gap-3 mb-5">
-        <button className="or-btn" data-testid="wallet-withdraw">Withdraw</button>
-        <button className="or-btn or-btn-ghost" data-testid="wallet-deposit">Deposit</button>
-        <button className="or-btn or-btn-ghost" data-testid="wallet-payout-settings">Payout settings</button>
+        <button
+          className="or-btn"
+          data-testid="wallet-withdraw"
+          aria-disabled="true"
+          disabled
+          title="Withdrawals are not currently active."
+          style={{ opacity: 0.45, cursor: "not-allowed" }}
+        >
+          Withdraw
+        </button>
+        <button
+          className="or-btn or-btn-ghost"
+          data-testid="wallet-deposit"
+          aria-disabled="true"
+          disabled
+          title="Deposits are not currently active."
+          style={{ opacity: 0.45, cursor: "not-allowed" }}
+        >
+          Deposit
+        </button>
+        <button
+          className="or-btn or-btn-ghost"
+          data-testid="wallet-payout-settings"
+          aria-disabled="true"
+          disabled
+          title="Payout settings are not currently active."
+          style={{ opacity: 0.45, cursor: "not-allowed" }}
+        >
+          Payout settings
+        </button>
       </div>
 
       {/* Revenue sources */}

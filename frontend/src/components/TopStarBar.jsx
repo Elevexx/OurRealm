@@ -1,17 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Star, Music2, Bell, MessageSquare, User } from "lucide-react";
+import { Star, Bell, MessageSquare, User } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import apiClient from "@/api/client";
 
-// Top-right star bar — $ (ads) shortcut + profile avatar removed per spec.
-// Profile access lives on the dedicated edit-profile icon (right-most),
-// and the Ads page is still reachable from the bottom-nav Wallet flow.
+// Top-right star bar — Trending (Featured), Notifications, Messages, and
+// Edit Profile only. The Sounds shortcut moved to the bottom-nav (where
+// it replaced the legacy Wallet slot). Wallet has no top-bar entry.
 const ITEMS = [
-  { to: "/featured",      label: "Featured",      Icon: Star,         testid: "star-featured",      color: "#F4C84A" },
-  { to: "/sounds",        label: "Sounds",        Icon: Music2,       testid: "star-sounds",        color: "var(--brand-blue)" },
+  { to: "/featured",      label: "Trending",      Icon: Star,         testid: "star-featured",      color: "#F4C84A" },
   { to: "/notifications", label: "Notifications", Icon: Bell,         testid: "star-notifications", color: "#FF8AC2", isNotif: true },
   { to: "/messages",      label: "Messages",      Icon: MessageSquare,testid: "star-messages",      color: "var(--brand-blue)" },
 ];

@@ -34,4 +34,4 @@ OurRealm combines in-app user reports with lightweight automated scanning (keywo
 For full process detail: [SAFETY_POLICY.md](./SAFETY_POLICY.md).
 
 ## Report something
-Use the in-app **Report** button on any post, comment, profile, message, or media. For urgent safety issues: safety@ourrealm.social.
+Use the in-app **Report** button on any post, comment, profile, message, or media. For urgent safety issues: OurRealmSocial@gmail.com.

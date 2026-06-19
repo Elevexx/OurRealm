@@ -25,11 +25,11 @@ import Logo from "@/components/Logo";
 const EFFECTIVE_DATE = "February 18, 2026";
 const POLICY_VERSION = "2026-02-18";
 const CONTACT = {
-  legal:     "legal@ourrealm.social",
-  privacy:   "privacy@ourrealm.social",
-  safety:    "safety@ourrealm.social",
-  copyright: "copyright@ourrealm.social",
-  support:   "support@ourrealm.social",
+  legal:     "OurRealmSocial@gmail.com",
+  privacy:   "OurRealmSocial@gmail.com",
+  safety:    "OurRealmSocial@gmail.com",
+  copyright: "OurRealmSocial@gmail.com",
+  support:   "OurRealmSocial@gmail.com",
 };
 
 function LegalShell({ title, subtitle, testid, children }) {

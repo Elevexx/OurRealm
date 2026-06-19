@@ -14,11 +14,14 @@ import { usePresence } from "@/contexts/PresenceContext";
  *  - Wallet: CashApp, PayPal, Venmo, Bank link placeholders (stored only)
  *  - Ads Manager: link out to existing /marketplace
  */
+// Wallet & Ads Manager tabs are intentionally hidden from the user-facing
+// settings until wallet/payments are legally ready. The underlying state
+// (`wallet`, `saveWallet`, the wallet tab body) is kept in this file so
+// the feature can be re-enabled in one diff once payment integrations
+// ship. Routes/backend remain untouched.
 const TABS = [
   { id: "account",  label: "Account",     Icon: UserCog },
   { id: "privacy",  label: "Privacy",     Icon: ShieldCheck },
-  { id: "wallet",   label: "Wallet",      Icon: Wallet },
-  { id: "ads",      label: "Ads Manager", Icon: DollarSign },
 ];
 
 export default function AccountSettings() {

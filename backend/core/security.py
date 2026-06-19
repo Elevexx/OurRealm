@@ -44,11 +44,20 @@ def create_refresh_token(user_id: str) -> str:
 
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
+    # Cookie security profile is driven by env so that local HTTP dev still
+    # works while production HTTPS gets `Secure; HttpOnly; SameSite=Lax`.
+    #   COOKIE_SECURE   — "true" | "false"  (default: true)
+    #   COOKIE_SAMESITE — "lax" | "strict"  (default: lax)
+    import os as _os
+    secure   = _os.environ.get("COOKIE_SECURE",   "true").lower() != "false"
+    samesite = _os.environ.get("COOKIE_SAMESITE", "lax").lower()
+    if samesite not in {"lax", "strict", "none"}:
+        samesite = "lax"
     response.set_cookie(
-        "access_token", access_token, httponly=True, secure=False, samesite="lax",
+        "access_token", access_token, httponly=True, secure=secure, samesite=samesite,
         max_age=ACCESS_TOKEN_MINUTES * 60, path="/",
     )
     response.set_cookie(
-        "refresh_token", refresh_token, httponly=True, secure=False, samesite="lax",
+        "refresh_token", refresh_token, httponly=True, secure=secure, samesite=samesite,
         max_age=REFRESH_TOKEN_DAYS * 24 * 3600, path="/",
     )

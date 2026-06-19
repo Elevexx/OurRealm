@@ -41,7 +41,9 @@ export default function SignIn() {
     setError(""); setLoading(true);
     try {
       const { data } = await apiClient.post("/auth/otp/request", { email });
-      setOtpDisplayed(data.displayed_otp || "");
+      // In production the OTP is delivered out-of-band; the server returns
+      // `displayed_otp: null` and we never render the code in the UI.
+      setOtpDisplayed(data?.displayed_otp || "");
       setOtpMode(true);
     } catch (e) {
       setError(formatApiErrorDetail(e.response?.data?.detail) || e.message);
@@ -142,6 +144,14 @@ export default function SignIn() {
         </div>
         <div className="text-center mt-4 text-xs" style={{ color: "var(--text-muted)" }}>
           <Link to="/" className="underline">← Back to landing</Link>
+        </div>
+        <div className="text-center mt-2 text-[11px]" data-testid="signin-legal-links" style={{ color: "var(--text-muted)" }}>
+          By signing in you agree to our {" "}
+          <Link to="/terms" className="underline" data-testid="signin-link-terms" style={{ color: "var(--primary)" }}>Terms</Link>
+          {" · "}
+          <Link to="/terms-conditions" className="underline" data-testid="signin-link-conditions" style={{ color: "var(--primary)" }}>Conditions</Link>
+          {" · "}
+          <Link to="/privacy" className="underline" data-testid="signin-link-privacy" style={{ color: "var(--primary)" }}>Privacy</Link>
         </div>
       </div>
     </div>

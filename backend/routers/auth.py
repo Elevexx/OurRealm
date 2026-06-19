@@ -1,5 +1,6 @@
 """Authentication endpoints (/api/auth/*)."""
 import logging
+import os
 import secrets
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -258,8 +259,18 @@ async def otp_request(payload: OtpRequest):
         }},
         upsert=True,
     )
-    logger.info(f"[OTP] {email} -> {code}")
-    return {"ok": True, "displayed_otp": code, "expires_in": 600}
+    # OTP echo for development. Disabled by default; in production the
+    # code is delivered out-of-band (email) and is never returned to the
+    # caller. Set OTP_DISPLAY_IN_RESPONSE=true in a dev-only env to
+    # surface the code in the JSON response for offline testing.
+    display_in_response = os.environ.get("OTP_DISPLAY_IN_RESPONSE", "false").lower() == "true"
+    if display_in_response:
+        logger.info(f"[OTP-DEV] {email} -> {code}")
+    else:
+        # Avoid logging the code in production. Log only the email + a
+        # truncated tag for support correlation.
+        logger.info(f"[OTP] code generated for {email}")
+    return {"ok": True, "displayed_otp": code if display_in_response else None, "expires_in": 600}
 
 
 @router.post("/otp/verify")

@@ -45,10 +45,10 @@ Categories of service providers (specific vendors may evolve; this section is up
 - **Payment processing** — **not currently active.**
 
 ## 5. Children's Privacy (COPPA)
-Not directed to children under 13. Age confirmation required at signup. Underage accounts will be removed when discovered. Parents/guardians: privacy@ourrealm.social.
+Not directed to children under 13. Age confirmation required at signup. Underage accounts will be removed when discovered. Parents/guardians: OurRealmSocial@gmail.com.
 
 ## 6. Your Rights
-Access, edit, and delete your information from Account Settings. Email privacy@ourrealm.social to:
+Access, edit, and delete your information from Account Settings. Email OurRealmSocial@gmail.com to:
 - **GDPR (EU/UK):** exercise access, rectification, erasure, restriction, portability, objection.
 - **CCPA/CPRA (California):** know, request deletion, correct, opt out of sale/sharing (we do not sell).
 
@@ -75,4 +75,4 @@ Your information may be processed in countries other than the one in which you l
 Material changes are highlighted in-app or by email.
 
 ## 12. Contact
-privacy@ourrealm.social
+OurRealmSocial@gmail.com
