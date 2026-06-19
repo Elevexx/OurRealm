@@ -64,7 +64,7 @@ export default function PresenceDot({
           position: "absolute", top: 2, left: 2, width: size, height: size, borderRadius: "50%",
           background: dotColor,
           "--orp-color": dotColor,
-          animation: isAnimated ? "or-pulse-soft 2.4s ease-out infinite" : "none",
+          animation: isAnimated ? "or-pulse-soft 3s ease-out infinite" : "none",
         }}
       />
       {/* Radar/glow intentionally omitted — the requirement is a small,

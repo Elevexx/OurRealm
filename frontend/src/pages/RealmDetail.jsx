@@ -1,15 +1,44 @@
-import React, { useState, useEffect } from "react";
+/**
+ * /realms/:id — Realm page rebuilt around a real community chat (Phase 1).
+ *
+ *   • Banner with founder-only banner editor (unchanged from prior pass).
+ *   • Tab strip — defaults to "Chat" which now renders a real-time
+ *     community chat widget + a live members panel on the right.
+ *   • Other tabs (feed/lives/videos/photos/sounds/events/members) keep
+ *     their existing mock visuals so nothing regresses.
+ *   • "Customize Community" button visible to realm owner/admins (and
+ *     @stealth) — opens the chat title/description/welcome modal.
+ *   • Member click → MemberActionSheet (Chat / Request Friend).
+ *
+ * Data flow:
+ *   GET /api/communities/realms/:id             — live realm doc
+ *   GET /api/communities/realm/:id/chats        — main chat row
+ *   POST /api/communities/realm/:id/join        — join button
+ *   PATCH /communities/realm/:id/chats/:cid     — admin rename
+ *   WS /api/ws/community-chat/:cid              — realtime messages
+ */
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Users, Radio, Image as ImageIcon, Music2, MessageSquare, Calendar, Crown, Plus, Settings, Pin, ArrowLeft, Shield } from "lucide-react";
-import { REALMS, CHARACTERS, makeMockPosts } from "@/data/mockData";
+import {
+  Users, Radio, Image as ImageIcon, Music2, MessageSquare, Calendar,
+  Crown, Plus, Settings, Pin, ArrowLeft, Shield, Sparkles,
+} from "lucide-react";
+import apiClient from "@/api/client";
+import { REALMS as MOCK_REALMS, CHARACTERS, makeMockPosts } from "@/data/mockData";
 import BannerEditor, { BannerView } from "@/components/BannerEditor";
+import CommunityChat from "@/components/CommunityChat";
+import CommunityMembersPanel from "@/components/CommunityMembersPanel";
+import CommunityChatTitleModal from "@/components/CommunityChatTitleModal";
+import MemberActionSheet from "@/components/MemberActionSheet";
+import FloatingDMWindow from "@/components/FloatingDMWindow";
 import { useAuth } from "@/contexts/AuthContext";
 import useHeartbeat from "@/hooks/useHeartbeat";
 
 const BANNER_KEY = (id) => `ourrealm.realm_banner.${id}`;
 
 const TABS = [
-  { id: "feed",    label: "Feed",    Icon: MessageSquare },
+  { id: "chat",    label: "Chat",    Icon: MessageSquare },
+  { id: "feed",    label: "Feed",    Icon: Sparkles },
   { id: "lives",   label: "Lives",   Icon: Radio },
   { id: "videos",  label: "Videos",  Icon: ImageIcon },
   { id: "photos",  label: "Photos",  Icon: ImageIcon },
@@ -23,27 +52,66 @@ export default function RealmDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const realm = REALMS.find((r) => r.id === id);
-  const [tab, setTab] = useState("feed");
-  const [joined, setJoined] = useState(false);
-  const posts = React.useMemo(() => makeMockPosts(18), []);
+  // Mock realm row used as a visual fallback while the live one loads.
+  const fallback = MOCK_REALMS.find((r) => r.id === id) || null;
 
-  // Banner state — overrides from BannerEditor are persisted to localStorage
-  // keyed per-realm. When the dedicated Realms backend lands, swap the
-  // get/set helpers below for a PATCH /api/realms/{id} call.
+  const [realm, setRealm] = useState(fallback ? { ...fallback, description: fallback.desc } : null);
+  const [chat, setChat] = useState(null);
+  const [tab, setTab] = useState("chat");
+  const [joined, setJoined] = useState(false);
+  const [memberSheet, setMemberSheet] = useState(null);
+  const [dmPeer, setDmPeer] = useState(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const posts = useMemo(() => makeMockPosts(18), []);
+
+  // Banner state (localStorage; same as previous pass).
   const [banner, setBanner] = useState(() => {
     try { return JSON.parse(localStorage.getItem(BANNER_KEY(id)) || "null"); } catch { return null; }
   });
   const [bannerEditorOpen, setBannerEditorOpen] = useState(false);
-  // Owner/admin gate — only @stealth (founder) and listed moderators can edit
-  // a realm banner. The static REALMS mock currently has no owner field, so
-  // founder access is the safe default until the backend exists.
-  const canEditBanner = !!user && (user.username || "").toLowerCase() === "stealth";
+
+  // Load live realm + main chat.
   useEffect(() => {
-    try {
-      setBanner(JSON.parse(localStorage.getItem(BANNER_KEY(id)) || "null"));
-    } catch { setBanner(null); }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [{ data: r }, { data: c }] = await Promise.all([
+          apiClient.get(`/communities/realms/${id}`),
+          apiClient.get(`/communities/realm/${id}/chats`),
+        ]);
+        if (cancelled) return;
+        setRealm(r);
+        const main = (c?.chats || []).find((x) => x.is_main) || (c?.chats || [])[0] || null;
+        setChat(main);
+      } catch { /* fall back to mock */ }
+    })();
+    return () => { cancelled = true; };
   }, [id]);
+
+  // Refresh banner from localStorage on id change.
+  useEffect(() => {
+    try { setBanner(JSON.parse(localStorage.getItem(BANNER_KEY(id)) || "null")); }
+    catch { setBanner(null); }
+  }, [id]);
+
+  // Listen for live chat:updated broadcasts.
+  useEffect(() => {
+    const handler = (e) => {
+      const det = e.detail;
+      if (!det || det.chat_id !== chat?.id) return;
+      setChat((prev) => prev ? { ...prev, ...det.patch } : prev);
+    };
+    window.addEventListener("community-chat:updated", handler);
+    return () => window.removeEventListener("community-chat:updated", handler);
+  }, [chat?.id]);
+
+  // Permissions: admin if owner / admin / global founder.
+  const isAdmin = !!user && (
+    (user.username || "").toLowerCase() === "stealth" ||
+    realm?.owner_id === user.id ||
+    (realm?.admin_ids || []).includes(user.id)
+  );
+  const canEditBanner = isAdmin;
 
   const saveBanner = (next) => {
     setBanner(next);
@@ -54,17 +122,28 @@ export default function RealmDetail() {
     try { localStorage.removeItem(BANNER_KEY(id)); } catch { /* */ }
   };
 
+  const onJoin = async () => {
+    if (!realm) return;
+    if (joined) return;
+    try {
+      await apiClient.post(`/communities/realm/${realm.id}/join`);
+      setJoined(true);
+    } catch { /* */ }
+  };
+
   if (!realm) {
     return (
-      <div className="max-w-3xl mx-auto or-surface p-8 text-center">
+      <div className="max-w-3xl mx-auto or-surface p-8 text-center" data-testid="realm-not-found">
         <div className="text-lg mb-3">Realm not found</div>
         <button className="or-btn" onClick={() => navigate("/realms")}>← Back to Realms</button>
       </div>
     );
   }
 
-  const members = CHARACTERS;
-  const moderators = members.slice(0, 3);
+  const accent = realm.accent || "#10E670";
+  const onlineCount = realm.online_count ?? realm.online ?? 0;
+  const memberCount = realm.member_count ?? realm.members ?? 0;
+  const moderators = CHARACTERS.slice(0, 3);
 
   return (
     <div className="max-w-7xl mx-auto" data-testid={`realm-detail-${realm.id}`}>
@@ -82,7 +161,7 @@ export default function RealmDetail() {
           ) : (
             <img src={realm.banner} alt="" className="w-full h-full object-cover" />
           )}
-          <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, transparent 20%, ${realm.accent}22 60%, rgba(0,0,0,0.7))` }} />
+          <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, transparent 20%, ${accent}22 60%, rgba(0,0,0,0.7))` }} />
           <button className="absolute top-3 left-3 starbar-icon" style={{ width: 36, height: 36 }} onClick={() => navigate("/realms")} data-testid="realm-back">
             <ArrowLeft size={16} />
           </button>
@@ -96,177 +175,200 @@ export default function RealmDetail() {
               <ImageIcon size={12} /> {banner?.banner_url ? "Change banner" : "Add banner"}
             </button>
           )}
-          <div className="absolute bottom-4 left-5 right-5 flex items-end justify-between gap-3">
+          <div className="absolute bottom-4 left-5 right-5 flex items-end justify-between gap-3 flex-wrap">
             <div>
               <div className="text-4xl mb-2">{realm.emoji}</div>
-              <h1 className="text-3xl sm:text-4xl" style={{ fontFamily: "var(--font-display)", color: "#fff", textShadow: `0 0 18px ${realm.accent}` }}>{realm.name}</h1>
+              <h1 className="text-3xl sm:text-4xl" style={{ fontFamily: "var(--font-display)", color: "#fff", textShadow: `0 0 18px ${accent}` }}>{realm.name}</h1>
               <div className="text-sm mt-1 flex items-center gap-3" style={{ color: "#cfe3ff" }}>
-                <span><Users size={12} className="inline" /> {realm.members.toLocaleString()}</span>
-                <span style={{ color: "#10E670" }}>● {realm.online} online</span>
+                <span><Users size={12} className="inline" /> {Number(memberCount || 0).toLocaleString()}</span>
+                <span style={{ color: "#10E670" }}>● {onlineCount} online</span>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              {isAdmin && (
+                <button
+                  className="or-chip"
+                  style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)" }}
+                  onClick={() => setRenameOpen(true)}
+                  data-testid="realm-customize"
+                ><Settings size={12} /> Customize Community</button>
+              )}
               <button
                 className={joined ? "or-btn or-btn-ghost" : "or-btn"}
                 style={{ padding: "0.5rem 1rem" }}
-                onClick={() => setJoined(!joined)}
+                onClick={onJoin}
                 data-testid="realm-join"
               >
                 {joined ? "Joined" : <><Plus size={14} /> Join Realm</>}
               </button>
-              <button className="or-btn or-btn-ghost" style={{ padding: "0.5rem" }} data-testid="realm-settings"><Settings size={14} /></button>
             </div>
           </div>
         </div>
         <div className="p-4 flex flex-wrap gap-2 items-center" style={{ borderTop: "1px solid var(--border-col)" }}>
-          <p className="flex-1 text-sm" style={{ color: "var(--text-muted)" }}>{realm.desc}</p>
-          {realm.tags.map((t) => (
-            <span key={t} className="text-[10px] uppercase tracking-widest px-2 py-1 rounded" style={{ background: `${realm.accent}22`, color: realm.accent }}>{t}</span>
+          <p className="flex-1 text-sm" style={{ color: "var(--text-muted)" }}>{realm.description || realm.desc}</p>
+          {(realm.tags || []).map((t) => (
+            <span key={t} className="text-[10px] uppercase tracking-widest px-2 py-1 rounded" style={{ background: `${accent}22`, color: accent }}>{t}</span>
           ))}
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
-        {TABS.map(({ id, label, Icon }) => (
+        {TABS.map(({ id: tid, label, Icon }) => (
           <button
-            key={id}
+            key={tid}
             className="or-chip shrink-0"
-            data-active={tab === id}
-            onClick={() => setTab(id)}
-            data-testid={`realm-tab-${id}`}
+            data-active={tab === tid}
+            onClick={() => setTab(tid)}
+            data-testid={`realm-tab-${tid}`}
           >
             <Icon size={14} /> {label}
           </button>
         ))}
       </div>
 
-      <div className="grid lg:grid-cols-[1fr_320px] gap-5">
-        <div>
-          {/* Pinned post */}
-          <div className="or-surface p-4 mb-4" data-testid="realm-pinned" style={{ outline: `1px solid ${realm.accent}` }}>
-            <div className="flex items-center gap-2 mb-2 text-xs uppercase tracking-widest" style={{ color: realm.accent }}>
-              <Pin size={12} /> Pinned by moderator
-            </div>
-            <div className="flex items-center gap-3 mb-2">
-              <img src={moderators[0].avatar} alt="" className="rounded-full" style={{ width: 36, height: 36 }} />
-              <div>
-                <div className="font-semibold" style={{ color: "var(--text-main)" }}>@{moderators[0].name}</div>
-                <div className="text-xs" style={{ color: "var(--text-muted)" }}>Welcome to {realm.name} — read the rules below.</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Feed list */}
-          {tab === "feed" && posts.slice(0, 8).map((p) => (
-            <article key={p.id} className="or-surface p-4 mb-3" data-testid={`realm-feed-${p.id}`}>
-              <div className="flex items-center gap-3 mb-2">
-                <img src={p.author_avatar} alt="" className="rounded-full" style={{ width: 36, height: 36 }} />
-                <div>
-                  <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>@{p.author_name}</div>
-                  <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{p.media_type}</div>
-                </div>
-              </div>
-              {p.content && <p className="text-sm" style={{ color: "var(--text-main)" }}>{p.content}</p>}
-              {p.media_url && p.media_type !== "post" && p.media_type !== "thought" && (
-                <img src={p.media_url} alt="" className="w-full h-56 object-cover mt-2" style={{ borderRadius: "calc(var(--radius) - 4px)" }} />
-              )}
-            </article>
-          ))}
-
-          {tab === "lives" && (
-            <div className="grid sm:grid-cols-2 gap-3">
-              {posts.filter((p) => p.media_type === "live").slice(0, 6).map((p) => (
-                <div key={p.id} className="or-surface overflow-hidden">
-                  <div className="relative h-40"><img src={p.media_url} alt="" className="w-full h-full object-cover" /><span className="absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "#FF3F5A", color: "#fff" }}>● LIVE</span></div>
-                  <div className="p-3 text-sm font-semibold" style={{ color: "var(--text-main)" }}>@{p.author_name}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          {(tab === "videos" || tab === "photos") && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {posts.slice(0, 9).map((p) => (
-                <img key={p.id} src={p.media_url} alt="" className="aspect-square w-full object-cover" style={{ borderRadius: "calc(var(--radius) - 4px)" }} />
-              ))}
-            </div>
-          )}
-          {tab === "sounds" && (
-            <div className="space-y-2">
-              {posts.slice(0, 6).map((p, i) => (
-                <div key={p.id} className="or-surface p-3 flex items-center gap-3">
-                  <Music2 size={18} style={{ color: realm.accent }} />
-                  <div className="flex-1">
-                    <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>Track {i + 1}</div>
-                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>@{p.author_name}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {tab === "events" && (
-            <div className="space-y-2">
-              {["Realm Meetup","Live Q&A","Block Party","Studio Tour"].map((n, i) => (
-                <div key={n} className="or-surface p-3 flex items-center gap-3">
-                  <Calendar size={18} style={{ color: realm.accent }} />
-                  <div className="flex-1">
-                    <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>{n}</div>
-                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>Next {["Sat","Sun","Tue","Fri"][i]} · {7 + i} PM</div>
-                  </div>
-                  <button className="or-btn" style={{ padding: "0.35rem 0.7rem", fontSize: "0.75rem" }}>RSVP</button>
-                </div>
-              ))}
-            </div>
-          )}
-          {tab === "members" && (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {members.map((m) => (
-                <div key={m.id} className="or-surface p-3 flex items-center gap-3">
-                  <img src={m.avatar} alt="" className="rounded-full" style={{ width: 40, height: 40 }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold truncate" style={{ color: "var(--text-main)" }}>@{m.name}</div>
-                    <div className="text-xs" style={{ color: m.ringColor }}>{m.label}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      {/* CHAT TAB — primary view */}
+      {tab === "chat" && (
+        <div className="grid lg:grid-cols-[1fr_300px] gap-4" data-testid="realm-chat-layout">
+          <CommunityChat
+            chat={chat}
+            isAdmin={isAdmin}
+            onRenameRequested={() => setRenameOpen(true)}
+          />
+          <CommunityMembersPanel
+            communityType="realm"
+            communityId={realm.id}
+            onMemberClick={(m) => setMemberSheet(m)}
+          />
         </div>
+      )}
 
-        {/* Sidebar widgets */}
-        <aside className="space-y-3" data-testid="realm-widgets">
-          <div className="or-surface p-4">
-            <h4 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: realm.accent }}>
-              <Shield size={14} /> Moderators
-            </h4>
-            <div className="space-y-2">
-              {moderators.map((m) => (
-                <div key={m.id} className="flex items-center gap-2">
-                  <img src={m.avatar} alt="" className="rounded-full" style={{ width: 28, height: 28 }} />
-                  <div className="text-sm" style={{ color: "var(--text-main)" }}>@{m.name}</div>
-                  <Crown size={12} style={{ marginLeft: "auto", color: "#F4C84A" }} />
+      {/* Other tabs preserve their existing mock visuals. */}
+      {tab !== "chat" && (
+        <div className="grid lg:grid-cols-[1fr_320px] gap-5">
+          <div>
+            <div className="or-surface p-4 mb-4" data-testid="realm-pinned" style={{ outline: `1px solid ${accent}` }}>
+              <div className="flex items-center gap-2 mb-2 text-xs uppercase tracking-widest" style={{ color: accent }}>
+                <Pin size={12} /> Pinned by moderator
+              </div>
+              <div className="flex items-center gap-3 mb-2">
+                <img src={moderators[0].avatar} alt="" className="rounded-full" style={{ width: 36, height: 36 }} />
+                <div>
+                  <div className="font-semibold" style={{ color: "var(--text-main)" }}>@{moderators[0].name}</div>
+                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Welcome to {realm.name} — read the rules below.</div>
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
-          <div className="or-surface p-4">
-            <h4 className="text-sm font-bold mb-3" style={{ color: realm.accent }}>Realm Rules</h4>
-            <ol className="text-xs space-y-1.5" style={{ color: "var(--text-muted)" }}>
-              <li>1. Respect every member.</li>
-              <li>2. Original content preferred.</li>
-              <li>3. No spam or self-promo without context.</li>
-              <li>4. Mods have final say.</li>
-            </ol>
-          </div>
-          <div className="or-surface p-4">
-            <h4 className="text-sm font-bold mb-3" style={{ color: realm.accent }}>Active right now</h4>
-            <div className="text-2xl font-bold" style={{ color: "var(--text-main)" }}>{realm.online}</div>
-            <div className="text-xs" style={{ color: "var(--text-muted)" }}>online of {realm.members.toLocaleString()} members</div>
-          </div>
-        </aside>
-      </div>
 
-      {/* BannerEditor modal — only mounted when admin opens it */}
+            {tab === "feed" && posts.slice(0, 8).map((p) => (
+              <article key={p.id} className="or-surface p-4 mb-3" data-testid={`realm-feed-${p.id}`}>
+                <div className="flex items-center gap-3 mb-2">
+                  <img src={p.author_avatar} alt="" className="rounded-full" style={{ width: 36, height: 36 }} />
+                  <div>
+                    <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>@{p.author_name}</div>
+                    <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{p.media_type}</div>
+                  </div>
+                </div>
+                {p.content && <p className="text-sm" style={{ color: "var(--text-main)" }}>{p.content}</p>}
+                {p.media_url && p.media_type !== "post" && p.media_type !== "thought" && (
+                  <img src={p.media_url} alt="" className="w-full h-56 object-cover mt-2" style={{ borderRadius: "calc(var(--radius) - 4px)" }} />
+                )}
+              </article>
+            ))}
+
+            {tab === "lives" && (
+              <div className="grid sm:grid-cols-2 gap-3">
+                {posts.filter((p) => p.media_type === "live").slice(0, 6).map((p) => (
+                  <div key={p.id} className="or-surface overflow-hidden">
+                    <div className="relative h-40"><img src={p.media_url} alt="" className="w-full h-full object-cover" /><span className="absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "#FF3F5A", color: "#fff" }}>● LIVE</span></div>
+                    <div className="p-3 text-sm font-semibold" style={{ color: "var(--text-main)" }}>@{p.author_name}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {(tab === "videos" || tab === "photos") && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {posts.slice(0, 9).map((p) => (
+                  <img key={p.id} src={p.media_url} alt="" className="aspect-square w-full object-cover" style={{ borderRadius: "calc(var(--radius) - 4px)" }} />
+                ))}
+              </div>
+            )}
+            {tab === "sounds" && (
+              <div className="space-y-2">
+                {posts.slice(0, 6).map((p, i) => (
+                  <div key={p.id} className="or-surface p-3 flex items-center gap-3">
+                    <Music2 size={18} style={{ color: accent }} />
+                    <div className="flex-1">
+                      <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>Track {i + 1}</div>
+                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>@{p.author_name}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {tab === "events" && (
+              <div className="space-y-2">
+                {["Realm Meetup", "Live Q&A", "Block Party", "Studio Tour"].map((n, i) => (
+                  <div key={n} className="or-surface p-3 flex items-center gap-3">
+                    <Calendar size={18} style={{ color: accent }} />
+                    <div className="flex-1">
+                      <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>{n}</div>
+                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>Next {["Sat", "Sun", "Tue", "Fri"][i]} · {7 + i} PM</div>
+                    </div>
+                    <button className="or-btn" style={{ padding: "0.35rem 0.7rem", fontSize: "0.75rem" }}>RSVP</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {tab === "members" && (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {CHARACTERS.map((m) => (
+                  <div key={m.id} className="or-surface p-3 flex items-center gap-3">
+                    <img src={m.avatar} alt="" className="rounded-full" style={{ width: 40, height: 40 }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate" style={{ color: "var(--text-main)" }}>@{m.name}</div>
+                      <div className="text-xs" style={{ color: m.ringColor }}>{m.label}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <aside className="space-y-3" data-testid="realm-widgets">
+            <div className="or-surface p-4">
+              <h4 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: accent }}>
+                <Shield size={14} /> Moderators
+              </h4>
+              <div className="space-y-2">
+                {moderators.map((m) => (
+                  <div key={m.id} className="flex items-center gap-2">
+                    <img src={m.avatar} alt="" className="rounded-full" style={{ width: 28, height: 28 }} />
+                    <div className="text-sm" style={{ color: "var(--text-main)" }}>@{m.name}</div>
+                    <Crown size={12} style={{ marginLeft: "auto", color: "#F4C84A" }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="or-surface p-4">
+              <h4 className="text-sm font-bold mb-3" style={{ color: accent }}>Realm Rules</h4>
+              <ol className="text-xs space-y-1.5" style={{ color: "var(--text-muted)" }}>
+                <li>1. Respect every member.</li>
+                <li>2. Original content preferred.</li>
+                <li>3. No spam or self-promo without context.</li>
+                <li>4. Mods have final say.</li>
+              </ol>
+            </div>
+            <div className="or-surface p-4">
+              <h4 className="text-sm font-bold mb-3" style={{ color: accent }}>Active right now</h4>
+              <div className="text-2xl font-bold" style={{ color: "var(--text-main)" }}>{onlineCount}</div>
+              <div className="text-xs" style={{ color: "var(--text-muted)" }}>online of {Number(memberCount || 0).toLocaleString()} members</div>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* Modals & floating overlays */}
       <BannerEditor
         open={bannerEditorOpen}
         onClose={() => setBannerEditorOpen(false)}
@@ -279,6 +381,24 @@ export default function RealmDetail() {
         onRemove={() => { clearBanner(); setBannerEditorOpen(false); }}
         testid="realm-banner-editor"
       />
+      <CommunityChatTitleModal
+        open={renameOpen}
+        chat={chat}
+        communityType="realm"
+        communityId={realm.id}
+        onClose={() => setRenameOpen(false)}
+        onSaved={(c) => setChat(c)}
+      />
+      {memberSheet && (
+        <MemberActionSheet
+          member={memberSheet}
+          onClose={() => setMemberSheet(null)}
+          onOpenChat={(m) => setDmPeer(m)}
+        />
+      )}
+      {dmPeer && (
+        <FloatingDMWindow peer={dmPeer} onClose={() => setDmPeer(null)} />
+      )}
     </div>
   );
 }

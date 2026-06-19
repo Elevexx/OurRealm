@@ -37,6 +37,7 @@ from routers import presence as presence_router_mod
 from routers import hashtags as hashtags_router_mod
 from routers import announcements as announcements_router_mod
 from routers import realm_pulse as realm_pulse_router_mod
+from routers import communities as communities_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -77,6 +78,7 @@ app.include_router(presence_router_mod.router)
 app.include_router(hashtags_router_mod.router)
 app.include_router(announcements_router_mod.router)
 app.include_router(realm_pulse_router_mod.router)
+app.include_router(communities_router_mod.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -196,6 +198,15 @@ async def on_startup():
         _pulse_task = asyncio.create_task(_realm_pulse_loop())
     except Exception as e:
         logger.warning(f"[realm_pulse] startup failed: {e}")
+
+    # Communities (Realms + Groups + Chats) — ensure indexes + seed
+    # the legacy mock realms into Mongo on the very first startup.
+    try:
+        from services import community_seed
+        await community_seed.ensure_indexes()
+        await community_seed.seed_realms()
+    except Exception as e:
+        logger.warning(f"[communities] startup failed: {e}")
 
     # PART 4 — log the resolved media-storage root so deploy logs make
     # it obvious whether uploads are landing on a persistent volume or

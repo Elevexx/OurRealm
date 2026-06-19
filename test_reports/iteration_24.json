@@ -1,0 +1,43 @@
+{
+  "summary": "Phase-1 Realms+Groups+Community Chats end-to-end testing. Backend pytest suite (14 tests, all PASS) covers: 8 seeded realms, public realm detail with online/member counts, chat list with main General Chat, idempotent join, paginated member list with full projection (user_id/username/display_name/avatar_url/presence_choice/is_online/role/joined_at/favorite), POST+GET messages with ascending created_at, admin rename success/403/400 cases, create-realm with owner auto-membership + _main_chat_id, regression for /api/admin/realm-pulse/overview, /api/hashtags/interest-cards, /api/admin/storage/status, /api/admin/moderation/copyright/queue, and the WebSocket /api/ws/community-chat/{chat_id}: 4401 on no token, 4404 on bad chat, chat:hello on accept, message:new broadcast between two clients. Frontend Playwright against the live preview URL with localStorage 'ourrealm.access' JWT confirmed all 11 required testids render on /realms/dj (realm-detail-dj, realm-chat-layout, community-chat-widget, community-chat-title='General Chat', community-chat-stream, community-chat-input, community-chat-send, community-members-panel, community-members-search, realm-customize, realm-banner-edit). Customize Community flow opens community-chat-title-modal, saving with new value closes the modal and updates community-chat-title in-place. Tab strip — Chat is the default selected tab; clicking realm-tab-feed hides the chat widget and keeps realm-detail-dj mounted (no page break). Banner editor opens BannerEditor modal. tfone correctly sees neither realm-customize nor community-chat-rename, but DOES see community-chat-widget. One backend bug found and fixed (ObjectId serialization in POST /api/communities/realms and /api/communities/groups — popped _id after insert_one).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Member action sheet via panel click", "issue": "Clicked first row in people panel which is the current user (stealth) and member-action-sheet did not open (this is correct behavior — clicking self should not open the sheet). Could not reach the non-self click path in automation because community-member-* testid is also applied to the self-row; recommend either suppressing the testid on self or making the row non-clickable so automation can deterministically target a non-self member. The wiring itself (MemberActionSheet/FloatingDMWindow) is present and imported in RealmDetail.jsx.", "affected_selectors": ["community-member-", "member-action-sheet"]}
+    ],
+    "design_issues": [
+      {"screen": "/realms/dj header", "issues": ["Realm header shows '0 online' while the right-hand People panel shows '1 online · 2' — the two presence counters disagree because /api/communities/realms/dj re-computes online_count from presence registry but People panel uses the per-row is_online flag returned by /api/communities/realm/dj/members. Minor cosmetic inconsistency."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_communities_realms.py",
+    "/app/test_reports/pytest/iter24_communities.xml"
+  ],
+  "action_items": [
+    "Optional: avoid applying the community-member-* data-testid on the current user's own row in CommunityMembersPanel (or guard the click handler) so automation can target a non-self member deterministically.",
+    "Optional cosmetic: align the realm header 'online' counter with the People panel by either computing both from the same source (presence_reg.is_online for every member of the realm) or hiding the realm-header counter."
+  ],
+  "critical_code_review_comments": [
+    "FIXED: routers/communities.py — POST /communities/realms and POST /communities/groups were returning the freshly-inserted document which motor mutates with a BSON ObjectId. FastAPI then failed with 'ObjectId is not iterable' → 500. Added doc.pop('_id', None) right after insert_one in both endpoints. All other endpoints already project _id away via {'_id': 0}.",
+    "Good: WS /api/ws/community-chat/{chat_id} mirrors the presence WS pattern — calls await ws.accept() first then auth-checks and closes with 4401 (no token / bad token), 4404 (chat not found), 4403 (group non-member). The room-based fan-out in core/community_chat.py correctly uses an asyncio.Lock around the rooms dict and excludes the sender via exclude_ws when applicable.",
+    "Good: services/community_seed.py is idempotent (only seeds when realms collection is empty), creates the 8 expected realm ids + a 'General Chat' row per realm, and ensure_indexes builds the right composite indexes (community_type, community_id, user_id unique on memberships; chat_id+created_at on messages).",
+    "Good: ChatPatch.title uses Field(max_length=50) for upper bound (Pydantic 422) plus explicit 'Title must be 1–50 chars' 400 for empty strings.",
+    "Good: _is_admin treats 'stealth' as global founder/admin which matches the Phase-1 spec.",
+    "Frontend: CommunityChat.jsx, CommunityMembersPanel.jsx, RealmDetail.jsx all expose the documented data-testids cleanly. apiClient correctly reads localStorage 'ourrealm.access' (carried over from iter_23)."
+  ],
+  "updated_files": [
+    "/app/backend/routers/communities.py (popped _id after insert_one in create_realm + create_group)",
+    "/app/backend/tests/test_communities_realms.py (new — 14 pytest cases including 3 WebSocket cases via the `websockets` library)"
+  ],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "10/11 testids + flows verified; member-action-sheet click path could not be deterministically triggered against the self-row but the components are wired"},
+  "test_credentials": "Founder stealth/Password1$, user tfone/pass1234 — both validated via /api/auth/login. Frontend JWT key is 'ourrealm.access'.",
+  "seed_data_creation": "Backend tests created: (a) tfone as member of realm 'dj', (b) ~3 test messages in the DJ General Chat, (c) one 'TEST_Realm_iter24' (cleaned up before re-run but a new one created by the final test run). Safe to leave — does not impact UI. Title of DJ General Chat was restored to 'General Chat' at the end of the frontend run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression for Realms/Groups/Community Chats lives at /app/backend/tests/test_communities_realms.py (uses `websockets` and `pytest-asyncio`). For frontend Playwright: PUBLIC URL is https://realm-deploy.preview.emergentagent.com (NOT realmstack-2 — that one returns the emergent Not Found gateway page). Auth shortcut: POST /api/auth/login then page.evaluate(\"(t)=>localStorage.setItem('ourrealm.access', t)\", token). DJ realm chat_id is stable across runs (Mongo seed). The first row in the People panel is the current user (clicking it does NOT open MemberActionSheet by design).",
+  "rca of the issue": "One real backend bug found and fixed: POST /api/communities/realms (and /api/communities/groups) returned the Motor-mutated doc that contains a BSON ObjectId in _id, causing FastAPI to fail with TypeError(\"'ObjectId' object is not iterable\") → 500 Internal Server Error. Root cause: insert_one mutates the dict in-place to add `_id`, and the endpoint then did `return {**doc, '_main_chat_id': chat['id']}`. Fix: doc.pop('_id', None) after insert_one in both create_realm and create_group. Verified by re-running pytest — test_create_realm_with_owner_and_main_chat now passes. No other ObjectId leaks because every other read uses `{'_id': 0}` projections."
+}
