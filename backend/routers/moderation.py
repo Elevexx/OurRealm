@@ -341,11 +341,48 @@ async def take_action(content_type: str, content_id: str, payload: ActionPayload
             }},
         )
 
-    # Resolve linked reports for this content.
+    # Resolve linked reports for this content. For PART 2 — copyright
+    # reports get extended resolution metadata: removed_at + action_taken
+    # + resolution_status so the dedicated copyright queue can render
+    # the full lifecycle.
+    report_resolution: dict = {
+        "status":       "resolved",
+        "resolved_at":  now,
+        "resolved_by":  current["id"],
+        "moderator_id": current["id"],
+        "action_taken": payload.action,
+        "resolution_status":
+            "removed" if payload.action == "delete"
+            else "hidden" if payload.action == "hide"
+            else "restored" if payload.action == "restore"
+            else "approved" if payload.action == "approve"
+            else "acknowledged",
+        "resolution_notes": (payload.reason or "")[:240] if hasattr(payload, "reason") else None,
+    }
+    if payload.action in ("delete", "hide"):
+        report_resolution["removed_at"] = now
     await db.reports.update_many(
         {"content_type": content_type, "content_id": content_id, "status": "open"},
-        {"$set": {"status": "resolved", "resolved_at": now, "resolved_by": current["id"]}},
+        {"$set": report_resolution},
     )
+
+    # Increment repeat-offender counter on copyright actions so the
+    # admin queue can surface chronic infringers without a separate
+    # cron job. We only count actual removals (delete/hide), not approvals.
+    if payload.action in ("delete", "hide"):
+        offender_id = (doc or {}).get("author_id") or (doc or {}).get("user_id")
+        if offender_id:
+            copyright_open_count = await db.reports.count_documents({
+                "content_type": content_type,
+                "content_id": content_id,
+                "reason": "copyright",
+            })
+            if copyright_open_count:
+                await db.users.update_one(
+                    {"id": offender_id},
+                    {"$inc": {"copyright_strike_count": 1},
+                     "$set": {"last_copyright_strike_at": now}},
+                )
 
     await log_action(
         action=payload.action,
@@ -357,3 +394,166 @@ async def take_action(content_type: str, content_id: str, payload: ActionPayload
     )
 
     return {"ok": True, "action": payload.action, "content_id": content_id}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# PART 2 — Copyright moderation queue + repeat-offender surface
+# ──────────────────────────────────────────────────────────────────────
+@router.get("/api/admin/moderation/copyright/queue")
+async def copyright_queue(
+    current: CurrentUser,
+    status: Optional[str] = None,
+    limit: int = 50,
+):
+    """Reports filed under `reason=copyright`, ordered by most recent.
+
+    `status` (open | resolved | all) maps to the underlying report status.
+    Reuses the existing `reports` collection so there's no duplicate
+    storage — only a filter + the extended resolution metadata we now
+    persist on action.
+    """
+    _require_admin(current)
+    q: dict = {"reason": "copyright"}
+    s = (status or "open").lower()
+    if s in {"open", "resolved"}:
+        q["status"] = s
+    cursor = db.reports.find(q, {"_id": 0}).sort("created_at", -1).limit(min(max(1, limit), 200))
+    return {"reports": [r async for r in cursor]}
+
+
+@router.get("/api/admin/moderation/copyright/repeat-offenders")
+async def copyright_repeat_offenders(current: CurrentUser, min_strikes: int = 2, limit: int = 50):
+    """Users with ≥ min_strikes recorded copyright strikes."""
+    _require_admin(current)
+    cursor = db.users.find(
+        {"copyright_strike_count": {"$gte": int(min_strikes)}},
+        {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1,
+         "copyright_strike_count": 1, "last_copyright_strike_at": 1,
+         "is_banned": 1, "disabled": 1},
+    ).sort("copyright_strike_count", -1).limit(min(max(1, limit), 200))
+    return {"users": [u async for u in cursor]}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# PART 5 — Admin Analytics: Sounds + copyright metrics
+# ──────────────────────────────────────────────────────────────────────
+@router.get("/api/admin/analytics/sounds")
+async def sounds_analytics(
+    current: CurrentUser,
+    creator_username: Optional[str] = None,
+    visibility: Optional[str] = None,
+):
+    """Compact metric set for the AdminAnalytics dashboard.
+
+    Returns the 13 metrics requested by PART 5 in a single call so the
+    dashboard can render the entire card row without N+1 round trips.
+    Detail panels and founder actions use the existing
+    `/admin/moderation/*` endpoints — we never duplicate moderation
+    state.
+    """
+    from core.permissions import require_analytics_access
+    require_analytics_access(current)
+
+    now = datetime.now(timezone.utc)
+    iso_24h = (now - timedelta(hours=24)).isoformat()
+    iso_7d  = (now - timedelta(days=7)).isoformat()
+    iso_30d = (now - timedelta(days=30)).isoformat()
+
+    base_filter: dict = {}
+    if creator_username:
+        u = await db.users.find_one({"username": creator_username.lower()}, {"_id": 0, "id": 1})
+        if u:
+            base_filter["user_id"] = u["id"]
+    if visibility:
+        base_filter["visibility"] = visibility.lower()
+
+    # Aggregate metrics — keep this as the *only* DB read so the response
+    # is fast and the card row can re-fetch on filter change.
+    total          = await db.tracks.count_documents(base_filter)
+    new_24h        = await db.tracks.count_documents({**base_filter, "created_at": {"$gte": iso_24h}})
+    new_7d         = await db.tracks.count_documents({**base_filter, "created_at": {"$gte": iso_7d}})
+    new_30d        = await db.tracks.count_documents({**base_filter, "created_at": {"$gte": iso_30d}})
+    rights_yes     = await db.tracks.count_documents({**base_filter, "rights_confirmation.accepted": True})
+    rights_no      = await db.tracks.count_documents({**base_filter, "rights_confirmation.accepted": {"$ne": True}})
+
+    # Total plays = sum of plays across all tracks (cheap aggregation).
+    play_pipeline = [{"$match": base_filter}, {"$group": {"_id": None, "n": {"$sum": "$plays"}}}]
+    plays_doc = await db.tracks.aggregate(play_pipeline).to_list(1)
+    total_plays = (plays_doc[0]["n"] if plays_doc else 0) or 0
+
+    # Most played (top 5 ids + titles + plays).
+    most_played = await db.tracks.find(base_filter, {"_id": 0, "id": 1, "title": 1, "user_id": 1, "plays": 1}).sort("plays", -1).limit(5).to_list(5)
+
+    # Reports on sounds (content_type ∈ {sound, track, audio}).
+    sound_types = {"$in": ["sound", "track", "audio"]}
+    total_reports = await db.reports.count_documents({"content_type": sound_types})
+
+    # Most reported sounds (group reports by content_id).
+    most_reported_pipe = [
+        {"$match": {"content_type": sound_types}},
+        {"$group": {"_id": "$content_id", "n": {"$sum": 1}}},
+        {"$sort": {"n": -1}}, {"$limit": 5},
+    ]
+    most_reported_rows = await db.reports.aggregate(most_reported_pipe).to_list(5)
+
+    copyright_reports = await db.reports.count_documents({"reason": "copyright"})
+    copyright_removals = await db.reports.count_documents({
+        "reason": "copyright", "status": "resolved",
+        "resolution_status": {"$in": ["removed", "hidden"]},
+    })
+    pending_copyright_reviews = await db.reports.count_documents({"reason": "copyright", "status": "open"})
+    repeat_offenders = await db.users.count_documents({"copyright_strike_count": {"$gte": 2}})
+
+    # Playback failure / missing-file counts come from the optional
+    # `playback_failures` collection (recorded by the frontend on error).
+    # If the collection doesn't exist yet they return 0 gracefully.
+    failed_playback = await db.playback_failures.count_documents({})
+    missing_files   = await db.playback_failures.count_documents({"reason": "missing_file"})
+
+    return {
+        "totals": {
+            "total_sounds":             total,
+            "new_24h":                  new_24h,
+            "new_7d":                   new_7d,
+            "new_30d":                  new_30d,
+            "total_plays":              total_plays,
+            "total_reports":            total_reports,
+            "copyright_reports":        copyright_reports,
+            "copyright_removals":       copyright_removals,
+            "pending_copyright_reviews":pending_copyright_reviews,
+            "repeat_offenders":         repeat_offenders,
+            "rights_yes":               rights_yes,
+            "rights_no":                rights_no,
+            "failed_playback":          failed_playback,
+            "missing_files":            missing_files,
+        },
+        "most_played":   most_played,
+        "most_reported": most_reported_rows,
+        "filter": {"creator_username": creator_username, "visibility": visibility},
+        "generated_at": now.isoformat(),
+    }
+
+
+# Telemetry endpoint used by the frontend audio player to record playback
+# failures so admins can spot persistent storage / encoding issues.
+@router.post("/api/sounds/playback-failure")
+async def report_playback_failure(payload: dict, current: CurrentUser):
+    """Record a playback failure. Any authenticated user can submit.
+
+    Payload shape: { track_id, reason, detail }
+    Stored shape: { track_id, reason, detail, user_id, at }
+    """
+    track_id = (payload or {}).get("track_id")
+    reason   = (payload or {}).get("reason") or "unknown"
+    detail   = (payload or {}).get("detail") or ""
+    if not isinstance(track_id, str) or not track_id:
+        raise HTTPException(status_code=400, detail="track_id required")
+    await db.playback_failures.insert_one({
+        "id":       uuid.uuid4().hex,
+        "track_id": track_id,
+        "reason":   reason[:40],
+        "detail":   detail[:240],
+        "user_id":  current["id"],
+        "at":       datetime.now(timezone.utc).isoformat(),
+    })
+    return {"ok": True}
