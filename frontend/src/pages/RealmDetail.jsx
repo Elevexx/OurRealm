@@ -269,6 +269,33 @@ export default function RealmDetail() {
           {/* Phase 2 — widget grid below the chat. Admins can resize
               + drag-reorder; members see read-only widgets. Default
               Poll widget is auto-created for every realm. */}
+          {isAdmin && (
+            <div className="mt-5 flex items-center gap-2 flex-wrap" data-testid="realm-widgets-toolbar">
+              <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Add widget:</span>
+              {[
+                { type: "poll",          label: "Poll" },
+                { type: "announcements", label: "Announcement" },
+                { type: "rules",         label: "Rules" },
+              ].map((opt) => (
+                <button
+                  key={opt.type}
+                  className="or-chip"
+                  data-testid={`realm-widget-add-${opt.type}`}
+                  onClick={async () => {
+                    try {
+                      const { data } = await apiClient.post(
+                        `/communities/realm/${realm.id}/widgets`,
+                        { type: opt.type, size: "medium" },
+                      );
+                      setWidgets((prev) => [...prev, data]);
+                    } catch { /* */ }
+                  }}
+                >
+                  <Plus size={11} /> {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
           {widgets.length > 0 && (
             <RealmWidgetGrid
               realmId={realm.id}

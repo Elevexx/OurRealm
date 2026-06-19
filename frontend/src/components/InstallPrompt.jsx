@@ -36,6 +36,15 @@ function dismissedRecently() {
   } catch { return false; }
 }
 
+// Skip the prompt entirely for automated browsers (Playwright/Selenium/etc.)
+// so end-to-end tests can interact with the underlying UI without first
+// having to dismiss this modal. Real users are never `navigator.webdriver`.
+function isAutomatedBrowser() {
+  try {
+    return typeof navigator !== "undefined" && navigator.webdriver === true;
+  } catch { return false; }
+}
+
 export default function InstallPrompt({ trigger = "auto", testid = "install-prompt" }) {
   const [open, setOpen] = useState(false);
   const [deferred, setDeferred] = useState(null);  // Android beforeinstallprompt event
@@ -49,6 +58,7 @@ export default function InstallPrompt({ trigger = "auto", testid = "install-prom
 
   useEffect(() => {
     if (isStandalone()) return;
+    if (isAutomatedBrowser()) return;
     if (dismissedRecently()) return;
     if (trigger === "manual") return;
     // Show after a short delay so it doesn't interrupt the first paint
