@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Home, Sparkles, Plus, Music2 as SoundsIcon, Users, User, Sparkle, Radio, Video, Image as ImageIcon, MessageSquare, X, Music2, Send, Trash2 } from "lucide-react";
+import { Home, Sparkles, Plus, Music2 as SoundsIcon, Users, User, Radio, Video, Image as ImageIcon, MessageSquare, X, Music2, Send, Trash2 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import GuestPrompt from "@/components/GuestPrompt";
 import VideoUploadPicker from "@/components/VideoUploadPicker";
 import ImageUploadPicker from "@/components/ImageUploadPicker";
 import SoundUploadPicker from "@/components/SoundUploadPicker";
+import RealmsIcon from "@/components/RealmsIcon";
 
 // Bottom nav — required order:
 //   1. 🏠 Home  2. ✨ For You  3. 🎵 Sounds  4. ➕ Create  5. 🌌 Realms  6. 👥 Friends  7. 👤 Profile (Public)
@@ -16,7 +17,7 @@ const ITEMS_LEFT = [
   { to: "/sounds",  label: "Sounds",  Icon: SoundsIcon, testid: "bottom-sounds" },
 ];
 const ITEMS_RIGHT = [
-  { to: "/realms",  label: "Realms",  Icon: Sparkle,    testid: "bottom-realms" },
+  { to: "/realms",  label: "Realms",  Icon: RealmsIcon, testid: "bottom-realms" },
   { to: "/friends", label: "Friends", Icon: Users,      testid: "bottom-friends" },
   { to: "/profile", label: "Profile", Icon: User,       testid: "bottom-profile" },
 ];

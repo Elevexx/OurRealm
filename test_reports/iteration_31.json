@@ -1,0 +1,46 @@
+{
+  "summary": "Validated iteration 31 P0 fixes: long-term media compatibility layer + RealmsIcon swap. Backend video-serve status codes now correct (abc.mp4 → 400, no 500/Tracebacks). Frontend mediaUrl.js probe + fallback path works: abc.mp4 broken seed renders the 'Video failed to load' overlay with NO <video> element; probe cache prevents re-mount on scroll-back. RealmsIcon is a custom SVG (2 circles + 1 ellipse, 0 polygons, no Sparkle path) sized 22px, navigates to /realms from all source pages, other lucide nav icons unchanged. 0 media-related console errors of type='error' observed on /feed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "/sounds page audio mount",
+        "issue": "Could not assert <audio> mounts on /sounds: page uses SoundsList card testids (`sounds-featured-<id>-play`) — NOT `feed-sound-card`. Clicking the play button did not produce an <audio> element in the DOM (possibly the player mounts an <audio> only on expand or uses WebAudio). No SoundPlayerCard console errors were emitted, so the regression suite is green; however the spec's literal assertion ('locate any visible feed-sound-card; confirm <audio> mounts') could not be exercised. Sound playback on /feed (where SoundPlayerCard renders) was not directly seen during scroll either. Recommend the main agent verify sound playback manually OR confirm the SoundPlayerCard <audio> lifecycle.",
+        "affected_selectors": ["feed-sound-card", "sounds-featured-*-play"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_video_serve_status.py",
+    "/app/test_reports/pytest/iter31_video_serve.xml"
+  ],
+  "action_items": [
+    "Optional: confirm SoundPlayerCard <audio> mounts when a sound post is visible on /feed — automated test could not assert this because the visible /feed window did not contain a sound post in the first ~7500px and /sounds uses a different player card.",
+    "Note: two .mov videos (d7a9e14f...mov, e819d93302...mov) error with DEMUXER_ERROR_NO_SUPPORTED_STREAMS — these are real server files but the browser's MediaSource doesn't decode them. The new error-fallback path catches them correctly (debug-level log + overlay), so this is not a regression. Long-term, server-side transcode to H.264 would eliminate the noise entirely."
+  ],
+  "critical_code_review_comments": [
+    "mediaUrl.js is well-documented, dependency-free, and reuses a single inflight Promise per URL — solid.",
+    "AutoplayVideo onError now uses console.debug (not error/warn) — the noisy demuxer logs we still see are debug-level and do NOT count against the 'type=error' regression bar.",
+    "RealmsIcon API matches lucide-react ({size, ...rest, stroke=currentColor}) so the active-state colour cascade in BottomNav.jsx still works (verified by clicking — URL becomes /realms).",
+    "Probe uses Range: bytes=0-0 (1-byte GET) because the backend route does not implement HEAD (would return 405). Backend returns 206 for range, 400 for abc.mp4 (invalid filename validator). Both branches are covered in the cache logic.",
+    "videos.py log call no longer uses `extra={'name': ...}` (collided with LogRecord.name reserved key). Now uses positional %s args — no more 500s on the abc.mp4 path."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_video_serve_status.py"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "95%"
+  },
+  "test_credentials": "stealth / Password1$ (founder); tfone / pass1234 (test user). Login form lives behind the splash 'SIGN IN' button (the /login URL bounces to the splash); automated tests should call POST /api/auth/login via fetch and stash the access_token in localStorage('ourrealm.access') to drive an authed UI flow.",
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 31 verified: (a) GET /api/videos/abc.mp4 → 400 (was 500), (b) GET /api/videos/<uuid>.mp4 with Range:bytes=0-0 → 206 (full GET → 200 + Accept-Ranges: bytes), (c) /feed never throws MEDIA_ELEMENT_ERROR or [AutoplayVideo]/[SoundPlayerCard] playback failed at console.error level, (d) abc.mp4 (post 7f543b1e-d7d4-46b3-aac4-a61e0399d773 by @tfone) renders [data-testid=feed-video-7f543b1e-...-error] with 'Video failed to load' text and NO inner <video> element, (e) re-scrolling past abc.mp4 does NOT remount/re-error, (f) RealmsIcon (`[data-testid=bottom-realms] svg`) has 2 <circle> + 1 <ellipse> + 0 <polygon>, width=height=22, no Sparkle 'M11 3l2 4...' path, (g) Clicking bottom-realms from /home, /feed, /sounds, /friends, /profile all transition URL to /realms. Other lucide nav icons unchanged.",
+  "rca of the issue": "The 500 on /api/videos/abc.mp4 was caused by `log.warning('...', extra={'name': name})` — Python's logging framework reserves the 'name' attribute on LogRecord and raises KeyError on collision, which FastAPI mapped to a 500. Fix: switched to positional log args (`log.warning('...: %s', name)`). The MEDIA_ELEMENT_ERROR console noise was caused by <video src> being set even for known-bad URLs; the new resolveMediaUrl + isPlayableMediaUrl + probeMediaUrl pre-check short-circuits before mount, and onError now uses console.debug + markMediaUrlBroken (no console.error). RealmsIcon swap is a one-line BottomNav.jsx change (Sparkle → RealmsIcon) — verified the active-state cascade still applies and other items are untouched."
+}

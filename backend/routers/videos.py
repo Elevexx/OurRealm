@@ -138,7 +138,7 @@ async def serve(name: str, request: Request):
     Starlette's `FileResponse` returns the whole file with HTTP 200.
     """
     if not is_safe_video_filename(name):
-        log.warning("[videos.serve] invalid filename rejected", extra={"name": name})
+        log.warning("[videos.serve] invalid filename rejected: %s", name)
         raise HTTPException(status_code=400, detail="Invalid video name")
     path = video_dir() / name
     if not path.exists():
@@ -146,11 +146,10 @@ async def serve(name: str, request: Request):
         # missing on disk (e.g. ephemeral pod, lost on redeploy) we log
         # the requested URL + resolved path so admins can correlate
         # client failures with the storage state.
-        log.error("[videos.serve] file missing on disk", extra={
-            "name": name,
-            "resolved_path": str(path),
-            "dir": str(video_dir()),
-        })
+        log.error(
+            "[videos.serve] file missing on disk: %s (resolved=%s, dir=%s)",
+            name, str(path), str(video_dir()),
+        )
         raise HTTPException(status_code=404, detail="Not found")
 
     file_size = os.path.getsize(path)

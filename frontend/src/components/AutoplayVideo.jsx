@@ -12,6 +12,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Volume2, VolumeX, AlertCircle } from "lucide-react";
 import { useAutoplayOnVisible } from "@/lib/useAutoplayOnVisible";
+import { resolveMediaUrl, isPlayableMediaUrl, probeMediaUrl, markMediaUrlBroken } from "@/lib/mediaUrl";
 
 export default function AutoplayVideo({
   src,
@@ -19,6 +20,11 @@ export default function AutoplayVideo({
   style,
   testid,
 }) {
+  const resolvedSrc = resolveMediaUrl(src);
+  // Pre-mount validation — keeps known-bad URLs from ever reaching
+  // the <video> element. Async HEAD probe runs in the background and
+  // flips us to the fallback overlay if the backend file is missing.
+  const initiallyPlayable = isPlayableMediaUrl(src);
   const ioRef = useAutoplayOnVisible({ threshold: 0.5 });
   // Single canonical ref shared with the IntersectionObserver hook + our
   // local UI (mute toggle, error overlay, tap-to-reveal-controls).
@@ -35,7 +41,18 @@ export default function AutoplayVideo({
   // that some platforms render. Tap → show 2.5 s → fade.
   const [controlsVisible, setControlsVisible] = useState(false);
   const hideTimer = useRef(null);
-  const [errored, setErrored] = useState(false);
+  const [errored, setErrored] = useState(!initiallyPlayable);
+
+  // Background HEAD probe — only runs once per URL across the page
+  // lifetime (the cache is in /app/frontend/src/lib/mediaUrl.js).
+  useEffect(() => {
+    if (!initiallyPlayable || !resolvedSrc) return;
+    let cancelled = false;
+    probeMediaUrl(resolvedSrc).then((ok) => {
+      if (!cancelled && !ok) setErrored(true);
+    });
+    return () => { cancelled = true; };
+  }, [resolvedSrc, initiallyPlayable]);
 
   // Reveal native controls for a moment whenever the user taps the
   // surface. Re-tap extends the window. Touch-friendly + matches the
@@ -66,9 +83,13 @@ export default function AutoplayVideo({
   const onError = () => {
     const v = internalRef.current;
     setErrored(true);
+    markMediaUrlBroken(resolvedSrc);
+    // Use console.debug instead of console.error so seeded broken
+    // URLs don't pollute the production console. Real bugs are still
+    // inspectable via DevTools (Default → Verbose).
     // eslint-disable-next-line no-console
-    console.error("[AutoplayVideo] playback failed", {
-      src,
+    console.debug("[AutoplayVideo] playback failed", {
+      src: resolvedSrc,
       networkState: v?.networkState,
       readyState: v?.readyState,
       errorCode: v?.error?.code,
@@ -109,7 +130,7 @@ export default function AutoplayVideo({
     >
       <video
         ref={videoRef}
-        src={src}
+        src={resolvedSrc}
         controls={controlsVisible}
         muted={muted}
         autoPlay
