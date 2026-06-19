@@ -1,12 +1,18 @@
 """Profile endpoints (/api/profile/*)."""
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from core.db import db
 from core.deps import CurrentUser
 from core.security import hash_password, verify_password
 from core.geo import is_valid_zip, resolve_zip
+from core.account_lifecycle import (
+    mark_self_delete, mark_restore,
+    should_hide_from_public, pending_deletion_meta,
+)
 from models.schemas import (
     ProfileUpdate, UsernameChangePayload, PasswordChangePayload, serialize_user,
 )
@@ -161,6 +167,10 @@ async def get_public_profile_by_username(username: str):
     )
     if not user:
         raise HTTPException(status_code=404, detail="Profile not found")
+    # Deleted-pending-restore accounts are hidden from every public
+    # surface — same as disabled. Renders "User Not Found" client-side.
+    if should_hide_from_public(user):
+        raise HTTPException(status_code=404, detail="Profile not found")
     out = serialize_user(user)
     out["widgets"] = user.get("widgets") or []
     out["social"] = user.get("social", {})
@@ -169,3 +179,48 @@ async def get_public_profile_by_username(username: str):
     # by-username endpoint that anyone can hit.
     out.pop("zip_code", None)
     return {"user": out}
+
+
+# ────────────────────────────────────────────────────────────────────
+# Account deletion / restore (30-day soft-delete lifecycle)
+# ────────────────────────────────────────────────────────────────────
+class SelfDeletePayload(BaseModel):
+    # Acknowledgement string sent from the warning modal. Client sends
+    # "DELETE" but anything truthy is accepted server-side — the real
+    # protection is the auth gate (you can only delete YOUR account).
+    confirm:  Optional[str] = Field(default=None, max_length=20)
+    reason:   Optional[str] = Field(default=None, max_length=400)
+
+
+@router.post("/self-delete")
+async def self_delete(payload: SelfDeletePayload, current: CurrentUser):
+    """User-initiated soft delete. Account enters
+    `deleted_pending_restore` for 30 days; user may sign back in to
+    restore. Founder + system accounts cannot self-delete via this
+    endpoint (defence-in-depth — UI also hides the button)."""
+    uname = (current.get("username") or "").lower()
+    if current.get("is_protected") or uname in {"stealth", "support"}:
+        raise HTTPException(status_code=403, detail="System accounts cannot self-delete")
+    refreshed = await mark_self_delete({**current, "deletion_reason": payload.reason})
+    return {
+        "ok": True,
+        "status": refreshed.get("account_status"),
+        "purge_after": refreshed.get("purge_after"),
+    }
+
+
+@router.post("/self-restore")
+async def self_restore(current: CurrentUser):
+    """User chooses 'Restore Account' on the post-login restore prompt."""
+    refreshed = await mark_restore(current, actor=current)
+    return {
+        "ok":   True,
+        "user": serialize_user(refreshed),
+    }
+
+
+@router.get("/deletion-status")
+async def deletion_status(current: CurrentUser):
+    """Lets the client poll for restore-prompt state. Returns minimal
+    metadata when pending-deletion, `null` otherwise."""
+    return {"pending_deletion": pending_deletion_meta(current)}

@@ -12,6 +12,7 @@ import React, { useState } from "react";
 import {
   ShieldAlert, Search, Loader2, X, Pause, Play, Trash2,
   MicOff, Check, Clock, ChevronDown, ChevronUp, AlertTriangle,
+  AtSign, Mail,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -103,7 +104,7 @@ export default function AdminUserControlWidget() {
 
 // ─── User row ────────────────────────────────────────────────────────
 function UserRow({ user, canDelete, onChanged }) {
-  const [section, setSection] = useState(null); // 'suspend' | 'mute' | 'delete' | null
+  const [section, setSection] = useState(null); // 'suspend' | 'mute' | 'delete' | 'identity' | null
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -208,6 +209,9 @@ function UserRow({ user, canDelete, onChanged }) {
           <button onClick={clearAllMutes} disabled={busy} className="or-chip" data-testid={`admin-user-clear-mutes-${user.id}`}><X size={12} /> Clear mutes</button>
         )}
         {canDelete && (
+          <button onClick={() => setSection(section === "identity" ? null : "identity")} className="or-chip" data-testid={`admin-user-identity-btn-${user.id}`}><AtSign size={12} /> Username / Email</button>
+        )}
+        {canDelete && (
           <button onClick={() => setSection(section === "delete" ? null : "delete")} className="or-chip" style={{ color: "#FF8080", borderColor: "rgba(255,128,128,0.4)" }} data-testid={`admin-user-delete-btn-${user.id}`}><Trash2 size={12} /> Delete</button>
         )}
       </div>
@@ -219,6 +223,9 @@ function UserRow({ user, canDelete, onChanged }) {
       )}
       {section === "mute" && (
         <MuteForm user={user} onDone={(u) => { onChanged(u); setSection(null); }} setBusy={setBusy} setErr={setErr} />
+      )}
+      {section === "identity" && canDelete && (
+        <IdentityForm user={user} onDone={(u) => { onChanged(u); setSection(null); }} setBusy={setBusy} setErr={setErr} />
       )}
       {section === "delete" && canDelete && (
         <DeleteForm user={user} onDone={() => { setSection(null); refresh(); }} setBusy={setBusy} setErr={setErr} />
@@ -383,6 +390,104 @@ function DeleteForm({ user, onDone, setBusy, setErr }) {
       <button onClick={submit} disabled={!match} className="or-btn" style={{ background: match ? "#FF8080" : undefined, color: match ? "#fff" : undefined }} data-testid={`admin-user-delete-submit-${user.id}`}>
         <Trash2 size={14} /> {match ? "Delete account" : "Type username to confirm"}
       </button>
+    </div>
+  );
+}
+
+
+// ─── Identity (Username + Email) form ───────────────────────────────
+function IdentityForm({ user, onDone, setBusy, setErr }) {
+  const [newUn, setNewUn] = useState(user.username || "");
+  const [newEmail, setNewEmail] = useState(user.email || "");
+  const [msg, setMsg] = useState("");
+  const [local, setLocal] = useState({ busy: false });
+
+  const saveUsername = async () => {
+    const v = (newUn || "").trim().toLowerCase();
+    if (!v || v === (user.username || "").toLowerCase()) {
+      setErr("Enter a different username");
+      return;
+    }
+    setLocal({ busy: true }); setBusy(true); setErr("");
+    try {
+      if (!window.confirm(`Rename @${user.username} → @${v}?`)) {
+        setLocal({ busy: false }); setBusy(false); return;
+      }
+      const { data } = await apiClient.patch(`/admin/users/${user.id}/username`, { username: v });
+      onDone(data.user);
+      setMsg(`Renamed to @${v}`);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Could not change username");
+    } finally { setLocal({ busy: false }); setBusy(false); }
+  };
+
+  const saveEmail = async () => {
+    const v = (newEmail || "").trim().toLowerCase();
+    if (!v || v === (user.email || "").toLowerCase()) {
+      setErr("Enter a different email");
+      return;
+    }
+    setLocal({ busy: true }); setBusy(true); setErr("");
+    try {
+      if (!window.confirm(`Change @${user.username}'s email to ${v}?`)) {
+        setLocal({ busy: false }); setBusy(false); return;
+      }
+      const { data } = await apiClient.patch(`/admin/users/${user.id}/email`, { email: v });
+      onDone(data.user);
+      setMsg(`Email updated`);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Could not change email");
+    } finally { setLocal({ busy: false }); setBusy(false); }
+  };
+
+  return (
+    <div className="mt-3 p-3 rounded space-y-3" style={{ background: "var(--surface-2)", border: "1px solid var(--border-col)" }} data-testid={`admin-user-identity-form-${user.id}`}>
+      <div>
+        <label className="text-[10px] uppercase tracking-widest block mb-1" style={{ color: "var(--text-muted)" }}>Change username</label>
+        <div className="flex gap-2">
+          <input
+            value={newUn}
+            onChange={(e) => setNewUn(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, ""))}
+            placeholder="new_username"
+            className="or-input flex-1"
+            data-testid={`admin-user-username-input-${user.id}`}
+            maxLength={24}
+          />
+          <button
+            onClick={saveUsername}
+            disabled={local.busy || !newUn || newUn === user.username}
+            className="or-btn"
+            data-testid={`admin-user-username-save-${user.id}`}
+          >
+            <AtSign size={12} /> Save
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <label className="text-[10px] uppercase tracking-widest block mb-1" style={{ color: "var(--text-muted)" }}>Change email</label>
+        <div className="flex gap-2">
+          <input
+            type="email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="user@example.com"
+            className="or-input flex-1"
+            data-testid={`admin-user-email-input-${user.id}`}
+            maxLength={120}
+          />
+          <button
+            onClick={saveEmail}
+            disabled={local.busy || !newEmail || newEmail === user.email}
+            className="or-btn"
+            data-testid={`admin-user-email-save-${user.id}`}
+          >
+            <Mail size={12} /> Save
+          </button>
+        </div>
+      </div>
+
+      {msg && <div className="text-xs" style={{ color: "var(--brand-green)" }} data-testid={`admin-user-identity-msg-${user.id}`}>{msg}</div>}
     </div>
   );
 }

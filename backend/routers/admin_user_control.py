@@ -267,31 +267,114 @@ async def delete_user(user_id: str, payload: DeletePayload, current: CurrentUser
     # Username confirmation guard — explicit second-step gate.
     if (payload.confirm_username or "").strip().lower() != (target.get("username") or "").lower():
         raise HTTPException(400, "Username confirmation did not match")
-    deleted_marker = f"deleted_{user_id[:8]}_{int(_now().timestamp())}"
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {
-            "disabled":     True,
-            "deleted_at":   _now_iso(),
-            "deleted_by":   current["id"],
-            "delete_reason": (payload.reason or "").strip() or None,
-            # Scrub public fields so the row disappears from search /
-            # Discover / suggestions. We keep the row itself so audit
-            # logs + reports remain referenceable.
-            "username":     deleted_marker,
-            "display_name": "Deleted user",
-            "name":         "Deleted user",
-            "email":        f"{deleted_marker}@deleted.invalid",
-            "bio":          None,
-            "avatar_url":   None,
-            "banner_url":   None,
-            "password_changed_at": _now_iso(),  # nukes active sessions
-        }},
-    )
+    # 30-day soft-delete via the shared account_lifecycle helper. The
+    # user row is preserved so the target can sign in and restore
+    # within the window. Audit log captures both the admin-initiated
+    # action AND the lifecycle flip.
+    from core.account_lifecycle import mark_admin_delete
+    refreshed = await mark_admin_delete(target, current, reason=payload.reason)
     await _write_audit(current, target, "delete", {
-        "reason": payload.reason, "prev_username": target.get("username"),
+        "reason":        payload.reason,
+        "purge_after":   refreshed.get("purge_after"),
+        "soft_delete":   True,
     })
-    return {"ok": True, "deleted_user_id": user_id, "marker": deleted_marker}
+    return {
+        "ok":              True,
+        "deleted_user_id": user_id,
+        "purge_after":     refreshed.get("purge_after"),
+        "account_status":  refreshed.get("account_status"),
+    }
+
+
+# --------------------------------------------------------------------- #
+# Change Username / Email — founder/support-admin scope. Uniqueness
+# guarded by the same regexes used at registration. Audit-logged.
+# --------------------------------------------------------------------- #
+class _UsernameUpdatePayload(BaseModel):
+    username: str = Field(min_length=3, max_length=24)
+
+
+class _EmailUpdatePayload(BaseModel):
+    email: str = Field(min_length=5, max_length=120)
+
+
+_USERNAME_RE = re.compile(r"^[a-z0-9_.]{3,24}$")
+_EMAIL_RE    = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@router.patch("/{user_id}/username")
+async def admin_change_username(user_id: str, payload: _UsernameUpdatePayload, current: CurrentUser):
+    require_role(current, [ROLE_FOUNDER, ROLE_SUPPORT_ADMIN])
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    ok, reason = _can_act_on(current, target, action="username_change")
+    if not ok:
+        raise HTTPException(403, reason)
+    new_un = payload.username.strip().lower()
+    if not _USERNAME_RE.match(new_un):
+        raise HTTPException(400, "Invalid username format")
+    # Conflict check — also blocks names reserved by pending-deletion
+    # rows (their username is kept in place during the 30-day window).
+    clash = await db.users.find_one(
+        {"username": new_un, "id": {"$ne": user_id}},
+        {"_id": 0, "id": 1, "account_status": 1},
+    )
+    if clash:
+        raise HTTPException(409, "Username already taken")
+    prev_username = target.get("username")
+    await db.users.update_one({"id": user_id}, {"$set": {
+        "username":         new_un,
+        "username_changed_at": _now_iso(),
+    }})
+    await _write_audit(current, target, "username_change", {
+        "prev_username": prev_username,
+        "new_username":  new_un,
+    })
+    refreshed = await db.users.find_one({"id": user_id}, {"_id": 0})
+    return {"ok": True, "user": _safe_user(refreshed)}
+
+
+@router.patch("/{user_id}/email")
+async def admin_change_email(user_id: str, payload: _EmailUpdatePayload, current: CurrentUser):
+    require_role(current, [ROLE_FOUNDER, ROLE_SUPPORT_ADMIN])
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    ok, reason = _can_act_on(current, target, action="email_change")
+    if not ok:
+        raise HTTPException(403, reason)
+    new_email = payload.email.strip().lower()
+    if not _EMAIL_RE.match(new_email):
+        raise HTTPException(400, "Invalid email format")
+    clash = await db.users.find_one(
+        {"email": new_email, "id": {"$ne": user_id}},
+        {"_id": 0, "id": 1},
+    )
+    if clash:
+        raise HTTPException(409, "Email already in use")
+    prev_email = target.get("email")
+    await db.users.update_one({"id": user_id}, {"$set": {
+        "email":           new_email,
+        "email_changed_at": _now_iso(),
+    }})
+    await _write_audit(current, target, "email_change", {
+        "prev_email": prev_email,
+        "new_email":  new_email,
+    })
+    refreshed = await db.users.find_one({"id": user_id}, {"_id": 0})
+    return {"ok": True, "user": _safe_user(refreshed)}
+
+
+@router.post("/{user_id}/restore")
+async def admin_restore(user_id: str, current: CurrentUser):
+    """Restore a soft-deleted user. Founder/support-admin scope."""
+    require_role(current, [ROLE_FOUNDER, ROLE_SUPPORT_ADMIN])
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(404, "User not found")
+    if target.get("account_status") != "deleted_pending_restore":
+        raise HTTPException(400, "Account is not pending deletion")
+    from core.account_lifecycle import mark_restore
+    refreshed = await mark_restore(target, actor=current)
+    await _write_audit(current, target, "restore", {})
+    return {"ok": True, "user": _safe_user(refreshed)}
 
 
 # --------------------------------------------------------------------- #

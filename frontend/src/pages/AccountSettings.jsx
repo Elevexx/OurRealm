@@ -1,11 +1,14 @@
 import React, { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, Globe2, Users as UsersIcon, Wallet, DollarSign, BadgeCheck, Camera, MapPin, Radar } from "lucide-react";
+import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, Globe2, Users as UsersIcon, Wallet, DollarSign, BadgeCheck, Camera, MapPin, Radar, Trash2 } from "lucide-react";
 import apiClient from "@/api/client";
 import VipBadge from "@/components/VipBadge";
 import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPicker";
 import { usePresence } from "@/contexts/PresenceContext";
+import { isAdmin } from "@/lib/isAdmin";
+import DeleteAccountModal from "@/components/DeleteAccountModal";
+import AdminSettingsTab from "@/components/AdminSettingsTab";
 
 /**
  * Account Settings — Phase C. Implements:
@@ -13,13 +16,14 @@ import { usePresence } from "@/contexts/PresenceContext";
  *  - Privacy: profile visibility public/friends/private
  *  - Wallet: CashApp, PayPal, Venmo, Bank link placeholders (stored only)
  *  - Ads Manager: link out to existing /marketplace
+ *  - Admin (founder + support only): user-management tools
  */
 // Wallet & Ads Manager tabs are intentionally hidden from the user-facing
 // settings until wallet/payments are legally ready. The underlying state
 // (`wallet`, `saveWallet`, the wallet tab body) is kept in this file so
 // the feature can be re-enabled in one diff once payment integrations
 // ship. Routes/backend remain untouched.
-const TABS = [
+const TABS_BASE = [
   { id: "account",  label: "Account",     Icon: UserCog },
   { id: "privacy",  label: "Privacy",     Icon: ShieldCheck },
 ];
@@ -29,6 +33,12 @@ export default function AccountSettings() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("account");
   const [avatarPicker, setAvatarPicker] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  // Founder + support see an extra "Admin" tab. Backend enforces every
+  // action — the tab visibility is convenience only.
+  const TABS = isAdmin(user)
+    ? [...TABS_BASE, { id: "admin", label: "Admin", Icon: ShieldCheck }]
+    : TABS_BASE;
 
   const onAvatarPicked = async ({ url }) => {
     try {
@@ -286,8 +296,37 @@ export default function AccountSettings() {
           </Card>
 
           <StatusSelectorCard />
+
+          {/* Danger zone — destructive self-delete. Sits at the very
+              bottom of the Account tab per spec. Founder + system
+              accounts (@stealth / @support) cannot self-delete; the
+              backend rejects with 403 as a defence-in-depth measure. */}
+          {(user.username || "").toLowerCase() !== "stealth" && (user.username || "").toLowerCase() !== "support" && (
+            <div className="or-surface p-4" style={{ borderColor: "rgba(255,128,128,0.35)" }} data-testid="account-delete-section">
+              <div className="flex items-center gap-2 mb-2">
+                <Trash2 size={14} style={{ color: "#FF8080" }} />
+                <h3 className="text-sm font-semibold" style={{ color: "#FF8080" }}>Delete Account</h3>
+              </div>
+              <p className="text-[12px] mb-3" style={{ color: "var(--text-muted)" }}>
+                Deactivates your profile for 30 days. You can restore your
+                account by signing back in within that window.
+              </p>
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                className="or-btn"
+                style={{ background: "#FF4444", color: "#fff" }}
+                data-testid="account-delete-open"
+              >
+                <Trash2 size={14} /> Delete Account
+              </button>
+            </div>
+          )}
         </div>
       )}
+
+      {/* ADMIN — founder + support only */}
+      {tab === "admin" && <AdminSettingsTab />}
 
       {/* PRIVACY */}
       {tab === "privacy" && (
@@ -368,6 +407,7 @@ export default function AccountSettings() {
         title="Change profile image"
         testid="account-avatar-picker"
       />
+      <DeleteAccountModal open={deleteOpen} onClose={() => setDeleteOpen(false)} />
     </div>
   );
 }

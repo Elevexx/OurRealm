@@ -49,6 +49,12 @@ async def get_current_user(request: Request) -> dict:
         except Exception:
             pass
     if user.get("disabled"):
+        # Pending-deletion users keep a short-lived authenticated
+        # session so the client can show the restore prompt and call
+        # /api/profile/self-restore. Every endpoint that returns user-
+        # actionable data still hides them via should_hide_from_public().
+        if user.get("account_status") == "deleted_pending_restore":
+            return user
         # Surface a friendly suspended message when applicable so the
         # client can render it verbatim.
         if user.get("suspended_until"):

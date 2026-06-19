@@ -18,6 +18,10 @@ export function AuthProvider({ children }) {
   const [isGuest, setIsGuestState] = useState(() => {
     try { return localStorage.getItem("ourrealm.guest") === "1"; } catch { return false; }
   });
+  // Phase-Restore — populated when login (or refreshMe) detects the
+  // user is in the 30-day pending-deletion window. App.js renders the
+  // restore prompt route gate while this is non-null.
+  const [pendingDeletion, setPendingDeletion] = useState(null);
 
   const setGuest = useCallback((v) => {
     setIsGuestState(v);
@@ -32,8 +36,19 @@ export function AuthProvider({ children }) {
       const { data } = await apiClient.get("/auth/me");
       setUser(data.user);
       setGuest(false);
+      // Detect pending-deletion on any refresh (e.g. page reload while
+      // the restore window is still open).
+      if (data.user?.account_status === "deleted_pending_restore") {
+        try {
+          const { data: ds } = await apiClient.get("/profile/deletion-status");
+          setPendingDeletion(ds?.pending_deletion || { account_status: "deleted_pending_restore" });
+        } catch { setPendingDeletion({ account_status: "deleted_pending_restore" }); }
+      } else {
+        setPendingDeletion(null);
+      }
     } catch {
       setUser(null);
+      setPendingDeletion(null);
     } finally {
       setIsLoading(false);
     }
@@ -51,7 +66,12 @@ export function AuthProvider({ children }) {
       persistToken(data.access_token);
       setUser(data.user);
       setGuest(false);
-      return { ok: true };
+      if (data.restore_required) {
+        setPendingDeletion(data.pending_deletion || { account_status: "deleted_pending_restore" });
+      } else {
+        setPendingDeletion(null);
+      }
+      return { ok: true, restoreRequired: !!data.restore_required };
     } catch (e) {
       return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) || e.message };
     }
@@ -102,6 +122,7 @@ export function AuthProvider({ children }) {
     } catch { /* ignore */ }
     setUser(null);
     setGuest(false);
+    setPendingDeletion(null);
   }, [setGuest]);
 
   const updateProfile = useCallback(async (patch) => {
@@ -116,7 +137,10 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isGuest, login, register, logout, setGuest, updateProfile, refreshMe }}
+      value={{
+        user, isLoading, isGuest, login, register, logout, setGuest, updateProfile, refreshMe,
+        pendingDeletion, setPendingDeletion,
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -186,8 +186,11 @@ async def login(payload: LoginPayload, request: Request, response: Response):
         except Exception:
             pass
     # Refuse login for any account marked disabled (covers the legacy
-    # admin and any future banned accounts).
-    if user and user.get("disabled"):
+    # admin and any future banned accounts) — UNLESS the user is in
+    # the 30-day pending-deletion restore window. Those accounts are
+    # permitted to authenticate so the client can show the restore
+    # prompt instead of a hard "account suspended" error.
+    if user and user.get("disabled") and user.get("account_status") != "deleted_pending_restore":
         try:
             await db.audit_log.insert_one({
                 "kind": "blocked_disabled_login",
@@ -219,7 +222,17 @@ async def login(payload: LoginPayload, request: Request, response: Response):
         await record_activity(user["id"])
     except Exception:  # noqa: BLE001 — analytics never blocks auth
         pass
-    return {"user": serialize_user(user), "access_token": access}
+    response_body: dict = {"user": serialize_user(user), "access_token": access}
+    # Phase-Restore — surface the restore prompt for users in the
+    # 30-day deletion window. Client shows a modal/page before letting
+    # the user into the rest of the app.
+    if user.get("account_status") == "deleted_pending_restore":
+        response_body["restore_required"] = True
+        response_body["pending_deletion"] = {
+            "deleted_at":   user.get("deleted_at"),
+            "purge_after":  user.get("purge_after"),
+        }
+    return response_body
 
 
 @router.post("/logout")

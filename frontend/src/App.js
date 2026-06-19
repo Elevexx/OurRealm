@@ -40,6 +40,7 @@ import YouTubeRouteCleanup from "@/components/YouTubeRouteCleanup";
 import PostPopup from "@/components/PostPopup";
 import MiniPlayer from "@/components/MiniPlayer";
 import InstallPrompt from "@/components/InstallPrompt";
+import RestoreAccountPrompt from "@/components/RestoreAccountPrompt";
 
 function ShellRoute({ children }) {
   const { isLoading } = useAuth();
@@ -53,6 +54,16 @@ function ShellRoute({ children }) {
   return <Layout>{children}</Layout>;
 }
 
+// Pending-deletion users get the restore prompt instead of any
+// authenticated route. Public / unauthenticated routes (Landing,
+// SignIn, SignUp) still render normally so the user can also choose
+// to sign out and walk away.
+function RestoreGate({ children }) {
+  const { pendingDeletion } = useAuth();
+  if (pendingDeletion) return <RestoreAccountPrompt />;
+  return children;
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -61,6 +72,7 @@ function App() {
         <PresenceProvider>
           <BrowserRouter>
           <YouTubeRouteCleanup />
+          <RestoreGate>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/signup" element={<SignUp />} />
@@ -106,6 +118,7 @@ function App() {
             <Route path="/account-deletion" element={<AccountDeletionPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </RestoreGate>
           <PostPopup />
           <MiniPlayer />
           <InstallPrompt trigger="auto" />
