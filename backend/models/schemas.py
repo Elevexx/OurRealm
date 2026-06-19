@@ -228,6 +228,9 @@ def serialize_user(doc: dict) -> dict:
         # currently always false until that ships. `last_seen_at` is
         # exposed for clients that want to render a "last active" hint.
         "is_live": bool(doc.get("is_live", False)),
+        # Lifecycle — surfaces the pending-deletion flag so the client
+        # can render the restore prompt. `null` for active accounts.
+        "account_status": doc.get("account_status"),
         "last_seen_at": doc.get("presence_last_seen"),
         # Number of friends — used by Trending. Falls back to live count.
         "follower_count": int(doc.get("follower_count")
