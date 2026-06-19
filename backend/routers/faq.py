@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from core.db import db
 from core.deps import CurrentUser, require_admin
+from core.permissions import require_founder
 
 
 router = APIRouter(tags=["faq"])
@@ -57,14 +58,14 @@ async def list_public_faq():
 
 @router.get("/api/admin/faq")
 async def list_admin_faq(current: CurrentUser):
-    require_admin(current)
+    require_founder(current)
     cursor = db.faq.find({}, {"_id": 0}).sort([("order_index", 1), ("created_at", 1)])
     return {"items": [_serialize(x) async for x in cursor]}
 
 
 @router.post("/api/admin/faq")
 async def create_faq(payload: FAQCreate, current: CurrentUser):
-    require_admin(current)
+    require_founder(current)
     if payload.order_index is None:
         last = await db.faq.find_one({}, sort=[("order_index", -1)])
         order_index = (int(last.get("order_index") or 0) + 10) if last else 10
@@ -87,7 +88,7 @@ async def create_faq(payload: FAQCreate, current: CurrentUser):
 
 @router.patch("/api/admin/faq/{faq_id}")
 async def update_faq(faq_id: str, payload: FAQUpdate, current: CurrentUser):
-    require_admin(current)
+    require_founder(current)
     set_ops: dict = {"updated_at": _now()}
     if payload.question is not None:     set_ops["question"]     = payload.question.strip()
     if payload.answer is not None:       set_ops["answer"]       = payload.answer.strip()
@@ -102,7 +103,7 @@ async def update_faq(faq_id: str, payload: FAQUpdate, current: CurrentUser):
 
 @router.delete("/api/admin/faq/{faq_id}")
 async def delete_faq(faq_id: str, current: CurrentUser):
-    require_admin(current)
+    require_founder(current)
     res = await db.faq.delete_one({"id": faq_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="FAQ not found")

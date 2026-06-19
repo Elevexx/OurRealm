@@ -31,6 +31,7 @@ from routers import threads as threads_router_mod
 from routers import sounds as sounds_router_mod
 from routers import phase5 as phase5_router_mod
 from routers import tickets as tickets_router_mod
+from routers import ticket_categories as ticket_categories_router_mod
 from routers import faq as faq_router_mod
 from routers import presence as presence_router_mod
 from routers import hashtags as hashtags_router_mod
@@ -69,6 +70,7 @@ app.include_router(threads_router_mod.router)
 app.include_router(sounds_router_mod.router)
 app.include_router(phase5_router_mod.router)
 app.include_router(tickets_router_mod.router)
+app.include_router(ticket_categories_router_mod.router)
 app.include_router(faq_router_mod.router)
 app.include_router(presence_router_mod.router)
 app.include_router(hashtags_router_mod.router)
@@ -81,6 +83,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ─── API v1 alias (Phase α) ─────────────────────────────────────────────
+# All existing endpoints live under `/api/...` and remain the canonical
+# paths. To prepare for future API access without breaking back-compat,
+# we accept `/api/v1/...` as an alias — the request path is rewritten
+# in-place at the ASGI layer and forwarded to the existing handlers.
+# No router code changes; full back-compat preserved.
+@app.middleware("http")
+async def api_v1_alias(request, call_next):
+    path = request.scope.get("path", "")
+    if path.startswith("/api/v1/"):
+        new_path = "/api/" + path[len("/api/v1/"):]
+        request.scope["path"] = new_path
+        if "raw_path" in request.scope:
+            try:
+                request.scope["raw_path"] = new_path.encode("ascii")
+            except UnicodeEncodeError:
+                pass
+    response = await call_next(request)
+    # Tag the response so clients can see which API surface they hit —
+    # useful when migrating callers to v1.
+    if path.startswith("/api/v1/"):
+        response.headers["X-API-Version"] = "v1"
+    return response
 
 
 # ─── Lifecycle ──────────────────────────────────────────

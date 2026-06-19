@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from core.db import db
 from core.deps import CurrentUser, require_admin
+from core.permissions import require_analytics_access
 from services.upload_limits import remaining_for_user
 
 
@@ -117,7 +118,8 @@ async def _series(collection, since: Optional[datetime], days: int, date_field: 
 
 
 def _require_admin(current: dict):
-    require_admin(current)
+    # Phase α — analytics dashboards are founder-only (analytics permission).
+    require_analytics_access(current)
 
 
 @router.get("/admin/analytics")

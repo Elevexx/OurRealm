@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from core.db import db
 from core.deps import CurrentUser, require_admin
+from core.permissions import require_moderation_access
 from services.moderation import (
     REASONS, STATUS_APPROVED, STATUS_HIDDEN, STATUS_PENDING_REVIEW,
     STATUS_REJECTED, log_action, scan_content,
@@ -46,7 +47,10 @@ USER_REPORT_REASONS = {
 
 
 def _require_admin(user: dict) -> None:
-    require_admin(user)
+    # Phase α — moderation endpoints are gated by the moderation-access
+    # permission (founder + support_admin + moderator). Keeps the legacy
+    # require_admin import valid for any helpers still relying on it.
+    require_moderation_access(user)
 
 
 # ─── User-facing report endpoint ──────────────────────────────────────

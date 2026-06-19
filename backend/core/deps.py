@@ -37,22 +37,26 @@ async def get_current_user(request: Request) -> dict:
 CurrentUser = Annotated[dict, Depends(get_current_user)]
 
 
-# Admin gate — used by every /api/admin/* router. Both @stealth (founder)
-# and @support (system account) have full admin access. Regular users
-# never do. Keep this in one place so we can't drift across routers.
+# Admin gate — used by every /api/admin/* router.
+# Phase α (Feb 2026) — role-based: see core.permissions for the per-role
+# matrix. The legacy username allow-list (`@stealth`, `@support`) is kept
+# as a safety net so a partially-seeded DB still gates admin endpoints.
+# Loose `is_admin_user` / `require_admin` return True for ANY admin role;
+# fine-grained routes should import gates from core.permissions instead
+# (e.g. require_moderation_access, require_support_access, require_founder).
 ADMIN_USERNAMES = {"stealth", "support"}
 
 
 def is_admin_user(user: dict | None) -> bool:
-    """Admin gate — ONLY @stealth (founder) and @support (system).
-
-    Phase H security tightening: we no longer trust the `role` or
-    `is_founder` flags on a user document, because those could be set by
-    a future seed bug or a tampered import. The single source of truth
-    is the immutable username allow-list. Disabled accounts are blocked.
-    """
+    """True when the user has ANY admin role (founder / support_admin /
+    moderator). Falls back to the username allow-list if `admin_role`
+    isn't populated yet (defensive — first deploy hasn't run seed)."""
+    from .permissions import get_admin_role
     if not user or user.get("disabled"):
         return False
+    if get_admin_role(user):
+        return True
+    # Defensive fallback (pre-seed first boot only).
     return (user.get("username") or "").lower() in ADMIN_USERNAMES
 
 

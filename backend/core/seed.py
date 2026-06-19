@@ -106,6 +106,8 @@ async def seed_founder() -> dict | None:
         "is_founder": True,
         "is_verified": True,
         "featured_creator": True,
+        # Phase α — explicit admin role for the role-based permission system.
+        "admin_role": "founder",
     }
     if founder is None:
         # First-time seed only — defaults applied. After this initial
@@ -289,6 +291,8 @@ async def seed_support_account():
         "is_protected": True,                # NEW — blocks ban / delete / rename
         "is_founder": False,
         "is_vip": False,
+        # Phase α — @support is a Support Admin: tickets + moderation only.
+        "admin_role": "support_admin",
         "avatar_url": None,
         "widgets": [],
         "friends": [],
@@ -385,6 +389,8 @@ async def run_startup():
     await seed_admin()
     founder = await seed_founder()
     await seed_support_account()      # Phase B — protected @support account
+    await seed_ticket_categories()    # Phase α — default support categories
+    await apply_env_admin_promotions() # Phase α — promote moderators via env
     await migrate_friend_graph_to_ids()
     await backfill_founder_as_default_friend(founder)
     await migrate_vip_and_strip_founder_badges(founder)
@@ -393,6 +399,88 @@ async def run_startup():
     await migrate_text_posts_to_thoughts()
     await migrate_video_urls_to_relative()
     await migrate_backfill_presence()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase α — Admin Roles & Permissions
+# ─────────────────────────────────────────────────────────────────────
+async def apply_env_admin_promotions():
+    """Read ADMIN_PROMOTE_USERNAMES env (e.g. `alice:moderator,bob:support_admin`)
+    and set `admin_role` on matching usernames. Founder role is reserved
+    for @stealth and cannot be granted via env. Idempotent.
+
+    Any user whose `admin_role` is set BUT no longer present in the env
+    (and isn't @stealth/@support) is demoted back to a regular user so
+    deployments can fully revoke moderator privileges without manual DB
+    edits. Safety net: never demotes @stealth (founder) or @support.
+    """
+    from core.permissions import parse_promotions_env
+    raw = os.environ.get("ADMIN_PROMOTE_USERNAMES") or ""
+    desired = dict(parse_promotions_env(raw))  # {username_lower: role}
+
+    n_promote = 0
+    for uname, role in desired.items():
+        if uname in {"stealth", "support"}:
+            continue
+        res = await db.users.update_one(
+            {"username": uname},
+            {"$set": {"admin_role": role}},
+        )
+        if res.modified_count:
+            n_promote += 1
+
+    # Demote anyone with an admin_role who isn't in the env AND isn't
+    # a system account (stealth/support).
+    keep = set(desired.keys()) | {"stealth", "support"}
+    res = await db.users.update_many(
+        {
+            "admin_role": {"$exists": True, "$ne": None},
+            "username":   {"$nin": list(keep)},
+        },
+        {"$unset": {"admin_role": ""}},
+    )
+    if n_promote or res.modified_count:
+        logger.info(
+            f"[admin-roles] env promotions applied: granted={n_promote} demoted={res.modified_count}"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase α — Support Ticket Categories
+# ─────────────────────────────────────────────────────────────────────
+DEFAULT_TICKET_CATEGORIES = [
+    {"key": "bug_report",      "label": "Bug Report",      "sort_order": 10},
+    {"key": "safety_concern",  "label": "Safety Concern",  "sort_order": 20},
+    {"key": "account_issue",   "label": "Account Issue",   "sort_order": 30},
+    {"key": "feature_request", "label": "Feature Request", "sort_order": 40},
+    {"key": "billing",         "label": "Billing",         "sort_order": 50},
+    {"key": "general_support", "label": "General Support", "sort_order": 60},
+]
+
+
+async def seed_ticket_categories():
+    """Insert each default ticket category if absent. Never overwrites a
+    label or sort_order an admin has customised. Idempotent."""
+    now = datetime.now(timezone.utc).isoformat()
+    n = 0
+    for cat in DEFAULT_TICKET_CATEGORIES:
+        existing = await db.ticket_categories.find_one({"key": cat["key"]})
+        if existing:
+            continue
+        await db.ticket_categories.insert_one({
+            "id":          uuid.uuid4().hex,
+            "key":         cat["key"],
+            "label":       cat["label"],
+            "description": "",
+            "sort_order":  cat["sort_order"],
+            "is_enabled":  True,
+            "is_default":  True,
+            "created_at":  now,
+            "updated_at":  now,
+        })
+        n += 1
+    if n:
+        logger.info(f"[ticket-categories] seeded {n} default categories")
 
 
 async def migrate_backfill_presence():

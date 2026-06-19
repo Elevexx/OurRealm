@@ -23,6 +23,7 @@ from pymongo import ReturnDocument
 
 from core.db import db
 from core.deps import CurrentUser, require_admin
+from core.permissions import require_support_access
 
 
 router = APIRouter(tags=["support"])
@@ -38,7 +39,10 @@ STATUS_MESSAGES = {
 
 
 def _require_admin(user: dict) -> None:
-    require_admin(user)
+    # Phase α — tickets are gated by the support-access permission (founder
+    # and support_admin). Keeps the legacy require_admin import valid for
+    # any unrelated helpers still relying on the loose gate.
+    require_support_access(user)
 
 
 async def _support_user() -> Optional[dict]:
@@ -100,6 +104,25 @@ async def _send_support_message(*, support_id: str, user_id: str, text: str) -> 
 
 class EnsurePayload(BaseModel):
     subject: Optional[str] = Field(default=None, max_length=120)
+    # Phase α — optional category. Accepts EITHER the category id OR the
+    # immutable `key` (e.g. "bug_report"). Validated against the
+    # `ticket_categories` collection — invalid values are silently dropped
+    # so older clients without the picker continue to work unchanged.
+    category_id:  Optional[str] = Field(default=None, max_length=64)
+    category_key: Optional[str] = Field(default=None, max_length=40)
+
+
+async def _resolve_category(payload: EnsurePayload) -> Optional[dict]:
+    """Look up the category from id or key. Returns None if neither was
+    provided OR the value doesn't match an enabled category."""
+    q: Optional[dict] = None
+    if payload.category_id:
+        q = {"id": payload.category_id, "is_enabled": True}
+    elif payload.category_key:
+        q = {"key": payload.category_key.lower(), "is_enabled": True}
+    if not q:
+        return None
+    return await db.ticket_categories.find_one(q, {"_id": 0})
 
 
 @router.post("/api/tickets/ensure")
@@ -122,6 +145,7 @@ async def ensure_ticket(payload: EnsurePayload, current: CurrentUser):
     now = datetime.now(timezone.utc).isoformat()
     number = await _next_ticket_number()
     subject = (payload.subject or "Support request").strip()[:100] or "Support request"
+    category = await _resolve_category(payload)
     ticket = {
         "id":             uuid.uuid4().hex,
         "ticket_number":  number,
@@ -132,6 +156,9 @@ async def ensure_ticket(payload: EnsurePayload, current: CurrentUser):
         "preview":        subject[:240],
         "status":         "Submitted",
         "assignee_id":    None,
+        "category_id":    (category or {}).get("id"),
+        "category_key":   (category or {}).get("key"),
+        "category_label": (category or {}).get("label"),
         "created_at":     now,
         "updated_at":     now,
     }
@@ -162,18 +189,22 @@ async def admin_summary(current: CurrentUser):
 
 
 @router.get("/api/admin/support/tickets")
-async def admin_list(current: CurrentUser, status: Optional[str] = None, limit: int = 100):
+async def admin_list(current: CurrentUser, status: Optional[str] = None, category_key: Optional[str] = None, limit: int = 100):
     _require_admin(current)
     q: dict = {}
     if status and status in STATUSES:
         q["status"] = status
+    if category_key:
+        q["category_key"] = category_key.lower()
     cursor = db.tickets.find(q, {"_id": 0}).sort("updated_at", -1).limit(min(max(1, limit), 500))
     return {"tickets": [t async for t in cursor]}
 
 
 class TicketUpdate(BaseModel):
-    status:  Optional[str] = None
-    subject: Optional[str] = None
+    status:       Optional[str] = None
+    subject:      Optional[str] = None
+    category_id:  Optional[str] = None
+    category_key: Optional[str] = None
 
 
 @router.post("/api/admin/support/tickets/{ticket_id}")
@@ -195,6 +226,20 @@ async def admin_update(ticket_id: str, payload: TicketUpdate, current: CurrentUs
 
     if payload.subject is not None:
         set_ops["subject"] = payload.subject.strip()[:100]
+
+    if payload.category_id is not None or payload.category_key is not None:
+        q: dict = {}
+        if payload.category_id:
+            q = {"id": payload.category_id}
+        elif payload.category_key:
+            q = {"key": payload.category_key.lower()}
+        if q:
+            cat = await db.ticket_categories.find_one(q, {"_id": 0})
+            if not cat:
+                raise HTTPException(status_code=400, detail="Unknown category")
+            set_ops["category_id"]    = cat["id"]
+            set_ops["category_key"]   = cat["key"]
+            set_ops["category_label"] = cat["label"]
 
     await db.tickets.update_one({"id": ticket_id}, {"$set": set_ops})
 

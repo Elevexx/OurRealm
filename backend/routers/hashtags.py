@@ -23,6 +23,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from core.db import db
 from core.deps import CurrentUser
+from core.permissions import require_analytics_access, require_founder
 
 logger = logging.getLogger("ourrealm.hashtags")
 router = APIRouter(prefix="/api/hashtags", tags=["hashtags"])
@@ -189,8 +190,7 @@ async def list_hashtags(
     limit: int = 50,
 ):
     """Admin-only catalogue of every known hashtag."""
-    if current.get("username") not in ADMIN_USERNAMES:
-        raise HTTPException(status_code=403, detail="Admin only")
+    require_analytics_access(current)
     filt = {}
     if q:
         filt["tag"] = {"$regex": f"^{re.escape(q.lower())}"}
@@ -205,8 +205,7 @@ async def list_hashtags(
 @router.get("/analytics/summary")
 async def hashtag_analytics(current: CurrentUser, window: str = "30d"):
     """Admin-only aggregate metrics."""
-    if current.get("username") not in ADMIN_USERNAMES:
-        raise HTTPException(status_code=403, detail="Admin only")
+    require_analytics_access(current)
     now = datetime.now(timezone.utc)
     days = {"1d": 1, "7d": 7, "30d": 30, "all": 36500}.get(window, 30)
     cutoff = (now - timedelta(days=days)).isoformat()
@@ -235,8 +234,7 @@ async def hashtag_analytics(current: CurrentUser, window: str = "30d"):
 
 @router.post("/migrate")
 async def trigger_migration(current: CurrentUser):
-    if current.get("username") not in ADMIN_USERNAMES:
-        raise HTTPException(status_code=403, detail="Admin only")
+    require_founder(current)
     return await migrate_index_all_posts()
 
 

@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from core.db import db
 from core.deps import CurrentUser, require_admin
+from core.permissions import require_founder
 from services.upload_limits import enforce_duration, enforce_pre_upload
 from services.video_store import (
     MAX_BYTES, ALLOWED_EXTS, is_safe_video_filename, save_video, video_dir,
@@ -209,7 +210,7 @@ async def video_diagnostics(current: CurrentUser):
       posts_with_video_url, posts_pointing_to_missing_files (capped 20),
       posts_with_absolute_urls_remaining (should be 0 after migration).
     """
-    require_admin(current)
+    require_founder(current)
     vdir = video_dir()
     files_on_disk = set()
     total_bytes = 0
@@ -278,7 +279,7 @@ async def admin_run_url_migration(current: CurrentUser):
     — exposed here so admins can rerun it without redeploying. Returns
     `{updated: <int>}`.
     """
-    require_admin(current)
+    require_founder(current)
     import re as _re
     re_strip = _re.compile(r"^https?://[^/]+(/api/(?:videos|images)/.+)$")
     fields = ("video_url", "image_url", "media_url")
