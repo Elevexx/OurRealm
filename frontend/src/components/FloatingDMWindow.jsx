@@ -11,10 +11,18 @@
  * second member replaces the first). Phase 3 will add a stacking
  * manager so multiple windows can coexist.
  */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { X, Minus, Send, Loader2, MessageCircle } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+
+const WIDTH  = 340;
+const HEIGHT = 460;
+const MARGIN = 12;
+function isMobile() {
+  if (typeof window === "undefined") return false;
+  return window.innerWidth < 640;
+}
 
 export default function FloatingDMWindow({ peer, onClose }) {
   const { user } = useAuth();
@@ -23,8 +31,65 @@ export default function FloatingDMWindow({ peer, onClose }) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [minimized, setMinimized] = useState(false);
+  // pos: { x, y } in viewport px. Mobile → null (CSS centers via fixed inset).
+  const [pos, setPos] = useState(null);
   const scrollRef = useRef(null);
   const pollRef = useRef(null);
+  const dragRef = useRef({ active: false, dx: 0, dy: 0 });
+
+  // Per-spec: every open of a *new* peer starts centered. When the same
+  // peer is re-opened we still reset to center (the popup is unmounted
+  // between opens, so this just runs once on mount).
+  useLayoutEffect(() => {
+    if (!peer || isMobile()) { setPos(null); return; }
+    const x = Math.max(MARGIN, Math.round((window.innerWidth  - WIDTH)  / 2));
+    const y = Math.max(MARGIN, Math.round((window.innerHeight - HEIGHT) / 2));
+    setPos({ x, y });
+  }, [peer?.username]);
+
+  // Keep the popup inside the viewport when the window resizes.
+  useEffect(() => {
+    const onResize = () => {
+      if (isMobile()) { setPos(null); return; }
+      setPos((p) => p ? clamp(p) : p);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // ─── Drag handlers ───────────────────────────────────────────────
+  const beginDrag = (clientX, clientY) => {
+    if (isMobile() || minimized || !pos) return;
+    dragRef.current = { active: true, dx: clientX - pos.x, dy: clientY - pos.y };
+    document.body.style.userSelect = "none";
+  };
+  const moveDrag = (clientX, clientY) => {
+    if (!dragRef.current.active) return;
+    setPos(clamp({ x: clientX - dragRef.current.dx, y: clientY - dragRef.current.dy }));
+  };
+  const endDrag = () => {
+    dragRef.current.active = false;
+    document.body.style.userSelect = "";
+  };
+  useEffect(() => {
+    const mm = (e) => moveDrag(e.clientX, e.clientY);
+    const mu = () => endDrag();
+    const tm = (e) => {
+      if (!e.touches[0]) return;
+      moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+    };
+    const tu = () => endDrag();
+    window.addEventListener("mousemove", mm);
+    window.addEventListener("mouseup", mu);
+    window.addEventListener("touchmove", tm, { passive: false });
+    window.addEventListener("touchend", tu);
+    return () => {
+      window.removeEventListener("mousemove", mm);
+      window.removeEventListener("mouseup", mu);
+      window.removeEventListener("touchmove", tm);
+      window.removeEventListener("touchend", tu);
+    };
+  }, []);
 
   // Initial load + light polling (every 8s) — keeps the popup live
   // without a dedicated WS, identical to how the Messenger tab works
@@ -68,25 +133,50 @@ export default function FloatingDMWindow({ peer, onClose }) {
 
   if (!peer) return null;
 
+  // Mobile → CSS centers the popup via fixed inset; desktop → absolute
+  // x/y from the centered initial position (and user drag).
+  const mobile = isMobile();
+  const containerStyle = mobile
+    ? {
+        position: "fixed",
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        width: `min(${WIDTH}px, calc(100vw - 24px))`,
+        maxHeight: "min(80dvh, 540px)",
+      }
+    : {
+        position: "fixed",
+        left: pos?.x ?? 0,
+        top:  pos?.y ?? 0,
+        width: WIDTH,
+      };
+
   return (
     <div
-      className="fixed z-50 or-surface overflow-hidden"
+      className="or-surface overflow-hidden z-[60]"
       style={{
-        right: "max(12px, env(safe-area-inset-right))",
-        bottom: "max(12px, env(safe-area-inset-bottom))",
-        width: "min(340px, calc(100vw - 24px))",
-        height: minimized ? 44 : "min(460px, calc(100dvh - 120px))",
+        ...containerStyle,
+        height: minimized ? 44 : (mobile ? "min(80dvh, 540px)" : HEIGHT),
         display: "flex", flexDirection: "column",
         boxShadow: "0 12px 32px rgba(0,0,0,0.4)",
         border: "1px solid var(--border-col)",
-        transition: "height 0.18s ease-out",
+        transition: dragRef.current.active ? "none" : "height 0.18s ease-out",
       }}
       data-testid="floating-dm-window"
     >
       <header
-        className="px-3 py-2 flex items-center gap-2 cursor-pointer"
-        style={{ background: "color-mix(in srgb, var(--primary) 10%, var(--surface))" }}
-        onClick={() => setMinimized((v) => !v)}
+        className={`px-3 py-2 flex items-center gap-2 ${mobile ? "" : "cursor-move"}`}
+        style={{
+          background: "color-mix(in srgb, var(--primary) 10%, var(--surface))",
+          touchAction: mobile ? "auto" : "none",
+        }}
+        onMouseDown={(e) => { if (e.button === 0) beginDrag(e.clientX, e.clientY); }}
+        onTouchStart={(e) => {
+          if (mobile || !e.touches[0]) return;
+          beginDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }}
+        onDoubleClick={() => setMinimized((v) => !v)}
         data-testid="floating-dm-header"
       >
         <img src={peer.avatar_url || "/avatar-placeholder.svg"} alt="" className="rounded-full" style={{ width: 22, height: 22 }} />
@@ -161,4 +251,17 @@ export default function FloatingDMWindow({ peer, onClose }) {
 function formatTime(iso) {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+// Constrain the popup position so it never escapes the viewport edges,
+// accounting for the popup's own width/height + a small margin so
+// minimize/close stay tappable.
+function clamp({ x, y }) {
+  if (typeof window === "undefined") return { x, y };
+  const maxX = Math.max(MARGIN, window.innerWidth  - WIDTH  - MARGIN);
+  const maxY = Math.max(MARGIN, window.innerHeight - HEIGHT - MARGIN);
+  return {
+    x: Math.max(MARGIN, Math.min(maxX, x)),
+    y: Math.max(MARGIN, Math.min(maxY, y)),
+  };
 }
