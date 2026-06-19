@@ -1,0 +1,37 @@
+{
+  "summary": "Iter 32 — Realm Edit/Delete authz + cascade + audit log. Backend (pytest 15/15 PASS). Frontend (Playwright): founder/owner sees realm-edit-open chip, modal prepopulated, save flow works, backdrop click closes modal, non-admin tfone gets NO chip on /realms/dj AND 403 on direct DELETE, delete-confirm gated by exact-name match, full delete cascade flow OK, deleted realm 404s on direct nav. One UX miss: Esc key does NOT close the modal (no keydown handler in EditRealmModal.jsx). Audit log verified via direct Mongo: realm.update fields list (incl. updated_at), realm.delete summary present.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "EditRealmModal", "issue": "Esc key does not close the modal. There is no onKeyDown / useEffect keydown listener; only backdrop click and close button work. The review request explicitly calls out 'Esc closes modal' as a requirement.", "selector": "[data-testid='realm-edit-modal']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_realm_edit_delete.py",
+    "/app/test_reports/pytest/realm_edit_delete.xml"
+  ],
+  "action_items": [
+    "Add Escape-key handler in /app/frontend/src/components/EditRealmModal.jsx (e.g. useEffect that listens window.keydown for 'Escape' → onClose) to satisfy the 'Esc closes modal' requirement."
+  ],
+  "critical_code_review_comments": [
+    "Audit log on PATCH includes 'updated_at' in the fields list. Spec said 'only the changed keys' — auto-injected updated_at leaks into the audit field list. Cosmetic, not blocking.",
+    "RealmUpdate.privacy is validated inside the handler (returns 400) but is not a Pydantic Literal — pushing validation into the model would give consistent 422 behavior.",
+    "delete_realm summary uses -1 for partial-failure markers; consumers (frontend) treat any positive int as success — fine but worth a comment.",
+    "EditRealmModal.jsx is fine size-wise (~270 lines). No DRY violations spotted."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_realm_edit_delete.py (new)"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "92% (12/13 — Esc close failed)"},
+  "test_credentials": "stealth/Password1$, tfone/pass1234, tftwo/pass1234 — all verified working.",
+  "seed_data_creation": "Tests create TEST_-prefixed throwaway realms and self-clean via DELETE. Audit_log entries remain (by design).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend PATCH/DELETE authz + cascade + audit are solid. Audit_log can be queried directly via Mongo (action='realm.update'|'realm.delete'). Only outstanding gap is Esc-to-close on EditRealmModal — trivial fix. All other regression items (bottom nav, /feed render, member view) confirmed.",
+  "rca of the issue": "EditRealmModal.jsx defines onClick={onClose} on the backdrop and a close button, but has no window/document keydown listener for the Escape key. React modals require an explicit useEffect to bind 'keydown' on window and call onClose when event.key === 'Escape', followed by removeEventListener on cleanup. Fix is a ~6-line useEffect at the top of EditRealmModal."
+}

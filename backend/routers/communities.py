@@ -205,6 +205,147 @@ async def create_realm(payload: RealmCreate, current: CurrentUser):
     return {**doc, "_main_chat_id": chat["id"], "_poll_widget_id": widget["id"]}
 
 
+class RealmUpdate(BaseModel):
+    name:          Optional[str]       = Field(default=None, min_length=2, max_length=60)
+    description:   Optional[str]       = Field(default=None, max_length=400)
+    banner:        Optional[str]       = None
+    profile_image: Optional[str]       = None
+    accent:        Optional[str]       = None
+    tags:          Optional[list[str]] = None
+    privacy:       Optional[str]       = None
+    rules:         Optional[str]       = Field(default=None, max_length=4000)
+
+
+@router.patch("/communities/realms/{id_or_slug}")
+async def update_realm(id_or_slug: str, payload: RealmUpdate, current: CurrentUser):
+    """Owner / founder / admin only — partial update of realm metadata.
+
+    Touches ONLY the realm doc itself. Member lists, posts, widgets,
+    chats, permissions, and other realm-scoped data are preserved.
+    """
+    realm = await _load_community("realm", id_or_slug)
+    if not realm:
+        raise HTTPException(404, "Realm not found")
+    if not _is_admin(realm, current):
+        raise HTTPException(403, "Owner or admin only")
+
+    updates: dict[str, Any] = {}
+    if payload.name is not None:
+        updates["name"] = payload.name.strip()
+    if payload.description is not None:
+        updates["description"] = (payload.description or "").strip() or None
+    if payload.banner is not None:
+        updates["banner"] = payload.banner or None
+    if payload.profile_image is not None:
+        updates["profile_image"] = payload.profile_image or None
+    if payload.accent is not None:
+        updates["accent"] = payload.accent or "#10E670"
+    if payload.tags is not None:
+        updates["tags"] = [t.strip() for t in payload.tags if (t or "").strip()][:20]
+    if payload.privacy is not None:
+        if payload.privacy not in {"public", "private", "invite_only"}:
+            raise HTTPException(400, "privacy must be public | private | invite_only")
+        updates["privacy"] = payload.privacy
+    if payload.rules is not None:
+        updates["rules"] = (payload.rules or "").strip() or None
+
+    if not updates:
+        return {**realm, "online_count": await _online_count("realm", realm["id"])}
+
+    updates["updated_at"] = _now_iso()
+    await db.realms.update_one({"id": realm["id"]}, {"$set": updates})
+
+    # Audit log — keep edits traceable.
+    try:
+        await db.audit_log.insert_one({
+            "id":         uuid.uuid4().hex,
+            "action":     "realm.update",
+            "actor_id":   current["id"],
+            "actor_user": current.get("username"),
+            "realm_id":   realm["id"],
+            "fields":     list(updates.keys()),
+            "at":         _now_iso(),
+        })
+    except Exception:  # pylint: disable=broad-except
+        logger.exception("[communities] audit log insert failed for realm.update")
+
+    refreshed = await db.realms.find_one({"id": realm["id"]}, {"_id": 0})
+    return {
+        **(refreshed or {}),
+        "online_count": await _online_count("realm", realm["id"]),
+        "member_count": await db.community_memberships.count_documents({
+            "community_type": "realm", "community_id": realm["id"],
+        }),
+    }
+
+
+@router.delete("/communities/realms/{id_or_slug}")
+async def delete_realm(id_or_slug: str, current: CurrentUser):
+    """Owner / founder / admin only — permanent cascading delete.
+
+    Hard-deletes the realm itself, all memberships, chats, messages,
+    widgets, polls, hub posts, notifications, and audit refs scoped
+    to the realm. Idempotent: a second call on the same id returns
+    404 cleanly.
+    """
+    realm = await _load_community("realm", id_or_slug)
+    if not realm:
+        raise HTTPException(404, "Realm not found")
+    if not _is_admin(realm, current):
+        raise HTTPException(403, "Owner or admin only")
+
+    rid = realm["id"]
+
+    # 1. Collect chat ids first so we can fan out their messages.
+    chat_ids = [c["id"] async for c in db.community_chats.find(
+        {"community_type": "realm", "community_id": rid},
+        {"_id": 0, "id": 1},
+    )]
+
+    # 2. Cascading deletes. Each step swallows its own errors so a
+    #    partial failure on a non-critical collection doesn't strand
+    #    the realm in a half-deleted state.
+    deletes_summary: dict[str, int] = {}
+
+    async def _safe_delete(coll, filt, key):
+        try:
+            res = await coll.delete_many(filt)
+            deletes_summary[key] = res.deleted_count
+        except Exception:  # pylint: disable=broad-except
+            logger.exception("[communities] delete cascade failed for %s", key)
+            deletes_summary[key] = -1
+
+    await _safe_delete(db.community_messages,    {"chat_id": {"$in": chat_ids}}, "messages")
+    await _safe_delete(db.community_chats,       {"community_type": "realm", "community_id": rid}, "chats")
+    await _safe_delete(db.community_widgets,    {"community_type": "realm", "community_id": rid}, "widgets")
+    await _safe_delete(db.community_hub_posts,  {"realm_id": rid},   "hub_posts")
+    await _safe_delete(db.community_memberships,{"community_type": "realm", "community_id": rid}, "memberships")
+    await _safe_delete(db.realm_invites,        {"realm_id": rid},    "invites")
+    await _safe_delete(db.notifications,        {"realm_id": rid},   "notifications")
+    await _safe_delete(db.poll_votes,           {"realm_id": rid},   "poll_votes")
+    # Finally drop the realm itself.
+    res = await db.realms.delete_one({"id": rid})
+    deletes_summary["realm"] = res.deleted_count
+
+    # Audit log — survives the delete cascade because audit_log isn't
+    # filtered by realm_id here.
+    try:
+        await db.audit_log.insert_one({
+            "id":         uuid.uuid4().hex,
+            "action":     "realm.delete",
+            "actor_id":   current["id"],
+            "actor_user": current.get("username"),
+            "realm_id":   rid,
+            "realm_name": realm.get("name"),
+            "summary":    deletes_summary,
+            "at":         _now_iso(),
+        })
+    except Exception:  # pylint: disable=broad-except
+        logger.exception("[communities] audit log insert failed for realm.delete")
+
+    return {"ok": True, "deleted": rid, "summary": deletes_summary}
+
+
 # --------------------------------------------------------------------- #
 # Group endpoints — private mini-Realms.
 # --------------------------------------------------------------------- #

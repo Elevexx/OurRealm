@@ -21,7 +21,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Users, Radio, Image as ImageIcon, Music2, MessageSquare, Calendar,
-  Crown, Plus, Settings, Pin, ArrowLeft, Shield, Sparkles,
+  Crown, Plus, Settings, Pin, ArrowLeft, Shield, Sparkles, Edit3,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { REALMS as MOCK_REALMS, CHARACTERS, makeMockPosts } from "@/data/mockData";
@@ -34,6 +34,7 @@ import { useMessagingPopups } from "@/contexts/MessagingPopupContext";
 import RealmPollWidget from "@/components/RealmPollWidget";
 import CommunityHubWidget from "@/components/CommunityHubWidget";
 import RealmWidgetGrid from "@/components/RealmWidgetGrid";
+import EditRealmModal from "@/components/EditRealmModal";
 import { useAuth } from "@/contexts/AuthContext";
 import useHeartbeat from "@/hooks/useHeartbeat";
 
@@ -73,6 +74,7 @@ export default function RealmDetail() {
     try { return JSON.parse(localStorage.getItem(BANNER_KEY(id)) || "null"); } catch { return null; }
   });
   const [bannerEditorOpen, setBannerEditorOpen] = useState(false);
+  const [editRealmOpen, setEditRealmOpen]       = useState(false);
   // Phase 2 — widget edit mode. When false, the grid is read-only
   // (no resize/drag handles). Admin-only toggle in the toolbar.
   const [editMode, setEditMode] = useState(false);
@@ -220,6 +222,14 @@ export default function RealmDetail() {
                   onClick={() => setRenameOpen(true)}
                   data-testid="realm-customize"
                 ><Settings size={12} /> Customize Community</button>
+              )}
+              {isAdmin && (
+                <button
+                  className="or-chip"
+                  style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)" }}
+                  onClick={() => setEditRealmOpen(true)}
+                  data-testid="realm-edit-open"
+                ><Edit3 size={12} /> Edit Realm</button>
               )}
               <button
                 className={joined ? "or-btn or-btn-ghost" : "or-btn"}
@@ -520,6 +530,25 @@ export default function RealmDetail() {
           member={memberSheet}
           onClose={() => setMemberSheet(null)}
           onOpenChat={(m) => openDM(m)}
+        />
+      )}
+      {editRealmOpen && (
+        <EditRealmModal
+          realm={realm}
+          onClose={() => setEditRealmOpen(false)}
+          onSaved={(updated) => {
+            // Merge server response into local realm state so UI
+            // reflects the new name / accent / banner / privacy
+            // without a full reload.
+            setRealm((prev) => ({ ...(prev || {}), ...updated }));
+            setEditRealmOpen(false);
+          }}
+          onDeleted={() => {
+            // Navigate back to the realms list. The deleted realm
+            // will not appear in subsequent fetches.
+            setEditRealmOpen(false);
+            navigate("/realms", { replace: true });
+          }}
         />
       )}
     </div>
