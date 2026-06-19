@@ -234,6 +234,15 @@ async def on_startup():
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[storage] could not resolve uploads root: {e}")
 
+    # Account lifecycle — hourly purge cron for users past the
+    # 30-day soft-delete window. Helpers + idempotent purge live
+    # in core.account_lifecycle; the scheduler just calls them.
+    try:
+        from services.purge_cron import start_purge_scheduler
+        start_purge_scheduler()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[purge_cron] startup failed: {e}")
+
     logger.info("OurRealm startup complete (moderation loop armed)")
 
 
@@ -244,4 +253,9 @@ async def on_shutdown():
         _mod_task.cancel()
     if _pulse_task:
         _pulse_task.cancel()
+    try:
+        from services.purge_cron import stop_purge_scheduler
+        await stop_purge_scheduler()
+    except Exception:  # noqa: BLE001
+        pass
     await close_db()

@@ -201,3 +201,133 @@ async def mark_restore(user: dict, actor: Optional[dict] = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
     return refreshed
+
+
+
+# ────────────────────────────────────────────────────────────────────
+# Permanent deletion (cron-driven)
+# ────────────────────────────────────────────────────────────────────
+# After RESTORE_WINDOW_DAYS has elapsed since soft-delete the user
+# row is no longer recoverable. `purge_user` strips every PII field
+# in-place but PRESERVES the `id` so existing audit_log /
+# moderation_record / report entries that reference the user keep
+# referential integrity.
+#
+# Username and email are blanked and replaced with markers that can
+# NEVER be claimed by a registration (`deleted_*` prefix is rejected
+# by the username regex). The original username/email become free
+# for re-use by new signups because the row no longer holds them.
+#
+# Idempotent: any user whose `account_status` is already `'purged'`
+# is skipped — the cron can re-run safely.
+
+STATUS_PURGED = "purged"
+
+# Username / email rule for the marker rows. The trailing 8-char
+# slice of the user id keeps the marker unique across the table
+# without revealing the original handle.
+def _marker(uid: str) -> tuple[str, str]:
+    slug = (uid or "x").replace("-", "")[:8]
+    return f"deleted_{slug}", f"deleted_{slug}@deleted.invalid"
+
+
+async def purge_user(user: dict) -> dict:
+    """Permanently anonymise a single user row. Returns the refreshed doc.
+
+    PRECONDITION (enforced): user must be in pending-deletion AND
+    have reached `purge_after`. Anything else is a no-op so callers
+    can safely retry.
+    """
+    if not is_pending_deletion(user):
+        return user
+    if not is_purge_due(user):
+        return user
+    uid = user["id"]
+    now = _now()
+    new_username, new_email = _marker(uid)
+    update_set = {
+        "account_status":         STATUS_PURGED,
+        "permanently_deleted":    True,
+        "permanently_deleted_at": now.isoformat(),
+        # PII fields → null / marker. We keep `id` and `created_at`
+        # for audit-log referential integrity; everything else is
+        # anonymised.
+        "username":               new_username,
+        "email":                  new_email,
+        "name":                   None,
+        "display_name":           None,
+        "bio":                    None,
+        "avatar_url":             None,
+        "banner_url":             None,
+        "cover_url":              None,
+        "headline":               None,
+        "location":               None,
+        "zip_code":               None,
+        "phone":                  None,
+        "social":                 {},
+        "wallet":                 {},
+        "widgets":                [],
+        "password_hash":          "",         # no login path
+        "disabled":               True,       # belt + braces
+        "password_changed_at":    now.isoformat(),
+    }
+    update_unset = {
+        # The lifecycle hints are removed so the row never re-enters
+        # the cron's query.
+        "deletion_scheduled_at": "",
+        "purge_after":           "",
+        "deleted_by":            "",
+        "deletion_reason":       "",
+    }
+    await db.users.update_one(
+        {"id": uid},
+        {"$set": update_set, "$unset": update_unset},
+    )
+
+    # Final immutable audit-log entry. Includes the ORIGINAL username
+    # so support can still reconstruct who the row was at the moment
+    # of purge from the audit log alone.
+    try:
+        await db.audit_log.insert_one({
+            "id":            uuid.uuid4().hex,
+            "action":        "account.permanent_delete",
+            "actor_id":      "system",
+            "actor_user":    "purge-cron",
+            "target_id":     uid,
+            "target_user":   user.get("username"),
+            "purge_after":   user.get("purge_after"),
+            "at":            now.isoformat(),
+        })
+    except Exception:  # noqa: BLE001
+        pass
+
+    return await db.users.find_one({"id": uid}, {"_id": 0}) or {}
+
+
+async def run_purge_pass(limit: int = 200) -> dict[str, int]:
+    """Find every user past their purge_after and anonymise them.
+
+    Returns a small structured summary suitable for logging. Caller
+    owns scheduling; this is just a single pass.
+    """
+    now_iso = _now_iso()
+    cursor = db.users.find(
+        {
+            "account_status": STATUS_DELETED_PENDING,
+            "purge_after":    {"$lte": now_iso, "$ne": None},
+        },
+        {"_id": 0},
+    ).limit(max(1, min(limit, 500)))
+    purged = 0
+    skipped = 0
+    failed  = 0
+    async for u in cursor:
+        try:
+            res = await purge_user(u)
+            if res.get("account_status") == STATUS_PURGED:
+                purged += 1
+            else:
+                skipped += 1
+        except Exception:  # noqa: BLE001 — each row is independent
+            failed += 1
+    return {"purged": purged, "skipped": skipped, "failed": failed}
