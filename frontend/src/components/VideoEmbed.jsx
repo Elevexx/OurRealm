@@ -4,43 +4,49 @@
  *   • Uploaded files (.mp4/.webm/.ogg/.mov) → <AutoplayVideo/> with the
  *     native <video> element, intersection-observer autoplay/pause, and
  *     our custom mute pill.
- *   • YouTube URLs (youtu.be / youtube.com / shorts) → privacy-enhanced
- *     iframe at youtube-nocookie.com — STABLE: rendered once, never
- *     remounted on scroll. Provider controls (incl. sound) are visible.
+ *   • YouTube URLs (youtu.be / youtube.com / shorts) → poster + Play
+ *     overlay until the user explicitly taps Play. On tap we mount the
+ *     official YouTube IFrame Player against `youtube-nocookie.com`
+ *     with `enablejsapi=1` so we can `stopVideo()` / `destroy()` on
+ *     route change, page-visibility-hidden, unmount, or modal close.
+ *     We do NOT pass `controls=0`, `modestbranding=1`, or `rel=0` —
+ *     the player must render YouTube's standard controls, branding,
+ *     links, and related-video behaviour. No custom overlays cover
+ *     the player once it starts.
  *   • Vimeo URLs → player.vimeo.com iframe (same stability guarantee).
  *   • Anything else → click-through preview card with a Play affordance.
  *
- * The previous implementation rebuilt the iframe whenever the video
- * crossed the 50% visibility line (via a `key={id:autoplay}` swap). That
- * produced YouTube black-boxes after refresh + on every scroll because
- * the embed reloaded with `autoplay=1` from a cold state, which the
- * provider often rejects, and because the React key churn dropped state.
- * We now mount the iframe a single time with `autoplay=1&mute=1` —
- * YouTube ignores the autoplay hint when its policy disallows it AND we
- * surface a tap-to-play overlay only until the user interacts once.
+ * The YouTube embed is intentionally user-initiated only — there is no
+ * autoplay on mount and no intersection-observer auto-resume. Spec
+ * compliance: see /app/frontend/src/lib/youtube.js for the registry +
+ * cleanup primitives and `<YouTubeRouteCleanup />` in App.js for the
+ * route-change cleanup hook.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Play, ExternalLink, AlertCircle, Volume2, VolumeX } from "lucide-react";
+import { Play, ExternalLink, AlertCircle } from "lucide-react";
 import AutoplayVideo from "@/components/AutoplayVideo";
 import { loadYouTubeApi } from "@/lib/loadYouTubeApi";
+import {
+  detectYouTubeUrl,
+  registerYouTubePlayer,
+  unregisterYouTubePlayer,
+} from "@/lib/youtube";
 
 export function classifyVideoUrl(raw) {
   if (!raw) return { kind: "none" };
   const url = String(raw);
   // PRIORITY ORDER — uploaded files (or our own video server) always win
   // over the iframe/embed branch, even if the URL happens to contain a
-  // "vimeo.com" query parameter or similar. iOS Safari needs the native
-  // <video> path with autoplay + playsInline, not an iframe.
+  // "vimeo.com" query parameter or similar.
   const stripped = url.split("?")[0].split("#")[0];
   if (/\.(mp4|webm|ogg|mov|m4v)$/i.test(stripped) || url.includes("/api/videos/")) {
     return { kind: "file", url };
   }
-  // YouTube — long form, short form, shorts, embed form. All collapse to
-  // a stable youtube-nocookie embed URL with the 11-char video id.
-  let m = url.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|v\/)|youtu\.be\/)([\w-]{6,})/i);
-  if (m) return { kind: "youtube", id: m[1], url };
+  // YouTube — long form, short form, shorts, embed form.
+  const ytId = detectYouTubeUrl(url);
+  if (ytId) return { kind: "youtube", id: ytId, url };
   // Vimeo — handles `vimeo.com/<id>` and `vimeo.com/video/<id>`.
-  m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+  const m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
   if (m) return { kind: "vimeo", id: m[1], url };
   return { kind: "external", url };
 }
@@ -53,38 +59,41 @@ export function vimeoWatchUrl(id) {
 }
 
 /**
- * YouTubeEmbed — a single YouTube post's iframe, controlled via the
- * official YouTube IFrame Player API so the audio button can call real
- * player methods (`unMute`, `setVolume`, `playVideo`) synchronously
- * inside the user's tap. iOS Safari REQUIRES that those calls happen
- * inside the gesture handler — no timers, no async chains.
+ * YouTubeEmbed — user-initiated YouTube playback.
  *
- * Each instance owns its own `YT.Player` against a unique <div id> so
- * multiple YouTube posts in the feed never share state.
+ * Render lifecycle:
+ *   1. Poster image + Play button — no iframe in the DOM, no network
+ *      requests to YouTube.
+ *   2. User taps Play → mount a `YT.Player` via the IFrame API against
+ *      a placeholder div. The player loads the video and (because the
+ *      mount happened inside the user's tap) is allowed by browser
+ *      policy to play with sound. We register the player so route-change
+ *      / visibility-change hooks can stop it.
+ *   3. On unmount we `stopVideo()` + `destroy()` and unregister.
+ *
+ * No custom mute button, no z-index overlay over the iframe, no
+ * pointer-events: none banners — once the player is up, only YouTube's
+ * own controls and ad UI exist on top of the iframe.
  */
 let _ytEmbedCounter = 0;
 
 function YouTubeEmbed({ videoId, url, className, style, testid }) {
-  // Stable, unique placeholder id — the YT API replaces this div with an iframe.
   const playerId = useMemo(
     () => `yt-player-${videoId}-${++_ytEmbedCounter}`,
     [videoId],
   );
-  const containerRef = useRef(null);
   const playerRef = useRef(null);
-  const ioRef = useRef(null);
-  const [ready, setReady] = useState(false);
+  const [active, setActive] = useState(false); // user tapped Play?
   const [failed, setFailed] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
-  const [userPrefersSound, setUserPrefersSound] = useState(false);
-  // True once the user has tapped the sound button at least once. If the
-  // player is still muted after that, we surface a fallback hint asking
-  // them to tap inside the iframe (the spec calls this out for iOS).
-  const [soundTapAttempted, setSoundTapAttempted] = useState(false);
   const watchUrl = youtubeWatchUrl(videoId);
+  const posterUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
-  // Create the player once per (videoId, playerId).
+  // Mount the player only after the user taps Play. This guarantees
+  // user-initiated playback (no autoplay-on-mount, no intersection
+  // observer auto-resume) and means no iframe exists in the DOM until
+  // the user explicitly opts in.
   useEffect(() => {
+    if (!active) return undefined;
     let cancelled = false;
     let failTimer = setTimeout(() => {
       if (!cancelled && !playerRef.current) {
@@ -97,44 +106,35 @@ function YouTubeEmbed({ videoId, url, className, style, testid }) {
     loadYouTubeApi()
       .then((YT) => {
         if (cancelled) return;
-        // Mount only when the placeholder is present.
         if (!document.getElementById(playerId)) return;
         playerRef.current = new YT.Player(playerId, {
           videoId,
           playerVars: {
-            // Spec'd query parameters.
+            // Autoplay is set BECAUSE this mount happens synchronously
+            // inside the user's tap — browser policies treat this as
+            // user-initiated and allow playback with sound. We never
+            // mount autoplay outside of a tap.
             autoplay: 1,
-            mute: 1,
+            // playsinline is the inline-rendering hint, not a control
+            // modifier. Required so iOS doesn't take the player full
+            // screen on tap.
             playsinline: 1,
-            rel: 0,
-            modestbranding: 1,
+            // Required so we can call stopVideo()/destroy() on cleanup.
             enablejsapi: 1,
-            // `origin` helps the API postMessage handshake on Safari.
             origin: window.location.origin,
+            // Intentionally NOT setting `controls`, `modestbranding`,
+            // or `rel` — YouTube renders its standard player UI.
           },
           events: {
-            onReady: (e) => {
+            onReady: () => {
               clearTimeout(failTimer);
               if (cancelled) return;
-              setReady(true);
-              // Autoplay-muted is the only reliable default — the spec also
-              // calls this out. We'll honour the user's audio preference
-              // when they tap the sound button.
-              try { e.target.mute(); e.target.playVideo(); } catch (err) { /* noop */ }
-              setIsMuted(true);
+              registerYouTubePlayer(playerRef.current);
             },
             onError: (e) => {
               // eslint-disable-next-line no-console
               console.error("[YouTubeEmbed] player error", { videoId, code: e?.data });
               setFailed(true);
-            },
-            onStateChange: () => {
-              // Re-check mute state after any state transition so the UI
-              // stays in sync with what the user did inside the player.
-              try {
-                const p = playerRef.current;
-                if (p && typeof p.isMuted === "function") setIsMuted(!!p.isMuted());
-              } catch (err) { /* noop */ }
             },
           },
         });
@@ -148,59 +148,13 @@ function YouTubeEmbed({ videoId, url, className, style, testid }) {
     return () => {
       cancelled = true;
       clearTimeout(failTimer);
-      try { playerRef.current?.destroy?.(); } catch (e) { /* noop */ }
+      const p = playerRef.current;
+      try { p?.stopVideo?.(); } catch (_e) { /* noop */ }
+      try { p?.destroy?.();   } catch (_e) { /* noop */ }
+      unregisterYouTubePlayer(p);
       playerRef.current = null;
     };
-  }, [videoId, playerId]);
-
-  // Pause when scrolled out of view, resume with the user's last audio
-  // preference when back in view. One IntersectionObserver per post.
-  useEffect(() => {
-    if (!ready || !containerRef.current) return undefined;
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        const p = playerRef.current;
-        if (!p) return;
-        try {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
-            if (userPrefersSound) { p.unMute?.(); p.setVolume?.(100); }
-            else p.mute?.();
-            p.playVideo?.();
-          } else {
-            p.pauseVideo?.();
-          }
-        } catch (e) { /* noop */ }
-      },
-      { threshold: [0, 0.5, 1] },
-    );
-    io.observe(containerRef.current);
-    ioRef.current = io;
-    return () => io.disconnect();
-  }, [ready, userPrefersSound]);
-
-  // ⚡ Synchronous unmute — MUST stay inside the React tap handler. No
-  // timers, no awaits, no setState-before-call. iOS Safari and Home
-  // Screen PWAs reject the audio gesture otherwise.
-  const onSoundTap = (e) => {
-    e.stopPropagation();
-    const p = playerRef.current;
-    if (!p) return;
-    try {
-      p.unMute();
-      p.setVolume(100);
-      p.playVideo();
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("[YouTubeEmbed] unmute failed", err);
-    }
-    // Read back immediately. If still muted, we leave the button visible
-    // and show the fallback hint.
-    let stillMuted = true;
-    try { stillMuted = !!p.isMuted?.(); } catch (err) { /* noop */ }
-    setIsMuted(stillMuted);
-    setUserPrefersSound(!stillMuted);
-    setSoundTapAttempted(true);
-  };
+  }, [active, videoId, playerId]);
 
   if (failed) {
     return (
@@ -230,9 +184,54 @@ function YouTubeEmbed({ videoId, url, className, style, testid }) {
     );
   }
 
+  // Before the user taps Play — render the poster + tap-to-play button.
+  // No iframe yet, so no network calls to YouTube and no possibility of
+  // background audio.
+  if (!active) {
+    return (
+      <div
+        className={className}
+        style={{
+          position: "relative", width: "100%", paddingTop: "56.25%",
+          background: "#000", ...style,
+        }}
+        data-testid={testid}
+      >
+        <button
+          type="button"
+          onClick={() => setActive(true)}
+          data-testid={`${testid}-play`}
+          aria-label="Play video on YouTube embed"
+          style={{
+            position: "absolute", inset: 0,
+            width: "100%", height: "100%",
+            background: `#000 url(${posterUrl}) center/cover no-repeat`,
+            border: 0, padding: 0,
+            cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              width: 64, height: 64, borderRadius: 999,
+              background: "rgba(0,0,0,0.62)",
+              border: "2px solid rgba(255,255,255,0.85)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "#fff",
+            }}
+          >
+            <Play size={26} fill="#fff" />
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  // After tap — the iframe lives at full size with YouTube's own
+  // controls. NO overlays sit on top of the iframe.
   return (
     <div
-      ref={containerRef}
       className={className}
       style={{
         position: "relative", width: "100%", paddingTop: "56.25%",
@@ -240,96 +239,11 @@ function YouTubeEmbed({ videoId, url, className, style, testid }) {
       }}
       data-testid={testid}
     >
-      {/* YT.Player replaces this <div> with an <iframe>. */}
       <div
         id={playerId}
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
         data-testid={`${testid}-iframe`}
       />
-
-      {/* Sound button — visible while the player reports muted. Calls
-          the YT.Player methods SYNCHRONOUSLY inside the tap handler. */}
-      {ready && isMuted && (
-        <button
-          type="button"
-          onClick={onSoundTap}
-          onTouchEnd={onSoundTap}
-          className="absolute"
-          style={{
-            left: 12, bottom: 12,
-            background: "rgba(0,0,0,0.6)",
-            color: "#fff",
-            border: "1px solid rgba(255,255,255,0.2)",
-            borderRadius: 999,
-            padding: "0.4rem 0.75rem",
-            fontSize: 12,
-            display: "flex", alignItems: "center", gap: 6,
-            cursor: "pointer",
-            zIndex: 3,
-          }}
-          data-testid={`${testid}-sound-hint`}
-          aria-label="Tap for sound"
-        >
-          <VolumeX size={12} /> Tap for sound
-        </button>
-      )}
-
-      {/* Fallback hint — appears only when an earlier tap on our sound
-          button failed to actually un-mute the player (the policy
-          rejected the call). Sits above the iframe so it's visible, but
-          uses `pointer-events: none` so it cannot intercept clicks on
-          the actual YouTube controls. */}
-      {ready && isMuted && soundTapAttempted && (
-        <div
-          className="absolute"
-          style={{
-            left: 0, right: 0, top: 0,
-            margin: "10px auto",
-            width: "fit-content",
-            maxWidth: "90%",
-            background: "rgba(0,0,0,0.7)",
-            color: "#fff",
-            border: "1px solid rgba(255,255,255,0.18)",
-            borderRadius: 999,
-            padding: "0.35rem 0.7rem",
-            fontSize: 11,
-            zIndex: 4,
-            pointerEvents: "none",
-          }}
-          data-testid={`${testid}-sound-fallback`}
-        >
-          Tap the YouTube video itself to enable sound
-        </div>
-      )}
-
-      {ready && !isMuted && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            const p = playerRef.current;
-            if (!p) return;
-            try { p.mute(); } catch (err) { /* noop */ }
-            setIsMuted(true);
-            setUserPrefersSound(false);
-          }}
-          className="absolute"
-          style={{
-            right: 12, bottom: 12,
-            background: "rgba(0,0,0,0.55)",
-            color: "#fff",
-            border: "1px solid rgba(255,255,255,0.2)",
-            borderRadius: 999,
-            width: 32, height: 32,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            zIndex: 3,
-          }}
-          data-testid={`${testid}-sound-mute`}
-          aria-label="Mute"
-        >
-          <Volume2 size={14} />
-        </button>
-      )}
     </div>
   );
 }

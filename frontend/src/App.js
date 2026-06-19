@@ -33,6 +33,7 @@ import AdminFAQ from "@/pages/AdminFAQ";
 import AdminHashtags from "@/pages/AdminHashtags";
 import HashtagFeed from "@/pages/HashtagFeed";
 import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage, CommunityStandardsPage, DMCAPolicyPage, SafetyPolicyPage, CookieNoticePage, AccountDeletionPage } from "@/pages/LegalPages";
+import YouTubeRouteCleanup from "@/components/YouTubeRouteCleanup";
 import PostPopup from "@/components/PostPopup";
 import MiniPlayer from "@/components/MiniPlayer";
 import InstallPrompt from "@/components/InstallPrompt";
@@ -55,6 +56,7 @@ function App() {
       <AuthProvider>
         <PresenceProvider>
           <BrowserRouter>
+          <YouTubeRouteCleanup />
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/signup" element={<SignUp />} />
