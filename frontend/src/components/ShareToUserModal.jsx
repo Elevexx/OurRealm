@@ -95,18 +95,18 @@ export default function ShareToUserModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[230] flex items-end sm:items-center justify-center px-2 sm:px-4 py-4 sm:py-10"
+      className="or-modal-shell z-[230]"
       style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)" }}
       onClick={() => !sending && onClose?.()}
       data-testid={`${testid}-overlay`}
     >
       <div
-        className="or-surface w-full sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden"
+        className="or-surface or-modal-card"
         onClick={(e) => e.stopPropagation()}
         data-testid={testid}
         role="dialog" aria-modal="true"
       >
-        <div className="flex items-center justify-between p-4" style={{ borderBottom: "1px solid var(--border-col)" }}>
+        <div className="or-modal-header flex items-center justify-between p-4" style={{ borderBottom: "1px solid var(--border-col)" }}>
           <div className="flex items-center gap-2">
             <Share2 size={16} style={{ color: "var(--primary)" }} />
             <h3 className="text-base" style={{ fontFamily: "var(--font-display)" }}>Share with…</h3>
@@ -131,7 +131,7 @@ export default function ShareToUserModal({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2" data-testid={`${testid}-list`}>
+        <div className="flex-1 overflow-y-auto p-2 or-modal-body" data-testid={`${testid}-list`}>
           {loading ? (
             <div className="flex items-center justify-center py-8" style={{ color: "var(--text-muted)" }}>
               <Loader2 size={18} className="animate-spin" />

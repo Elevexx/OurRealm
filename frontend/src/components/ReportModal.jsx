@@ -115,19 +115,19 @@ export default function ReportModal({
   return createPortal(
     <>
       <div
-        className="fixed inset-0 z-[210] flex items-end sm:items-center justify-center px-2 sm:px-4 py-4 sm:py-10"
+        className="or-modal-shell z-[210]"
         style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)" }}
         onClick={() => !busy && onClose?.()}
         data-testid={`${testid}-overlay`}
       >
         <div
-          className="or-surface w-full sm:max-w-md max-h-[92vh] flex flex-col overflow-hidden"
+          className="or-surface or-modal-card"
           onClick={(e) => e.stopPropagation()}
           data-testid={testid}
           role="dialog"
           aria-modal="true"
         >
-          <div className="flex items-center justify-between p-4" style={{ borderBottom: "1px solid var(--border-col)" }}>
+          <div className="or-modal-header flex items-center justify-between p-4" style={{ borderBottom: "1px solid var(--border-col)" }}>
             <div className="flex items-center gap-2">
               <Flag size={16} style={{ color: "#FF6B6B" }} />
               <h3 className="text-base" style={{ fontFamily: "var(--font-display)" }}>
@@ -137,7 +137,7 @@ export default function ReportModal({
             <button onClick={onClose} className="starbar-icon" style={{ width: 32, height: 32 }} data-testid={`${testid}-close`} aria-label="Close"><X size={14} /></button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 or-modal-body">
             <div>
               <div className="text-[10px] uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>
                 Reason <span style={{ color: "#FF6B6B" }}>*</span>

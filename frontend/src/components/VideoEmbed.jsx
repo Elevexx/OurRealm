@@ -30,6 +30,7 @@ import {
   detectYouTubeUrl,
   registerYouTubePlayer,
   unregisterYouTubePlayer,
+  pauseAllOthers,
 } from "@/lib/youtube";
 
 export function classifyVideoUrl(raw) {
@@ -59,21 +60,28 @@ export function vimeoWatchUrl(id) {
 }
 
 /**
- * YouTubeEmbed — user-initiated YouTube playback.
+ * YouTubeEmbed — autoplay-muted-on-viewport with single-tap fallback.
  *
- * Render lifecycle:
- *   1. Poster image + Play button — no iframe in the DOM, no network
- *      requests to YouTube.
- *   2. User taps Play → mount a `YT.Player` via the IFrame API against
- *      a placeholder div. The player loads the video and (because the
- *      mount happened inside the user's tap) is allowed by browser
- *      policy to play with sound. We register the player so route-change
- *      / visibility-change hooks can stop it.
- *   3. On unmount we `stopVideo()` + `destroy()` and unregister.
+ * Lifecycle:
+ *   1. Initial render: poster image only. No iframe in the DOM yet.
+ *   2. An IntersectionObserver watches the wrapper. When ≥50% of the
+ *      wrapper is in the viewport, the iframe mounts via `YT.Player`
+ *      with `autoplay=1, mute=1, playsinline=1, enablejsapi=1`. Muted
+ *      autoplay is allowed by every major browser without a user
+ *      gesture — that's why we never require a tap on the poster.
+ *   3. If the browser still blocks autoplay (rare — e.g. Low Power Mode),
+ *      YouTube's standard Play button is visible inside the iframe and
+ *      ONE tap starts playback. We never render a competing custom
+ *      play overlay once the iframe is mounted.
+ *   4. When the post scrolls out of view, the player is `pauseVideo()`'d.
+ *   5. Only ONE player plays at a time across the feed — when this
+ *      player starts, every other registered player is paused via
+ *      `pauseAllOthers()` from the registry.
+ *   6. Route change / tab hidden / unmount → `stopVideo()` + `destroy()`.
  *
- * No custom mute button, no z-index overlay over the iframe, no
- * pointer-events: none banners — once the player is up, only YouTube's
- * own controls and ad UI exist on top of the iframe.
+ * No custom overlays sit on top of the iframe at any point — YouTube's
+ * standard controls, branding, links, ads, and related-video UI are
+ * fully visible and untouched.
  */
 let _ytEmbedCounter = 0;
 
@@ -82,20 +90,58 @@ function YouTubeEmbed({ videoId, url, className, style, testid }) {
     () => `yt-player-${videoId}-${++_ytEmbedCounter}`,
     [videoId],
   );
-  const playerRef = useRef(null);
-  const [active, setActive] = useState(false); // user tapped Play?
-  const [failed, setFailed] = useState(false);
-  const watchUrl = youtubeWatchUrl(videoId);
+  const wrapperRef = useRef(null);
+  const playerRef  = useRef(null);
+  const ioRef      = useRef(null);
+  const [mounted, setMounted] = useState(false); // iframe in DOM?
+  const [failed,  setFailed]  = useState(false);
+  const watchUrl  = youtubeWatchUrl(videoId);
   const posterUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
-  // Mount the player only after the user taps Play. This guarantees
-  // user-initiated playback (no autoplay-on-mount, no intersection
-  // observer auto-resume) and means no iframe exists in the DOM until
-  // the user explicitly opts in.
+  // IntersectionObserver — mount the iframe (once) when the wrapper
+  // becomes visible, and pause when it leaves. This is the SOLE place
+  // that controls play/pause; there are no other click handlers
+  // competing for the iframe.
   useEffect(() => {
-    if (!active) return undefined;
+    const el = wrapperRef.current;
+    if (!el) return undefined;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        const visible =
+          entry.isIntersecting && entry.intersectionRatio >= 0.5;
+        if (visible) {
+          // Mount on first visibility — this is what kicks off muted
+          // autoplay. Subsequent visibility transitions just resume the
+          // already-mounted player.
+          if (!mounted) {
+            setMounted(true);
+          } else {
+            const p = playerRef.current;
+            if (p) {
+              try {
+                // Pause every OTHER active player so only one plays.
+                pauseAllOthers(p);
+                p.playVideo?.();
+              } catch (_e) { /* noop */ }
+            }
+          }
+        } else {
+          const p = playerRef.current;
+          try { p?.pauseVideo?.(); } catch (_e) { /* noop */ }
+        }
+      },
+      { threshold: [0, 0.5, 1] },
+    );
+    io.observe(el);
+    ioRef.current = io;
+    return () => io.disconnect();
+  }, [mounted]);
+
+  // Player creation — fires once when `mounted` flips to true.
+  useEffect(() => {
+    if (!mounted) return undefined;
     let cancelled = false;
-    let failTimer = setTimeout(() => {
+    const failTimer = setTimeout(() => {
       if (!cancelled && !playerRef.current) {
         // eslint-disable-next-line no-console
         console.warn("[YouTubeEmbed] API load timeout", { videoId });
@@ -110,38 +156,42 @@ function YouTubeEmbed({ videoId, url, className, style, testid }) {
         playerRef.current = new YT.Player(playerId, {
           videoId,
           playerVars: {
-            // Autoplay is set BECAUSE this mount happens synchronously
-            // inside the user's tap — browser policies treat this as
-            // user-initiated and allow playback with sound. We never
-            // mount autoplay outside of a tap.
-            autoplay: 1,
-            // playsinline is the inline-rendering hint, not a control
-            // modifier. Required so iOS doesn't take the player full
-            // screen on tap.
+            autoplay: 1,    // allowed because mute=1 → no gesture needed
+            mute: 1,
             playsinline: 1,
-            // Required so we can call stopVideo()/destroy() on cleanup.
             enablejsapi: 1,
             origin: window.location.origin,
-            // Intentionally NOT setting `controls`, `modestbranding`,
-            // or `rel` — YouTube renders its standard player UI.
+            // No `controls=0`, `modestbranding=1`, or `rel=0` — the
+            // player must render with standard YouTube UI/branding/ads.
           },
           events: {
-            onReady: () => {
+            onReady: (e) => {
               clearTimeout(failTimer);
               if (cancelled) return;
               registerYouTubePlayer(playerRef.current);
+              try {
+                pauseAllOthers(playerRef.current);
+                e.target.playVideo();
+              } catch (_e) { /* noop */ }
             },
-            onError: (e) => {
+            onError: (er) => {
               // eslint-disable-next-line no-console
-              console.error("[YouTubeEmbed] player error", { videoId, code: e?.data });
+              console.error("[YouTubeEmbed] error", { videoId, code: er?.data });
               setFailed(true);
+            },
+            onStateChange: (s) => {
+              // When the user (or the player) transitions to PLAYING,
+              // pause every other player in the registry.
+              if (s?.data === 1 /* YT.PlayerState.PLAYING */) {
+                pauseAllOthers(playerRef.current);
+              }
             },
           },
         });
       })
       .catch((err) => {
         // eslint-disable-next-line no-console
-        console.error("[YouTubeEmbed] failed to load YT API", err);
+        console.error("[YouTubeEmbed] YT API load failed", err);
         setFailed(true);
       });
 
@@ -154,7 +204,7 @@ function YouTubeEmbed({ videoId, url, className, style, testid }) {
       unregisterYouTubePlayer(p);
       playerRef.current = null;
     };
-  }, [active, videoId, playerId]);
+  }, [mounted, videoId, playerId]);
 
   if (failed) {
     return (
@@ -184,54 +234,13 @@ function YouTubeEmbed({ videoId, url, className, style, testid }) {
     );
   }
 
-  // Before the user taps Play — render the poster + tap-to-play button.
-  // No iframe yet, so no network calls to YouTube and no possibility of
-  // background audio.
-  if (!active) {
-    return (
-      <div
-        className={className}
-        style={{
-          position: "relative", width: "100%", paddingTop: "56.25%",
-          background: "#000", ...style,
-        }}
-        data-testid={testid}
-      >
-        <button
-          type="button"
-          onClick={() => setActive(true)}
-          data-testid={`${testid}-play`}
-          aria-label="Play video on YouTube embed"
-          style={{
-            position: "absolute", inset: 0,
-            width: "100%", height: "100%",
-            background: `#000 url(${posterUrl}) center/cover no-repeat`,
-            border: 0, padding: 0,
-            cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
-        >
-          <span
-            aria-hidden="true"
-            style={{
-              width: 64, height: 64, borderRadius: 999,
-              background: "rgba(0,0,0,0.62)",
-              border: "2px solid rgba(255,255,255,0.85)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#fff",
-            }}
-          >
-            <Play size={26} fill="#fff" />
-          </span>
-        </button>
-      </div>
-    );
-  }
-
-  // After tap — the iframe lives at full size with YouTube's own
-  // controls. NO overlays sit on top of the iframe.
+  // The wrapper is always rendered (with the 16:9 aspect box). Before
+  // the IntersectionObserver fires, we render the poster image inside
+  // — no iframe, no network calls to YouTube. Once `mounted` flips true,
+  // the iframe takes over and the poster is gone.
   return (
     <div
+      ref={wrapperRef}
       className={className}
       style={{
         position: "relative", width: "100%", paddingTop: "56.25%",
@@ -239,11 +248,22 @@ function YouTubeEmbed({ videoId, url, className, style, testid }) {
       }}
       data-testid={testid}
     >
-      <div
-        id={playerId}
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
-        data-testid={`${testid}-iframe`}
-      />
+      {mounted ? (
+        <div
+          id={playerId}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+          data-testid={`${testid}-iframe`}
+        />
+      ) : (
+        <div
+          style={{
+            position: "absolute", inset: 0,
+            background: `#000 url(${posterUrl}) center/cover no-repeat`,
+          }}
+          aria-hidden="true"
+          data-testid={`${testid}-poster`}
+        />
+      )}
     </div>
   );
 }

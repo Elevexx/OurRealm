@@ -29,12 +29,12 @@ export default function ShareToChatModal({ open, track, onClose, onSent, testid 
   if (!isSupabaseConfigured) {
     return (
       <div
-        className="fixed inset-0 z-[220] flex items-end sm:items-center justify-center px-2 pb-24 sm:pb-0"
+        className="or-modal-shell z-[220]"
         style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)" }}
         onClick={onClose}
         data-testid={`${testid}-not-configured`}
       >
-        <div className="or-surface p-5 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="or-surface or-modal-card p-5" onClick={(e) => e.stopPropagation()}>
           <h3 className="text-lg mb-1" style={{ fontFamily: "var(--font-display)" }}>Sharing is offline</h3>
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
             Messenger is not configured in this environment, so we can&apos;t deliver this sound to a chat yet.

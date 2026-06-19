@@ -1182,19 +1182,21 @@ function CreateThreadModal({ me, kind, onClose, onCreate }) {
 function Modal({ title, children, onClose, testid }) {
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center px-2 pb-24 sm:pb-0"
+      className="or-modal-shell z-[90]"
       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)" }}
       onClick={onClose}
       data-testid={testid}
     >
-      <div className="or-surface w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
+      <div className="or-surface or-modal-card p-4" onClick={(e) => e.stopPropagation()}>
+        <div className="or-modal-header flex items-center justify-between mb-3">
           <h3 className="text-lg" style={{ fontFamily: "var(--font-display)", color: "var(--text-main)" }}>{title}</h3>
           <button className="starbar-icon" style={{ width: 32, height: 32 }} onClick={onClose} data-testid={`${testid}-close`}>
             <X size={14} />
           </button>
         </div>
-        {children}
+        <div className="or-modal-body">
+          {children}
+        </div>
       </div>
     </div>
   );

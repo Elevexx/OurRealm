@@ -88,6 +88,18 @@ export function cleanupYouTubePlayers() {
 }
 
 /**
+ * Pause every active player EXCEPT the one passed in. Called by a
+ * player when it transitions to PLAYING so only one YouTube embed in
+ * the feed makes sound at a time.
+ */
+export function pauseAllOthers(except) {
+  for (const p of _activePlayers) {
+    if (p === except) continue;
+    try { p.pauseVideo?.(); } catch (_e) { /* noop */ }
+  }
+}
+
+/**
  * Pause (don't destroy) every active player. Used when the browser tab
  * becomes hidden — destroying would force the user to reload state on
  * return, but pausing is enough to silence background audio.

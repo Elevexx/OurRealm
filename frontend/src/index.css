@@ -29,6 +29,64 @@ img, video { display: block; }
   --safe-right: env(safe-area-inset-right, 0px);
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+ * Safe modal primitives — shared by every popup/sheet so they fit the
+ * visible viewport on iPhone Safari (URL bar shown/hidden), respect
+ * notch + home-indicator safe areas, never let the close X clip off
+ * screen, and always scroll their inner content (never the page) when
+ * tall. Visual style is NOT changed — these classes only fix sizing.
+ *
+ * Usage:
+ *   <div class="or-modal-shell" ...>             outer backdrop
+ *     <div class="or-modal-card" ...>            card (sticky-header + scroll body)
+ *       <header class="or-modal-header">...</header>
+ *       <div    class="or-modal-body">...</div>
+ *     </div>
+ *   </div>
+ * ───────────────────────────────────────────────────────────────────── */
+.or-modal-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  /* Pad off the device safe areas so cards never sit under the notch
+     or the iOS home indicator, AND so the X stays tappable. */
+  padding-top:    max(12px, env(safe-area-inset-top));
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-left:   max(8px,  env(safe-area-inset-left));
+  padding-right:  max(8px,  env(safe-area-inset-right));
+}
+@media (min-width: 640px) {
+  .or-modal-shell { align-items: center; }
+}
+.or-modal-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 100%;
+  max-width: 28rem;
+  /* Fit inside the visible viewport with safe-area + padding accounted
+     for. Falls back to vh on browsers without dvh support. */
+  max-height: calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+}
+@supports (max-height: 100dvh) {
+  .or-modal-card {
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+}
+.or-modal-header {
+  /* Header (incl. X close button) stays pinned, never scrolls off. */
+  flex-shrink: 0;
+}
+.or-modal-body {
+  /* Only the body scrolls — the page behind the modal never does. */
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Fluid typography helpers (modern responsive scaling) */
 .or-text-h1   { font-size: clamp(1.75rem, 6vw + 0.25rem, 3.5rem); line-height: 1.05; }
 .or-text-h2   { font-size: clamp(1.25rem, 3.5vw + 0.25rem, 2rem);  line-height: 1.15; }
