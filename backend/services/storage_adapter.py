@@ -217,19 +217,27 @@ class S3CompatibleAdapter(StorageAdapter):
 def _build_active_adapter() -> StorageAdapter:
     provider = (os.environ.get("STORAGE_PROVIDER") or "local").strip().lower()
     if provider == "r2":
-        account = os.environ.get("R2_ACCOUNT_ID")
-        endpoint = f"https://{account}.r2.cloudflarestorage.com" if account else None
+        # Accept either an explicit endpoint URL (preferred, matches
+        # the Cloudflare dashboard copy-paste) or a bare account id.
+        endpoint = (os.environ.get("R2_ENDPOINT_URL") or "").strip() or None
+        account  = os.environ.get("R2_ACCOUNT_ID")
+        if not endpoint and account:
+            endpoint = f"https://{account}.r2.cloudflarestorage.com"
+        # Bucket lookup accepts both R2_BUCKET_NAME (Cloudflare's
+        # canonical name) and the legacy R2_BUCKET fallback.
+        bucket = os.environ.get("R2_BUCKET_NAME") or os.environ.get("R2_BUCKET")
         adapter = S3CompatibleAdapter(
             name="r2",
             endpoint_url=endpoint,
             access_key=os.environ.get("R2_ACCESS_KEY_ID"),
             secret_key=os.environ.get("R2_SECRET_ACCESS_KEY"),
-            bucket=os.environ.get("R2_BUCKET"),
+            bucket=bucket,
             public_base_url=os.environ.get("R2_PUBLIC_BASE_URL"),
         )
-        if not all([adapter.access_key, adapter.secret_key, adapter.bucket, account]):
+        if not all([adapter.access_key, adapter.secret_key, adapter.bucket, endpoint]):
             log.warning("STORAGE_PROVIDER=r2 but credentials incomplete — falling back to local")
             return LocalAdapter()
+        # NEVER log credentials. Bucket + public base are safe.
         log.info("Storage adapter: R2 bucket=%s base=%s", adapter.bucket, adapter.public_base)
         return adapter
     if provider == "s3":
