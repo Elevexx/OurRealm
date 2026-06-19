@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 29 — End-to-end validation of the new Community Hub widget (Phase 2 missed item). Backend: 15/15 pytest cases PASS in /app/backend/tests/test_realm_hub_widget.py (create-permission, list+is_admin flag, validation matrix across thought/photo/video/sound/event/banana, author-vs-admin delete rules, multi-post newest-first ordering with hydrated author objects {id,username,name,avatar_url}, and wrong-widget-type 404 against a poll widget id). Frontend Playwright on /realms/dj (REACT_APP_BACKEND_URL host): (a) founder stealth sees the new realm-widget-add-hub chip alongside poll/announcements/rules; clicking it POSTs /widgets and adds a fresh realm-hub-widget-<wid> tile with realm-hub-title 'Community Hub' + composer with all 5 kind chips (thought/photo/video/sound/event) + realm-hub-text + realm-hub-submit + realm-hub-feed; (b) all three client-side validations fire WITHOUT a network call — empty thought → 'Add a thought', photo without media → 'Please attach a photo', event with empty text → 'Event needs a title' — error visible in realm-hub-error; (c) switching kinds correctly toggles upload button (photo/video/sound) vs date input (event) vs neither (thought) and resets media/event state; (d) posting a thought of 'phase2-hub-test-thought' inserts a new realm-hub-post-<id> at the top of realm-hub-feed showing @stealth, the THOUGHT kind label and the text; (e) delete-own-post via realm-hub-post-delete-<id> removes the post; (f) delete-widget via realm-hub-delete-<wid> removes the entire tile after confirm dialog. Member view (tfone): realm-widgets-toolbar is hidden (admin-only — also matches the historical design), tfone can POST a thought via the hub composer and DELETE own post, and tfone does NOT see realm-hub-delete-<wid> (delete-widget chip). Regression: /friends and /messages still load without console errors after the hub flows. Pre-existing hub widget id 2df1b46fa5944c4f828cda43b9b399ef on /realms/dj reused for tests; clean post-cleanup performed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_realm_hub_widget.py",
+    "/app/test_reports/pytest/realm_hub_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "realm_widgets.py (lines 348-442): _HUB_KINDS, HubPostCreate, GET/POST/DELETE /hub/posts and the wrong-widget-type 404 guard are clean and idempotent. _hub_author_brief returns the exact {id, username, name, avatar_url} keys the UI consumes; verified by GET hydration test.",
+    "CommunityHubWidget.jsx: client-side validation correctly short-circuits BEFORE the network call (verified: error messages appear with no POST in DevTools). Reset on kind-switch zeroes mediaUrl/eventAt/err — good. canDelete=isAdmin || p.author_id===user?.id matches the backend's author-or-admin policy.",
+    "RealmDetail.jsx render switch: w.type==='hub' branch renders <CommunityHubWidget/> with isAdmin + onDelete passed through. Toolbar chip realm-widget-add-hub is wired as the first item — matches spec.",
+    "Minor (non-blocking): the realm-widgets-toolbar is admin-only by design (only renders inside `{isAdmin && (...)}`), so members never see ANY add-widget chips. This matches the rest of Phase 2 (poll/announcements/rules) so I treated it as correct, not a regression.",
+    "Minor (non-blocking): CommunityHubWidget initialises kind state to 'thought' on mount but does NOT reset kind to 'thought' after a successful submit — composer stays on the previously chosen kind. Acceptable UX, just flagging for product review."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_realm_hub_widget.py (new — 15 cases)"
+  ],
+  "success_rate": {"backend": "100% (15/15 pytest)", "frontend": "100% (all 14 acceptance items in the request validated)"},
+  "test_credentials": "Founder stealth/Password1$, member tfone/pass1234. Login via POST /api/auth/login with {email,password} where email accepts username or email. Token then stored in localStorage('ourrealm.access') for protected routes.",
+  "seed_data_creation": "No persistent seed data. All hub posts created during tests were deleted in the same test/script. The pre-existing hub widget 2df1b46fa5944c4f828cda43b9b399ef on /realms/dj was reused as instructed and left intact. One transient hub widget (id e943304ebfc5408c8fd814b7230c3a72) was created via the chip and immediately deleted via realm-hub-delete-<wid>.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Community Hub widget is GREEN end-to-end. Use /app/backend/tests/test_realm_hub_widget.py as regression for the hub endpoints. Frontend testIDs of interest: realm-widget-add-hub, realm-hub-widget-<wid>, realm-hub-title, realm-hub-composer, realm-hub-kind-{thought|photo|video|sound|event}, realm-hub-text, realm-hub-upload-btn, realm-hub-event-date, realm-hub-submit, realm-hub-error, realm-hub-feed, realm-hub-post-<id>, realm-hub-post-delete-<id>, realm-hub-delete-<wid>. Reminder for Playwright: use viewport height >= 4000 so the widget grid renders below the chat/members panels (a 1080-tall viewport will mount the grid below the fold and selectors may resolve to 0).",
+  "rca of the issue": "N/A — no bugs found."
+}

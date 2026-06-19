@@ -32,6 +32,7 @@ import CommunityChatTitleModal from "@/components/CommunityChatTitleModal";
 import MemberActionSheet from "@/components/MemberActionSheet";
 import { useMessagingPopups } from "@/contexts/MessagingPopupContext";
 import RealmPollWidget from "@/components/RealmPollWidget";
+import CommunityHubWidget from "@/components/CommunityHubWidget";
 import RealmWidgetGrid from "@/components/RealmWidgetGrid";
 import { useAuth } from "@/contexts/AuthContext";
 import useHeartbeat from "@/hooks/useHeartbeat";
@@ -273,6 +274,7 @@ export default function RealmDetail() {
             <div className="mt-5 flex items-center gap-2 flex-wrap" data-testid="realm-widgets-toolbar">
               <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Add widget:</span>
               {[
+                { type: "hub",           label: "Community Hub" },
                 { type: "poll",          label: "Poll" },
                 { type: "announcements", label: "Announcement" },
                 { type: "rules",         label: "Rules" },
@@ -310,6 +312,21 @@ export default function RealmDetail() {
                       widget={w}
                       isAdmin={isAdmin}
                       onChanged={(updated) => setWidgets((prev) => prev.map((x) => x.id === updated.id ? updated : x))}
+                      onDelete={async (wid) => {
+                        try {
+                          await apiClient.delete(`/communities/realm/${realm.id}/widgets/${wid}`);
+                          setWidgets((prev) => prev.filter((x) => x.id !== wid));
+                        } catch { /* */ }
+                      }}
+                    />
+                  );
+                }
+                if (w.type === "hub") {
+                  return (
+                    <CommunityHubWidget
+                      realmId={realm.id}
+                      widget={w}
+                      isAdmin={isAdmin}
                       onDelete={async (wid) => {
                         try {
                           await apiClient.delete(`/communities/realm/${realm.id}/widgets/${wid}`);

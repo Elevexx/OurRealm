@@ -238,6 +238,8 @@ def _default_config(widget_type: str) -> dict:
         return {"rules": ["Be kind.", "Original content preferred.", "Mods have final say."]}
     if widget_type == "announcements":
         return {"announcement": "Welcome to the realm! Pin something important here."}
+    if widget_type == "hub":
+        return {"title": "Community Hub", "subtitle": "Share photos, videos, thoughts, sounds & events with the realm."}
     return {}
 
 
@@ -333,3 +335,108 @@ async def _decorate_poll(widget: dict, current: dict) -> None:
         "results":     [{"id": o["id"], "label": o["label"], "votes": counts[o["id"]]} for o in options],
         "my_vote":     (my or {}).get("option_id"),
     }
+
+
+
+# ────────────────────────────── Community Hub widget ────────────────
+# A realm-scoped activity feed where members can post Photos, Videos,
+# Thoughts, Sounds, and Events. Stored in `db.community_hub_posts`.
+# Reuses the existing /api/images/upload, /api/videos/upload,
+# /api/sounds/upload pipelines — this router only persists the
+# resulting URLs + text + kind.
+
+_HUB_KINDS = {"photo", "video", "sound", "thought", "event"}
+
+
+class HubPostCreate(BaseModel):
+    kind:      str  = Field(min_length=3, max_length=20)
+    text:      str  = Field(default="", max_length=1200)
+    media_url: Optional[str] = None
+    event_at:  Optional[str] = None  # ISO string, only for kind=event
+
+
+async def _hub_author_brief(uid: str) -> dict:
+    u = await db.users.find_one({"id": uid}, {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1})
+    return u or {"id": uid, "username": "unknown", "name": "", "avatar_url": None}
+
+
+@router.get("/{realm_id}/widgets/{widget_id}/hub/posts")
+async def list_hub_posts(realm_id: str, widget_id: str, current: CurrentUser, limit: int = 40):
+    realm = await _load_realm(realm_id)
+    if not realm:
+        raise HTTPException(404, "Realm not found")
+    widget = await db.community_widgets.find_one(
+        {"id": widget_id, "community_id": realm["id"], "type": "hub"},
+        {"_id": 0, "id": 1},
+    )
+    if not widget:
+        raise HTTPException(404, "Hub widget not found")
+    cursor = db.community_hub_posts.find(
+        {"widget_id": widget_id},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(max(1, min(limit, 100)))
+    posts = [p async for p in cursor]
+    # Hydrate authors in one pass.
+    ids = list({p["author_id"] for p in posts})
+    if ids:
+        authors = {a["id"]: a async for a in db.users.find({"id": {"$in": ids}}, {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1})}
+        for p in posts:
+            p["author"] = authors.get(p["author_id"]) or {"id": p["author_id"], "username": "unknown"}
+    return {"posts": posts, "is_admin": _is_admin(realm, current)}
+
+
+@router.post("/{realm_id}/widgets/{widget_id}/hub/posts")
+async def create_hub_post(realm_id: str, widget_id: str, payload: HubPostCreate, current: CurrentUser):
+    realm = await _load_realm(realm_id)
+    if not realm:
+        raise HTTPException(404, "Realm not found")
+    widget = await db.community_widgets.find_one(
+        {"id": widget_id, "community_id": realm["id"], "type": "hub"},
+        {"_id": 0, "id": 1},
+    )
+    if not widget:
+        raise HTTPException(404, "Hub widget not found")
+    if payload.kind not in _HUB_KINDS:
+        raise HTTPException(400, f"kind must be one of {sorted(_HUB_KINDS)}")
+    text = (payload.text or "").strip()
+    media_url = (payload.media_url or "").strip() or None
+    # Thoughts must have text. Photo/Video/Sound must have media_url.
+    if payload.kind == "thought" and not text:
+        raise HTTPException(400, "Thought needs text")
+    if payload.kind in {"photo", "video", "sound"} and not media_url:
+        raise HTTPException(400, f"{payload.kind} needs media_url")
+    if payload.kind == "event" and not text:
+        raise HTTPException(400, "Event needs a title in text")
+    doc = {
+        "id":         uuid.uuid4().hex,
+        "widget_id":  widget_id,
+        "realm_id":   realm["id"],
+        "author_id":  current["id"],
+        "kind":       payload.kind,
+        "text":       text,
+        "media_url":  media_url,
+        "event_at":   payload.event_at,
+        "created_at": _now(),
+    }
+    await db.community_hub_posts.insert_one(doc)
+    doc.pop("_id", None)
+    doc["author"] = await _hub_author_brief(current["id"])
+    await _broadcast_layout_change(realm)
+    return doc
+
+
+@router.delete("/{realm_id}/widgets/{widget_id}/hub/posts/{post_id}")
+async def delete_hub_post(realm_id: str, widget_id: str, post_id: str, current: CurrentUser):
+    realm = await _load_realm(realm_id)
+    if not realm:
+        raise HTTPException(404, "Realm not found")
+    post = await db.community_hub_posts.find_one(
+        {"id": post_id, "widget_id": widget_id},
+        {"_id": 0, "author_id": 1},
+    )
+    if not post:
+        raise HTTPException(404, "Hub post not found")
+    if post["author_id"] != current["id"] and not _is_admin(realm, current):
+        raise HTTPException(403, "Author or admin only")
+    await db.community_hub_posts.delete_one({"id": post_id})
+    return {"ok": True, "deleted": post_id}
