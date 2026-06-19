@@ -12,6 +12,7 @@
 - **Messages** — friend-only DMs, including support tickets in conversations with `@support`.
 - **Media uploads** — files plus metadata.
 - **Support tickets** — subject, category, status, conversation contents, optional screenshots.
+- **Sound upload rights confirmation** — when you upload a sound, we store a timestamped record that you confirmed you own or have permission to upload the audio, along with your user id, the sound id, the app version, and the originating IP / user-agent. This is used internally for moderation and DMCA response.
 - **Device information** — OS, application version, locale.
 - **Browser information** — user agent, viewport size, browser type/version.
 - **IP addresses** — for security, abuse prevention, and approximate location.

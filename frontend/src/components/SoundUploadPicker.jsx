@@ -13,6 +13,7 @@ const SOFT_MB = 5;       // cap enforced for normal users (matches services/uplo
 
 export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCategory = "Music", testid = "sound-picker" }) {
   const [busy, setBusy] = useState(false);
+  const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [err, setErr] = useState("");
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState("");
@@ -41,6 +42,7 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
   const reset = () => {
     setFile(null); setTitle(""); setCategory(defaultCategory);
     setGenre(""); setMood(""); setCoverUrl(""); setErr("");
+    setRightsConfirmed(false);
   };
 
   const onPickFile = (f) => {
@@ -59,6 +61,10 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
     if (!["Music", "Podcasts", "FX"].includes(category)) {
       setErr("AI category cannot accept uploads yet."); return;
     }
+    if (!rightsConfirmed) {
+      setErr("You must confirm you have the rights to upload this audio.");
+      return;
+    }
     setErr(""); setBusy(true);
     try {
       const fd = new FormData();
@@ -68,6 +74,9 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
       fd.append("genre", genre || "");
       fd.append("mood", mood || "");
       if (coverUrl) fd.append("cover_url", coverUrl);
+      // PART 5 — copyright rights confirmation.
+      fd.append("rights_confirmed", "true");
+      fd.append("app_version", process.env.REACT_APP_BUILD_VERSION || "preview");
       const { data } = await apiClient.post("/sounds/upload", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -203,6 +212,32 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
             </div>
           )}
 
+          {/* PART 5 — copyright rights confirmation. Mandatory; the
+              upload button stays disabled until the user checks this. */}
+          <label
+            className="flex items-start gap-2 px-2 py-2 text-xs cursor-pointer"
+            data-testid={`${testid}-rights-row`}
+            style={{ color: "var(--text-main)" }}
+          >
+            <input
+              type="checkbox"
+              checked={rightsConfirmed}
+              onChange={(e) => setRightsConfirmed(e.target.checked)}
+              data-testid={`${testid}-rights-checkbox`}
+              style={{ marginTop: 2, flexShrink: 0, accentColor: "var(--primary)" }}
+            />
+            <span className="leading-snug">
+              I confirm that I own the rights to this audio or have permission to upload and share it on OurRealm.
+            </span>
+          </label>
+          <div
+            className="text-[11px] leading-snug px-2"
+            data-testid={`${testid}-rights-note`}
+            style={{ color: "var(--text-muted)" }}
+          >
+            Do not upload copyrighted audio you do not own or have permission to use. Repeated violations may result in content removal or account restrictions.
+          </div>
+
           {err && (
             <div className="flex items-start gap-2 text-xs px-3 py-2"
               style={{ background: "rgba(255,80,80,0.1)", border: "1px solid rgba(255,80,80,0.4)", color: "#ff8080", borderRadius: "var(--radius)" }}
@@ -217,7 +252,7 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
           <button className="or-btn or-btn-ghost" onClick={close} data-testid={`${testid}-cancel`} disabled={busy}>Cancel</button>
           <button
             className="or-btn"
-            disabled={busy || !file || !title.trim()}
+            disabled={busy || !file || !title.trim() || !rightsConfirmed}
             onClick={submit}
             data-testid={`${testid}-submit`}
           >

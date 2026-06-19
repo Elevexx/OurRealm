@@ -13,6 +13,7 @@ import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import RadiusChips from "@/components/RadiusChips";
 import SoundUploadPicker from "@/components/SoundUploadPicker";
+import SoundManagementMenu from "@/components/SoundManagementMenu";
 import ShareToChatModal from "@/components/ShareToChatModal";
 import ZipRequiredModal from "@/components/ZipRequiredModal";
 import { play as playerPlay, formatTime } from "@/lib/audioPlayer";
@@ -447,9 +448,12 @@ export default function Sounds() {
                 <TrackCard
                   key={t.id}
                   t={t}
+                  user={user}
                   onPlay={() => onPlay(t)}
                   onLike={() => onLike(t)}
                   onShare={() => setShareTrack(t)}
+                  onUpdated={(updated) => setTracks((prev) => prev.map((x) => x.id === updated.id ? { ...x, ...updated } : x))}
+                  onDeleted={(id) => setTracks((prev) => prev.filter((x) => x.id !== id))}
                 />
               ))}
             </div>
@@ -547,7 +551,7 @@ function FeaturedCard({ t, onPlay, testid }) {
   );
 }
 
-function TrackCard({ t, onPlay, onLike, onShare }) {
+function TrackCard({ t, user, onPlay, onLike, onShare, onUpdated, onDeleted }) {
   const cover = t.cover_url || t.cover || null;
   return (
     <div className="or-surface overflow-hidden" data-testid={`sounds-track-${t.id}`}>
@@ -596,6 +600,13 @@ function TrackCard({ t, onPlay, onLike, onShare }) {
         >
           <Send size={15} />
         </button>
+        <SoundManagementMenu
+          track={t}
+          user={user}
+          onUpdated={onUpdated}
+          onDeleted={onDeleted}
+          testid={`sound-manage-${t.id}`}
+        />
         <button
           onClick={onLike}
           className="starbar-icon"

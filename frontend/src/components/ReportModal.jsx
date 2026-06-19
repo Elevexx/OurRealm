@@ -34,6 +34,7 @@ const REASONS = [
   { id: "scam_fraud",      label: "Scam / Fraud" },
   { id: "impersonation",   label: "Impersonation" },
   { id: "privacy_concern", label: "Privacy concern" },
+  { id: "copyright",       label: "Copyright issue" },
   { id: "other",           label: "Other" },
 ];
 

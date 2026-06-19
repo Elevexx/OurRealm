@@ -112,6 +112,7 @@ export function TermsOfServicePage() {
       <Section heading="4. Your Content">
         <p>You keep ownership of the content you create on OurRealm — including text posts, images, video, audio, comments, reactions, hashtags, interests, saved items, shares, and any content shared in Groups or Realms. By posting, you grant OurRealm a worldwide, non-exclusive, royalty-free license to host, store, reproduce, display, transmit, and distribute that content as necessary to operate, secure, moderate, and improve the Service.</p>
         <p>You agree that the content you post does not violate these Terms, the <Link to="/community" className="underline" style={{ color: "var(--primary)" }}>Community Standards</Link>, applicable law, or anyone's rights (including intellectual property and privacy rights).</p>
+        <p><b>You are responsible for everything you upload.</b> That includes audio uploads — you must own the rights to any audio you upload, or have permission from the rights holder. Before each sound upload you must check a confirmation box stating that you own or have permission to upload the audio; we store the timestamp and metadata of that confirmation. We may remove audio that is alleged or determined to infringe intellectual property rights, and <b>repeat copyright violations may result in account restrictions or termination</b> under our <Link to="/dmca" className="underline" style={{ color: "var(--primary)" }}>Copyright &amp; DMCA Policy</Link>.</p>
       </Section>
 
       <Section heading="5. Acceptable Use">
@@ -224,6 +225,7 @@ export function PrivacyPolicyPage() {
           <li>Messages — direct messages between friends, including support tickets in conversations with <b>@support</b>.</li>
           <li>Media uploads — uploaded images, video, and audio along with file metadata.</li>
           <li>Support tickets — subject, category, status, conversation contents, optional screenshot evidence attached to reports.</li>
+          <li>Sound upload rights confirmation — when you upload a sound we store a timestamped record that you confirmed you own or have permission to upload the audio, plus the user id, sound id, app version, and the originating IP / user-agent. This is used internally for moderation and DMCA response.</li>
           <li>Device information — operating system, application version, locale.</li>
           <li>Browser information — user agent, viewport size, browser type and version.</li>
           <li>IP addresses — for security, abuse prevention, and approximate location.</li>

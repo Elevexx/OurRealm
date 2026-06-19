@@ -42,7 +42,7 @@ CONTENT_TYPES = {"post": "posts", "comment": "comments", "profile": "users",
 USER_REPORT_REASONS = {
     "spam", "harassment", "hate_speech", "sexual_content", "self_harm",
     "violence", "misinformation", "scam_fraud", "impersonation",
-    "privacy_concern", "other",
+    "privacy_concern", "copyright", "other",
 }
 
 

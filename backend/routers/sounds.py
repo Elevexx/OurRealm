@@ -23,8 +23,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse, Response
 
+from pydantic import BaseModel, Field
+
 from core.db import db
 from core.deps import CurrentUser
+from core.permissions import get_admin_role, ROLE_FOUNDER
 from core.geo import (
     ALLOWED_RADII, haversine_miles, parse_radius, resolve_zip,
 )
@@ -45,6 +48,57 @@ router = APIRouter(prefix="/api/sounds", tags=["sounds"])
 CATEGORIES = {"Music", "Podcasts", "FX"}     # AI is intentionally NOT uploadable
 PAGE_SIZE = 20                                 # 5 pages × 20 = Top 100
 
+# Phase α — Sound owner controls. Visibility values mirror posts so the
+# UI can reuse the same chips. "private" is stored on the server; the UI
+# surfaces it as "stealth". "custom" honours `custom_user_ids`.
+VISIBILITY_VALUES = {"public", "friends", "private", "custom"}
+
+
+def _normalise_visibility(raw: Optional[str]) -> str:
+    v = (raw or "public").strip().lower()
+    if v == "stealth":
+        v = "private"
+    return v if v in VISIBILITY_VALUES else "public"
+
+
+def _can_view_track(track: dict, viewer: Optional[dict]) -> bool:
+    """Visibility gate used by feed/detail lookups.
+
+    public  → everyone
+    friends → owner + accepted friends
+    custom  → owner + ids in custom_user_ids
+    private → owner only
+    Founder (@stealth) can always view.
+    """
+    vis = _normalise_visibility(track.get("visibility"))
+    owner_id = track.get("user_id")
+    viewer_id = (viewer or {}).get("id")
+    if vis == "public":
+        return True
+    if not viewer_id:
+        return False
+    if owner_id == viewer_id:
+        return True
+    if get_admin_role(viewer) == ROLE_FOUNDER:
+        return True
+    if vis == "private":
+        return False
+    if vis == "custom":
+        return viewer_id in (track.get("custom_user_ids") or [])
+    if vis == "friends":
+        # Friend graph stored as user.friends (list of ids).
+        owner_friends = set((viewer or {}).get("friends") or [])
+        return owner_id in owner_friends
+    return False
+
+
+def _is_track_owner_or_founder(track: dict, user: dict) -> bool:
+    if not track or not user:
+        return False
+    if track.get("user_id") == user.get("id"):
+        return True
+    return get_admin_role(user) == ROLE_FOUNDER
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Helpers
@@ -59,6 +113,18 @@ def _public(track: dict, viewer_id: Optional[str] = None) -> dict:
     if viewer_id and isinstance(t.get("liked_by"), list):
         t["liked"] = viewer_id in t["liked_by"]
     t.pop("liked_by", None)
+    # Phase α — surface ownership + visibility so the frontend can decide
+    # whether to render the owner-controls menu. `custom_user_ids` is
+    # only returned to the owner (to power the audience picker).
+    is_owner = bool(viewer_id and viewer_id == t.get("user_id"))
+    t["is_owner"] = is_owner
+    t["visibility"] = _normalise_visibility(t.get("visibility"))
+    if not is_owner:
+        t.pop("custom_user_ids", None)
+        # PART 5 — rights-confirmation record stays internal. Admins
+        # read it via the admin endpoint below, never via the public
+        # feed. Strip IP / UA / timestamps from non-owner responses.
+        t.pop("rights_confirmation", None)
     # Pass through for the feed query — radius filter uses these via lat/lng keys
     if lat is not None:
         t["author_lat"] = lat
@@ -119,13 +185,26 @@ def _apply_radius(items, viewer_geo, miles: Optional[int]):
 @router.post("/upload")
 async def upload_track(
     current: CurrentUser,
+    request: Request,
     file: UploadFile = File(...),
     title: str = Form(...),
     category: str = Form(...),
     genre: str = Form(""),
     mood: str = Form(""),
     cover_url: str = Form(""),
+    # PART 5 — copyright rights confirmation. Backend enforces; never
+    # trust the frontend gate alone.
+    rights_confirmed: bool = Form(False),
+    app_version: str = Form(""),
 ):
+    if not rights_confirmed:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "You must confirm you own the rights to this audio or have "
+                "permission to upload it."
+            ),
+        )
     title = (title or "").strip()
     if not title:
         raise HTTPException(status_code=400, detail="Title is required")
@@ -184,10 +263,130 @@ async def upload_track(
         "live_room_id": None,
         "remix_parent_id": None,
         "playlist_ids": [],
+        # Phase α — owner visibility controls (mirrors post audience model)
+        "visibility": "public",
+        "custom_user_ids": [],
+        # PART 5 — copyright rights confirmation record. Stored on the
+        # track doc so admins/moderators can verify the user accepted
+        # the rights statement at upload time.
+        "rights_confirmation": {
+            "accepted":    True,
+            "user_id":     current["id"],
+            "accepted_at": datetime.now(timezone.utc).isoformat(),
+            "app_version": (app_version or "").strip()[:60] or None,
+            "client_ip":   (request.client.host if request.client else None),
+            "user_agent":  (request.headers.get("user-agent") or "")[:240] or None,
+        },
         "created_at": rec.created_at,
     }
     await db.tracks.insert_one(doc)
     return {"track": _public(doc, viewer_id=current["id"])}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase α — Owner edit / delete / visibility
+# ─────────────────────────────────────────────────────────────────────
+class TrackUpdatePayload(BaseModel):
+    title:           Optional[str] = Field(default=None, max_length=140)
+    category:        Optional[str] = None
+    genre:           Optional[str] = Field(default=None, max_length=60)
+    mood:            Optional[str] = Field(default=None, max_length=60)
+    cover_url:       Optional[str] = Field(default=None, max_length=1024)
+    visibility:      Optional[str] = None     # public | friends | private | custom | stealth
+    custom_user_ids: Optional[list[str]] = None
+
+
+@router.patch("/{track_id}")
+async def update_track(track_id: str, payload: TrackUpdatePayload, current: CurrentUser):
+    track = await db.tracks.find_one({"id": track_id})
+    if not track:
+        raise HTTPException(status_code=404, detail="Sound not found")
+    # Only the owner may edit metadata / visibility. Founder admins have
+    # delete power (below) but do NOT silently rewrite other users'
+    # sound metadata — matches the posts router contract.
+    if track.get("user_id") != current.get("id"):
+        raise HTTPException(status_code=403, detail="Only the owner can edit this sound")
+
+    set_ops: dict = {}
+    if payload.title is not None:
+        title = payload.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Title cannot be empty")
+        set_ops["title"] = title[:140]
+    if payload.category is not None:
+        if payload.category not in CATEGORIES:
+            raise HTTPException(status_code=400, detail="Category must be one of Music, Podcasts, FX")
+        set_ops["category"] = payload.category
+    if payload.genre is not None:
+        set_ops["genre"] = payload.genre.strip()[:60]
+    if payload.mood is not None:
+        set_ops["mood"] = payload.mood.strip()[:60]
+    if payload.cover_url is not None:
+        cu = payload.cover_url.strip()
+        set_ops["cover_url"] = cu or None
+    if payload.visibility is not None:
+        set_ops["visibility"] = _normalise_visibility(payload.visibility)
+        # When dropping out of custom mode, clear the audience list.
+        if set_ops["visibility"] != "custom":
+            set_ops["custom_user_ids"] = []
+    if payload.custom_user_ids is not None:
+        # Accept only when visibility is being set to (or already is) custom.
+        target_vis = set_ops.get("visibility", _normalise_visibility(track.get("visibility")))
+        if target_vis != "custom":
+            raise HTTPException(status_code=400, detail="custom_user_ids only valid when visibility=custom")
+        set_ops["custom_user_ids"] = [str(x) for x in payload.custom_user_ids if isinstance(x, str)][:200]
+
+    if not set_ops:
+        return {"track": _public(track, viewer_id=current["id"])}
+
+    set_ops["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.tracks.update_one({"id": track_id}, {"$set": set_ops})
+    fresh = await db.tracks.find_one({"id": track_id})
+    return {"track": _public(fresh, viewer_id=current["id"])}
+
+
+@router.delete("/{track_id}")
+async def delete_track(track_id: str, current: CurrentUser):
+    track = await db.tracks.find_one({"id": track_id})
+    if not track:
+        raise HTTPException(status_code=404, detail="Sound not found")
+    if not _is_track_owner_or_founder(track, current):
+        raise HTTPException(status_code=403, detail="Only the owner or founder can delete this sound")
+    await db.tracks.delete_one({"id": track_id})
+    # Best-effort cleanup of the audio file on disk. We swallow errors so a
+    # missing-file (e.g. pod restart wiped /uploads) never blocks deletion.
+    try:
+        from pathlib import Path as _Path
+        url = (track.get("file_url") or "")
+        if url.startswith("/api/sounds/file/"):
+            name = url.rsplit("/", 1)[-1]
+            if is_safe_audio_filename(name):
+                (audio_dir() / name).unlink(missing_ok=True)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "deleted": track_id}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PART 5 — Admin: rights-confirmation inspection
+# ─────────────────────────────────────────────────────────────────────
+@router.get("/admin/{track_id}/rights")
+async def admin_rights_confirmation(track_id: str, current: CurrentUser):
+    """Return the rights-confirmation record for a sound (admin only).
+
+    Used by the moderation tools so admins can verify a user accepted
+    the upload-rights statement before the sound was uploaded. Available
+    to anyone with moderation access (founder + support_admin + moderator).
+    """
+    from core.permissions import require_moderation_access
+    require_moderation_access(current)
+    track = await db.tracks.find_one(
+        {"id": track_id},
+        {"_id": 0, "id": 1, "user_id": 1, "title": 1, "created_at": 1, "rights_confirmation": 1},
+    )
+    if not track:
+        raise HTTPException(status_code=404, detail="Sound not found")
+    return {"track": track}
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -292,6 +491,11 @@ async def feed(
     cursor = db.tracks.find(query).limit(max(1, min(int(limit), 200)))
     items = [doc async for doc in cursor]
 
+    # Phase α — visibility gate. Public tracks always pass; non-public
+    # tracks are visible only to owner / accepted friend / custom-audience
+    # member / founder.
+    items = [t for t in items if _can_view_track(t, current)]
+
     # Base sort per chart selection
     if chart == "Trending":
         items.sort(key=lambda t: float(t.get("plays", 0)) * 0.7 + float(t.get("likes", 0)) * 3.0, reverse=True)
@@ -378,6 +582,8 @@ async def top100(
     # aggregation.
     cursor = db.tracks.find(query).limit(200)
     items = [doc async for doc in cursor]
+    # Phase α — visibility gate (same as feed).
+    items = [t for t in items if _can_view_track(t, current)]
     items.sort(key=_score, reverse=True)
 
     miles = parse_radius(radius)

@@ -17,6 +17,8 @@ You sign up with an email and password and verify your email through a one-time 
 ## 4. Your Content
 You keep ownership of the content you create on OurRealm — text posts, images, videos, sounds, comments, reactions, hashtags, interests, saved items, shares, and Group/Realm content. By posting, you grant OurRealm a worldwide, non-exclusive, royalty-free license to host, store, reproduce, display, transmit, and distribute that content as necessary to operate, secure, moderate, and improve the Service.
 
+**You are responsible for everything you upload.** That includes audio uploads — you must own the rights to any audio you upload, or have permission from the rights holder. Before each sound upload you must check a confirmation box stating that you own or have permission to upload the audio; we store the timestamp and metadata of that confirmation. We may remove audio that is alleged or determined to infringe intellectual property rights, and **repeat copyright violations may result in account restrictions or termination** under our [Copyright & DMCA Policy](./DMCA_POLICY.md).
+
 ## 5. Acceptable Use
 You will not use the Service to send spam or scams; harass, bully, threaten, or hate-target others; sexually exploit anyone or post content involving the abuse of minors; promote self-harm; impersonate others; violate privacy; infringe intellectual property; engage in illegal activity; or scrape, reverse-engineer, or interfere with the Service. See [COMMUNITY_STANDARDS.md](./COMMUNITY_STANDARDS.md).
 
