@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import MessagingPopupProvider from "@/contexts/MessagingPopupContext";
 import { PresenceProvider } from "@/contexts/PresenceContext";
 import Layout from "@/components/Layout";
 import Landing from "@/pages/Landing";
@@ -56,6 +57,7 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <MessagingPopupProvider>
         <PresenceProvider>
           <BrowserRouter>
           <YouTubeRouteCleanup />
@@ -109,6 +111,7 @@ function App() {
           <InstallPrompt trigger="auto" />
         </BrowserRouter>
         </PresenceProvider>
+        </MessagingPopupProvider>
       </AuthProvider>
     </ThemeProvider>
   );

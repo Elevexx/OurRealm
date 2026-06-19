@@ -30,8 +30,9 @@ import CommunityChat from "@/components/CommunityChat";
 import CommunityMembersPanel from "@/components/CommunityMembersPanel";
 import CommunityChatTitleModal from "@/components/CommunityChatTitleModal";
 import MemberActionSheet from "@/components/MemberActionSheet";
-import FloatingDMWindow from "@/components/FloatingDMWindow";
+import { useMessagingPopups } from "@/contexts/MessagingPopupContext";
 import RealmPollWidget from "@/components/RealmPollWidget";
+import RealmWidgetGrid from "@/components/RealmWidgetGrid";
 import { useAuth } from "@/contexts/AuthContext";
 import useHeartbeat from "@/hooks/useHeartbeat";
 
@@ -53,6 +54,7 @@ export default function RealmDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { openDM } = useMessagingPopups();
   // Mock realm row used as a visual fallback while the live one loads.
   const fallback = MOCK_REALMS.find((r) => r.id === id) || null;
 
@@ -62,7 +64,6 @@ export default function RealmDetail() {
   const [tab, setTab] = useState("chat");
   const [joined, setJoined] = useState(false);
   const [memberSheet, setMemberSheet] = useState(null);
-  const [dmPeer, setDmPeer] = useState(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const posts = useMemo(() => makeMockPosts(18), []);
 
@@ -265,17 +266,19 @@ export default function RealmDetail() {
               onMemberClick={(m) => setMemberSheet(m)}
             />
           </div>
-          {/* Phase 2 — widget grid below the chat. Polls + announcements
-              + rules etc. all render here. Admins can edit; members view
-              and vote. The default Poll widget is auto-created for every
-              realm by the backend seeder. */}
+          {/* Phase 2 — widget grid below the chat. Admins can resize
+              + drag-reorder; members see read-only widgets. Default
+              Poll widget is auto-created for every realm. */}
           {widgets.length > 0 && (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-5" data-testid="realm-widgets-grid">
-              {widgets.map((w) => {
+            <RealmWidgetGrid
+              realmId={realm.id}
+              widgets={widgets}
+              isAdmin={isAdmin}
+              onChanged={(updated) => setWidgets((prev) => prev.map((x) => x.id === updated.id ? updated : x))}
+              renderWidget={(w) => {
                 if (w.type === "poll") {
                   return (
                     <RealmPollWidget
-                      key={w.id}
                       realmId={realm.id}
                       widget={w}
                       isAdmin={isAdmin}
@@ -289,18 +292,16 @@ export default function RealmDetail() {
                     />
                   );
                 }
-                // Lightweight default renderer for non-poll types until
-                // they get bespoke widgets in Phase 3.
                 return (
-                  <section key={w.id} className="or-surface p-4" data-testid={`realm-widget-${w.type}-${w.id}`}>
+                  <section className="or-surface p-4 h-full" data-testid={`realm-widget-${w.type}-${w.id}`}>
                     <div className="text-[10px] uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>{w.type}</div>
                     <div className="text-sm" style={{ color: "var(--text-main)" }}>
                       {w.config?.announcement || w.config?.title || JSON.stringify(w.config || {}).slice(0, 120)}
                     </div>
                   </section>
                 );
-              })}
-            </div>
+              }}
+            />
           )}
         </>
       )}
@@ -455,11 +456,8 @@ export default function RealmDetail() {
         <MemberActionSheet
           member={memberSheet}
           onClose={() => setMemberSheet(null)}
-          onOpenChat={(m) => setDmPeer(m)}
+          onOpenChat={(m) => openDM(m)}
         />
-      )}
-      {dmPeer && (
-        <FloatingDMWindow peer={dmPeer} onClose={() => setDmPeer(null)} />
       )}
     </div>
   );
