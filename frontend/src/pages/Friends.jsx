@@ -3,6 +3,7 @@ import { UserPlus, MessageCircle, UserCheck, Search, Check, X, Sparkles, Users a
 import { useNavigate } from "react-router-dom";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useMessagingPopups } from "@/contexts/MessagingPopupContext";
 import RadiusChips from "@/components/RadiusChips";
 import ZipRequiredModal from "@/components/ZipRequiredModal";
 import UserAvatar from "@/components/UserAvatar";
@@ -42,6 +43,7 @@ export default function Friends() {
   const [actionErr, setActionErr] = useState("");
   const navigate = useNavigate();
   const { user, refreshMe } = useAuth();
+  const { openDM } = useMessagingPopups();
 
   // Phase 5 — quick "Add to Top 8" action surfaced on every friend card.
   // Uses the existing PATCH /profile/me { inner_8: [...] } API.
@@ -273,7 +275,7 @@ export default function Friends() {
               <div className="mt-3 flex gap-2 w-full">
                 <button className="or-btn flex-1" style={{ padding: "0.45rem", fontSize: "0.8rem" }}
                   data-testid={`friend-message-${f.username}`}
-                  onClick={() => navigate(`/messages?to=${f.username}`)}>
+                  onClick={() => openDM(f)}>
                   <MessageCircle size={14} /> Message
                 </button>
                 <button className="or-btn or-btn-ghost flex-1" style={{ padding: "0.45rem", fontSize: "0.8rem" }}

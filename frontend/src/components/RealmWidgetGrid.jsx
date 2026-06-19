@@ -21,7 +21,7 @@
  * server is called once on drop.
  */
 import React, { useMemo, useState } from "react";
-import { GripVertical, Maximize2 } from "lucide-react";
+import { GripVertical, Maximize2, ChevronUp, ChevronDown } from "lucide-react";
 import apiClient from "@/api/client";
 
 const SIZE_CYCLE  = ["small", "medium", "large", "wide", "tall"];
@@ -75,6 +75,21 @@ export default function RealmWidgetGrid({ realmId, widgets, isAdmin, renderWidge
     } catch { /* */ }
   };
 
+  // Move-up / move-down arrows — same persistence as drag-reorder
+  // and keyboard-accessible. Used by admins and headless tests where
+  // HTML5 drag synth events aren't reliable.
+  const moveBy = (w, delta) => {
+    const i = sorted.findIndex((x) => x.id === w.id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= sorted.length) return;
+    const next = [...sorted];
+    [next[i], next[j]] = [next[j], next[i]];
+    setOrder(next);
+    apiClient.post(`/communities/realm/${realmId}/widgets/reorder`, {
+      order: next.map((x) => x.id),
+    }).catch(() => { /* */ });
+  };
+
   return (
     <div
       className="grid gap-4 mt-5"
@@ -96,6 +111,12 @@ export default function RealmWidgetGrid({ realmId, widgets, isAdmin, renderWidge
           >
             {isAdmin && (
               <div className="absolute -top-1 -right-1 z-10 flex gap-1" data-testid={`realm-widget-controls-${w.id}`}>
+                <button onClick={() => moveBy(w, -1)} className="or-chip" title="Move up" data-testid={`realm-widget-move-up-${w.id}`} disabled={sorted[0]?.id === w.id}>
+                  <ChevronUp size={11} />
+                </button>
+                <button onClick={() => moveBy(w, +1)} className="or-chip" title="Move down" data-testid={`realm-widget-move-down-${w.id}`} disabled={sorted[sorted.length - 1]?.id === w.id}>
+                  <ChevronDown size={11} />
+                </button>
                 <button onClick={() => cycleSize(w)} className="or-chip" title={`Size: ${w.size || "medium"} → cycle next`} data-testid={`realm-widget-size-${w.id}`}>
                   <Maximize2 size={11} />
                 </button>
