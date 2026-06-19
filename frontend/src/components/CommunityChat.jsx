@@ -70,6 +70,10 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
         } else if (msg.type === "chat:updated") {
           // Bubble up so the parent can refresh the title without a re-fetch.
           window.dispatchEvent(new CustomEvent("community-chat:updated", { detail: msg }));
+        } else if (msg.type === "widget:layout_changed") {
+          // Same event channel — RealmDetail listens for widget layout
+          // changes here so it can refetch the widgets list.
+          window.dispatchEvent(new CustomEvent("community-chat:updated", { detail: msg }));
         }
       } catch { /* */ }
     };

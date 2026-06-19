@@ -113,6 +113,25 @@ async def seed_realms() -> None:
                 "updated_at": now,
             }
             await db.community_chats.insert_one(chat)
-        log.info("[community_seed] seeded %d realms + main chats", len(_SEED_REALMS))
+            # Phase 2 — every seeded realm gets a default Poll widget.
+            widget = {
+                "id": uuid.uuid4().hex,
+                "community_type": "realm",
+                "community_id":   r["id"],
+                "type":           "poll",
+                "config": {
+                    "question": "What should we do this Friday?",
+                    "options": [
+                        {"id": uuid.uuid4().hex, "label": "🎮 Game Night"},
+                        {"id": uuid.uuid4().hex, "label": "🎬 Movie Watch Party"},
+                        {"id": uuid.uuid4().hex, "label": "🎙️ Live Podcast"},
+                    ],
+                },
+                "size": "medium", "pinned": False, "collapsed": False,
+                "position": 0, "created_by": None,
+                "created_at": now, "updated_at": now,
+            }
+            await db.community_widgets.insert_one(widget)
+        log.info("[community_seed] seeded %d realms + main chats + default polls", len(_SEED_REALMS))
     except Exception as e:  # noqa: BLE001
         log.warning("seed_realms failed: %s", e)

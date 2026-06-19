@@ -18,6 +18,8 @@ import {
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdmin } from "@/lib/isAdmin";
+import AdminUserControlWidget from "@/components/AdminUserControlWidget";
+import AdminPasswordResetWidget from "@/components/AdminPasswordResetWidget";
 
 const STATUSES = ["Submitted", "In Progress", "Completed", "Incomplete"];
 
@@ -312,6 +314,13 @@ export default function AdminSupport() {
           FAQ
         </button>
       </header>
+
+      {/* Founder/admin tools — mounted above the helpdesk so admins can
+          act on user accounts and reset passwords before triaging the
+          ticket queue below. Both widgets render `null` for non-admins,
+          but this page is already admin-gated so they always appear. */}
+      <AdminUserControlWidget />
+      <AdminPasswordResetWidget />
 
       {err && (
         <div

@@ -31,6 +31,7 @@ import CommunityMembersPanel from "@/components/CommunityMembersPanel";
 import CommunityChatTitleModal from "@/components/CommunityChatTitleModal";
 import MemberActionSheet from "@/components/MemberActionSheet";
 import FloatingDMWindow from "@/components/FloatingDMWindow";
+import RealmPollWidget from "@/components/RealmPollWidget";
 import { useAuth } from "@/contexts/AuthContext";
 import useHeartbeat from "@/hooks/useHeartbeat";
 
@@ -57,6 +58,7 @@ export default function RealmDetail() {
 
   const [realm, setRealm] = useState(fallback ? { ...fallback, description: fallback.desc } : null);
   const [chat, setChat] = useState(null);
+  const [widgets, setWidgets] = useState([]);
   const [tab, setTab] = useState("chat");
   const [joined, setJoined] = useState(false);
   const [memberSheet, setMemberSheet] = useState(null);
@@ -70,23 +72,42 @@ export default function RealmDetail() {
   });
   const [bannerEditorOpen, setBannerEditorOpen] = useState(false);
 
-  // Load live realm + main chat.
+  // Load live realm + main chat + widget list (Phase 2).
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [{ data: r }, { data: c }] = await Promise.all([
+        const [{ data: r }, { data: c }, { data: w }] = await Promise.all([
           apiClient.get(`/communities/realms/${id}`),
           apiClient.get(`/communities/realm/${id}/chats`),
+          apiClient.get(`/communities/realm/${id}/widgets`).catch(() => ({ data: { widgets: [] } })),
         ]);
         if (cancelled) return;
         setRealm(r);
         const main = (c?.chats || []).find((x) => x.is_main) || (c?.chats || [])[0] || null;
         setChat(main);
+        setWidgets(w?.widgets || []);
       } catch { /* fall back to mock */ }
     })();
     return () => { cancelled = true; };
   }, [id]);
+
+  // Refresh widgets on `widget:layout_changed` (broadcast by backend).
+  useEffect(() => {
+    const handler = async (e) => {
+      const det = e.detail;
+      if (!det || det.type !== "widget:layout_changed" || det.realm_id !== realm?.id) return;
+      try {
+        const { data } = await apiClient.get(`/communities/realm/${realm.id}/widgets`);
+        setWidgets(data?.widgets || []);
+      } catch { /* */ }
+    };
+    // Piggy-back on the CommunityChat WS — every layout change dispatches
+    // a `community-chat:updated` window event whose `type` is the WS one.
+    const wrap = (e) => handler({ detail: e.detail });
+    window.addEventListener("community-chat:updated", wrap);
+    return () => window.removeEventListener("community-chat:updated", wrap);
+  }, [realm?.id]);
 
   // Refresh banner from localStorage on id change.
   useEffect(() => {
@@ -231,18 +252,57 @@ export default function RealmDetail() {
 
       {/* CHAT TAB — primary view */}
       {tab === "chat" && (
-        <div className="grid lg:grid-cols-[1fr_300px] gap-4" data-testid="realm-chat-layout">
-          <CommunityChat
-            chat={chat}
-            isAdmin={isAdmin}
-            onRenameRequested={() => setRenameOpen(true)}
-          />
-          <CommunityMembersPanel
-            communityType="realm"
-            communityId={realm.id}
-            onMemberClick={(m) => setMemberSheet(m)}
-          />
-        </div>
+        <>
+          <div className="grid lg:grid-cols-[1fr_300px] gap-4" data-testid="realm-chat-layout">
+            <CommunityChat
+              chat={chat}
+              isAdmin={isAdmin}
+              onRenameRequested={() => setRenameOpen(true)}
+            />
+            <CommunityMembersPanel
+              communityType="realm"
+              communityId={realm.id}
+              onMemberClick={(m) => setMemberSheet(m)}
+            />
+          </div>
+          {/* Phase 2 — widget grid below the chat. Polls + announcements
+              + rules etc. all render here. Admins can edit; members view
+              and vote. The default Poll widget is auto-created for every
+              realm by the backend seeder. */}
+          {widgets.length > 0 && (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-5" data-testid="realm-widgets-grid">
+              {widgets.map((w) => {
+                if (w.type === "poll") {
+                  return (
+                    <RealmPollWidget
+                      key={w.id}
+                      realmId={realm.id}
+                      widget={w}
+                      isAdmin={isAdmin}
+                      onChanged={(updated) => setWidgets((prev) => prev.map((x) => x.id === updated.id ? updated : x))}
+                      onDelete={async (wid) => {
+                        try {
+                          await apiClient.delete(`/communities/realm/${realm.id}/widgets/${wid}`);
+                          setWidgets((prev) => prev.filter((x) => x.id !== wid));
+                        } catch { /* */ }
+                      }}
+                    />
+                  );
+                }
+                // Lightweight default renderer for non-poll types until
+                // they get bespoke widgets in Phase 3.
+                return (
+                  <section key={w.id} className="or-surface p-4" data-testid={`realm-widget-${w.type}-${w.id}`}>
+                    <div className="text-[10px] uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>{w.type}</div>
+                    <div className="text-sm" style={{ color: "var(--text-main)" }}>
+                      {w.config?.announcement || w.config?.title || JSON.stringify(w.config || {}).slice(0, 120)}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {/* Other tabs preserve their existing mock visuals. */}

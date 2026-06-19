@@ -184,7 +184,25 @@ async def create_realm(payload: RealmCreate, current: CurrentUser):
         "updated_at":     now,
     }
     await db.community_chats.insert_one(chat)
-    return {**doc, "_main_chat_id": chat["id"]}
+    # Phase 2 — default Poll widget for every new realm.
+    widget = {
+        "id":             uuid.uuid4().hex,
+        "community_type": "realm",
+        "community_id":   rid,
+        "type":           "poll",
+        "config": {
+            "question": "What should we do this Friday?",
+            "options": [
+                {"id": uuid.uuid4().hex, "label": "🎮 Game Night"},
+                {"id": uuid.uuid4().hex, "label": "🎬 Movie Watch Party"},
+                {"id": uuid.uuid4().hex, "label": "🎙️ Live Podcast"},
+            ],
+        },
+        "size":      "medium", "pinned": False, "collapsed": False, "position": 0,
+        "created_by": current["id"], "created_at": now, "updated_at": now,
+    }
+    await db.community_widgets.insert_one(widget)
+    return {**doc, "_main_chat_id": chat["id"], "_poll_widget_id": widget["id"]}
 
 
 # --------------------------------------------------------------------- #
