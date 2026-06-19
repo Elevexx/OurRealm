@@ -13,7 +13,7 @@
  * Patch and Delete authorization is enforced server-side too — the
  * UI gate is convenience only.
  */
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Loader2, Save, Trash2, X, Upload, AlertTriangle } from "lucide-react";
 import apiClient from "@/api/client";
 import { resolveMediaUrl } from "@/lib/mediaUrl";
@@ -25,6 +25,14 @@ const PRIVACY_OPTIONS = [
 ];
 
 export default function EditRealmModal({ realm, onClose, onSaved, onDeleted }) {
+  // Esc → close (covers both the form and the danger-zone confirm).
+  // Bound to window so it works even when focus is inside an input.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const [name, setName]               = useState(realm?.name || "");
   const [description, setDescription] = useState(realm?.description || realm?.desc || "");
   const [banner, setBanner]           = useState(realm?.banner || "");
