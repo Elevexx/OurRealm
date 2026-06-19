@@ -112,10 +112,15 @@ function UserRow({ user, canDelete, onChanged }) {
 
   const refresh = async () => {
     try {
+      // Force a fresh search by ID so the row reflects any concurrent
+      // state mutations on the server (e.g. auto-clearing expired
+      // suspensions).
       const { data } = await apiClient.get("/admin/users/search", { params: { q: user.id } });
       const u = (data.users || []).find((x) => x.id === user.id);
       if (u) onChanged(u);
+      return u;
     } catch { /* */ }
+    return null;
   };
 
   const unsuspend = async () => {
@@ -124,6 +129,9 @@ function UserRow({ user, canDelete, onChanged }) {
     try {
       const { data } = await apiClient.post(`/admin/users/${user.id}/unsuspend`);
       onChanged(data.user);
+      // Belt-and-braces: refetch so any server-side $unset that the
+      // safe-projection rebuild missed is reflected immediately.
+      await refresh();
     } catch (e) {
       setErr(e?.response?.data?.detail || "Failed");
     } finally { setBusy(false); }
@@ -135,6 +143,7 @@ function UserRow({ user, canDelete, onChanged }) {
     try {
       const { data } = await apiClient.post(`/admin/users/${user.id}/unmute`, { clear_all: true });
       onChanged(data.user);
+      await refresh();
     } catch (e) {
       setErr(e?.response?.data?.detail || "Failed");
     } finally { setBusy(false); }
@@ -145,6 +154,7 @@ function UserRow({ user, canDelete, onChanged }) {
     try {
       const { data } = await apiClient.post(`/admin/users/${user.id}/unmute`, { mute_id: muteId });
       onChanged(data.user);
+      await refresh();
     } catch (e) {
       setErr(e?.response?.data?.detail || "Failed");
     } finally { setBusy(false); }

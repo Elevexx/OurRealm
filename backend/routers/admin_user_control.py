@@ -396,8 +396,11 @@ PASSWORD_MAX = 100
 
 
 class PasswordResetPayload(BaseModel):
-    new_password: str = Field(min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)
-    confirm_password: str = Field(min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)
+    # Strength rules are enforced by `_validate_password_strength` so it
+    # owns the 400 message verbatim. We intentionally avoid Pydantic
+    # min/max length here so callers always see the validator's text.
+    new_password: str = Field(min_length=1, max_length=PASSWORD_MAX)
+    confirm_password: str = Field(min_length=1, max_length=PASSWORD_MAX)
     force_change_on_next_login: bool = False
 
 
