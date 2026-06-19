@@ -93,7 +93,7 @@ async def register(payload: RegisterPayload, response: Response):
             "accepted_privacy": True,
             "accepted_conditions": True,
             "age_confirmed_13": True,
-            "policy_version": payload.policy_version or "2026-02-1",
+            "policy_version": payload.policy_version or "2026-02-18",
             "accepted_at": now_iso,
         },
     }

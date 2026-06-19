@@ -32,7 +32,7 @@ import AdminSupport from "@/pages/AdminSupport";
 import AdminFAQ from "@/pages/AdminFAQ";
 import AdminHashtags from "@/pages/AdminHashtags";
 import HashtagFeed from "@/pages/HashtagFeed";
-import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage } from "@/pages/LegalPages";
+import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage, CommunityStandardsPage, DMCAPolicyPage, SafetyPolicyPage, CookieNoticePage, AccountDeletionPage } from "@/pages/LegalPages";
 import PostPopup from "@/components/PostPopup";
 import MiniPlayer from "@/components/MiniPlayer";
 import InstallPrompt from "@/components/InstallPrompt";
@@ -91,6 +91,12 @@ function App() {
             <Route path="/terms" element={<TermsOfServicePage />} />
             <Route path="/terms-conditions" element={<TermsConditionsPage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
+            <Route path="/community" element={<CommunityStandardsPage />} />
+            <Route path="/dmca" element={<DMCAPolicyPage />} />
+            <Route path="/copyright" element={<DMCAPolicyPage />} />
+            <Route path="/safety" element={<SafetyPolicyPage />} />
+            <Route path="/cookies" element={<CookieNoticePage />} />
+            <Route path="/account-deletion" element={<AccountDeletionPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <PostPopup />
