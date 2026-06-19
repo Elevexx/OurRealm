@@ -163,6 +163,22 @@ async def on_startup():
     except Exception as e:
         logger.warning(f"[hashtags] startup index/migration error: {e}")
     _mod_task = asyncio.create_task(_moderation_loop())
+
+    # PART 4 — log the resolved media-storage root so deploy logs make
+    # it obvious whether uploads are landing on a persistent volume or
+    # the ephemeral fallback.
+    try:
+        from services.storage import uploads_root, is_persistent_storage_configured
+        root = uploads_root()
+        persistent = is_persistent_storage_configured()
+        msg = f"[storage] uploads_root={root}  persistent={persistent}"
+        if persistent:
+            logger.info(msg)
+        else:
+            logger.warning(msg + "  ← EPHEMERAL FALLBACK; set UPLOADS_ROOT to a persistent volume mount in production.")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[storage] could not resolve uploads root: {e}")
+
     logger.info("OurRealm startup complete (moderation loop armed)")
 
 

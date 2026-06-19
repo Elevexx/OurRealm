@@ -40,8 +40,9 @@ ALLOWED_MIMES = {
 
 ALLOWED_EXTS = {"mp4", "mov", "webm"}
 
-ROOT = Path(os.environ.get("VIDEO_STORAGE_DIR", "/app/backend/uploads/videos"))
-ROOT.mkdir(parents=True, exist_ok=True)
+from services.storage import media_dir
+
+ROOT = media_dir("videos", per_store_env="VIDEO_STORAGE_DIR")
 
 
 def video_dir() -> Path:

@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -557,3 +558,43 @@ async def report_playback_failure(payload: dict, current: CurrentUser):
         "at":       datetime.now(timezone.utc).isoformat(),
     })
     return {"ok": True}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# PART 4 — Persistent media storage diagnostic
+# ──────────────────────────────────────────────────────────────────────
+@router.get("/api/admin/storage/status")
+async def storage_status(current: CurrentUser):
+    """Founder-only — surfaces the resolved upload paths for every
+    media kind so deploy verification can confirm uploads survive
+    pod restarts. Reports per-kind: directory, exists, persistent?,
+    file_count, total_bytes."""
+    from core.permissions import require_founder
+    require_founder(current)
+    from services.storage import uploads_root, is_persistent_storage_configured, media_dir
+    info: dict = {
+        "uploads_root":           str(uploads_root()),
+        "persistent_configured":  is_persistent_storage_configured(),
+        "uploads_root_env":       os.environ.get("UPLOADS_ROOT") or None,
+        "kinds": {},
+    }
+    for kind, env in (
+        ("audio",  "AUDIO_STORAGE_DIR"),
+        ("images", "IMAGE_STORAGE_DIR"),
+        ("videos", "VIDEO_STORAGE_DIR"),
+    ):
+        d = media_dir(kind, per_store_env=env)
+        try:
+            files = list(d.iterdir()) if d.exists() else []
+            total = sum(f.stat().st_size for f in files if f.is_file())
+        except Exception:  # noqa: BLE001
+            files, total = [], 0
+        info["kinds"][kind] = {
+            "dir":             str(d),
+            "exists":          d.exists(),
+            "file_count":      len(files),
+            "total_bytes":     total,
+            "per_store_env":   env,
+            "per_store_value": os.environ.get(env) or None,
+        }
+    return info

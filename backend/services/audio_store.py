@@ -60,8 +60,9 @@ EXT_FALLBACK = {
     ".webm": ("audio/webm", "webm"),
 }
 
-ROOT = Path(os.environ.get("AUDIO_STORAGE_DIR", "/app/backend/uploads/audio"))
-ROOT.mkdir(parents=True, exist_ok=True)
+from services.storage import media_dir
+
+ROOT = media_dir("audio", per_store_env="AUDIO_STORAGE_DIR")
 
 
 def audio_dir() -> Path:

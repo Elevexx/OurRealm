@@ -47,8 +47,9 @@ ALLOWED_MIMES = {
 }
 URL_EXT_RE = re.compile(r"\.(jpe?g|png|webp|gif)(\?|#|$)", re.IGNORECASE)
 
-ROOT = Path(os.environ.get("IMAGE_STORAGE_DIR", "/app/backend/uploads/images"))
-ROOT.mkdir(parents=True, exist_ok=True)
+from services.storage import media_dir
+
+ROOT = media_dir("images", per_store_env="IMAGE_STORAGE_DIR")
 
 
 def image_dir() -> Path:
