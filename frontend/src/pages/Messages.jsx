@@ -4,6 +4,7 @@
 // Calls is a UI-only placeholder.
 // ─────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import useHeartbeat from "@/hooks/useHeartbeat";
 import { useSearchParams } from "react-router-dom";
 import {
   MessagesSquare, Users, Radio, Phone, Plus, Send, X, Search,
@@ -93,6 +94,7 @@ function NotConfigured() {
 // MAIN
 // ─────────────────────────────────────────────────────────────────────
 export default function Messages() {
+  useHeartbeat("messages");
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState(searchParams.get("tab") || "chats");

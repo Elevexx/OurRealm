@@ -36,6 +36,7 @@ from routers import faq as faq_router_mod
 from routers import presence as presence_router_mod
 from routers import hashtags as hashtags_router_mod
 from routers import announcements as announcements_router_mod
+from routers import realm_pulse as realm_pulse_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -75,6 +76,7 @@ app.include_router(faq_router_mod.router)
 app.include_router(presence_router_mod.router)
 app.include_router(hashtags_router_mod.router)
 app.include_router(announcements_router_mod.router)
+app.include_router(realm_pulse_router_mod.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -112,6 +114,7 @@ async def api_v1_alias(request, call_next):
 
 # ─── Lifecycle ──────────────────────────────────────────
 _mod_task = None
+_pulse_task = None
 
 
 async def _moderation_loop():
@@ -145,6 +148,27 @@ async def _moderation_loop():
         await asyncio.sleep(300)  # 5 minutes
 
 
+async def _realm_pulse_loop():
+    """Hourly Realm Pulse aggregation. Writes one snapshot row per
+    built-in window (7d/30d/90d) into `realm_pulse_snapshots`. The
+    dashboard reads the latest row instantly; per-request reads only
+    overlay the live DAU on top, so page loads stay <50ms even when
+    user counts grow to millions."""
+    import asyncio
+    from services import realm_pulse as rp
+    while True:
+        for window in ("7d", "30d", "90d"):
+            try:
+                payload = await rp.write_snapshot(window)
+                logger.info(
+                    "[realm_pulse] snapshot window=%s dau=%s mau=%s",
+                    window, payload.get("dau"), payload.get("mau"),
+                )
+            except Exception as e:
+                logger.warning(f"[realm_pulse] snapshot {window} failed: {e}")
+        await asyncio.sleep(3600)  # hourly
+
+
 @app.on_event("startup")
 async def on_startup():
     import asyncio
@@ -163,6 +187,15 @@ async def on_startup():
     except Exception as e:
         logger.warning(f"[hashtags] startup index/migration error: {e}")
     _mod_task = asyncio.create_task(_moderation_loop())
+
+    # Realm Pulse — ensure indexes + boot the hourly snapshot loop.
+    try:
+        from services import realm_pulse as rp
+        await rp.ensure_indexes()
+        global _pulse_task
+        _pulse_task = asyncio.create_task(_realm_pulse_loop())
+    except Exception as e:
+        logger.warning(f"[realm_pulse] startup failed: {e}")
 
     # PART 4 — log the resolved media-storage root so deploy logs make
     # it obvious whether uploads are landing on a persistent volume or
@@ -191,7 +224,9 @@ async def on_startup():
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    global _mod_task
+    global _mod_task, _pulse_task
     if _mod_task:
         _mod_task.cancel()
+    if _pulse_task:
+        _pulse_task.cancel()
     await close_db()

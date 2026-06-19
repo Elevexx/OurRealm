@@ -10,6 +10,7 @@ import SignIn from "@/pages/SignIn";
 import Home from "@/pages/Home";
 import HomeDashboard from "@/pages/HomeDashboard";
 import AdminAnalytics from "@/pages/AdminAnalytics";
+import RealmPulse from "@/pages/RealmPulse";
 import Feed from "@/pages/Feed";
 import Discover from "@/pages/Discover";
 import Sounds from "@/pages/Sounds";
@@ -66,6 +67,7 @@ function App() {
             <Route path="/interests" element={<ShellRoute><Home /></ShellRoute>} />
             <Route path="/admin" element={<ShellRoute><AdminAnalytics /></ShellRoute>} />
             <Route path="/admin/analytics" element={<ShellRoute><AdminAnalytics /></ShellRoute>} />
+            <Route path="/admin/realm-pulse" element={<ShellRoute><RealmPulse /></ShellRoute>} />
             <Route path="/featured" element={<ShellRoute><Featured /></ShellRoute>} />
             <Route path="/realms" element={<ShellRoute><Realms /></ShellRoute>} />
             <Route path="/realms/:id" element={<ShellRoute><RealmDetail /></ShellRoute>} />

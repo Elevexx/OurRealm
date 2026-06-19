@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import useHeartbeat from "@/hooks/useHeartbeat";
 import { useNavigate } from "react-router-dom";
 import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, Users as UsersIcon, Lock, UserCheck, MessageSquare, Image as ImageIcon, Video, Link2, BarChart3, Music2 } from "lucide-react";
 import apiClient from "@/api/client";
@@ -50,6 +51,7 @@ function timeAgo(iso) {
 }
 
 export default function Feed() {
+  useHeartbeat("feed");
   const { user, isGuest } = useAuth();
   const navigate = useNavigate();
   const charLimit = getPostCharacterLimit(user);

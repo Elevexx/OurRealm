@@ -5,6 +5,7 @@
  * Reads from /api/sounds/feed and /api/sounds/charts/top100.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import useHeartbeat from "@/hooks/useHeartbeat";
 import {
   Play, Heart, Plus, ChevronDown, ChevronLeft, ChevronRight,
   Music as MusicIcon, Mic, Sparkles, Wand2, Disc3, Loader2, Upload, Send, Search,
@@ -68,6 +69,7 @@ function Dropdown({ label, options, value, onChange, testid }) {
 }
 
 export default function Sounds() {
+  useHeartbeat("sounds");
   const { user } = useAuth();
   const [tab, setTab] = useState("Music");
   const [genre, setGenre] = useState("All");

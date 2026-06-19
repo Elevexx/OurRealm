@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import useHeartbeat from "@/hooks/useHeartbeat";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import * as Icons from "lucide-react";
 import {
@@ -356,6 +357,7 @@ function AddWidgetPicker({ open, onClose, onPick }) {
 
 /* ============================================================ */
 export default function Profile() {
+  useHeartbeat("profile");
   const { user, isGuest, updateProfile, refreshMe } = useAuth();
   const { mode } = useTheme();
   const navigate = useNavigate();

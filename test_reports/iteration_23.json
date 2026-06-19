@@ -1,0 +1,33 @@
+{
+  "summary": "Validated the Realm Pulse founder analytics module + heartbeat + BannerEditor wiring. Backend: 17/17 pytest tests pass against /api/analytics/heartbeat (auth gate + idempotent same-day), /api/admin/realm-pulse/{overview,investor-snapshot,refresh-snapshot,export,diagnostics} (founder gate enforced, schema complete, non-founder = 403 'Founder only'), CSV/PDF/XLSX exports all return correct Content-Type + Content-Disposition: attachment, CSV first line == 'metric,value', PDF starts with %PDF-, XLSX starts with PK zip magic. Regression: /api/admin/storage/status, /api/hashtags/interest-cards(/analytics), /api/admin/moderation/copyright/queue all still 200 for founder. Frontend (Playwright against the live preview URL with localStorage key 'ourrealm.access'): /admin/realm-pulse renders with EVERY required testid (realm-pulse-page, investor-snapshot-card/status, realm-pulse-growth-tiles, rp-retention/engagement/growth/community/insights, realm-pulse-exports). Window switcher 7d/30d/custom all work — custom reveals realm-pulse-custom-range with date inputs. All four section toggles (engagement/growth/community/insights) expand. All three export buttons (rp-export-csv/xlsx/pdf) are present and a fetch to the export URL returns a non-empty binary with the right content-type. Non-founder (tfone) on /admin/realm-pulse correctly shows the 'Founder access only' realm-pulse-denied panel and NOT realm-pulse-page. /admin/analytics shows the open-realm-pulse pill which navigates to /admin/realm-pulse. /realms/gaming shows realm-banner-edit which opens the BannerEditor modal (data-testid=realm-banner-editor). Heartbeat smoke walk through /feed,/messages,/sounds,/profile,/realms/gaming produced ZERO heartbeat-related console errors (the only console errors observed are pre-existing AutoplayVideo MEDIA_ELEMENT_ERROR for two missing /api/videos/*.mov files + one unrelated 500 — these are not related to the current batch).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_realm_pulse.py",
+    "/app/test_reports/pytest/realm_pulse_results.xml"
+  ],
+  "action_items": [
+    "Optional cleanup (not blocking): three pre-existing AutoplayVideo media playback errors logged on /feed for /api/videos/abc.mp4 and two .mov files — these are leftover/broken video records in the feed, unrelated to this batch, but they create noisy console errors for every feed visit."
+  ],
+  "critical_code_review_comments": [
+    "routers/realm_pulse.py is clean — every founder endpoint calls require_founder(current); heartbeat correctly accepts ANY authenticated user and is idempotent via the unique (user_id, day) index on user_activity_days.",
+    "Export route safely whitelists fmt to csv|pdf|xlsx (400 otherwise), reuses overview() so file content matches the dashboard, and sets Content-Disposition: attachment with a timestamped filename.",
+    "investor_snapshot endpoint defensively pops a hypothetical _counts key — good belt-and-braces in case future helpers leak per-user data.",
+    "Frontend gating: AdminAnalytics pill + RealmDetail banner-edit both correctly gate on user.username==='stealth' via useAuth(); apiClient reads the JWT from localStorage key 'ourrealm.access' (documented for future testing agents).",
+    "useHeartbeat hook is non-blocking on mount across Feed/Messages/Sounds/Profile/RealmDetail — no console errors during the smoke walk."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_realm_pulse.py (created — 17 tests, all passing)"
+  ],
+  "success_rate": { "backend": "100% (17/17)", "frontend": "100% on all required testids + flows" },
+  "test_credentials": "Founder stealth/Password1$ and user tfone/pass1234 both valid. Frontend localStorage JWT key is 'ourrealm.access' (not 'access_token').",
+  "seed_data_creation": "Tests created two user_activity_days rows (one for the founder, one for tfone) for today's UTC date via /api/analytics/heartbeat, plus one fresh snapshot row in db.realm_pulse_snapshots from the refresh-snapshot test. Safe to leave.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Realm-Pulse backend regression suite lives at /app/backend/tests/test_realm_pulse.py (17 tests, ~4s). Frontend Playwright auth shortcut: POST /api/auth/login then page.evaluate(\"(t)=>localStorage.setItem('ourrealm.access', t)\", token) — DO NOT use access_token / token / auth_token keys; only 'ourrealm.access' is read by /app/frontend/src/api/client.js. All Realm Pulse data-testids are exactly as documented in the review request and all are present in the DOM.",
+  "rca of the issue": "No bugs found. Initial false negatives in the first Playwright run (missing open-realm-pulse pill + realm-banner-edit button) were caused by my test using the wrong localStorage key for the JWT — apiClient reads 'ourrealm.access', not 'access_token'/'token'. After switching to the correct key both elements rendered and worked as specified. The product code is correct."
+}

@@ -191,6 +191,13 @@ async def login(payload: LoginPayload, request: Request, response: Response):
     access = create_access_token(user["id"], user.get("email", ""))
     refresh = create_refresh_token(user["id"])
     set_auth_cookies(response, access, refresh)
+    # Realm Pulse — record sign-in as a meaningful action so DAU lights
+    # up immediately, even before the client sends a heartbeat.
+    try:
+        from services.realm_pulse import record_activity
+        await record_activity(user["id"])
+    except Exception:  # noqa: BLE001 — analytics never blocks auth
+        pass
     return {"user": serialize_user(user), "access_token": access}
 
 

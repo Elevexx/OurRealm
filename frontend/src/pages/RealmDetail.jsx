@@ -1,7 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Users, Radio, Image as ImageIcon, Music2, MessageSquare, Calendar, Crown, Plus, Settings, Pin, ArrowLeft, Shield } from "lucide-react";
 import { REALMS, CHARACTERS, makeMockPosts } from "@/data/mockData";
+import BannerEditor, { BannerView } from "@/components/BannerEditor";
+import { useAuth } from "@/contexts/AuthContext";
+import useHeartbeat from "@/hooks/useHeartbeat";
+
+const BANNER_KEY = (id) => `ourrealm.realm_banner.${id}`;
 
 const TABS = [
   { id: "feed",    label: "Feed",    Icon: MessageSquare },
@@ -14,12 +19,40 @@ const TABS = [
 ];
 
 export default function RealmDetail() {
+  useHeartbeat("realm");
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const realm = REALMS.find((r) => r.id === id);
   const [tab, setTab] = useState("feed");
   const [joined, setJoined] = useState(false);
   const posts = React.useMemo(() => makeMockPosts(18), []);
+
+  // Banner state — overrides from BannerEditor are persisted to localStorage
+  // keyed per-realm. When the dedicated Realms backend lands, swap the
+  // get/set helpers below for a PATCH /api/realms/{id} call.
+  const [banner, setBanner] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(BANNER_KEY(id)) || "null"); } catch { return null; }
+  });
+  const [bannerEditorOpen, setBannerEditorOpen] = useState(false);
+  // Owner/admin gate — only @stealth (founder) and listed moderators can edit
+  // a realm banner. The static REALMS mock currently has no owner field, so
+  // founder access is the safe default until the backend exists.
+  const canEditBanner = !!user && (user.username || "").toLowerCase() === "stealth";
+  useEffect(() => {
+    try {
+      setBanner(JSON.parse(localStorage.getItem(BANNER_KEY(id)) || "null"));
+    } catch { setBanner(null); }
+  }, [id]);
+
+  const saveBanner = (next) => {
+    setBanner(next);
+    try { localStorage.setItem(BANNER_KEY(id), JSON.stringify(next)); } catch { /* */ }
+  };
+  const clearBanner = () => {
+    setBanner(null);
+    try { localStorage.removeItem(BANNER_KEY(id)); } catch { /* */ }
+  };
 
   if (!realm) {
     return (
@@ -38,11 +71,31 @@ export default function RealmDetail() {
       {/* Banner */}
       <div className="or-surface overflow-hidden mb-5" data-testid="realm-banner">
         <div className="relative h-48 sm:h-64">
-          <img src={realm.banner} alt="" className="w-full h-full object-cover" />
+          {banner?.banner_url ? (
+            <BannerView
+              url={banner.banner_url}
+              offsetY={banner.banner_offset_y ?? 50}
+              scale={banner.banner_scale ?? 1}
+              className="w-full h-full"
+              testid="realm-banner-custom"
+            />
+          ) : (
+            <img src={realm.banner} alt="" className="w-full h-full object-cover" />
+          )}
           <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, transparent 20%, ${realm.accent}22 60%, rgba(0,0,0,0.7))` }} />
           <button className="absolute top-3 left-3 starbar-icon" style={{ width: 36, height: 36 }} onClick={() => navigate("/realms")} data-testid="realm-back">
             <ArrowLeft size={16} />
           </button>
+          {canEditBanner && (
+            <button
+              className="absolute top-3 right-3 or-chip"
+              onClick={() => setBannerEditorOpen(true)}
+              data-testid="realm-banner-edit"
+              style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)" }}
+            >
+              <ImageIcon size={12} /> {banner?.banner_url ? "Change banner" : "Add banner"}
+            </button>
+          )}
           <div className="absolute bottom-4 left-5 right-5 flex items-end justify-between gap-3">
             <div>
               <div className="text-4xl mb-2">{realm.emoji}</div>
@@ -212,6 +265,20 @@ export default function RealmDetail() {
           </div>
         </aside>
       </div>
+
+      {/* BannerEditor modal — only mounted when admin opens it */}
+      <BannerEditor
+        open={bannerEditorOpen}
+        onClose={() => setBannerEditorOpen(false)}
+        initial={{
+          banner_url: banner?.banner_url || "",
+          banner_offset_y: banner?.banner_offset_y ?? 50,
+          banner_scale: banner?.banner_scale ?? 1,
+        }}
+        onSave={(next) => { saveBanner(next); setBannerEditorOpen(false); }}
+        onRemove={() => { clearBanner(); setBannerEditorOpen(false); }}
+        testid="realm-banner-editor"
+      />
     </div>
   );
 }

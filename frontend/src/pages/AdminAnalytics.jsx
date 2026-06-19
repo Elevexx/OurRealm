@@ -1,6 +1,7 @@
 /** Admin Analytics — server-side guarded; only @stealth can view. */
 import React, { useEffect, useState } from "react";
-import { ShieldCheck, Loader2, AlertTriangle, ChevronDown, ChevronRight, EyeOff, Trash2, Check } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ShieldCheck, Loader2, AlertTriangle, ChevronDown, ChevronRight, EyeOff, Trash2, Check, Zap } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import ModerationPanel from "@/components/ModerationPanel";
@@ -72,7 +73,7 @@ export default function AdminAnalytics() {
 
   return (
     <div className="max-w-6xl mx-auto" data-testid="admin-analytics">
-      <header className="mb-5 flex items-center justify-between gap-3">
+      <header className="mb-5 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <ShieldCheck size={26} style={{ color: "#00FF66" }} />
           <div>
@@ -80,22 +81,32 @@ export default function AdminAnalytics() {
             <h1 className="text-3xl sm:text-4xl" style={{ fontFamily: "var(--font-display)" }}>OurRealm Pulse</h1>
           </div>
         </div>
-        <div className="flex gap-1" data-testid="analytics-range">
-          {RANGES.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => setRange(r.id)}
-              data-active={range === r.id}
-              data-testid={`analytics-range-${r.id}`}
-              className="text-xs px-3 py-1.5"
-              style={{
-                borderRadius: 999,
-                background: range === r.id ? "color-mix(in srgb, var(--primary) 18%, transparent)" : "transparent",
-                color: range === r.id ? "var(--primary)" : "var(--text-muted)",
-                border: `1px solid ${range === r.id ? "var(--primary)" : "var(--border-col)"}`,
-              }}
-            >{r.label}</button>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap">
+          {((user.username || "").toLowerCase() === "stealth") && (
+            <Link
+              to="/admin/realm-pulse"
+              className="or-chip"
+              data-testid="open-realm-pulse"
+              style={{ background: "color-mix(in srgb, var(--brand-green) 16%, transparent)", color: "var(--brand-green)", borderColor: "var(--brand-green)" }}
+            ><Zap size={12} /> Realm Pulse</Link>
+          )}
+          <div className="flex gap-1" data-testid="analytics-range">
+            {RANGES.map((r) => (
+              <button
+                key={r.id}
+                onClick={() => setRange(r.id)}
+                data-active={range === r.id}
+                data-testid={`analytics-range-${r.id}`}
+                className="text-xs px-3 py-1.5"
+                style={{
+                  borderRadius: 999,
+                  background: range === r.id ? "color-mix(in srgb, var(--primary) 18%, transparent)" : "transparent",
+                  color: range === r.id ? "var(--primary)" : "var(--text-muted)",
+                  border: `1px solid ${range === r.id ? "var(--primary)" : "var(--border-col)"}`,
+                }}
+              >{r.label}</button>
+            ))}
+          </div>
         </div>
       </header>
 
