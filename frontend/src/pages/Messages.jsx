@@ -469,9 +469,12 @@ function ThreadListTab({
                     border: "1px solid var(--primary)",
                     color: "var(--primary)",
                     fontWeight: 800,
+                    fontSize: kind === "realm" && g.realm_avatar ? 24 : undefined,
                   }}
                 >
-                  {(g.name || "?").charAt(0).toUpperCase()}
+                  {kind === "realm" && g.realm_avatar
+                    ? g.realm_avatar
+                    : (g.name || "?").charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-bold truncate" style={{ color: "var(--text-main)" }}>{g.name}</div>
@@ -485,7 +488,10 @@ function ThreadListTab({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigate(`/realms/${g.id}`);
+                    // Prefer the realm slug for a stable URL (e.g.
+                    // /realms/gaming) when present; fall back to id.
+                    const target = g.realm_slug || g.slug || g.realm_id || g.id;
+                    navigate(`/realms/${target}`);
                   }}
                   className="or-chip shrink-0"
                   aria-label={`Open ${g.name} realm hub`}

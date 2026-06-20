@@ -170,6 +170,155 @@ async def list_realms(q: Optional[str] = None, limit: int = 50):
     return {"realms": realms}
 
 
+async def _ensure_main_realm_chat(realm_id: str, realm_name: Optional[str] = None) -> dict:
+    """Idempotently return the main community chat for `realm_id`.
+
+    Creates one only if it's missing. Used by both the create_realm flow
+    AND the startup backfill that retroactively links every Mongo realm
+    to a chat row. Returns the chat dict (with `id`, `community_*`,
+    `title`, …).
+    """
+    existing = await db.community_chats.find_one(
+        {"community_type": "realm", "community_id": realm_id, "is_main": True},
+        {"_id": 0},
+    )
+    if existing:
+        return existing
+    now = _now_iso()
+    chat = {
+        "id":             uuid.uuid4().hex,
+        "community_type": "realm",
+        "community_id":   realm_id,
+        "title":          realm_name or "General Chat",
+        "is_main":        True,
+        "created_at":     now,
+        "updated_at":     now,
+    }
+    await db.community_chats.insert_one(chat)
+    return chat
+
+
+async def backfill_main_realm_chats() -> int:
+    """For every realm without a main chat, create one. Safe + idempotent.
+
+    Returns the number of chats inserted. Also de-dupes multiple
+    "is_main" rows for the same realm by keeping the OLDEST one and
+    flipping the rest to non-main (we never delete user messages — the
+    other chat rows simply lose the `is_main` flag).
+    """
+    n_created = 0
+    n_dedup   = 0
+    # 1. Realms without any main chat → create one.
+    async for r in db.realms.find({}, {"_id": 0, "id": 1, "name": 1}):
+        rid, rname = r["id"], r.get("name")
+        chat = await db.community_chats.find_one(
+            {"community_type": "realm", "community_id": rid, "is_main": True},
+            {"_id": 0, "id": 1},
+        )
+        if not chat:
+            await _ensure_main_realm_chat(rid, rname)
+            n_created += 1
+    # 2. De-dupe — for any realm with >1 main chats, keep the oldest.
+    pipeline = [
+        {"$match": {"community_type": "realm", "is_main": True}},
+        {"$group": {"_id": "$community_id", "n": {"$sum": 1}, "rows": {"$push": {"id": "$id", "created_at": "$created_at"}}}},
+        {"$match": {"n": {"$gt": 1}}},
+    ]
+    async for row in db.community_chats.aggregate(pipeline):
+        rows = sorted(row["rows"], key=lambda x: x.get("created_at") or "")
+        # Keep the oldest (rows[0]) by leaving its is_main flag alone;
+        # demote every duplicate so future reads pick a single canonical
+        # main chat. We never delete user messages here.
+        for r in rows[1:]:
+            await db.community_chats.update_one({"id": r["id"]}, {"$set": {"is_main": False}})
+            n_dedup += 1
+    logger.info(f"[communities] backfill_main_realm_chats: created={n_created} de-duped={n_dedup}")
+    return n_created
+
+
+@router.get("/communities/my-realms")
+async def my_realms(current: CurrentUser):
+    """Realms the current user is a member of, with the main chat metadata
+    needed to render `/messages` → Realms tab in one round-trip.
+
+    Each entry exposes a stable trio:
+      - realm_id   (canonical id, Mongo)
+      - chat_id    (main community_chats.id)
+      - context    (used as Supabase message thread context_id ==
+                    realm_id — keeps a single source-of-truth)
+    plus realm_name, realm_slug, realm_banner_url, emoji, member_count,
+    online_count, role, favorite, last_message_at (chat.updated_at).
+
+    Also returns `id` and `name` aliases so the legacy Messages.jsx
+    ThreadList row component (which expects `{id, name, members:[]}`)
+    keeps working without further frontend changes.
+    """
+    # 1. Memberships for this user.
+    memberships = [m async for m in db.community_memberships.find(
+        {"community_type": "realm", "user_id": current["id"]},
+        {"_id": 0},
+    )]
+    if not memberships:
+        return {"realms": []}
+    realm_ids = [m["community_id"] for m in memberships]
+    # 2. Realm docs for those memberships.
+    realms = {r["id"]: r async for r in db.realms.find(
+        {"id": {"$in": realm_ids}}, {"_id": 0},
+    )}
+    # 3. Live member_count + main chat per realm — single aggregations.
+    counts = await _membership_count_map("realm", realm_ids)
+    chats: dict[str, dict] = {}
+    async for c in db.community_chats.find(
+        {"community_type": "realm", "community_id": {"$in": realm_ids}, "is_main": True},
+        {"_id": 0, "id": 1, "community_id": 1, "updated_at": 1, "title": 1},
+    ):
+        chats[c["community_id"]] = c
+    # 4. Compose.
+    out = []
+    for m in memberships:
+        rid = m["community_id"]
+        realm = realms.get(rid)
+        if not realm:
+            # Membership row references a deleted realm — skip silently.
+            continue
+        # Lazy-heal the missing main chat so the row can still render.
+        chat = chats.get(rid)
+        if not chat:
+            chat = await _ensure_main_realm_chat(rid, realm.get("name"))
+            chats[rid] = chat
+        banner = realm.get("banner") or realm.get("banner_url")
+        out.append({
+            # New canonical shape per spec
+            "realm_id":         rid,
+            "chat_id":          chat["id"],
+            "realm_name":       realm.get("name"),
+            "realm_slug":       realm.get("slug"),
+            "realm_avatar":     realm.get("emoji") or "🌐",
+            "realm_banner_url": banner,
+            "member_count":     counts.get(rid, 0),
+            "online_count":     await _online_count("realm", rid),
+            "last_message":     None,
+            "last_message_at":  chat.get("updated_at"),
+            "unread_count":     0,
+            "role":             m.get("role", "member"),
+            "favorite":         bool(m.get("favorite", False)),
+            # Back-compat aliases for the existing Messages.jsx ThreadList
+            # component — it reads `id`, `name`, `members[]`. Using the
+            # realm_id as both row.id AND the Supabase message context_id
+            # keeps the message thread stable across re-fetches.
+            "id":               rid,
+            "name":             realm.get("name"),
+            "members":          [m["user_id"] async for m in db.community_memberships.find(
+                {"community_type": "realm", "community_id": rid},
+                {"_id": 0, "user_id": 1},
+            )],
+            "created_at":       m.get("joined_at") or realm.get("created_at"),
+        })
+    # Sort by last_message_at desc, falling back to created_at.
+    out.sort(key=lambda r: r.get("last_message_at") or r.get("created_at") or "", reverse=True)
+    return {"realms": out}
+
+
 @router.get("/communities/realms/{id_or_slug}")
 async def get_realm(id_or_slug: str):
     realm = await _load_community("realm", id_or_slug)
@@ -300,6 +449,23 @@ async def update_realm(id_or_slug: str, payload: RealmUpdate, current: CurrentUs
 
     updates["updated_at"] = _now_iso()
     await db.realms.update_one({"id": realm["id"]}, {"$set": updates})
+
+    # Spec: when a realm is renamed, the matching main chat's title and
+    # updated_at must follow. Banner/avatar changes also bump the chat's
+    # updated_at so the /messages preview metadata refreshes.
+    chat_updates: dict[str, Any] = {}
+    if "name" in updates:
+        chat_updates["title"] = updates["name"]
+    if "banner" in updates or "profile_image" in updates or "name" in updates:
+        chat_updates["updated_at"] = updates["updated_at"]
+    if chat_updates:
+        try:
+            await db.community_chats.update_one(
+                {"community_type": "realm", "community_id": realm["id"], "is_main": True},
+                {"$set": chat_updates},
+            )
+        except Exception:  # pylint: disable=broad-except
+            logger.exception("[communities] failed to sync main chat metadata for realm.update")
 
     # Audit log — keep edits traceable.
     try:

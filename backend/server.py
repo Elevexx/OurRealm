@@ -213,6 +213,11 @@ async def on_startup():
         from services import community_seed
         await community_seed.ensure_indexes()
         await community_seed.seed_realms()
+        # Spec: every Realm must have a matching Realm group chat. Run
+        # idempotent backfill so seeded realms (and any legacy realms
+        # created before the chat-on-create flow existed) get one too.
+        from routers import communities as _communities
+        await _communities.backfill_main_realm_chats()
     except Exception as e:
         logger.warning(f"[communities] startup failed: {e}")
 

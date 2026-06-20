@@ -15,6 +15,35 @@ React 19 · FastAPI · MongoDB (Motor) · Supabase (Postgres + Realtime for mess
 ## Completed Phases
 Phase 1 · 2 · 2.5 · 3 · 4A · 4A follow-up · 4B (Polls/Personalization) · 4B follow-up (Made for You) · Landing/Modes refresh · PWA icon · mode animations · Phase 5 foundation (Home Dashboard + Admin Analytics + PWA prompt + autoplay) · **Phase 5 MVP + deferred polish (Feb 2026)** · **Phase 5+ Parts 0/1/2/3 (Feb 2026)** · **Phase A — Moderation Engine (Feb 2026)** · **Phase B — Support Messaging System (Feb 2026)** · **Phase 8 — FAQ + Messages popup polish (Feb 2026)** · **Phase 4 — Comment likes/replies + Universal Reporting (Feb 2026)** · **Phase 5 — In-feed video + Share-to-user + Shared-post popup (Feb 2026)** · **Phase C — Real-Time Presence + Real Discover/Trending (Feb 17, 2026)** · **Phase D — Home ➕ Composer Rebuild + Sound Posts + Range Audio (Feb 17, 2026)** · **Landing Page Image-Only Rebrand (Feb 18, 2026)** · **Persistent Media Storage + Promote-to-Interest + Copyright Queue UI (Feb 19, 2026)** · **Realm Pulse Analytics + BannerEditor on Realms + R2/S3 Adapter Scaffold (Feb 19, 2026)** · **Realms/Groups Community Hub — Phase 1: Real backend + Community Chat + People Online + Floating DMs (Feb 19, 2026)** · **Admin User Control + Password Reset widgets on /support (Feb 19, 2026)** · **Admin Hub at /admin (Feb 19, 2026)** · **Admin widgets mounted on /admin/support + Realms Phase 2 foundation (Feb 19, 2026)** · **Realms Phase 2 & 3 validation + Community Hub Widget (Feb 19, 2026)** · **P0 Navigation + Realm Mobile Regression Batch (Feb 19, 2026)** · **Media Compatibility Layer + Realms Icon Swap (Feb 19, 2026)** · **Realm Ownership Controls — Edit + Delete (Feb 19, 2026)** · **Account Deletion + 30-Day Restore + Founder Admin Tab (Feb 19, 2026)** · **R2 secrets staged (not live) + Stale-bundle SW + auto-update (Feb 19, 2026)** · **Permanent-delete cron — closes the 30-day account lifecycle (Feb 19, 2026)** · **YouTube Audio Restoration + Realms Banner Consistency + Messages Realms Nav Arrow + Founder-Only Member Management (Feb 20, 2026)** · **Trending Hashtags Collapsible Widget (Feb 20, 2026)** · **Realm Banner persist-to-backend + /hashtags page + Hashtag drift fix + Member count source-of-truth (Feb 20, 2026)**.
 
+## Realm Group Chat Auto-Sync — /messages > Realms tab driven by Mongo (Feb 20, 2026)
+Iteration 37 — 46/46 backend pytest green (7 new chat-sync + 39 prior). Wires the Mongo /realms canonical store into the `/messages > Realms` tab so creating, joining, or leaving a Realm on `/realms` instantly reflects on `/messages > Realms`.
+
+### Backend
+- **`GET /api/communities/my-realms`** (new, auth-only) — single round-trip returns every realm the caller is a member of, ordered by `last_message_at` (then `created_at`). Each entry exposes the spec'd stable trio (`realm_id`, `chat_id`, message thread `context_id` ≡ realm_id) plus `realm_name`, `realm_slug`, `realm_avatar` (emoji), `realm_banner_url`, `member_count`, `online_count`, `role`, `favorite`, `last_message_at`, `unread_count`. Includes legacy aliases (`id`, `name`, `members[]`, `created_at`) so the existing Messages.jsx ThreadList row component renders without changes.
+- **`_ensure_main_realm_chat(realm_id, realm_name)`** + **`backfill_main_realm_chats()`** — idempotent helpers that guarantee every realm has exactly one `is_main` community chat. Backfill is wired into FastAPI startup (logged: `[communities] backfill_main_realm_chats: created=X de-duped=Y`). De-dupe demotes extra `is_main: true` rows but NEVER deletes user messages.
+- **`update_realm`** now mirrors metadata changes onto the main chat: name change → `chat.title` updated; name / banner / profile_image change → `chat.updated_at` bumped (refreshes the /messages preview).
+- **`delete_realm`** already cascades into `community_chats` (and the existing `_safe_delete` block on `community_messages` keeps message history intact via its own delete cascade).
+
+### Frontend
+- **`lib/messaging.js`** — Realm functions migrated from Supabase to Mongo: `listRealms()` calls `/api/communities/my-realms`; `createRealm(name)` calls `/api/communities/realms` (Mongo auto-joins owner + creates chat); `joinRealm(id)` calls `/api/communities/realm/:id/join`; `leaveRealm(id)` calls `/api/communities/realm/:id/leave`. Realm message threads keep using Supabase with `context_id = mongo_realm_id` so existing message persistence + realtime stay untouched. Chats/Groups still on Supabase (no change).
+- **`pages/Messages.jsx`** — ThreadList row now uses `realm_avatar` (emoji) instead of the first-letter initial when present, and the open-hub chevron prefers `realm_slug` for a clean `/realms/{slug}` URL (falls back to id).
+
+### Tests (`/app/backend/tests/test_realm_chat_sync.py`, 7 cases, all green)
+- /my-realms requires auth
+- /my-realms returns the spec'd field set for the owner of a freshly-created realm
+- /my-realms excludes non-members
+- Joining a realm makes it appear in /my-realms
+- Leaving a realm removes it from /my-realms
+- Renaming a realm updates the main chat title and /my-realms name field
+- Double-join is idempotent (no duplicate membership / inflated count)
+
+### What's untouched
+- DM behaviour (Supabase chats / 1:1)
+- Friend messages
+- Existing group messages outside realm chats
+- Realm chat message persistence / realtime (still Supabase)
+- Universe of Chats / Groups tabs
+
 ## Realm Banner persist-to-backend + /hashtags page + Hashtag drift fix + Member count source-of-truth (Feb 20, 2026)
 Iteration 36 — 24/24 backend pytest green. 4 parts shipped together.
 

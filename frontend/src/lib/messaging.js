@@ -1,9 +1,14 @@
 // ----------------------------------------------------------------------------
-// Unified messaging library — Chats, Groups, Realms, and Messages all live in
-// Supabase. ONE messaging table powers everything:
-//   context_type ∈ { 'chat', 'group', 'realm' }, context_id = uuid
+// Unified messaging library — Chats, Groups, and Messages live in Supabase
+// (single messages table powers everything; `context_type ∈ {chat, group,
+// realm}`). REALMS, however, are sourced from Mongo — the canonical Realm
+// id, membership, and main chat row live there alongside /realms. Realm
+// message threads still flow through Supabase using `context_type='realm'`
+// and `context_id = mongo_realm_id`, so message persistence + realtime
+// stay unchanged while Realm membership is the single source of truth.
 // ----------------------------------------------------------------------------
 import { supabase, isSupabaseConfigured } from "./supabase";
+import apiClient from "@/api/client";
 
 const PAGE_LIMIT = 100;
 
@@ -102,53 +107,43 @@ export async function leaveGroup(groupId, userId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// REALMS  (same shape as groups, different table)
+// REALMS — backed by Mongo /api/communities so /messages > Realms
+// stays perfectly in sync with /realms membership (the canonical store).
+// Returned shape includes both the new canonical fields (realm_id,
+// chat_id, realm_avatar, realm_banner_url, member_count, …) AND legacy
+// aliases (`id`, `name`, `members`, `created_at`) so the existing
+// Messages.jsx ThreadList row component renders without changes.
 // ─────────────────────────────────────────────────────────────────────
-export async function listRealms(userId) {
-  const sb = ensure();
-  const { data, error } = await sb
-    .from("realms")
-    .select("*")
-    .contains("members", [userId])
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return data || [];
+export async function listRealms(_userId) {
+  const { data } = await apiClient.get("/communities/my-realms");
+  return data?.realms || [];
 }
 
-export async function createRealm(userId, name, memberIds = []) {
-  const sb = ensure();
-  const members = Array.from(new Set([userId, ...memberIds]));
-  const { data, error } = await sb
-    .from("realms")
-    .insert({ name, created_by: userId, members })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+export async function createRealm(_userId, name, _memberIds = []) {
+  // Mongo create_realm auto-joins the creator as owner AND auto-creates
+  // the main community chat. One round-trip; no follow-up "add me"
+  // needed. We then read it back via /my-realms so the row carries
+  // every field the UI expects (realm_id, chat_id, member_count, …).
+  await apiClient.post("/communities/realms", { name });
+  const { data } = await apiClient.get("/communities/my-realms");
+  const realms = data?.realms || [];
+  // Return the newest realm (sorted by last_message_at/created_at desc).
+  const created = realms.find((r) => r.realm_name === name) || realms[0] || null;
+  return created;
 }
 
-export async function joinRealm(realmId, userId) {
-  const sb = ensure();
-  const { data: r, error: re } = await sb
-    .from("realms").select("members").eq("id", realmId).single();
-  if (re) throw re;
-  const members = Array.from(new Set([...(r?.members || []), userId]));
-  const { data, error } = await sb
-    .from("realms").update({ members }).eq("id", realmId).select().single();
-  if (error) throw error;
-  return data;
+export async function joinRealm(realmId, _userId) {
+  // Mongo /join is idempotent — returns {member_count} live.
+  await apiClient.post(`/communities/realm/${realmId}/join`);
+  const { data } = await apiClient.get("/communities/my-realms");
+  return (data?.realms || []).find((r) => r.realm_id === realmId) || null;
 }
 
-export async function leaveRealm(realmId, userId) {
-  const sb = ensure();
-  const { data: r, error: re } = await sb
-    .from("realms").select("members").eq("id", realmId).single();
-  if (re) throw re;
-  const members = (r?.members || []).filter((m) => m !== userId);
-  const { data, error } = await sb
-    .from("realms").update({ members }).eq("id", realmId).select().single();
-  if (error) throw error;
-  return data;
+export async function leaveRealm(realmId, _userId) {
+  await apiClient.post(`/communities/realm/${realmId}/leave`);
+  // Caller only needs to know it succeeded — the Messages.jsx tab
+  // refreshes its list independently from the optimistic remove.
+  return { id: realmId, removed: true };
 }
 
 // ─────────────────────────────────────────────────────────────────────
