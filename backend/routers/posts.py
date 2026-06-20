@@ -200,6 +200,14 @@ async def delete_post(post_id: str, current: CurrentUser):
     is_owner = post.get("author_id") == current["id"]
     if not (is_owner or _is_founder(current)):
         raise HTTPException(status_code=403, detail="You can only delete your own posts")
+    # Decrement hashtag counters so trending stays in sync with reality.
+    # Done BEFORE the delete so `index_post_hashtags` can read the
+    # current hashtag set off the post row.
+    try:
+        from routers.hashtags import index_post_hashtags
+        await index_post_hashtags(post_id, "")
+    except Exception:  # noqa: BLE001 — never block deletion on a counter
+        pass
     await db.posts.delete_one({"id": post_id})
     # Clean dependent rows so likes/comments don't dangle.
     await db.comments.delete_many({"post_id": post_id})

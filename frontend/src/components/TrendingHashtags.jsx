@@ -66,10 +66,9 @@ export default function TrendingHashtags() {
   // never shows an empty placeholder.
   if (!loaded || items.length === 0) return null;
 
-  const topTag = items[0]?.tag;
   const onViewAll = (e) => {
     e.preventDefault();
-    if (topTag) navigate(`/hashtag/${topTag}`);
+    navigate("/hashtags");
   };
 
   return (
@@ -125,7 +124,7 @@ export default function TrendingHashtags() {
               {items.map((h, idx) => (
                 <Link
                   key={h.tag}
-                  to={`/hashtag/${h.tag}`}
+                  to={`/hashtags/${h.tag}`}
                   className="or-chip"
                   data-testid={`trending-hashtag-${h.tag}`}
                   title={`${h.usage_count} uses · last used ${h.last_used_at?.slice(0, 10) || ""}`}

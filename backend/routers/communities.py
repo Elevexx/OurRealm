@@ -110,6 +110,45 @@ async def _project_member_card(membership: dict) -> dict:
 # --------------------------------------------------------------------- #
 # Realm endpoints
 # --------------------------------------------------------------------- #
+def _realm_with_aliases(r: dict) -> dict:
+    """Add spec-compliant aliases without changing storage.
+
+    - `banner_url` aliases the persisted `banner` column so the front-end
+      can use the same field name on both detail and Discover surfaces.
+    - `updated_at` is always present (for cache-busting `?v=updated_at`).
+    - Legacy seed fields (`members`, `online`) and the dormant
+      `member_count_estimate` are stripped from the response so the
+      frontend never falls back to a hard-coded count when the real
+      `member_count` derived from `community_memberships` is the
+      source of truth.
+    """
+    if not r:
+        return r
+    if "banner_url" not in r:
+        r["banner_url"] = r.get("banner")
+    if not r.get("updated_at"):
+        r["updated_at"] = r.get("created_at") or _now_iso()
+    for legacy in ("members", "online", "member_count_estimate", "online_count_estimate"):
+        r.pop(legacy, None)
+    return r
+
+
+async def _membership_count_map(community_type: str, ids: list[str]) -> dict[str, int]:
+    """Single aggregation that returns `{community_id: member_count}` for
+    every id in `ids`. Avoids an N+1 `count_documents` per realm in the
+    Discover list endpoint. Missing ids resolve to 0 by the caller."""
+    if not ids:
+        return {}
+    pipeline = [
+        {"$match": {"community_type": community_type, "community_id": {"$in": ids}}},
+        {"$group": {"_id": "$community_id", "n": {"$sum": 1}}},
+    ]
+    out: dict[str, int] = {}
+    async for row in db.community_memberships.aggregate(pipeline):
+        out[row["_id"]] = int(row.get("n") or 0)
+    return out
+
+
 @router.get("/communities/realms")
 async def list_realms(q: Optional[str] = None, limit: int = 50):
     filt: dict[str, Any] = {}
@@ -120,7 +159,14 @@ async def list_realms(q: Optional[str] = None, limit: int = 50):
             {"tags":        {"$regex": q, "$options": "i"}},
         ]
     cursor = db.realms.find(filt, {"_id": 0}).limit(min(limit, 200))
-    realms = [r async for r in cursor]
+    raw = [r async for r in cursor]
+    ids = [r["id"] for r in raw if r.get("id")]
+    # One aggregation, then attach the real counts to each card.
+    counts = await _membership_count_map("realm", ids)
+    realms = []
+    for r in raw:
+        r["member_count"] = counts.get(r.get("id"), 0)
+        realms.append(_realm_with_aliases(r))
     return {"realms": realms}
 
 
@@ -133,7 +179,7 @@ async def get_realm(id_or_slug: str):
     realm["member_count"] = await db.community_memberships.count_documents({
         "community_type": "realm", "community_id": realm["id"],
     })
-    return realm
+    return _realm_with_aliases(realm)
 
 
 class RealmCreate(BaseModel):
@@ -271,7 +317,7 @@ async def update_realm(id_or_slug: str, payload: RealmUpdate, current: CurrentUs
 
     refreshed = await db.realms.find_one({"id": realm["id"]}, {"_id": 0})
     return {
-        **(refreshed or {}),
+        **_realm_with_aliases(refreshed or {}),
         "online_count": await _online_count("realm", realm["id"]),
         "member_count": await db.community_memberships.count_documents({
             "community_type": "realm", "community_id": realm["id"],
@@ -445,17 +491,26 @@ async def join_community(community_type: str, community_id: str, current: Curren
     if community_type == "group" and community.get("privacy") in {"invite_only", "private"} and not _is_admin(community, current):
         raise HTTPException(403, "Group is invite-only")
     existing = await _ensure_member(community_type, community["id"], current["id"])
-    if existing:
-        return {"ok": True, "already_member": True}
-    await db.community_memberships.insert_one({
-        "community_type": community_type,
-        "community_id":   community["id"],
-        "user_id":        current["id"],
-        "role":           "member",
-        "joined_at":      _now_iso(),
-        "favorite":       False,
+    if not existing:
+        await db.community_memberships.insert_one({
+            "community_type": community_type,
+            "community_id":   community["id"],
+            "user_id":        current["id"],
+            "role":           "member",
+            "joined_at":      _now_iso(),
+            "favorite":       False,
+        })
+    # Return the live member_count so the client can paint without
+    # a follow-up GET.
+    member_count = await db.community_memberships.count_documents({
+        "community_type": community_type, "community_id": community["id"],
     })
-    return {"ok": True, "joined": True}
+    return {
+        "ok": True,
+        "joined": not bool(existing),
+        "already_member": bool(existing),
+        "member_count": member_count,
+    }
 
 
 @router.post("/communities/{community_type}/{community_id}/leave")
@@ -473,7 +528,10 @@ async def leave_community(community_type: str, community_id: str, current: Curre
         "community_id":   community["id"],
         "user_id":        current["id"],
     })
-    return {"ok": True, "removed": res.deleted_count}
+    member_count = await db.community_memberships.count_documents({
+        "community_type": community_type, "community_id": community["id"],
+    })
+    return {"ok": True, "removed": res.deleted_count, "member_count": member_count}
 
 
 @router.patch("/communities/{community_type}/{community_id}/favorite")

@@ -190,6 +190,10 @@ async def on_startup():
         needs = await _db.posts.find_one({"hashtags": {"$exists": False}}, {"_id": 0, "id": 1})
         if needs:
             await hashtags_router_mod.migrate_index_all_posts()
+        # Reconcile post_count drift on every boot — cheap, idempotent.
+        # Without this, hashtags from deleted-then-recreated posts can
+        # appear in `/trending` and link to an empty hashtag feed.
+        await hashtags_router_mod.recompute_hashtag_post_counts()
     except Exception as e:
         logger.warning(f"[hashtags] startup index/migration error: {e}")
     _mod_task = asyncio.create_task(_moderation_loop())

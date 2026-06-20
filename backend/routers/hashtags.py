@@ -122,12 +122,56 @@ async def ensure_indexes() -> None:
     await db.hashtags.create_index("tag", unique=True)
     await db.hashtags.create_index([("usage_count", -1)])
     await db.hashtags.create_index([("last_used_at", -1)])
+    await db.hashtags.create_index([("post_count", -1)])
     # Featured interest cards (promoted hashtags).
     try:
         await db.interest_cards.create_index("label", unique=True)
         await db.interest_cards.create_index([("sort_order", 1)])
     except Exception:  # noqa: BLE001 — defensive on legacy data
         pass
+
+
+async def recompute_hashtag_post_counts() -> int:
+    """Reconcile `db.hashtags.post_count` against actual posts.
+
+    Fixes drift when posts were deleted before `delete_post` started
+    decrementing counters (or any other historical data event that
+    skipped the diff). Idempotent — safe to call on every startup.
+    Returns the number of hashtag rows touched.
+    """
+    pipeline = [
+        {"$match": {"hashtags": {"$exists": True, "$ne": []}}},
+        {"$unwind": "$hashtags"},
+        {"$group": {"_id": "$hashtags", "n": {"$sum": 1}}},
+    ]
+    actual: dict[str, int] = {}
+    async for row in db.posts.aggregate(pipeline):
+        actual[row["_id"]] = int(row.get("n") or 0)
+    touched = 0
+    async for h in db.hashtags.find({}, {"_id": 0, "tag": 1, "post_count": 1}):
+        tag = h.get("tag")
+        if not tag:
+            continue
+        want = actual.get(tag, 0)
+        if int(h.get("post_count") or 0) != want:
+            await db.hashtags.update_one({"tag": tag}, {"$set": {"post_count": want}})
+            touched += 1
+    # Insert rows for tags that exist on posts but not in db.hashtags
+    # (legacy posts indexed before the counter table existed).
+    missing = set(actual.keys()) - set(actual.keys()).intersection(
+        {h["tag"] async for h in db.hashtags.find({}, {"_id": 0, "tag": 1})}
+    )
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for tag in missing:
+        await db.hashtags.update_one(
+            {"tag": tag},
+            {"$setOnInsert": {"tag": tag, "first_used_at": now_iso, "last_used_at": now_iso, "usage_count": actual[tag]},
+             "$set": {"post_count": actual[tag]}},
+            upsert=True,
+        )
+        touched += 1
+    logger.info(f"[hashtags] post_count reconciliation touched {touched} rows")
+    return touched
 
 
 async def migrate_index_all_posts() -> dict:
@@ -152,14 +196,39 @@ async def trending(window: str = "7d", limit: int = 6):
     Trending = hashtags used most often within the rolling window,
     measured by total usage_count of tags whose `last_used_at >= cutoff`.
     Cheap aggregate against the indexed `last_used_at` field — no
-    post-text scans.
+    post-text scans. Tags with `post_count == 0` are excluded so the
+    rail can never link to a hashtag feed that would render the empty
+    state ("No posts yet for #X").
     """
     days = {"1d": 1, "7d": 7, "30d": 30, "all": 36500}.get(window, 7)
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     items = [h async for h in db.hashtags
-             .find({"last_used_at": {"$gte": cutoff}}, {"_id": 0})
+             .find(
+                 {"last_used_at": {"$gte": cutoff}, "post_count": {"$gt": 0}},
+                 {"_id": 0},
+             )
              .sort([("usage_count", -1), ("last_used_at", -1)])
              .limit(max(1, min(limit, 24)))]
+    return {"window": window, "hashtags": items}
+
+
+@router.get("/top")
+async def top_hashtags(window: str = "30d", limit: int = 20):
+    """Public top-N hashtags for the dedicated /hashtags page.
+
+    Same filter as `/trending` but defaults to a 30-day window and a
+    higher limit (cap 50). Only tags with at least one live post are
+    returned so the corresponding hashtag feed always renders content.
+    """
+    days = {"1d": 1, "7d": 7, "30d": 30, "all": 36500}.get(window, 30)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    items = [h async for h in db.hashtags
+             .find(
+                 {"last_used_at": {"$gte": cutoff}, "post_count": {"$gt": 0}},
+                 {"_id": 0},
+             )
+             .sort([("usage_count", -1), ("last_used_at", -1)])
+             .limit(max(1, min(limit, 50)))]
     return {"window": window, "hashtags": items}
 
 

@@ -35,6 +35,7 @@ import AdminSupport from "@/pages/AdminSupport";
 import AdminFAQ from "@/pages/AdminFAQ";
 import AdminHashtags from "@/pages/AdminHashtags";
 import HashtagFeed from "@/pages/HashtagFeed";
+import TrendingHashtagsPage from "@/pages/TrendingHashtagsPage";
 import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage, CommunityStandardsPage, DMCAPolicyPage, SafetyPolicyPage, CookieNoticePage, AccountDeletionPage } from "@/pages/LegalPages";
 import YouTubeRouteCleanup from "@/components/YouTubeRouteCleanup";
 import PostPopup from "@/components/PostPopup";
@@ -91,6 +92,9 @@ function App() {
             <Route path="/public/:username" element={<ShellRoute><FounderProfile /></ShellRoute>} />
             <Route path="/feed" element={<ShellRoute><Feed /></ShellRoute>} />
             <Route path="/hashtag/:tag" element={<ShellRoute><HashtagFeed /></ShellRoute>} />
+            {/* Dedicated trending hashtags experience + spec'd /hashtags/:tag alias. */}
+            <Route path="/hashtags" element={<ShellRoute><TrendingHashtagsPage /></ShellRoute>} />
+            <Route path="/hashtags/:tag" element={<ShellRoute><HashtagFeed /></ShellRoute>} />
             <Route path="/admin/hashtags" element={<ShellRoute><AdminHashtags /></ShellRoute>} />
             <Route path="/discover" element={<ShellRoute><Discover /></ShellRoute>} />
             <Route path="/sounds" element={<ShellRoute><Sounds /></ShellRoute>} />

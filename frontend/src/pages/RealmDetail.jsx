@@ -142,21 +142,45 @@ export default function RealmDetail() {
   );
   const canEditBanner = isAdmin;
 
+  // Persist the banner URL to the backend so the /realms Discover card
+  // can render it too — localStorage only ever lived in the uploader's
+  // browser, which is why Discover stayed gradient-only before this
+  // patch. Offset/scale remain a per-viewer preview tweak in
+  // localStorage; the backend just needs the URL itself.
+  const persistBannerToRealm = async (url) => {
+    if (!realm?.id) return;
+    try {
+      const { data } = await apiClient.patch(`/communities/realms/${realm.id}`, {
+        banner: url || null,
+      });
+      // Use the refreshed realm doc so `updated_at` (used for `?v=` cache
+      // busting on the Discover card) is current.
+      if (data) setRealm(data);
+    } catch (_e) { /* swallow — banner UI already updated locally */ }
+  };
+
   const saveBanner = (next) => {
     setBanner(next);
     try { localStorage.setItem(BANNER_KEY(id), JSON.stringify(next)); } catch { /* */ }
+    if (next?.banner_url) void persistBannerToRealm(next.banner_url);
   };
   const clearBanner = () => {
     setBanner(null);
     try { localStorage.removeItem(BANNER_KEY(id)); } catch { /* */ }
+    void persistBannerToRealm(null);
   };
 
   const onJoin = async () => {
     if (!realm) return;
     if (joined) return;
     try {
-      await apiClient.post(`/communities/realm/${realm.id}/join`);
+      const { data } = await apiClient.post(`/communities/realm/${realm.id}/join`);
       setJoined(true);
+      // Optimistic count refresh — backend returns the live count so
+      // we don't need a second round-trip to display it.
+      if (typeof data?.member_count === "number") {
+        setRealm((prev) => prev ? { ...prev, member_count: data.member_count } : prev);
+      }
     } catch { /* */ }
   };
 
@@ -187,9 +211,15 @@ export default function RealmDetail() {
               className="w-full h-full"
               testid="realm-banner-custom"
             />
-          ) : realm.banner ? (
+          ) : (realm.banner_url || realm.banner) ? (
             <img
-              src={resolveMediaUrl(realm.banner)}
+              src={(() => {
+                const resolved = resolveMediaUrl(realm.banner_url || realm.banner);
+                const ver = realm.updated_at
+                  ? `${resolved.includes("?") ? "&" : "?"}v=${encodeURIComponent(realm.updated_at)}`
+                  : "";
+                return `${resolved}${ver}`;
+              })()}
               alt=""
               className="w-full h-full object-cover"
               data-testid="realm-banner-image"
