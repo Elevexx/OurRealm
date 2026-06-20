@@ -5,10 +5,10 @@
 // ─────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import useHeartbeat from "@/hooks/useHeartbeat";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   MessagesSquare, Users, Radio, Phone, Plus, Send, X, Search,
-  Image as ImageIcon, AlertTriangle, LogOut, Loader2,
+  Image as ImageIcon, AlertTriangle, LogOut, Loader2, ChevronRight,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -390,6 +390,7 @@ function ThreadListTab({
   me, kind, heading, emptyTitle, emptyBody, createLabel,
   list, create, leave, testidPrefix,
 }) {
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState(null);
@@ -449,32 +450,57 @@ function ThreadListTab({
       ) : (
         <div className="space-y-2" data-testid={`${testidPrefix}s-list`}>
           {items.map((g) => (
-            <button
+            <div
               key={g.id}
-              onClick={() => setActive(g)}
-              className="w-full or-surface p-3 text-left flex items-center gap-3"
+              className="w-full or-surface p-3 flex items-center gap-3"
               style={{ background: "var(--surface-2)" }}
               data-testid={`${testidPrefix}-row-${g.id}`}
             >
-              <div
-                className="rounded-full flex items-center justify-center shrink-0"
-                style={{
-                  width: 48, height: 48,
-                  background: "color-mix(in srgb, var(--primary) 16%, transparent)",
-                  border: "1px solid var(--primary)",
-                  color: "var(--primary)",
-                  fontWeight: 800,
-                }}
+              <button
+                onClick={() => setActive(g)}
+                className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                data-testid={`${testidPrefix}-row-${g.id}-open-chat`}
               >
-                {(g.name || "?").charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold truncate" style={{ color: "var(--text-main)" }}>{g.name}</div>
-                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  {(g.members || []).length} member{(g.members || []).length === 1 ? "" : "s"}
+                <div
+                  className="rounded-full flex items-center justify-center shrink-0"
+                  style={{
+                    width: 48, height: 48,
+                    background: "color-mix(in srgb, var(--primary) 16%, transparent)",
+                    border: "1px solid var(--primary)",
+                    color: "var(--primary)",
+                    fontWeight: 800,
+                  }}
+                >
+                  {(g.name || "?").charAt(0).toUpperCase()}
                 </div>
-              </div>
-            </button>
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold truncate" style={{ color: "var(--text-main)" }}>{g.name}</div>
+                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    {(g.members || []).length} member{(g.members || []).length === 1 ? "" : "s"}
+                  </div>
+                </div>
+              </button>
+              {kind === "realm" && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/realms/${g.id}`);
+                  }}
+                  className="or-chip shrink-0"
+                  aria-label={`Open ${g.name} realm hub`}
+                  title="Open Realm hub"
+                  style={{
+                    minWidth: 44, minHeight: 44,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    padding: "0.4rem 0.6rem",
+                  }}
+                  data-testid={`realm-row-${g.id}-open-hub`}
+                >
+                  <ChevronRight size={18} />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}

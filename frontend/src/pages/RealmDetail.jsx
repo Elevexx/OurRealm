@@ -26,6 +26,7 @@ import {
 import apiClient from "@/api/client";
 import { REALMS as MOCK_REALMS, CHARACTERS, makeMockPosts } from "@/data/mockData";
 import BannerEditor, { BannerView } from "@/components/BannerEditor";
+import { resolveMediaUrl } from "@/lib/mediaUrl";
 import CommunityChat from "@/components/CommunityChat";
 import CommunityMembersPanel from "@/components/CommunityMembersPanel";
 import CommunityChatTitleModal from "@/components/CommunityChatTitleModal";
@@ -186,9 +187,15 @@ export default function RealmDetail() {
               className="w-full h-full"
               testid="realm-banner-custom"
             />
-          ) : (
-            <img src={realm.banner} alt="" className="w-full h-full object-cover" />
-          )}
+          ) : realm.banner ? (
+            <img
+              src={resolveMediaUrl(realm.banner)}
+              alt=""
+              className="w-full h-full object-cover"
+              data-testid="realm-banner-image"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
+          ) : null}
           <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, transparent 20%, ${accent}22 60%, rgba(0,0,0,0.7))`, pointerEvents: "none" }} />
           <button className="absolute top-3 left-3 starbar-icon" style={{ width: 36, height: 36, zIndex: 2 }} onClick={() => navigate("/realms")} data-testid="realm-back">
             <ArrowLeft size={16} />

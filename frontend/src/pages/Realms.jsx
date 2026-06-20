@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { resolveMediaUrl } from "@/lib/mediaUrl";
 
 const SORTS = [
   { id: "recent",   label: "Recent" },
@@ -272,7 +273,20 @@ function RealmCard({ realm, isFavorite, onOpen, onToggleFavorite }) {
     <div className="or-surface overflow-hidden" data-testid={`realm-card-${realm.id}`}>
       <button onClick={onOpen} className="block w-full text-left">
         <div className="relative h-40">
-          {realm.banner && <img src={realm.banner} alt="" className="w-full h-full object-cover" />}
+          {realm.banner ? (
+            <img
+              src={resolveMediaUrl(realm.banner)}
+              alt=""
+              className="w-full h-full object-cover"
+              data-testid={`realm-card-banner-${realm.id}`}
+              onError={(e) => {
+                // If the persisted banner URL is broken, hide the
+                // <img> so the default gradient + emoji placeholder
+                // (same as a realm with no banner) takes over.
+                e.currentTarget.style.display = "none";
+              }}
+            />
+          ) : null}
           <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, transparent 30%, ${accent}33 70%, rgba(0,0,0,0.6))` }} />
           <span className="absolute top-3 left-3 text-3xl">{realm.emoji || "🌐"}</span>
           <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: "#10E670", color: "#000" }}>● {online}</span>

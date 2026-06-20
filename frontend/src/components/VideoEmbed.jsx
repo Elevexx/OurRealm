@@ -60,28 +60,28 @@ export function vimeoWatchUrl(id) {
 }
 
 /**
- * YouTubeEmbed — autoplay-muted-on-viewport with single-tap fallback.
+ * YouTubeEmbed — user-initiated playback with full audio (TERMS COMPLIANT).
  *
  * Lifecycle:
  *   1. Initial render: poster image only. No iframe in the DOM yet.
  *   2. An IntersectionObserver watches the wrapper. When ≥50% of the
- *      wrapper is in the viewport, the iframe mounts via `YT.Player`
- *      with `autoplay=1, mute=1, playsinline=1, enablejsapi=1`. Muted
- *      autoplay is allowed by every major browser without a user
- *      gesture — that's why we never require a tap on the poster.
- *   3. If the browser still blocks autoplay (rare — e.g. Low Power Mode),
- *      YouTube's standard Play button is visible inside the iframe and
- *      ONE tap starts playback. We never render a competing custom
- *      play overlay once the iframe is mounted.
- *   4. When the post scrolls out of view, the player is `pauseVideo()`'d.
- *   5. Only ONE player plays at a time across the feed — when this
+ *      wrapper is in the viewport for the first time, the iframe mounts
+ *      via `YT.Player` with `playsinline=1, enablejsapi=1`. We do NOT
+ *      pass `mute=1` / `muted=1` — the browser autoplay policy decides
+ *      whether the video can autostart with audio. If the browser blocks
+ *      unmuted autoplay, YouTube's standard Play button is visible and
+ *      ONE tap starts playback with sound (no custom overlay competes).
+ *   3. Pause when scrolled out of view.
+ *   4. Only ONE player plays at a time across the feed — when this
  *      player starts, every other registered player is paused via
  *      `pauseAllOthers()` from the registry.
- *   6. Route change / tab hidden / unmount → `stopVideo()` + `destroy()`.
+ *   5. Route change / tab hidden / unmount → `stopVideo()` + `destroy()`.
  *
  * No custom overlays sit on top of the iframe at any point — YouTube's
  * standard controls, branding, links, ads, and related-video UI are
- * fully visible and untouched.
+ * fully visible and untouched. Audio begins only after explicit user
+ * interaction via the official YouTube player controls; we never bypass
+ * browser autoplay policies and we never force a persistent muted state.
  */
 let _ytEmbedCounter = 0;
 
@@ -110,22 +110,12 @@ function YouTubeEmbed({ videoId, url, className, style, testid }) {
         const visible =
           entry.isIntersecting && entry.intersectionRatio >= 0.5;
         if (visible) {
-          // Mount on first visibility — this is what kicks off muted
-          // autoplay. Subsequent visibility transitions just resume the
-          // already-mounted player.
-          if (!mounted) {
-            setMounted(true);
-          } else {
-            const p = playerRef.current;
-            if (p) {
-              try {
-                // Pause every OTHER active player so only one plays.
-                pauseAllOthers(p);
-                p.playVideo?.();
-              } catch (_e) { /* noop */ }
-            }
-          }
+          // Mount on first visibility so the iframe is ready. We do NOT
+          // call playVideo() here — playback must be user-initiated to
+          // preserve full audio + respect browser autoplay policy.
+          if (!mounted) setMounted(true);
         } else {
+          // Pause when the user scrolls away to silence the soundtrack.
           const p = playerRef.current;
           try { p?.pauseVideo?.(); } catch (_e) { /* noop */ }
         }
@@ -155,9 +145,14 @@ function YouTubeEmbed({ videoId, url, className, style, testid }) {
         if (!document.getElementById(playerId)) return;
         playerRef.current = new YT.Player(playerId, {
           videoId,
+          // NOTE: we do NOT pass `mute`/`muted`/`autoplay` here. Per
+          // YouTube's Embedded Player policy + browser autoplay rules,
+          // audio must begin only after explicit user interaction.
+          // If the browser allows unmuted autoplay, the video plays
+          // naturally; if not, YouTube's standard Play overlay appears
+          // and one tap starts playback with full audio. No persistent
+          // muted state is forced from our side.
           playerVars: {
-            autoplay: 1,    // allowed because mute=1 → no gesture needed
-            mute: 1,
             playsinline: 1,
             enablejsapi: 1,
             origin: window.location.origin,
@@ -169,10 +164,10 @@ function YouTubeEmbed({ videoId, url, className, style, testid }) {
               clearTimeout(failTimer);
               if (cancelled) return;
               registerYouTubePlayer(playerRef.current);
-              try {
-                pauseAllOthers(playerRef.current);
-                e.target.playVideo();
-              } catch (_e) { /* noop */ }
+              // Do NOT call playVideo() here — that would attempt to
+              // autoplay with sound and most browsers will block it.
+              // The user starts playback via YouTube's own Play button.
+              void e;
             },
             onError: (er) => {
               // eslint-disable-next-line no-console

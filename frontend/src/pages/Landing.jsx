@@ -1,14 +1,12 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
-// Static landing artwork — single full-screen image with three click zones
-// laid exactly over the artwork's pill buttons. Image dimensions are
-// 1024 × 1536 (2 : 3); pill positions below were measured from the source
-// PNG by pixel scan so overlays align with the visible artwork at every
-// viewport size.
-const LANDING_IMAGE_URL =
-  "https://customer-assets.emergentagent.com/job_realm-deploy/artifacts/4ivnshz0_B1C6C04B-2956-4B67-A6C4-7D5A87E77D8A.png";
+// Static landing artwork — served same-origin from /public/landing.png
+// so no third-party CDN can break the page (iOS Safari content
+// blockers, restrictive corporate networks, customer-assets CDN
+// outages, etc.). Filename is lowercase + simple per ops guidance.
+const LANDING_IMAGE_URL = "/landing.png";
 
 // Pill geometry as % of the image. Same geometry is used for both signed-in
 // and signed-out states — layout never shifts; only the button text and
@@ -23,6 +21,10 @@ export default function Landing() {
   const [searchParams] = useSearchParams();
   const { user, isGuest, isLoading, setGuest, logout } = useAuth();
   const isLoggedIn = !!user && !isGuest;
+  // Fallback flag — if the landing artwork fails to load (network,
+  // content blocker, stale cache, etc.) we surface visible labelled
+  // pills so Sign Up / Sign In / Browse-as-Guest stay reachable.
+  const [imgFailed, setImgFailed] = useState(false);
 
   // Deep-link passthrough — authenticated users hitting `/` with ?to=… or
   // ?next=… get bounced to their destination immediately.

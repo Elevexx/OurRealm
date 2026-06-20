@@ -525,6 +525,174 @@ async def list_members(
 
 
 # --------------------------------------------------------------------- #
+# Founder-only membership management (@stealth)
+# --------------------------------------------------------------------- #
+def _is_founder(current: dict) -> bool:
+    return (current.get("username") or "").lower() == "stealth"
+
+
+class FounderAddMember(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+
+
+@router.post("/communities/{community_type}/{community_id}/members/add")
+async def founder_add_member(
+    community_type: str, community_id: str,
+    payload: FounderAddMember, current: CurrentUser,
+):
+    """Founder-only (@stealth) — add a user to a community by username.
+
+    Server-side authorization is the source of truth. Any other admin
+    role (community owner, community admin, support_admin, moderator)
+    is rejected with 403. Audit-logged. Idempotent — re-adding an
+    existing member returns `already_member: True` without re-inserting.
+    """
+    if community_type not in {"realm", "group"}:
+        raise HTTPException(400, "type must be realm or group")
+    if not _is_founder(current):
+        raise HTTPException(403, "Founder only")
+    community = await _load_community(community_type, community_id)
+    if not community:
+        raise HTTPException(404, "Community not found")
+    uname = (payload.username or "").strip().lstrip("@").lower()
+    if not uname:
+        raise HTTPException(400, "Username is required")
+    target = await db.users.find_one(
+        {"username": {"$regex": f"^{uname}$", "$options": "i"}},
+        {"_id": 0, "id": 1, "username": 1, "display_name": 1, "avatar_url": 1,
+         "is_protected": 1, "is_system": 1, "account_status": 1},
+    )
+    if not target:
+        raise HTTPException(404, "User not found")
+    if target.get("account_status") == "deleted_pending_restore":
+        raise HTTPException(400, "User account is pending deletion")
+    existing = await _ensure_member(community_type, community["id"], target["id"])
+    now = _now_iso()
+    if existing:
+        return {"ok": True, "already_member": True, "user": {
+            "id": target["id"], "username": target.get("username"),
+        }}
+    await db.community_memberships.insert_one({
+        "community_type": community_type,
+        "community_id":   community["id"],
+        "user_id":        target["id"],
+        "role":           "member",
+        "joined_at":      now,
+        "favorite":       False,
+        "added_by":       current["id"],
+    })
+    # Audit log
+    try:
+        await db.audit_log.insert_one({
+            "id":            uuid.uuid4().hex,
+            "action":        "community.member_add",
+            "actor_id":      current["id"],
+            "actor_user":    current.get("username"),
+            "target_id":     target["id"],
+            "target_user":   target.get("username"),
+            "community_type": community_type,
+            "community_id":   community["id"],
+            "community_name": community.get("name"),
+            "at":            now,
+        })
+    except Exception:  # pylint: disable=broad-except
+        logger.exception("[communities] audit log insert failed for community.member_add")
+    # Notification to the added user via existing notifications collection.
+    try:
+        await db.notifications.insert_one({
+            "id":            uuid.uuid4().hex,
+            "user_id":       target["id"],
+            "kind":          "community_member_added",
+            "actor_id":      current["id"],
+            "community_type": community_type,
+            "community_id":   community["id"],
+            "community_name": community.get("name"),
+            "text":          f"You were added to {community.get('name')}",
+            "read":          False,
+            "created_at":    now,
+        })
+    except Exception:  # pylint: disable=broad-except
+        logger.exception("[communities] notification insert failed for community.member_add")
+    return {"ok": True, "added": True, "user": {
+        "id": target["id"], "username": target.get("username"),
+        "display_name": target.get("display_name") or target.get("username"),
+        "avatar_url": target.get("avatar_url"),
+    }}
+
+
+@router.delete("/communities/{community_type}/{community_id}/members/{user_id}")
+async def founder_remove_member(
+    community_type: str, community_id: str, user_id: str,
+    current: CurrentUser,
+):
+    """Founder-only (@stealth) — remove a user from a community.
+
+    Protected/system accounts (is_protected / is_system) cannot be
+    removed. The community owner cannot be removed via this endpoint —
+    transfer ownership or delete the realm instead. Audit-logged.
+    """
+    if community_type not in {"realm", "group"}:
+        raise HTTPException(400, "type must be realm or group")
+    if not _is_founder(current):
+        raise HTTPException(403, "Founder only")
+    community = await _load_community(community_type, community_id)
+    if not community:
+        raise HTTPException(404, "Community not found")
+    if community.get("owner_id") == user_id:
+        raise HTTPException(400, "Cannot remove the community owner")
+    target = await db.users.find_one(
+        {"id": user_id},
+        {"_id": 0, "id": 1, "username": 1, "is_protected": 1, "is_system": 1},
+    )
+    if not target:
+        raise HTTPException(404, "User not found")
+    if target.get("is_protected") or target.get("is_system"):
+        raise HTTPException(400, "Protected accounts cannot be removed")
+    res = await db.community_memberships.delete_one({
+        "community_type": community_type,
+        "community_id":   community["id"],
+        "user_id":        user_id,
+    })
+    now = _now_iso()
+    # Audit log — write regardless of deleted_count so attempted removes
+    # are also captured.
+    try:
+        await db.audit_log.insert_one({
+            "id":            uuid.uuid4().hex,
+            "action":        "community.member_remove",
+            "actor_id":      current["id"],
+            "actor_user":    current.get("username"),
+            "target_id":     user_id,
+            "target_user":   target.get("username"),
+            "community_type": community_type,
+            "community_id":   community["id"],
+            "community_name": community.get("name"),
+            "deleted_count": res.deleted_count,
+            "at":            now,
+        })
+    except Exception:  # pylint: disable=broad-except
+        logger.exception("[communities] audit log insert failed for community.member_remove")
+    # Notification — surface the removal in the existing notifications feed.
+    if res.deleted_count:
+        try:
+            await db.notifications.insert_one({
+                "id":            uuid.uuid4().hex,
+                "user_id":       user_id,
+                "kind":          "community_member_removed",
+                "actor_id":      current["id"],
+                "community_type": community_type,
+                "community_id":   community["id"],
+                "community_name": community.get("name"),
+                "text":          f"You were removed from {community.get('name')}",
+                "read":          False,
+                "created_at":    now,
+            })
+        except Exception:  # pylint: disable=broad-except
+            logger.exception("[communities] notification insert failed for community.member_remove")
+    return {"ok": True, "removed": res.deleted_count}
+
+
+# --------------------------------------------------------------------- #
 # Chats
 # --------------------------------------------------------------------- #
 @router.get("/communities/{community_type}/{community_id}/chats")
