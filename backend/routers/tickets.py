@@ -23,7 +23,12 @@ from pymongo import ReturnDocument
 
 from core.db import db
 from core.deps import CurrentUser, require_admin
-from core.permissions import require_support_access
+from core.permissions import (
+    require_support_access,
+    ROLE_FOUNDER,
+    ROLE_SUPPORT_ADMIN,
+    ROLE_MODERATOR,
+)
 
 
 router = APIRouter(tags=["support"])
@@ -147,20 +152,21 @@ async def ensure_ticket(payload: EnsurePayload, current: CurrentUser):
     subject = (payload.subject or "Support request").strip()[:100] or "Support request"
     category = await _resolve_category(payload)
     ticket = {
-        "id":             uuid.uuid4().hex,
-        "ticket_number":  number,
-        "user_id":        current["id"],
-        "username":       current.get("username"),
-        "conv_id":        conv_id,
-        "subject":        subject,
-        "preview":        subject[:240],
-        "status":         "Submitted",
-        "assignee_id":    None,
-        "category_id":    (category or {}).get("id"),
-        "category_key":   (category or {}).get("key"),
-        "category_label": (category or {}).get("label"),
-        "created_at":     now,
-        "updated_at":     now,
+        "id":                uuid.uuid4().hex,
+        "ticket_number":     number,
+        "user_id":           current["id"],
+        "username":          current.get("username"),
+        "conv_id":           conv_id,
+        "subject":           subject,
+        "preview":           subject[:240],
+        "status":            "Submitted",
+        "assignee_id":       None,
+        "assignee_username": None,
+        "category_id":       (category or {}).get("id"),
+        "category_key":      (category or {}).get("key"),
+        "category_label":    (category or {}).get("label"),
+        "created_at":        now,
+        "updated_at":        now,
     }
     await db.tickets.insert_one(ticket)
     ticket.pop("_id", None)
@@ -189,15 +195,86 @@ async def admin_summary(current: CurrentUser):
 
 
 @router.get("/api/admin/support/tickets")
-async def admin_list(current: CurrentUser, status: Optional[str] = None, category_key: Optional[str] = None, limit: int = 100):
+async def admin_list(
+    current: CurrentUser,
+    status: Optional[str] = None,
+    category_key: Optional[str] = None,
+    assignee_id: Optional[str] = None,
+    limit: int = 100,
+):
     _require_admin(current)
     q: dict = {}
     if status and status in STATUSES:
         q["status"] = status
     if category_key:
         q["category_key"] = category_key.lower()
+    if assignee_id is not None:
+        # Special sentinel "none" / "" → tickets with no assignee.
+        if assignee_id in ("", "none", "unassigned"):
+            q["assignee_id"] = None
+        else:
+            q["assignee_id"] = assignee_id
     cursor = db.tickets.find(q, {"_id": 0}).sort("updated_at", -1).limit(min(max(1, limit), 500))
     return {"tickets": [t async for t in cursor]}
+
+
+@router.get("/api/admin/support/assignable")
+async def admin_assignable(current: CurrentUser):
+    """Phase α — list of users eligible to be assigned a support ticket.
+
+    Eligibility: any user with an admin role of `founder`, `support_admin`,
+    or `moderator`. The username safety net for `@stealth` / `@support`
+    in `core.permissions.get_admin_role` is mirrored here so a partially-
+    seeded DB still surfaces the founder + support_admin in the picker.
+    """
+    _require_admin(current)
+    # Primary query — anyone whose admin_role is in the allow-list.
+    q = {
+        "admin_role": {"$in": [ROLE_FOUNDER, ROLE_SUPPORT_ADMIN, ROLE_MODERATOR]},
+        "disabled":   {"$ne": True},
+        "account_status": {"$ne": "deleted_pending_restore"},
+    }
+    cursor = db.users.find(
+        q,
+        {"_id": 0, "id": 1, "username": 1, "display_name": 1, "admin_role": 1, "avatar_url": 1},
+    )
+    assignable: list[dict] = []
+    seen_ids: set[str] = set()
+    async for u in cursor:
+        if not u.get("id"):
+            continue
+        seen_ids.add(u["id"])
+        assignable.append({
+            "id":           u["id"],
+            "username":     u.get("username"),
+            "display_name": u.get("display_name") or u.get("username"),
+            "admin_role":   u.get("admin_role"),
+            "avatar_url":   u.get("avatar_url"),
+        })
+    # Safety-net fallback: ensure @stealth (founder) + @support (support_admin)
+    # always appear even if `admin_role` was never written to the row.
+    for uname, role in (("stealth", ROLE_FOUNDER), ("support", ROLE_SUPPORT_ADMIN)):
+        u = await db.users.find_one(
+            {"username": uname, "disabled": {"$ne": True}},
+            {"_id": 0, "id": 1, "username": 1, "display_name": 1, "avatar_url": 1},
+        )
+        if u and u.get("id") and u["id"] not in seen_ids:
+            seen_ids.add(u["id"])
+            assignable.append({
+                "id":           u["id"],
+                "username":     u.get("username"),
+                "display_name": u.get("display_name") or u.get("username"),
+                "admin_role":   role,
+                "avatar_url":   u.get("avatar_url"),
+            })
+    # Stable ordering: founders first, then support_admins, then moderators,
+    # alpha by username inside each tier.
+    role_rank = {ROLE_FOUNDER: 0, ROLE_SUPPORT_ADMIN: 1, ROLE_MODERATOR: 2}
+    assignable.sort(key=lambda r: (
+        role_rank.get(r.get("admin_role") or "", 99),
+        (r.get("username") or "").lower(),
+    ))
+    return {"assignable": assignable}
 
 
 class TicketUpdate(BaseModel):
@@ -205,6 +282,15 @@ class TicketUpdate(BaseModel):
     subject:      Optional[str] = None
     category_id:  Optional[str] = None
     category_key: Optional[str] = None
+    # Phase α — per-ticket assignee picker.
+    #   value = "<user_id>" → assign to that user (must be an admin role).
+    #   value = ""           → unassign (clear assignee).
+    #   value omitted        → leave assignee untouched.
+    # `None` (JSON null) is treated identically to "" so callers can use
+    # either convention.
+    assignee_id:  Optional[str] = None
+
+    model_config = {"extra": "ignore"}
 
 
 @router.post("/api/admin/support/tickets/{ticket_id}")
@@ -216,6 +302,7 @@ async def admin_update(ticket_id: str, payload: TicketUpdate, current: CurrentUs
 
     set_ops: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
     notify_status: Optional[str] = None
+    fields_set = payload.model_dump(exclude_unset=True)
 
     if payload.status is not None:
         if payload.status not in STATUSES:
@@ -240,6 +327,28 @@ async def admin_update(ticket_id: str, payload: TicketUpdate, current: CurrentUs
             set_ops["category_id"]    = cat["id"]
             set_ops["category_key"]   = cat["key"]
             set_ops["category_label"] = cat["label"]
+
+    # Per-ticket assignee — only mutate when the field was explicitly
+    # included in the request body (treats omitted vs null distinctly).
+    if "assignee_id" in fields_set:
+        aid = payload.assignee_id
+        if not aid:
+            # Empty string OR JSON null → unassign.
+            set_ops["assignee_id"]       = None
+            set_ops["assignee_username"] = None
+        else:
+            assignee = await db.users.find_one(
+                {"id": aid, "disabled": {"$ne": True}},
+                {"_id": 0, "id": 1, "username": 1, "admin_role": 1},
+            )
+            if not assignee:
+                raise HTTPException(status_code=400, detail="Unknown assignee user")
+            # Must be an admin role (founder / support_admin / moderator).
+            from core.permissions import get_admin_role
+            if not get_admin_role(assignee):
+                raise HTTPException(status_code=400, detail="Assignee must be an admin user")
+            set_ops["assignee_id"]       = assignee["id"]
+            set_ops["assignee_username"] = assignee.get("username")
 
     await db.tickets.update_one({"id": ticket_id}, {"$set": set_ops})
 

@@ -13,7 +13,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LifeBuoy, Loader2, MessageSquare, ShieldCheck, RefreshCw, Edit3, Check, X,
-  Flag, ChevronDown, ChevronUp,
+  Flag, ChevronDown, ChevronUp, UserCheck,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -57,7 +57,7 @@ function Stat({ label, value, accent }) {
   );
 }
 
-function TicketRow({ t, onChanged }) {
+function TicketRow({ t, onChanged, assignable }) {
   const navigate = useNavigate();
   const [editingSubj, setEditingSubj] = useState(false);
   const [subj, setSubj] = useState(t.subject || "");
@@ -100,6 +100,24 @@ function TicketRow({ t, onChanged }) {
             @{t.username || "user"}
           </span>
           <StatusPill status={t.status} />
+          {t.assignee_username ? (
+            <span
+              className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+              style={{ color: "#4DD2FF", background: "rgba(77,210,255,0.12)", border: "1px solid rgba(77,210,255,0.35)" }}
+              data-testid={`admin-ticket-assignee-badge-${t.ticket_number}`}
+              title={`Assigned to @${t.assignee_username}`}
+            >
+              <UserCheck size={10} /> @{t.assignee_username}
+            </span>
+          ) : (
+            <span
+              className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full"
+              style={{ color: "var(--text-muted)", background: "rgba(120,120,120,0.08)", border: "1px solid var(--border-col)" }}
+              data-testid={`admin-ticket-assignee-badge-${t.ticket_number}`}
+            >
+              Unassigned
+            </span>
+          )}
         </div>
         {editingSubj ? (
           <div className="flex items-center gap-2 mt-1">
@@ -159,6 +177,22 @@ function TicketRow({ t, onChanged }) {
           data-testid={`admin-ticket-status-${t.ticket_number}`}
         >
           {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select
+          value={t.assignee_id || ""}
+          onChange={(e) => submit({ assignee_id: e.target.value })}
+          disabled={busy || !assignable || assignable.length === 0}
+          className="or-input text-xs"
+          style={{ padding: "0.35rem 0.5rem", maxWidth: 160 }}
+          data-testid={`admin-ticket-assignee-${t.ticket_number}`}
+          title={t.assignee_username ? `Assigned to @${t.assignee_username}` : "Unassigned"}
+        >
+          <option value="">Unassigned</option>
+          {(assignable || []).map((u) => (
+            <option key={u.id} value={u.id}>
+              @{u.username}{u.admin_role ? ` · ${u.admin_role.replace("_", " ")}` : ""}
+            </option>
+          ))}
         </select>
         <button
           className="or-btn or-btn-ghost"
@@ -248,15 +282,30 @@ export default function AdminSupport() {
   const [summary, setSummary] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [assigneeFilter, setAssigneeFilter] = useState("");
+  const [assignable, setAssignable] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+
+  const loadAssignable = async () => {
+    try {
+      const { data } = await apiClient.get("/admin/support/assignable");
+      setAssignable(data.assignable || []);
+    } catch (e) {
+      // Non-fatal — picker just renders empty options.
+      setAssignable([]);
+    }
+  };
 
   const load = async () => {
     setLoading(true); setErr("");
     try {
+      const params = {};
+      if (statusFilter) params.status = statusFilter;
+      if (assigneeFilter) params.assignee_id = assigneeFilter;
       const [s, t] = await Promise.all([
         apiClient.get("/admin/support/summary"),
-        apiClient.get("/admin/support/tickets", { params: statusFilter ? { status: statusFilter } : {} }),
+        apiClient.get("/admin/support/tickets", { params }),
       ]);
       setSummary(s.data);
       setTickets(t.data.tickets || []);
@@ -267,7 +316,8 @@ export default function AdminSupport() {
     }
   };
 
-  useEffect(() => { if (user && isAdmin(user)) load(); /* eslint-disable-next-line */ }, [user, statusFilter]);
+  useEffect(() => { if (user && isAdmin(user)) loadAssignable(); /* eslint-disable-next-line */ }, [user]);
+  useEffect(() => { if (user && isAdmin(user)) load(); /* eslint-disable-next-line */ }, [user, statusFilter, assigneeFilter]);
 
   if (!user) {
     return (
@@ -374,6 +424,58 @@ export default function AdminSupport() {
         ))}
       </div>
 
+      {/* Filter by assignee — appears only when assignable users are loaded. */}
+      {assignable.length > 0 && (
+        <div
+          className="flex flex-wrap items-center gap-1 mb-3"
+          data-testid="admin-support-assignee-filter"
+        >
+          <span className="text-[11px] uppercase tracking-widest mr-1" style={{ color: "var(--text-muted)" }}>
+            Assignee:
+          </span>
+          <button
+            className="text-xs px-3 py-1.5"
+            onClick={() => setAssigneeFilter("")}
+            data-active={assigneeFilter === ""}
+            data-testid="admin-support-assignee-filter-all"
+            style={{
+              borderRadius: 999,
+              border: `1px solid ${assigneeFilter === "" ? "var(--primary)" : "var(--border-col)"}`,
+              color: assigneeFilter === "" ? "var(--primary)" : "var(--text-muted)",
+              background: assigneeFilter === "" ? "color-mix(in srgb, var(--primary) 18%, transparent)" : "transparent",
+            }}
+          >All</button>
+          <button
+            className="text-xs px-3 py-1.5"
+            onClick={() => setAssigneeFilter("unassigned")}
+            data-active={assigneeFilter === "unassigned"}
+            data-testid="admin-support-assignee-filter-unassigned"
+            style={{
+              borderRadius: 999,
+              border: `1px solid ${assigneeFilter === "unassigned" ? "#FFD166" : "var(--border-col)"}`,
+              color: assigneeFilter === "unassigned" ? "#FFD166" : "var(--text-muted)",
+              background: assigneeFilter === "unassigned" ? "rgba(255,209,102,0.12)" : "transparent",
+            }}
+          >Unassigned</button>
+          {assignable.map((u) => (
+            <button
+              key={u.id}
+              className="text-xs px-3 py-1.5"
+              onClick={() => setAssigneeFilter(u.id)}
+              data-active={assigneeFilter === u.id}
+              data-testid={`admin-support-assignee-filter-${u.username}`}
+              style={{
+                borderRadius: 999,
+                border: `1px solid ${assigneeFilter === u.id ? "#4DD2FF" : "var(--border-col)"}`,
+                color: assigneeFilter === u.id ? "#4DD2FF" : "var(--text-muted)",
+                background: assigneeFilter === u.id ? "rgba(77,210,255,0.14)" : "transparent",
+              }}
+              title={u.admin_role ? `@${u.username} · ${u.admin_role}` : `@${u.username}`}
+            >@{u.username}</button>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-10" style={{ color: "var(--text-muted)" }}>
           <Loader2 size={20} className="animate-spin" />
@@ -385,7 +487,7 @@ export default function AdminSupport() {
       ) : (
         <ul className="space-y-2" data-testid="admin-support-tickets">
           {tickets.map((t) => (
-            <TicketRow key={t.id} t={t} onChanged={load} />
+            <TicketRow key={t.id} t={t} onChanged={load} assignable={assignable} />
           ))}
         </ul>
       )}
