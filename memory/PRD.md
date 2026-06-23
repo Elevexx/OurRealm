@@ -1,6 +1,69 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Standalone Sound Upload + Playback Fix (Feb 23, 2026, iter 37)
+
+**Symptom (user-reported, repro'd on both preview + production):**
+- Sounds-page upload appears successful; tapping play opens the mini player
+  but it stays at `0:00 / 0:00`. No audio.
+- For You / Create modal sound upload "gives an error" (in fact succeeds
+  on the wire but produces silent client failures).
+
+**Root cause** — three layered issues:
+1. **Legacy DB rows with `/api/sounds/file/<id>.<ext>` URLs.** Those point
+   at the local-disk fallback route. Preview happens to have the files
+   on disk; production pods start with an empty `/data/ourrealm/`, so
+   the audio fetch silently 404s while the mini-player still reads
+   `track.duration_seconds` from the DB row (stays at 0:00 because the
+   `<audio>` element never gets bytes).
+2. **No client-side error logging.** `audioPlayer.js` ate every play
+   failure into a generic `"Playback failed"` string and never logged
+   the URL, MediaError code, HTTP status, or CORS state.
+3. **`SoundPlayerCard` ferrying image URLs to `<audio>`.** Seed posts
+   carrying an Unsplash image URL in `post.media_url` were piped into
+   the audio element, producing `DEMUXER_ERROR_COULD_NOT_OPEN` storms
+   in the console on every Feed scroll.
+
+**Fix (this iteration):**
+- **One-shot migration script** `/app/backend/scripts/migrate_legacy_sound_urls.py`:
+  rewrites `db.tracks.file_url` rows starting with `/api/sounds/file/` to
+  the canonical `https://media.ourrealm.social/audio/<name>` URL, after
+  verifying R2 holds the object. Idempotent. Stamps `_legacy_file_url_migrated_at`
+  + `_legacy_file_url_was` for audit / rollback. **Preview run: 3 rows
+  migrated cleanly.** Production has to run this against its own Mongo.
+- **Frontend defensive URL resolver** — new `resolveSoundUrl(track)` in
+  `lib/audioPlayer.js` AND extended `resolveMediaUrl()` in `lib/mediaUrl.js`.
+  Any `/api/sounds/file/<name>` URL is rewritten client-side to R2 too,
+  so even if a row was missed by the migration (or a new legacy row
+  appears via some seed path), the player still hits R2.
+- **Detailed error logging** in `audioPlayer.js`. The `error` event now
+  prints `code`, `msg`, `src`, and fires a follow-up Range-1 probe to
+  surface the live HTTP status, content-type, and CORS header — the
+  user's exact ask.
+- **Mini player surfaces errors** via a new red subtitle line (testid
+  `mini-subtitle`) so users see "Playback failed (code 4)." instead of
+  staring at 0:00.
+- **`SoundPlayerCard` audio-URL guard** — drops obviously-non-audio URLs
+  (Unsplash, `/api/images/`, `.jpg/.png/.webp/.gif`) before they ever
+  hit the `<audio>` element. Eliminates the For You scroll-spam.
+
+**Verified live (preview, screenshots in this run):**
+- Tap play on a (formerly broken) legacy track → R2 fetch fires
+  (`REQ GET media.ourrealm.social/audio/<id>.wav` → `RESP 206`), play
+  counter increments, mini player advances. No console noise.
+- Upload a fresh MP3 via Sounds page → R2 URL persisted → playback OK.
+- Upload via For You composer → modal opens, `POST /api/sounds/upload`
+  returns 200, composer shows the attached sound with `Music · 3s` badge.
+- Image uploads + video playback untouched (per user constraint).
+
+**Production redeploy steps (user-side):**
+1. Redeploy frontend with the new `audioPlayer.js`, `mediaUrl.js`,
+   `MiniPlayer.jsx`, `SoundPlayerCard.jsx`.
+2. Run the migration script against production's Mongo:
+   `cd /app/backend && python scripts/migrate_legacy_sound_urls.py`
+
+---
+
 ## Universal Emoji Reactions + Genre Dropdown Refresh + Support Assignee Picker (Feb 23, 2026, iter 36)
 
 ### Universal Emoji Reactions (NEW)

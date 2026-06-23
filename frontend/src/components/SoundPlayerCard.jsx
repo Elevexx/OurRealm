@@ -26,15 +26,38 @@ function pauseOthers(current) {
   }
 }
 
+// URL patterns that are OBVIOUSLY not audio — used as a guard so we
+// don't pipe seed-post image URLs into an <audio> element and watch
+// ffmpeg's demuxer throw a `DEMUXER_ERROR_COULD_NOT_OPEN` for every
+// scroll-by. Conservative on purpose: when in doubt we still mount.
+const OBVIOUSLY_NOT_AUDIO = [
+  /^https?:\/\/images\.unsplash\.com\//i,
+  /^https?:\/\/[^/]+\/api\/images\//i,
+  /\.(jpe?g|png|webp|gif)(\?|#|$)/i,
+];
+
+function looksLikeAudio(url) {
+  const s = String(url || "").trim();
+  if (!s) return false;
+  for (const re of OBVIOUSLY_NOT_AUDIO) {
+    if (re.test(s)) return false;
+  }
+  return true;
+}
+
 export default function SoundPlayerCard({ post, testid }) {
   const audioRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
-  const url = post?.sound_url || post?.media_url;
+  // Prefer the explicit sound url; only fall back to `media_url` when
+  // the parent post is genuinely a sound post AND `media_url` isn't an
+  // image / generic URL. This stops seed posts that carry an Unsplash
+  // image in `media_url` from being piped into the <audio> element.
+  const rawUrl = post?.sound_url || (looksLikeAudio(post?.media_url) ? post?.media_url : null);
   const cover = post?.sound_cover_url || null;
   const title = post?.sound_title || post?.content || "Untitled sound";
-  const fullUrl = resolveMediaUrl(url);
-  const initiallyPlayable = isPlayableMediaUrl(url);
+  const fullUrl = resolveMediaUrl(rawUrl);
+  const initiallyPlayable = isPlayableMediaUrl(rawUrl);
 
   useEffect(() => {
     const el = audioRef.current;
@@ -59,7 +82,7 @@ export default function SoundPlayerCard({ post, testid }) {
     return () => { cancelled = true; };
   }, [fullUrl, initiallyPlayable]);
 
-  if (!url) return null;
+  if (!rawUrl) return null;
   if (!initiallyPlayable || unavailable) {
     return (
       <div

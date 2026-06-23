@@ -58,9 +58,15 @@ export default function MiniPlayer() {
           <div className="text-sm font-semibold truncate" style={{ color: "var(--text-main)" }} data-testid="mini-title">
             {t.title}
           </div>
-          <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
-            {t.artist_username ? `@${t.artist_username}` : ""}
-            {t.genre ? ` · ${t.genre}` : ""}
+          <div className="text-[11px] truncate" style={{ color: s.error ? "#FF8080" : "var(--text-muted)" }} data-testid="mini-subtitle">
+            {s.error ? (
+              s.error
+            ) : (
+              <>
+                {t.artist_username ? `@${t.artist_username}` : ""}
+                {t.genre ? ` · ${t.genre}` : ""}
+              </>
+            )}
           </div>
           {/* progress */}
           <div className="mt-1 flex items-center gap-2">

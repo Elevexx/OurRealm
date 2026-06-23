@@ -4,6 +4,44 @@
 import apiClient from "@/api/client";
 
 const BACKEND = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
+// Canonical R2 public base. Synced with backend `R2_PUBLIC_BASE_URL`.
+// Lives here so legacy DB rows that still carry the local-disk URL
+// (`/api/sounds/file/<id>.<ext>`) can be auto-rewritten on the client
+// to the R2 CDN path. Crucial for production pods whose local disk
+// starts empty on every container rotation — the legacy route 404s
+// there even though R2 has the file.
+const R2_BASE = "https://media.ourrealm.social";
+
+/**
+ * Resolve a sound's playable URL with legacy + storage-shape tolerance.
+ *
+ *   • Absolute http(s) URL → unchanged.
+ *   • `/api/sounds/file/<id>.<ext>` (legacy local-disk route)
+ *       → rewritten to `<R2_BASE>/audio/<id>.<ext>`.
+ *       The same file ALWAYS exists in R2 after the Feb 2026 migration
+ *       — and even if it doesn't, the rewritten URL fails fast with
+ *       a real CORS error we can surface, rather than a silent 404
+ *       on the legacy local-disk route.
+ *   • `/...` (any other relative path) → pinned to REACT_APP_BACKEND_URL.
+ *   • Other shapes → unchanged.
+ */
+export function resolveSoundUrl(track) {
+  // Accept either a string or a track-shaped object.
+  const u = typeof track === "string"
+    ? track
+    : (track?.file_url || track?.audio_url || track?.media_url || track?.url || "");
+  if (!u) return "";
+  if (/^https?:\/\//i.test(u)) return u;
+  if (u.startsWith("/api/sounds/file/")) {
+    const name = u.slice("/api/sounds/file/".length);
+    if (name && !name.includes("/") && !name.includes("..")) {
+      return `${R2_BASE}/audio/${name}`;
+    }
+  }
+  if (u.startsWith("/")) return `${BACKEND}${u}`;
+  return u;
+}
+
 function absUrl(u) {
   if (!u) return "";
   if (/^https?:\/\//i.test(u)) return u;
@@ -33,7 +71,40 @@ if (audio) {
   audio.addEventListener("ended",       () => emit({ playing: false, position: 0 }));
   audio.addEventListener("waiting",     () => emit({ loading: true }));
   audio.addEventListener("canplay",     () => emit({ loading: false }));
-  audio.addEventListener("error",       () => emit({ playing: false, loading: false, error: "Playback failed" }));
+  audio.addEventListener("error",       () => {
+    // Surface the real MediaError + the failing URL + Range probe so
+    // production triage doesn't need a screenshare. Codes:
+    //   1 MEDIA_ERR_ABORTED       2 MEDIA_ERR_NETWORK
+    //   3 MEDIA_ERR_DECODE        4 MEDIA_ERR_SRC_NOT_SUPPORTED
+    const err = audio.error;
+    const src = audio.src || "(no src)";
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[audio] playback error code=${err?.code} msg=${err?.message || ""} src=${src}`
+    );
+    // Best-effort: probe the URL so we capture HTTP status + Content-Type
+    // in the same log line — turns "Playback failed" into something
+    // we can actually action against R2 / the legacy route.
+    if (src && /^https?:\/\//i.test(src)) {
+      fetch(src, { method: "GET", headers: { Range: "bytes=0-0" }, cache: "no-store" })
+        .then((r) => {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[audio] probe status=${r.status} ct=${r.headers.get("content-type")} ` +
+            `cors=${r.headers.get("access-control-allow-origin") || "none"} url=${src}`
+          );
+        })
+        .catch((pe) => {
+          // eslint-disable-next-line no-console
+          console.warn(`[audio] probe failed: ${pe} url=${src}`);
+        });
+    }
+    emit({
+      playing: false,
+      loading: false,
+      error: `Playback failed (code ${err?.code || "?"}).`,
+    });
+  });
 }
 
 function emit(patch) {
@@ -54,13 +125,22 @@ export function subscribe(fn) {
 export async function play(track) {
   if (!audio) return;
   const next = track || current.track;
-  if (!next?.file_url) return;
+  if (!next) return;
+  const resolved = resolveSoundUrl(next);
+  if (!resolved) {
+    // eslint-disable-next-line no-console
+    console.warn("[audio] play() aborted — no resolvable URL for track", next);
+    emit({ track: next, playing: false, loading: false, error: "This sound is unavailable." });
+    return;
+  }
   // If same track and just paused, resume rather than re-load.
   if (current.track?.id === next.id && audio.src) {
     try {
       await audio.play();
       emit({ playing: !audio.paused });
-    } catch {
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn(`[audio] resume failed: ${e?.name || e} src=${audio.src}`);
       emit({ playing: false, error: "Tap play to start (autoplay blocked)." });
     }
     return;
@@ -71,13 +151,17 @@ export async function play(track) {
   // media to actually start buffering. Without it, the play() promise
   // resolves but no `timeupdate` events fire and the audio never plays.
   audio.preload = "auto";
-  audio.src = absUrl(next.file_url);
+  audio.src = resolved;
   try { audio.load(); } catch { /* not all UAs implement load() */ }
   try {
     await audio.play();
     // Best-effort play counter — fire & forget
     apiClient.post(`/sounds/${next.id}/play`).catch(() => { /* ignore */ });
   } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[audio] play() rejected: ${e?.name || e} msg=${e?.message || ""} src=${resolved}`
+    );
     emit({ playing: false, loading: false, error: "Tap play to start (autoplay blocked)." });
   }
   if (typeof navigator !== "undefined" && "mediaSession" in navigator) {

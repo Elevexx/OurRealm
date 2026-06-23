@@ -23,6 +23,12 @@
  */
 
 const BACKEND = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
+// Canonical R2 public base — synced with backend `R2_PUBLIC_BASE_URL`.
+// Legacy sound rows that still carry `/api/sounds/file/<name>` URLs
+// get rewritten to the R2 path here so they keep playing on pods
+// whose local-disk fallback isn't populated (e.g. production after a
+// container rotation).
+const R2_BASE = "https://media.ourrealm.social";
 
 // Domains that are ALWAYS playable without a HEAD probe (YouTube /
 // Vimeo are iframe embeds, not <video>; same-origin probes would be
@@ -56,6 +62,17 @@ export function resolveMediaUrl(url) {
   if (!s) return "";
   if (/^https?:\/\//i.test(s)) return s;
   if (/^\/\//.test(s))         return `https:${s}`;
+  // Legacy sound rows ('/api/sounds/file/<name>') → R2 CDN path.
+  // Files were duplicated to R2 during the Feb 2026 migration, so the
+  // rewritten URL is the canonical source of truth. If the file ever
+  // disappears from R2 the player surfaces a real 404 instead of a
+  // silent local-disk miss.
+  if (s.startsWith("/api/sounds/file/")) {
+    const name = s.slice("/api/sounds/file/".length);
+    if (name && !name.includes("/") && !name.includes("..")) {
+      return `${R2_BASE}/audio/${name}`;
+    }
+  }
   if (s.startsWith("/"))       return `${BACKEND}${s}`;
   return s;
 }
