@@ -1,6 +1,38 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## P3 + P4 — Conversation Pin/Delete & Realm Message Edit/Delete (Feb 24, 2026, iter 37)
+
+**Status: ✅ COMPLETE** — Backend 7/7 pytest pass; frontend live-verified for P3 Chats tab.
+
+### P3: Messages list — per-conversation Pin + Delete
+- **Chats tab:** Each conversation row now renders a visible **Pin** icon (`data-testid=chat-row-{username}-pin`) and a **Delete** icon (`chat-row-{username}-delete`). Clicking the row body still opens the DM overlay.
+- **Pin behaviour:** Backed by existing `POST /api/messages/threads/pin|unpin` (Mongo `users.pinned_threads`). Pinned threads sort first, with a small pin badge next to the title.
+- **Delete behaviour:** Opens `TypeDeleteThreadModal` — confirm button stays disabled until the user types the literal word `delete` (case-insensitive). On confirm calls `DELETE /api/messages/threads/{username}` which writes a row in `db.message_threads_hidden`.
+- **Revival:** `list_threads` now reads `db.message_threads_hidden` and filters threads whose last message ≤ `hidden_at`. A NEW message from the peer naturally lifts the thread back into the list.
+- **Groups tab:** Same Pin + Delete icons. Pin uses **localStorage** namespaced by `me.id` (Supabase groups have no per-user state). Delete = leaves the Supabase group via existing `leaveGroup()` after the same type-`delete` confirmation modal.
+
+### P4: Realm community-chat — Edit + Instant Delete
+- `CommunityChat.jsx` now properly defines `saveEdit(messageId, body)` (PATCH `/api/community-chats/messages/{id}`) and `deleteCommunityMessage(messageId)` (DELETE `/api/community-chats/messages/{id}`). Previously the JSX referenced these names but they were never defined — would have thrown `ReferenceError` on click.
+- **Edit:** Inline input, on save bubble shows `(edited)` from the `edited_at` field.
+- **Delete:** INSTANT — optimistic filter, rollback only on HTTP failure, **no confirmation modal**. Matches the explicit rule: type-delete modal applies ONLY to whole conversations, never single messages.
+
+### Critical contract (do not break)
+| Action | Confirmation? |
+|---|---|
+| Delete individual DM message | INSTANT |
+| Delete individual Realm community-chat message | INSTANT |
+| Delete entire DM thread (Messages list row) | TYPE `delete` MODAL |
+| Delete entire Group thread (Messages list row) | TYPE `delete` MODAL |
+
+### Files touched
+- `backend/routers/messages.py` — `list_threads` hidden-thread filter (lines 215-225, 247-252).
+- `frontend/src/pages/Messages.jsx` — ChatsTab row redesign + togglePin/deleteThread + TypeDeleteThreadModal + ThreadListTab localStorage pin/hide.
+- `frontend/src/components/CommunityChat.jsx` — added `saveEdit` and `deleteCommunityMessage`.
+- `backend/tests/test_p3_p4_threads_and_community_msg.py` — 7 new regression tests.
+
+---
+
 ## Presigned R2 Media Proxy — CDN-public-access independence (Feb 23, 2026, iter 38)
 
 **Status: ✅ PRODUCTION PASS** — OurRealm Psy + all media now plays on https://ourrealm.social via signed-URL proxy (Feb 23 / iter 38).
