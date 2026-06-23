@@ -286,7 +286,7 @@ export default function Feed() {
       {/* Composer */}
       <div className="or-surface p-4 mt-4" data-testid="feed-composer">
         <div className="flex gap-3">
-          <UserAvatar user={user} size={40} testid="feed-composer-avatar" />
+          <UserAvatar user={user} size={40} dotOutset={2} testid="feed-composer-avatar" />
           <div className="flex-1">
             <textarea
               data-testid="feed-composer-input"

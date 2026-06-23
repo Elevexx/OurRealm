@@ -63,6 +63,13 @@ export default function UserAvatar({
   alt,
   onClick,
   testid,
+  // Optional per-call-site nudge — when set, pushes the presence dot
+  // OUTWARD from the avatar centre by `dotOutset` CSS pixels. Used by
+  // surfaces where the dot needs to sit slightly on the outer edge of
+  // the avatar (e.g. the small-size composer avatar inside the For You
+  // composer card) without affecting larger avatars elsewhere whose
+  // proportional inset already looks correct.
+  dotOutset = 0,
 }) {
   // Defensive: never crash if a parent renders before user is loaded.
   const u = user || {};
@@ -141,9 +148,13 @@ export default function UserAvatar({
           aria-hidden="true"
           style={{
             position: "absolute",
-            // Bottom-right edge of the circular avatar.
-            right: m.inset,
-            bottom: m.inset,
+            // Bottom-right edge of the circular avatar. `dotOutset` nudges
+            // the dot OUTWARD (negative inset) when the caller wants the
+            // dot to overlap the avatar's outer edge — used by the For
+            // You composer where the natural proportional inset (~2px
+            // on a 40 px avatar) reads as "too far inside" the circle.
+            right: m.inset - dotOutset,
+            bottom: m.inset - dotOutset,
             // Subtle punch-out ring + faint shadow — keeps the dot legible
             // against any background without making it look "floating".
             background: "var(--bgc, #0a0a0f)",
