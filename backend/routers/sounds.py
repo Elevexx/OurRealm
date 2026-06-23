@@ -246,7 +246,11 @@ async def upload_track(
         "genre": (genre or "").strip()[:60],
         "mood": (mood or "").strip()[:60],
         "duration_seconds": rec.duration_seconds,
-        "file_url": f"/api/sounds/file/{rec.id}.{rec.ext}",
+        # Use whatever URL `save_audio` returned — that's already
+        # R2-mirrored when STORAGE_PROVIDER=r2, and stays the legacy
+        # /api/sounds/file/... when local. Keeps existing /api routes
+        # functional as a fallback for old DB rows.
+        "file_url": rec.file_url,
         "file_size": rec.bytes,
         "mime": rec.mime,
         "cover_url": (cover_url or "").strip() or None,

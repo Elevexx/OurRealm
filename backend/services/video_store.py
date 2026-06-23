@@ -58,10 +58,14 @@ class VideoRecord:
     bytes: int
     mime: str
     created_at: str
+    # When set (R2/S3 mirror succeeded), this is the canonical public
+    # URL stored in MongoDB; the legacy /api/videos/{id}.{ext} stays
+    # functional as a local fallback because the file is still on disk.
+    cloud_url: Optional[str] = None
 
     @property
     def url(self) -> str:
-        return f"/api/videos/{self.id}.{self.ext}"
+        return self.cloud_url or f"/api/videos/{self.id}.{self.ext}"
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -112,6 +116,11 @@ async def save_video(
         mime=(declared_mime or f"video/{ext}").lower(),
         created_at=datetime.now(timezone.utc).isoformat(),
     )
+    # Mirror to cloud bucket (R2/S3) when configured. No-op for local.
+    from services.r2_mirror import mirror_to_cloud
+    cloud = mirror_to_cloud("videos", f"{video_id}.{ext}", target, "")
+    if cloud and cloud.startswith("http"):
+        rec.cloud_url = cloud
     # Persist metadata so upload_limits.count_documents works and so we can
     # garbage-collect orphans later.
     doc = {

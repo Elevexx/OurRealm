@@ -202,6 +202,10 @@ async def save_audio(
         sha256=sha,
         created_at=datetime.now(timezone.utc).isoformat(),
     )
+    # Mirror to cloud bucket (R2/S3) when configured. Returns the
+    # public URL and is a no-op for local storage.
+    from services.r2_mirror import mirror_to_cloud
+    rec.file_url = mirror_to_cloud("audio", f"{audio_id}.{ext}", path, rec.file_url)
     logger.info(
         f"Stored audio {audio_id} ({mime}, {len(raw)}b, {duration:.1f}s) for {owner_id}"
     )

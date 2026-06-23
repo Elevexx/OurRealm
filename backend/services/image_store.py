@@ -172,6 +172,21 @@ async def save_bytes(raw: bytes, owner_id: str, declared_mime: Optional[str] = N
         sha256=sha,
         created_at=datetime.now(timezone.utc).isoformat(),
     )
+    # When STORAGE_PROVIDER=r2 (or s3), copy the just-saved local
+    # files into the bucket and rewrite the URLs that will be
+    # persisted in MongoDB to point at the public CDN base
+    # (https://media.ourrealm.social/...). Local files stay so the
+    # legacy /api/images/... route still resolves for fallback.
+    from services.r2_mirror import mirror_to_cloud
+    rec.original_url = mirror_to_cloud(
+        "images", f"{image_id}.{ext}", ROOT / f"{image_id}.{ext}", rec.original_url,
+    )
+    rec.thumbnail_url = mirror_to_cloud(
+        "images",
+        f"{image_id}_thumb.{'gif' if ext == 'gif' else 'jpg'}",
+        ROOT / f"{image_id}_thumb.{'gif' if ext == 'gif' else 'jpg'}",
+        rec.thumbnail_url,
+    )
     await db.images.insert_one(rec.to_dict())
     logger.info(f"Stored image {image_id} ({mime}, {width}x{height}, {bytes_written}b) for {owner_id}")
     return rec
