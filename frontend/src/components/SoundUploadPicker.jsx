@@ -1,5 +1,6 @@
 // Reusable Sound Upload modal. Mirrors ImageUploadPicker's UX.
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Upload, X, Loader2, Music as MusicIcon, AlertCircle, Image as ImageIcon } from "lucide-react";
 import apiClient from "@/api/client";
 import ImageUploadPicker from "@/components/ImageUploadPicker";
@@ -93,7 +94,7 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
     } finally { setBusy(false); }
   };
 
-  return (
+  return createPortal((
     <div
       className="fixed inset-0 z-[210] flex items-end sm:items-center justify-center px-2 sm:px-4 py-4"
       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)" }}
@@ -269,5 +270,5 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
         />
       </div>
     </div>
-  );
+  ), document.body);
 }

@@ -125,7 +125,16 @@ export default function MessageActionMenu({
       <button
         type="button"
         disabled={busy}
-        onClick={() => setConfirmOpen(true)}
+        onClick={() => {
+          // Individual message delete — instant. The previous "type delete"
+          // confirmation flow was misapplied to single messages and has been
+          // removed per the Feb 2026 UX correction. The type-delete pattern
+          // remains in use for WHOLE-conversation deletion on the Messages
+          // list (a much more destructive action).
+          if (busy) return;
+          onDelete();
+          onClose?.();
+        }}
         className="w-full text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-3 py-2.5"
         style={{
           borderRadius: 6,
@@ -304,10 +313,10 @@ export default function MessageActionMenu({
         {renderMenu(`${tid}-desktop`)}
       </div>
 
-      {/* Typed-confirm dialog — gates the actual `onDelete` until the
-          user types `delete` into the input. Rendered at z 10000 so it
-          floats above the menu sheet/popover. */}
-      {confirmOpen && renderConfirm()}
+      {/* Typed-confirm dialog was removed for individual-message delete
+          (instant delete is the correct UX). The component is kept as a
+          shared utility for the Messages list whole-conversation delete
+          — wired up there directly, not through this menu. */}
     </>,
     document.body,
   );
