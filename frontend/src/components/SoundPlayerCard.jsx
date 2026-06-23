@@ -121,9 +121,25 @@ export default function SoundPlayerCard({ post, testid }) {
         src={fullUrl}
         controls
         preload="metadata"
+        // `crossOrigin=anonymous` lets the browser send proper CORS
+        // GET/Range requests against R2 (the bucket's CORS policy now
+        // permits the production origin) and lets iOS Safari decode
+        // cross-origin audio without throwing CodecError.
+        crossOrigin="anonymous"
         onCanPlay={() => setReady(true)}
         onLoadedMetadata={() => setReady(true)}
-        onError={() => { setUnavailable(true); markMediaUrlBroken(fullUrl); }}
+        onError={(e) => {
+          // Surface the real MediaError code in the console so we
+          // can triage failed-playback reports without re-creating
+          // the user's browser state. Codes:
+          //   1 MEDIA_ERR_ABORTED     2 MEDIA_ERR_NETWORK
+          //   3 MEDIA_ERR_DECODE      4 MEDIA_ERR_SRC_NOT_SUPPORTED
+          const code = e?.currentTarget?.error?.code;
+          const msg  = e?.currentTarget?.error?.message;
+          console.warn(`[sound] playback failed — url=${fullUrl} code=${code} msg=${msg}`);
+          setUnavailable(true);
+          markMediaUrlBroken(fullUrl);
+        }}
         className="w-full"
         style={{ display: "block", width: "100%" }}
         data-testid={`${testid || "feed-sound-card"}-audio`}
