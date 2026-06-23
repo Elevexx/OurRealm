@@ -515,10 +515,10 @@ export default function Profile() {
                 <div className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }} data-testid="profile-bio">
                   {user?.bio || (isGuest ? "Browsing as guest." : "Tap edit to add a bio.")}
                 </div>
-                <div className="mt-2 flex gap-4 text-xs" style={{ color: "var(--text-muted)" }}>
-                  <span><b style={{ color: "var(--text-main)" }}>1.2k</b> followers</span>
-                  <span><b style={{ color: "var(--text-main)" }}>318</b> following</span>
-                  <span><b style={{ color: "var(--text-main)" }}>{widgets.length}</b> widgets</span>
+                <div className="mt-2 flex gap-4 text-xs" style={{ color: "var(--text-muted)" }} data-testid="profile-counts">
+                  <span><b style={{ color: "var(--text-main)" }} data-testid="profile-follower-count">{user?.follower_count ?? 0}</b> followers</span>
+                  <span><b style={{ color: "var(--text-main)" }} data-testid="profile-following-count">{user?.following_count ?? 0}</b> following</span>
+                  <span><b style={{ color: "var(--text-main)" }} data-testid="profile-widgets-count">{user?.widgets_count ?? widgets.length}</b> widgets</span>
                 </div>
               </>
             )}
@@ -581,6 +581,34 @@ export default function Profile() {
                 isOwner={true}
               />
             ))}
+            {/* "+ Add New Widget" tile — always visible on the owner's
+                own profile so the spec-mandated 3rd tile renders even
+                for users with no saved widgets. Click opens the existing
+                AddWidgetPicker. Hidden for guests / non-owners. */}
+            {!isGuest && user && (
+              <button
+                type="button"
+                onClick={() => { setEditing(true); setAddOpen(true); }}
+                className="or-surface flex flex-col items-center justify-center gap-1.5"
+                style={{
+                  minHeight: 150,
+                  borderStyle: "dashed",
+                  borderColor: "color-mix(in srgb, var(--primary) 45%, transparent)",
+                  background: "color-mix(in srgb, var(--primary) 6%, transparent)",
+                  color: "var(--primary)",
+                }}
+                data-testid="profile-add-widget-tile"
+                aria-label="Add a new widget"
+              >
+                <Icons.Plus size={28} />
+                <span
+                  className="text-xs uppercase tracking-widest"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Add New Widget
+                </span>
+              </button>
+            )}
           </div>
         </SortableContext>
       </DndContext>

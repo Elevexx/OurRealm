@@ -12,10 +12,15 @@ const TYPES = [
 ];
 
 /**
- * Persistent Media Selection bar (Lives / Videos / Images / Sounds / Thoughts → )
- * - Each chip toggles on/off and affects the parent's feed
- * - Empty array = "all" (no filter)
- * - `onNext()` fires when the arrow is clicked
+ * Persistent Media Selection bar.
+ *
+ * Mobile (<sm, ≤639px): icon-only — every chip + the Next arrow fit on
+ *   one row with no horizontal scrolling, no cut-off, no swiping.
+ * Desktop (≥sm, 640px+): icon + text label like the original design.
+ *
+ * Same chip shape, glow, sizing, and border-radius across breakpoints —
+ * we only swap the label visibility via the `hidden sm:inline` Tailwind
+ * pair and let the chips lay out via flex so the row stays centered.
  */
 export default function MediaTypeBar({ value = [], onChange, onNext, embedded = false }) {
   const toggle = (id) => {
@@ -25,15 +30,16 @@ export default function MediaTypeBar({ value = [], onChange, onNext, embedded = 
   };
   return (
     <div
-      className={`flex items-center gap-2 ${embedded ? "" : "or-surface p-2.5"}`}
+      className={`flex items-center gap-1.5 sm:gap-2 ${embedded ? "" : "or-surface p-2 sm:p-2.5"}`}
       data-testid="media-type-bar"
       style={{ minWidth: 0 }}
     >
-      {/* Scrollable chip row — Next button stays pinned to the right (sibling, not inside) */}
+      {/* Chip row — no horizontal overflow on mobile so every type is
+          visible at the same time. Even spacing via flex+gap, centred
+          via justify-between to spread the icons across the bar. */}
       <div
-        className="flex items-center gap-2 overflow-x-auto no-scrollbar flex-1 min-w-0"
+        className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0 justify-between sm:justify-start"
         data-testid="media-type-chips"
-        style={{ scrollSnapType: "x proximity" }}
       >
         {TYPES.map(({ id, label, Icon, color }) => {
           const active = value.includes(id);
@@ -44,23 +50,31 @@ export default function MediaTypeBar({ value = [], onChange, onNext, embedded = 
               data-active={active}
               onClick={() => toggle(id)}
               data-testid={`media-type-${id}`}
-              style={active ? { scrollSnapAlign: "start" } : { color, scrollSnapAlign: "start" }}
+              style={active ? undefined : { color }}
               aria-pressed={active}
+              aria-label={label}
+              title={label}
             >
-              <Icon size={14} /> {label}
+              <Icon size={14} />
+              <span className="hidden sm:inline ml-1">{label}</span>
             </button>
           );
         })}
+        {/* Next button sits in the same flex row at the same chip size
+            on mobile, so all six elements (5 types + Next) line up
+            evenly. On ≥sm it keeps its "Next →" label. */}
+        <button
+          className="or-chip shrink-0"
+          onClick={() => onNext?.()}
+          data-testid="media-type-next"
+          title="Next"
+          aria-label="Next"
+          style={{ color: "var(--primary)" }}
+        >
+          <span className="hidden sm:inline mr-1">Next</span>
+          <ArrowRight size={14} />
+        </button>
       </div>
-      <button
-        className="or-chip shrink-0"
-        onClick={() => onNext?.()}
-        data-testid="media-type-next"
-        title="Next"
-        aria-label="Next"
-      >
-        Next <ArrowRight size={14} />
-      </button>
     </div>
   );
 }

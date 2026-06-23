@@ -123,6 +123,18 @@ export default function RealmDetail() {
     catch { setBanner(null); }
   }, [id]);
 
+  // Spec (Feb 20, 2026): clear the aggregated realm-activity
+  // notification for this user when they OPEN the realm. Fires
+  // whenever the realm id changes (i.e. the user opens a new realm)
+  // and once on the initial mount. Best-effort; never blocks the
+  // page render if the endpoint is unreachable.
+  useEffect(() => {
+    if (!realm?.id) return;
+    apiClient.post(`/realm-notifications/${realm.id}/clear`).catch(() => {});
+    // When the user leaves the page or switches realms, the next
+    // realm's mount will clear its own row; no other cleanup needed.
+  }, [realm?.id]);
+
   // Listen for live chat:updated broadcasts.
   useEffect(() => {
     const handler = (e) => {

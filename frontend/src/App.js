@@ -24,8 +24,10 @@ import FounderProfile from "@/pages/FounderProfile";
 import Friends from "@/pages/Friends";
 import Messages from "@/pages/Messages";
 import Notifications from "@/pages/Notifications";
-import Wallet from "@/pages/Wallet";
-import Marketplace from "@/pages/Marketplace";
+// NOTE: Wallet / Marketplace / Ads-Manager surfaces are hidden per
+// user request (Feb 20, 2026). Imports and routes are removed below;
+// pages remain on disk so backend hooks + future re-enable are
+// trivial. See /app/memory/PRD.md for the wider de-scoping decision.
 import WidgetLibrary from "@/pages/WidgetLibrary";
 import Profile from "@/pages/Profile";
 import Settings from "@/pages/Settings";
@@ -102,8 +104,9 @@ function App() {
             <Route path="/friends" element={<ShellRoute><Friends /></ShellRoute>} />
             <Route path="/messages" element={<ShellRoute><Messages /></ShellRoute>} />
             <Route path="/notifications" element={<ShellRoute><Notifications /></ShellRoute>} />
-            <Route path="/wallet" element={<ShellRoute><Wallet /></ShellRoute>} />
-            <Route path="/marketplace" element={<ShellRoute><Marketplace /></ShellRoute>} />
+            {/* /wallet and /marketplace routes intentionally removed
+                (hide-only de-scope, Feb 20, 2026). Pages preserved on
+                disk for future re-enable. */}
             <Route path="/widgets" element={<ShellRoute><WidgetLibrary /></ShellRoute>} />
             <Route path="/profile" element={<ShellRoute><Profile /></ShellRoute>} />
             <Route path="/settings" element={<ShellRoute><Settings /></ShellRoute>} />

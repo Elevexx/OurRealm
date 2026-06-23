@@ -20,6 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isAdmin } from "@/lib/isAdmin";
 import AdminUserControlWidget from "@/components/AdminUserControlWidget";
 import AdminPasswordResetWidget from "@/components/AdminPasswordResetWidget";
+import AdminBackButton from "@/components/AdminBackButton";
 
 const STATUSES = ["Submitted", "In Progress", "Completed", "Incomplete"];
 
@@ -285,6 +286,7 @@ export default function AdminSupport() {
 
   return (
     <div className="max-w-6xl mx-auto" data-testid="admin-support-page">
+      <AdminBackButton className="mb-3" />
       <header className="mb-5 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <ShieldCheck size={26} style={{ color: "#00FF66" }} />

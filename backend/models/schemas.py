@@ -18,6 +18,10 @@ class RegisterPayload(BaseModel):
     age_confirmed_13: bool = False
     # Optional client-supplied policy version for audit trail.
     policy_version: Optional[str] = None
+    # Spec (Feb 20, 2026): the signup UI can pre-select a mode for the
+    # new account; we honour whatever the client sends (validated below
+    # to the four supported modes), otherwise default to 'neon'.
+    mode: Optional[str] = None
 
 
 class LoginPayload(BaseModel):
@@ -236,6 +240,16 @@ def serialize_user(doc: dict) -> dict:
         "follower_count": int(doc.get("follower_count")
                               if doc.get("follower_count") is not None
                               else len(doc.get("friends") or [])),
+        # `following_count` mirrors `follower_count` while the friend
+        # graph stays mutual. Exposed as a separate field so the UI can
+        # show both numbers and the future asymmetric-follow model
+        # only needs a serializer change.
+        "following_count": int(doc.get("following_count")
+                               if doc.get("following_count") is not None
+                               else len(doc.get("friends") or [])),
+        # Number of profile widgets — Profile counts row reads this so
+        # widgets count stays accurate without iterating client-side.
+        "widgets_count": len(doc.get("widgets") or []),
         # PRIVATE — only returned via `/auth/me` (the owner). The public
         # `/profile/by-username/...` route MUST omit this field. See
         # routers/profile.py:public_profile() for the redaction.

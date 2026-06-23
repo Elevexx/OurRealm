@@ -1,5 +1,39 @@
 # OurRealm — Product Requirements Document (PRD)
 
+
+## Messages Cleanup + Profile Refresh + Realm Activity Notifications + Media Audit (Feb 20, 2026, iter 38)
+
+**Item 1 — Messages tabs cleaned up.** `/messages` now only renders **Chats** + **Groups**. The legacy `Realms` and `Calls` tabs are removed from the tab strip, the render switch, and the URL coercion logic (any stale `?tab=realms` deep-link silently falls back to Chats).
+
+**Item 10 — Admin back button.** New `<AdminBackButton />` (data-testid `admin-back-button`) drops a 12px "← Admin" chip at the top-left of every admin subpage. Wired into `AdminAnalytics`, `AdminFAQ`, `AdminSupport`, `RealmPulse`. `AdminHashtags` already had its own — kept as-is.
+
+**Item 4 — Wallet / Marketplace / Ads UI hidden.** `/wallet` and `/marketplace` routes removed from `App.js`; page files left on disk so backend hooks + future re-enable are trivial. `AccountSettings.jsx` Wallet & Ads tabs were already gated; `DEFAULT_WIDGETS` no longer seeds a `wallet` widget.
+
+**Item 5 — Edit Profile "Settings" placement.** The settings gear stays anchored at `absolute top-3 right-3 z-10` of the banner area while editing — verified across all modes/breakpoints.
+
+**Item 3 — Default new-user mode = Neon.** `auth.register` honours `payload.mode` when it's one of `{neon, business, millennium, stealth}`, otherwise defaults to `neon`. `RegisterPayload` was extended with an optional `mode` field.
+
+**Item 7 — Default new-user profile widgets.** `auth.register` seeds `[default_top8_widget(), default_myfeed_widget()]` — Top 8 first, For You feed second. `DEFAULT_WIDGETS` in `mockData.js` mirrors the same. `Profile.jsx` always renders an "+ Add New Widget" tile (testid `profile-add-widget-tile`) as the third element so the spec'd 3-tile layout shows for every user, even those with no saved widgets.
+
+**Item 6 — Profile counts accurate.** `serialize_user()` now returns `following_count` (mirrors `follower_count` until the friend graph stops being mutual) and `widgets_count`. `Profile.jsx` + `FounderProfile.jsx` read `user.follower_count / following_count / widgets_count` directly — hardcoded "1.2k / 318 / 42.8k / 128" placeholders gone.
+
+**Items 2 + 8 — Pin + Delete on messages with typed-confirm.** `MessageActionMenu` now supports an optional `Pin / Unpin` action AND wraps `Delete` in a destructive typed-confirm dialog (testid `dm-actions-delete-confirm`). The Delete button is disabled until the user types `delete` (case-insensitive) into the confirm input (`dm-actions-delete-confirm-input`). `lib/messaging.js` gained `deleteMessage(id)` + `pinMessage(id, pinned)` helpers for the Supabase chat surfaces. DM bubble already wires Edit/Delete via the menu; the new confirm dialog gates every delete path.
+
+**Item 9 — Aggregated Realm activity notifications.** New `routers/realm_notifications.py`:
+- `POST /api/realm-notifications/bump` `{realm_id, activity_type}` — producer; called by `lib/messaging.js sendMessage()` when `contextType==='realm'`. Server-side helper `bump_realm_activity()` fans out to every realm member EXCEPT the actor and **upserts a single deterministic notification row per (realm, recipient)** (`id = realm-activity:{realm_id}:{user_id}`). Per-activity counters live under `payload.counters.{message,post,comment,media,other}`; `payload.unread_count` is the aggregate badge driver.
+- `POST /api/realm-notifications/{realm_id}/clear` — fires from `RealmDetail.jsx` on mount; sets `seen=true`, zeroes `unread_count` and `counters`.
+- `GET /api/realm-notifications/list` — dedicated realm-only feed (existing `/api/notifications/list` also returns them since they live in the same `db.notifications` collection, so the Star Bar badge counts them automatically).
+- `Notifications.jsx` renders these rows with the realm avatar + name + unread count and routes to `/realms/{slug-or-id}` on tap. Rows fold into a new "Realms" category filter.
+
+**Item 11 — Media persistence audit (no migration required).** Detailed report at `/app/memory/MEDIA_PERSISTENCE_REPORT.md`. Active persistent root `/data/ourrealm/`; 128 files already migrated automatically on the most recent boot (`{'audio':2,'images':104,'videos':22}`). All image/video/audio routes return 200 + correct MIME with `Cache-Control: public, max-age=31536000, immutable`. R2 stays staged but off (per your standing instruction). Migration job is idempotent and runs every startup → safe across all future deploys.
+
+**UI follow-up (during same batch):**
+- **Mobile media-type bar:** rewrote `MediaTypeBar` so the six chips (Live / Video / Image / Sound / Thought / Next-arrow) collapse to icon-only on viewports `<sm` (640px) — all six fit on a 380px screen with no horizontal scroll and even spacing. Desktop keeps the icon+label chip.
+- **Feed reorder:** Customize → Radius → Trending Hashtags → Media Type Bar → Composer / Feed (was: Customize → Media Type Bar → Radius → Trending Hashtags → Feed).
+
+**Tests added:** `tests/test_realm_notifications.py` — 6/6 pass (single bump, multi-bump aggregation, actor-excluded, clear resets seen+counters, post-clear bump starts at 1, serializer exposes following/widgets count).
+
+
 ## Mission
 Premium social platform with multi-mode UI, widget profiles, unified messaging, Sounds library, Polls, personalization, Home Dashboard, Admin analytics, and a native helpdesk.
 

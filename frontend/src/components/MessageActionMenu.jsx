@@ -10,9 +10,9 @@
  * Triggered by tap OR long-press on an owned message bubble (the parent
  * handles the gesture and calls `onOpen`).
  */
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Edit3, Trash2, X, Loader2 } from "lucide-react";
+import { Edit3, Trash2, X, Loader2, Pin, PinOff, AlertTriangle } from "lucide-react";
 
 export default function MessageActionMenu({
   open,
@@ -20,16 +20,29 @@ export default function MessageActionMenu({
   busy,
   onEdit,
   onDelete,
+  onPin,              // optional — when provided, Pin/Unpin button is shown
+  isPinned = false,
   onClose,
   testid,
   editTestid,
   deleteTestid,
   cancelTestid,
 }) {
+  // Two-step delete: first the menu, then a typed-confirm dialog.
+  // Per spec, the user MUST type the word `delete` (case-insensitive,
+  // trimmed) before the destructive action becomes enabled.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+
   // Close on Esc / window resize. Effect always runs; gate is `open`.
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        if (confirmOpen) { setConfirmOpen(false); setConfirmText(""); }
+        else onClose();
+      }
+    };
     const onResize = () => onClose();
     window.addEventListener("keydown", onKey);
     window.addEventListener("resize", onResize);
@@ -37,7 +50,12 @@ export default function MessageActionMenu({
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onResize);
     };
-  }, [open, onClose]);
+  }, [open, onClose, confirmOpen]);
+
+  // Reset the typed confirm whenever the menu re-opens for a new message.
+  useEffect(() => {
+    if (!open) { setConfirmOpen(false); setConfirmText(""); }
+  }, [open]);
 
   if (!open) return null;
 
@@ -66,27 +84,48 @@ export default function MessageActionMenu({
         Message actions
       </div>
 
-      <button
-        type="button"
-        disabled={busy}
-        onClick={onEdit}
-        className="w-full text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-3 py-2.5 mb-2"
-        style={{
-          borderRadius: 6,
-          background: "color-mix(in srgb, var(--primary) 18%, transparent)",
-          color: "var(--primary)",
-          border: "1px solid color-mix(in srgb, var(--primary) 40%, transparent)",
-          opacity: busy ? 0.6 : 1,
-        }}
-        data-testid={idScope === tid ? editTid : `${idScope}-edit`}
-      >
-        <Edit3 size={11} /> Edit
-      </button>
+      {onEdit && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onEdit}
+          className="w-full text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-3 py-2.5 mb-2"
+          style={{
+            borderRadius: 6,
+            background: "color-mix(in srgb, var(--primary) 18%, transparent)",
+            color: "var(--primary)",
+            border: "1px solid color-mix(in srgb, var(--primary) 40%, transparent)",
+            opacity: busy ? 0.6 : 1,
+          }}
+          data-testid={idScope === tid ? editTid : `${idScope}-edit`}
+        >
+          <Edit3 size={11} /> Edit
+        </button>
+      )}
+
+      {onPin && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onPin}
+          className="w-full text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-3 py-2.5 mb-2"
+          style={{
+            borderRadius: 6,
+            background: "color-mix(in srgb, var(--brand-green) 16%, transparent)",
+            color: "var(--brand-green)",
+            border: "1px solid color-mix(in srgb, var(--brand-green) 35%, transparent)",
+            opacity: busy ? 0.6 : 1,
+          }}
+          data-testid={`${idScope}-pin`}
+        >
+          {isPinned ? <PinOff size={11} /> : <Pin size={11} />} {isPinned ? "Unpin" : "Pin"}
+        </button>
+      )}
 
       <button
         type="button"
         disabled={busy}
-        onClick={onDelete}
+        onClick={() => setConfirmOpen(true)}
         className="w-full text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-3 py-2.5"
         style={{
           borderRadius: 6,
@@ -131,6 +170,79 @@ export default function MessageActionMenu({
         <X size={12} style={{ margin: "0 auto" }} />
       </button>
     </>
+  );
+
+  const deleteEnabled = confirmText.trim().toLowerCase() === "delete";
+
+  const renderConfirm = () => (
+    <div
+      className="or-surface"
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: "fixed",
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: 10000,
+        width: "min(420px, calc(100vw - 32px))",
+        padding: 18,
+        background: "var(--surface)",
+        border: "1px solid color-mix(in srgb, #FF3F5A 45%, var(--border-col))",
+        boxShadow: "0 22px 50px rgba(0,0,0,0.6)",
+      }}
+      data-testid={`${tid}-delete-confirm`}
+    >
+      <div className="flex items-start gap-2 mb-2">
+        <AlertTriangle size={18} style={{ color: "#FF8080", flexShrink: 0, marginTop: 2 }} />
+        <div>
+          <div className="text-sm font-bold" style={{ color: "var(--text-main)" }}>
+            Delete this message?
+          </div>
+          <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+            This is permanent. The message is removed from this conversation and cannot be restored. To confirm, type <b style={{ color: "#FF8080" }}>delete</b> below.
+          </div>
+        </div>
+      </div>
+      <input
+        className="or-input w-full mt-2 text-sm"
+        value={confirmText}
+        onChange={(e) => setConfirmText(e.target.value)}
+        placeholder='Type "delete" to confirm'
+        autoFocus
+        data-testid={`${tid}-delete-confirm-input`}
+      />
+      <div className="flex justify-end gap-2 mt-3">
+        <button
+          type="button"
+          className="or-chip"
+          onClick={() => { setConfirmOpen(false); setConfirmText(""); }}
+          data-testid={`${tid}-delete-confirm-cancel`}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={!deleteEnabled || busy}
+          onClick={() => {
+            if (!deleteEnabled) return;
+            setConfirmOpen(false);
+            setConfirmText("");
+            onDelete();
+          }}
+          className="or-btn"
+          style={{
+            background: deleteEnabled ? "#FF3F5A" : "color-mix(in srgb, #FF3F5A 30%, transparent)",
+            color: "#fff",
+            cursor: deleteEnabled ? "pointer" : "not-allowed",
+            opacity: deleteEnabled ? 1 : 0.5,
+            padding: "0.45rem 0.9rem",
+          }}
+          data-testid={`${tid}-delete-confirm-go`}
+        >
+          {busy ? <Loader2 size={12} className="inline animate-spin" /> : <Trash2 size={12} />} Delete
+        </button>
+      </div>
+    </div>
   );
 
   return createPortal(
@@ -191,6 +303,11 @@ export default function MessageActionMenu({
       >
         {renderMenu(`${tid}-desktop`)}
       </div>
+
+      {/* Typed-confirm dialog — gates the actual `onDelete` until the
+          user types `delete` into the input. Rendered at z 10000 so it
+          floats above the menu sheet/popover. */}
+      {confirmOpen && renderConfirm()}
     </>,
     document.body,
   );

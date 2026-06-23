@@ -237,8 +237,10 @@ export default function Feed() {
         </button>
       </div>
 
-      {/* Media type bar (matches uploaded design) */}
-      <MediaTypeBar value={media} onChange={setMedia} onNext={() => {}} />
+      {/* New order (Feb 20, 2026): Customize → Radius → Trending
+          Hashtags → Media Type bar → Feed. Lets users pick their
+          location radius, glance at trending tags, then filter by
+          media type just before the feed renders. */}
 
       {/* Phase-2 — Radius filter chips. Filters server posts by author
           location within `radius` miles of the viewer's ZIP. Default Any. */}
@@ -261,8 +263,15 @@ export default function Feed() {
         ))}
       </div>
 
-      {/* Composer */}
       <TrendingHashtags />
+
+      {/* Media type bar — sits between Trending Hashtags and the
+          composer so users can refine the feed by content type after
+          glancing at trends. Icon-only on mobile (handled inside the
+          MediaTypeBar component itself). */}
+      <MediaTypeBar value={media} onChange={setMedia} onNext={() => {}} />
+
+      {/* Composer */}
       <div className="or-surface p-4 mt-4" data-testid="feed-composer">
         <div className="flex gap-3">
           <UserAvatar user={user} size={40} testid="feed-composer-avatar" />

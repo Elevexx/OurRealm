@@ -30,8 +30,6 @@ import UserAvatar from "@/components/UserAvatar";
 const TABS = [
   { id: "chats",  label: "Chats",  Icon: MessagesSquare },
   { id: "groups", label: "Groups", Icon: Users },
-  { id: "realms", label: "Realms", Icon: Radio },
-  { id: "calls",  label: "Calls",  Icon: Phone },
 ];
 
 // ─────────────────────────────────────────────────────────────────────
@@ -97,7 +95,12 @@ export default function Messages() {
   useHeartbeat("messages");
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tab, setTab] = useState(searchParams.get("tab") || "chats");
+  const requested = searchParams.get("tab");
+  // Spec: /messages now only has Chats + Groups. Realms + Calls tabs
+  // have been removed. Coerce any stale deep-links (?tab=realms or
+  // ?tab=calls) back to Chats so old URLs / shared links don't 404.
+  const initialTab = ["chats", "groups"].includes(requested) ? requested : "chats";
+  const [tab, setTab] = useState(initialTab);
 
   // Phase C — mark user as "In Messenger" while on this page.
   useEffect(() => {
@@ -160,8 +163,6 @@ export default function Messages() {
 
       {tab === "chats"  && <ChatsTab  me={user} />}
       {tab === "groups" && <GroupsTab me={user} />}
-      {tab === "realms" && <RealmsTab me={user} />}
-      {tab === "calls"  && <CallsTab />}
     </div>
   );
 }

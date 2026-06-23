@@ -54,15 +54,24 @@ export default function Notifications() {
                 n.kind === "like" ? "Likes" :
                 n.kind === "comment" ? "Comments" :
                 n.kind === "share" ? "Shares" :
-                n.kind === "save" ? "Saves" : "All",
-      title: n.actor_username ? `@${n.actor_username}` : "Someone",
+                n.kind === "save" ? "Saves" :
+                n.kind === "realm_activity" ? "Realms" : "All",
+      title: n.kind === "realm_activity"
+        ? `${n.payload?.realm_avatar || "🌐"} ${n.payload?.realm_name || "Realm"}`
+        : n.actor_username ? `@${n.actor_username}` : "Someone",
       actor: n.actor_username || "someone",
-      body: n.payload?.preview || "",
+      body: n.kind === "realm_activity"
+        ? `${n.payload?.unread_count || 0} new activity${(n.payload?.unread_count || 0) === 1 ? "" : ""}`
+        : n.payload?.preview || "",
       unread: !n.seen,
-      created_at: n.created_at,
+      created_at: n.updated_at || n.created_at,
       // Phase-1 deep-link payload — kept on each item so onSelect() can route.
       post_id: n.payload?.post_id || null,
       actor_username: n.actor_username || null,
+      // Realm-activity payload — preserved verbatim so onSelect() can
+      // navigate directly to /realms/{slug-or-id}.
+      payload: n.payload || null,
+      realm_id: n.realm_id || n.payload?.realm_id || null,
       is_server: true,
     }));
     const all = [...mapped, ...items];
@@ -109,6 +118,15 @@ export default function Notifications() {
       case "follow":
         if (n.actor_username) navigate(`/public/${n.actor_username}`);
         return;
+      case "realm_activity": {
+        // Spec: tap → open that specific realm. Prefer the slug for a
+        // clean URL; fall back to id. The clear endpoint is fired by
+        // RealmDetail's own mount effect once we land there.
+        const target = n.payload?.realm_slug || n.payload?.realm_id || n.realm_id;
+        if (target) navigate(`/realms/${target}`);
+        else navigate("/realms");
+        return;
+      }
       default:
         return;
     }

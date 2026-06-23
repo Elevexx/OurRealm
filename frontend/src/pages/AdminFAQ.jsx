@@ -14,6 +14,7 @@ import {
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdmin } from "@/lib/isAdmin";
+import AdminBackButton from "@/components/AdminBackButton";
 
 function FAQRow({ item, items, onChanged, onDeleted }) {
   const [editing, setEditing] = useState(false);
@@ -210,6 +211,7 @@ export default function AdminFAQ() {
 
   return (
     <div className="max-w-4xl mx-auto" data-testid="admin-faq-page">
+      <AdminBackButton className="mb-3" />
       <header className="mb-5 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <ShieldCheck size={26} style={{ color: "#00FF66" }} />

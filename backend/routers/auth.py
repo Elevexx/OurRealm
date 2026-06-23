@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 
 from core.config import (
     JWT_ALGORITHM, ACCESS_TOKEN_MINUTES, get_jwt_secret, FOUNDER_USERNAME,
-    VIP_CUTOFF, default_myfeed_widget,
+    VIP_CUTOFF, default_myfeed_widget, default_top8_widget,
 )
 from core.db import db
 from core.deps import (
@@ -68,9 +68,15 @@ async def register(payload: RegisterPayload, response: Response):
         "avatar_url": None,
         "bio": "",
         "interests": [],
-        "mode": "neon",
+        # Spec: new accounts start in Neon mode by default, but the
+        # signup flow may pre-select a mode — honour that when valid.
+        "mode": (payload.mode if (payload.mode or "").lower() in {"neon", "business", "millennium", "stealth"} else "neon"),
         # New accounts get the My Feed widget as the first/top widget.
-        "widgets": [default_myfeed_widget()],
+        # New-user default widget layout per spec (Feb 20, 2026):
+        # Top 8 first, then For You feed (myfeed). The "+ Add New
+        # Widget" affordance is rendered by Profile.jsx separately, so
+        # it is NOT a data-driven widget here.
+        "widgets": [default_top8_widget(), default_myfeed_widget()],
         # ── ID-BASED FRIEND GRAPH ──
         "friends": [],
         "friend_requests_in": [],

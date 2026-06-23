@@ -24,6 +24,7 @@ from routers import messages as messages_router_mod
 from routers import profile as profile_router_mod
 from routers import posts as posts_router_mod
 from routers import notifications as notifications_router_mod
+from routers import realm_notifications as realm_notifications_router_mod
 from routers import images as images_router_mod
 from routers import videos as videos_router_mod
 from routers import moderation as moderation_router_mod
@@ -67,6 +68,7 @@ app.include_router(friends_router_mod.router)
 app.include_router(messages_router_mod.router)
 app.include_router(posts_router_mod.router)
 app.include_router(notifications_router_mod.router)
+app.include_router(realm_notifications_router_mod.router)
 app.include_router(images_router_mod.router)
 app.include_router(videos_router_mod.router)
 app.include_router(moderation_router_mod.router)

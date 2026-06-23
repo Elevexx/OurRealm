@@ -5,6 +5,7 @@ import { ShieldCheck, Loader2, AlertTriangle, ChevronDown, ChevronRight, EyeOff,
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import ModerationPanel from "@/components/ModerationPanel";
+import AdminBackButton from "@/components/AdminBackButton";
 
 const RANGES = [
   { id: "24h", label: "24 hours" }, { id: "7d", label: "7 days" },
@@ -73,6 +74,7 @@ export default function AdminAnalytics() {
 
   return (
     <div className="max-w-6xl mx-auto" data-testid="admin-analytics">
+      <AdminBackButton className="mb-3" />
       <header className="mb-5 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <ShieldCheck size={26} style={{ color: "#00FF66" }} />

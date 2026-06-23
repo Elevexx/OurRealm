@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import AdminBackButton from "@/components/AdminBackButton";
 
 const WINDOWS = [
   { id: "today", label: "Today" },
@@ -124,6 +125,7 @@ export default function RealmPulse() {
 
   return (
     <div className="max-w-6xl mx-auto" data-testid="realm-pulse-page">
+      <AdminBackButton className="mb-3" />
       {/* Header */}
       <div className="mb-5 flex items-center gap-3 flex-wrap">
         <Link to="/admin/analytics" className="or-chip" data-testid="realm-pulse-back"><ArrowLeft size={14} /> Analytics</Link>

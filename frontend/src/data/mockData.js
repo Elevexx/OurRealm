@@ -323,16 +323,17 @@ export const WIDGET_TYPES = [
   { id: "custom",   label: "Custom",          icon: "Sparkles",    default_size: "small",  cat: "signature" },
 ];
 
+// Default profile widget layout for NEW users (Feb 20, 2026).
+// Spec: new profiles start with exactly:
+//   1. Top 8 widget
+//   2. For You feed widget (myfeed)
+//   3. "Add New Widget" affordance — rendered by Profile.jsx as a
+//      separate tile, not a data-driven widget, so it always appears
+//      regardless of saved layout.
+// Wallet / Marketplace / Ads widgets removed per de-scope.
 export const DEFAULT_WIDGETS = [
-  { id: "w-top8", type: "top8",   size: "medium" },
-  { id: "w1",     type: "live",   size: "large" },
-  { id: "w2",     type: "music",  size: "medium" },
-  { id: "w3",     type: "photos", size: "medium" },
-  { id: "w4",     type: "friends",size: "small" },
-  { id: "w5",     type: "wallet", size: "small" },
-  { id: "w6",     type: "events", size: "small" },
-  { id: "w7",     type: "tour",   size: "medium" },
-  { id: "w8",     type: "merch",  size: "full" },
+  { id: "w-top8",   type: "top8",   size: "medium" },
+  { id: "w-myfeed", type: "myfeed", size: "large"  },
 ];
 
 export const MODE_PREVIEW_IMG = {

@@ -176,6 +176,18 @@ export async function sendMessage({ contextType, contextId, senderId, text, medi
     .select()
     .single();
   if (error) throw error;
+  // Realm message sent? Bump the aggregated activity notification for
+  // every OTHER realm member (the actor is excluded server-side).
+  // Best-effort — never blocks the send itself.
+  if (contextType === "realm" && contextId) {
+    try {
+      const activity = mediaUrl ? "media" : "message";
+      await apiClient.post("/realm-notifications/bump", {
+        realm_id: contextId,
+        activity_type: activity,
+      });
+    } catch (_e) { /* swallow */ }
+  }
   return data;
 }
 
@@ -202,4 +214,33 @@ export function subscribeToConversation(contextType, contextId, onInsert) {
   return () => {
     try { supabase.removeChannel(channel); } catch { /* ignore */ }
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Message moderation — pin + delete (Feb 20, 2026)
+//
+// Per spec, a user can pin and delete individual messages in DMs and
+// group chats (and realm chats — same Supabase table, same controls).
+// Delete is destructive and the UI guards it with a typed "delete"
+// confirmation; here we just execute the row removal.
+// ─────────────────────────────────────────────────────────────────────
+export async function deleteMessage(messageId) {
+  const sb = ensure();
+  const { error } = await sb.from("messages").delete().eq("id", messageId);
+  if (error) throw error;
+  return { ok: true, id: messageId };
+}
+
+export async function pinMessage(messageId, pinned = true) {
+  const sb = ensure();
+  // Stores an ISO timestamp so the UI can show "pinned at …" later
+  // without a schema migration; clearing sets it back to null.
+  const { data, error } = await sb
+    .from("messages")
+    .update({ pinned_at: pinned ? new Date().toISOString() : null })
+    .eq("id", messageId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }

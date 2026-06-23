@@ -323,10 +323,10 @@ export default function FounderProfile() {
             </div>
             <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }} data-testid="founder-username">@{profile.username}</div>
             <div className="text-sm mt-1.5" data-testid="founder-bio">{profile.bio}</div>
-            <div className="mt-2 flex gap-4 text-xs" style={{ color: "var(--text-muted)" }}>
-              <span><b style={{ color: "var(--text-main)" }}>42.8k</b> followers</span>
-              <span><b style={{ color: "var(--text-main)" }}>128</b> following</span>
-              <span><b style={{ color: "var(--text-main)" }}>{widgets.length}</b> widgets</span>
+            <div className="mt-2 flex gap-4 text-xs" style={{ color: "var(--text-muted)" }} data-testid="founder-counts">
+              <span><b style={{ color: "var(--text-main)" }} data-testid="founder-follower-count">{profile?.follower_count ?? 0}</b> followers</span>
+              <span><b style={{ color: "var(--text-main)" }} data-testid="founder-following-count">{profile?.following_count ?? 0}</b> following</span>
+              <span><b style={{ color: "var(--text-main)" }} data-testid="founder-widgets-count">{profile?.widgets_count ?? widgets.length}</b> widgets</span>
             </div>
           </div>
           <div className="flex gap-2 flex-wrap">
