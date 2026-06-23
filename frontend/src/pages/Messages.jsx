@@ -9,6 +9,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   MessagesSquare, Users, Radio, Phone, Plus, Send, X, Search,
   Image as ImageIcon, AlertTriangle, LogOut, Loader2, ChevronRight,
+  Pin, PinOff, Trash2,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -192,6 +193,8 @@ function ChatsTab({ me }) {
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState(null); // a "thread" row from /api/messages/threads
   const [showNew, setShowNew] = useState(false);
+  const [busyRow, setBusyRow] = useState(null);    // peer.id while pin/unpin call is in-flight
+  const [confirmDelete, setConfirmDelete] = useState(null); // thread row pending delete
   const { cache, resolve } = useProfileCache();
   const { statuses } = usePresence();
 
@@ -261,6 +264,41 @@ function ChatsTab({ me }) {
     });
   }, [me.id]);
 
+  // ── Pin / Unpin a DM thread (per-user) ──────────────────────────────
+  const togglePin = useCallback(async (thread) => {
+    const peer = thread.peer;
+    if (!peer?.username || busyRow) return;
+    setBusyRow(peer.id);
+    const wasPinned = !!thread.is_pinned;
+    const path = wasPinned ? "/messages/threads/unpin" : "/messages/threads/pin";
+    // Optimistic flip so the row visibly jumps to/from the top.
+    setThreads((prev) => prev.map((t) =>
+      t.conv_id === thread.conv_id ? { ...t, is_pinned: !wasPinned } : t
+    ));
+    try {
+      await apiClient.post(path, { peer_username: peer.username });
+    } catch (e) {
+      // Roll back on failure.
+      setThreads((prev) => prev.map((t) =>
+        t.conv_id === thread.conv_id ? { ...t, is_pinned: wasPinned } : t
+      ));
+      console.error("pin toggle failed", e);
+    } finally { setBusyRow(null); }
+  }, [busyRow]);
+
+  // ── Delete an entire DM thread (current user only) ──────────────────
+  const deleteThread = useCallback(async (thread) => {
+    const peer = thread.peer;
+    if (!peer?.username) return;
+    try {
+      await apiClient.delete(`/messages/threads/${peer.username}`);
+      setThreads((prev) => prev.filter((t) => t.conv_id !== thread.conv_id));
+      setConfirmDelete(null);
+    } catch (e) {
+      console.error("delete thread failed", e);
+    }
+  }, []);
+
   return (
     <section className="or-surface p-3 sm:p-5">
       <div className="flex items-center justify-between mb-3">
@@ -289,6 +327,8 @@ function ChatsTab({ me }) {
       ) : (
         <div data-testid="chats-list">
           {[...threads].sort((a, b) => {
+            // Pinned threads ALWAYS float to the top.
+            if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
             const sa = statuses[a?.peer?.id] || "offline";
             const sb = statuses[b?.peer?.id] || "offline";
             const pa = STATUS_PRIORITY[sa] ?? 9;
@@ -303,29 +343,73 @@ function ChatsTab({ me }) {
             const title = peer ? (peer.name || `@${peer.username}`) : "Loading…";
             const peerStatus = statuses[peer?.id] || "offline";
             return (
-              <button
+              <div
                 key={t.conv_id}
-                onClick={() => setActive(t)}
-                className="w-full flex items-center gap-3 py-2.5 px-2 text-left"
+                className="w-full flex items-center gap-3 py-2.5 px-2"
                 style={{ borderBottom: "1px solid var(--border-col)" }}
                 data-testid={`chat-row-${peer?.username || t.conv_id}`}
               >
-                <Avatar user={peer} />
-                {/* Keep a hidden marker for tests; visible dot is now
-                    rendered by the shared Avatar/UserAvatar component. */}
-                {peerStatus !== "offline" && (
-                  <span style={{ display: "none" }} data-testid={`chat-row-status-${peer?.username}`} data-status={peerStatus} />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm truncate" style={{ color: "var(--text-main)" }}>{title}</div>
-                  <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
-                    {t.last_text || "Tap to open conversation"}
+                <button
+                  onClick={() => setActive(t)}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                  data-testid={`chat-row-${peer?.username || t.conv_id}-open`}
+                >
+                  <Avatar user={peer} />
+                  {/* Keep a hidden marker for tests; visible dot is now
+                      rendered by the shared Avatar/UserAvatar component. */}
+                  {peerStatus !== "offline" && (
+                    <span style={{ display: "none" }} data-testid={`chat-row-status-${peer?.username}`} data-status={peerStatus} />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm truncate flex items-center gap-1.5" style={{ color: "var(--text-main)" }}>
+                      {t.is_pinned && (
+                        <Pin
+                          size={11}
+                          style={{ color: "var(--primary)" }}
+                          data-testid={`chat-row-${peer?.username}-pinned-badge`}
+                        />
+                      )}
+                      <span className="truncate">{title}</span>
+                    </div>
+                    <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
+                      {t.last_text || "Tap to open conversation"}
+                    </div>
                   </div>
+                  <div className="text-xs whitespace-nowrap shrink-0" style={{ color: "var(--text-muted)" }}>
+                    {formatTime(t.last_at)}
+                  </div>
+                </button>
+                {/* Row actions: Pin/Unpin + Delete-thread. */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); togglePin(t); }}
+                    className="starbar-icon"
+                    style={{ width: 32, height: 32 }}
+                    title={t.is_pinned ? "Unpin conversation" : "Pin conversation"}
+                    aria-label={t.is_pinned ? "Unpin conversation" : "Pin conversation"}
+                    disabled={busyRow === peer?.id}
+                    data-testid={`chat-row-${peer?.username}-pin`}
+                  >
+                    {t.is_pinned ? (
+                      <PinOff size={14} style={{ color: "var(--primary)" }} />
+                    ) : (
+                      <Pin size={14} />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setConfirmDelete(t); }}
+                    className="starbar-icon"
+                    style={{ width: 32, height: 32 }}
+                    title="Delete conversation"
+                    aria-label="Delete conversation"
+                    data-testid={`chat-row-${peer?.username}-delete`}
+                  >
+                    <Trash2 size={14} style={{ color: "#FF8080" }} />
+                  </button>
                 </div>
-                <div className="text-xs whitespace-nowrap shrink-0" style={{ color: "var(--text-muted)" }}>
-                  {formatTime(t.last_at)}
-                </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -340,6 +424,16 @@ function ChatsTab({ me }) {
           me={me}
           peer={active.peer}
           onClose={() => { setActive(null); load(); }}
+        />
+      )}
+
+      {confirmDelete && (
+        <TypeDeleteThreadModal
+          title={`Delete conversation with @${confirmDelete.peer?.username}?`}
+          body="This removes the entire conversation from your inbox. Your messages remain visible to the other person."
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => deleteThread(confirmDelete)}
+          testid="chat-delete-confirm"
         />
       )}
     </section>
@@ -398,6 +492,42 @@ function ThreadListTab({
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  // Per-user pin & local-hide for groups/realms. Mongo doesn't track
+  // these for Supabase groups so we mirror them client-side. Each set
+  // is namespaced by current user id to avoid leaking between accounts.
+  const pinKey  = `ourrealm.pinned.${kind}.${me?.id || "anon"}`;
+  const hideKey = `ourrealm.hidden.${kind}.${me?.id || "anon"}`;
+  const readSet = (k) => {
+    try { return new Set(JSON.parse(localStorage.getItem(k) || "[]")); }
+    catch { return new Set(); }
+  };
+  const [pinned, setPinned] = useState(() => readSet(pinKey));
+  const [hidden, setHidden] = useState(() => readSet(hideKey));
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const persist = (k, set) => {
+    try { localStorage.setItem(k, JSON.stringify(Array.from(set))); } catch { /* */ }
+  };
+  const togglePin = (row) => {
+    setPinned((prev) => {
+      const next = new Set(prev);
+      if (next.has(row.id)) next.delete(row.id); else next.add(row.id);
+      persist(pinKey, next);
+      return next;
+    });
+  };
+  const hideRow = async (row) => {
+    // Permanently remove the user from the group (Supabase leave), then
+    // tag locally so the row never reappears if listGroups misses.
+    try { await leave(row.id, me.id); } catch (e) { console.error(e); }
+    setHidden((prev) => {
+      const next = new Set(prev);
+      next.add(row.id);
+      persist(hideKey, next);
+      return next;
+    });
+    setItems((s) => s.filter((g) => g.id !== row.id));
+    setConfirmDelete(null);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -452,7 +582,17 @@ function ThreadListTab({
         />
       ) : (
         <div className="space-y-2" data-testid={`${testidPrefix}s-list`}>
-          {items.map((g) => (
+          {[...items]
+            .filter((g) => !hidden.has(g.id))
+            .sort((a, b) => {
+              const pa = pinned.has(a.id) ? 0 : 1;
+              const pb = pinned.has(b.id) ? 0 : 1;
+              if (pa !== pb) return pa - pb;
+              return 0;
+            })
+            .map((g) => {
+            const isPinned = pinned.has(g.id);
+            return (
             <div
               key={g.id}
               className="w-full or-surface p-3 flex items-center gap-3"
@@ -480,11 +620,47 @@ function ThreadListTab({
                     : (g.name || "?").charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-bold truncate" style={{ color: "var(--text-main)" }}>{g.name}</div>
+                  <div className="font-bold truncate flex items-center gap-1.5" style={{ color: "var(--text-main)" }}>
+                    {isPinned && (
+                      <Pin
+                        size={11}
+                        style={{ color: "var(--primary)" }}
+                        data-testid={`${testidPrefix}-row-${g.id}-pinned-badge`}
+                      />
+                    )}
+                    <span className="truncate">{g.name}</span>
+                  </div>
                   <div className="text-xs" style={{ color: "var(--text-muted)" }}>
                     {(g.members || []).length} member{(g.members || []).length === 1 ? "" : "s"}
                   </div>
                 </div>
+              </button>
+              {/* Per-row Pin / Delete actions (parity with Chats list). */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); togglePin(g); }}
+                className="starbar-icon shrink-0"
+                style={{ width: 32, height: 32 }}
+                title={isPinned ? `Unpin ${kind}` : `Pin ${kind}`}
+                aria-label={isPinned ? `Unpin ${kind}` : `Pin ${kind}`}
+                data-testid={`${testidPrefix}-row-${g.id}-pin`}
+              >
+                {isPinned ? (
+                  <PinOff size={14} style={{ color: "var(--primary)" }} />
+                ) : (
+                  <Pin size={14} />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setConfirmDelete(g); }}
+                className="starbar-icon shrink-0"
+                style={{ width: 32, height: 32 }}
+                title={`Delete ${kind}`}
+                aria-label={`Delete ${kind}`}
+                data-testid={`${testidPrefix}-row-${g.id}-delete`}
+              >
+                <Trash2 size={14} style={{ color: "#FF8080" }} />
               </button>
               {kind === "realm" && (
                 <button
@@ -510,7 +686,8 @@ function ThreadListTab({
                 </button>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -532,6 +709,16 @@ function ThreadListTab({
           subtitle={`${(active.members || []).length} member${(active.members || []).length === 1 ? "" : "s"}`}
           onLeave={() => onLeave(active)}
           onClose={() => { setActive(null); load(); }}
+        />
+      )}
+
+      {confirmDelete && (
+        <TypeDeleteThreadModal
+          title={`Delete ${kind} "${confirmDelete.name}"?`}
+          body={`This removes "${confirmDelete.name}" from your ${kind}s list and leaves the ${kind}. You'll need to be re-invited to rejoin.`}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => hideRow(confirmDelete)}
+          testid={`${testidPrefix}-delete-confirm`}
         />
       )}
     </section>
@@ -1290,6 +1477,49 @@ function CreateThreadModal({ me, kind, onClose, onCreate }) {
 // ─────────────────────────────────────────────────────────────────────
 // Small shared primitives
 // ─────────────────────────────────────────────────────────────────────
+
+/**
+ * TypeDeleteThreadModal — high-friction confirmation. The user must
+ * literally type "delete" before the destructive button enables.
+ * Used for whole-conversation removal in Chats / Groups / Realms lists.
+ * Per spec, this is ONLY for whole-thread deletion — individual
+ * message deletion is instant and must NOT show this modal.
+ */
+function TypeDeleteThreadModal({ title, body, onCancel, onConfirm, testid }) {
+  const [val, setVal] = useState("");
+  const armed = val.trim().toLowerCase() === "delete";
+  return (
+    <Modal title={title} onClose={onCancel} testid={testid}>
+      <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>{body}</p>
+      <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+        Type <code style={{ color: "#FF8080" }}>delete</code> to confirm
+      </label>
+      <input
+        autoFocus
+        className="or-input w-full mt-1 mb-3"
+        placeholder="delete"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        data-testid={`${testid}-input`}
+      />
+      <div className="flex gap-2 justify-end">
+        <button className="or-btn or-btn-ghost" onClick={onCancel} data-testid={`${testid}-cancel`}>
+          Cancel
+        </button>
+        <button
+          className="or-btn"
+          style={{ background: armed ? "#FF4040" : "var(--surface-2)", color: armed ? "#fff" : "var(--text-muted)" }}
+          disabled={!armed}
+          onClick={onConfirm}
+          data-testid={`${testid}-confirm`}
+        >
+          <Trash2 size={14} /> Delete
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function Modal({ title, children, onClose, testid }) {
   return (
     <div

@@ -1,0 +1,39 @@
+{
+  "summary": "Verified P3 (Messages list pin + type-delete-confirm thread delete + hidden/revive logic) and P4 (community-chat edit + INSTANT delete). Backend: 7/7 pytest pass on /api/messages/threads pin/unpin/delete/revive + /api/community-chats/messages PATCH/DELETE/403. Frontend live as tfone on /messages: chat-row-stealth + chat-row-stealth-pin + chat-row-stealth-delete all present, pin moves stealth to row 0 with the pinned-badge, delete modal type-delete works (initially disabled -> still disabled on 'wrong' -> enabled on 'delete' AND 'DELETE' case-insensitive -> cancel closes). Groups tab loaded cleanly with empty state for tfone. P4 frontend verified by code review only (testids `community-chat-msg-edit-{id}` + `community-chat-msg-delete-{id}` exist at CommunityChat.jsx:258/264; deleteCommunityMessage is optimistic + INSTANT with no modal; saveEdit does PATCH and bubble shows '(edited)' when m.edited_at).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "DM instant-delete inside conversation overlay", "issue": "Sent a DM as tfone -> dm-actions-{id} trigger did NOT appear after send via the auto-test harness (querySelectorAll returned 0). Likely renders only on hover/long-press/context-menu (Messages.jsx line 930 onContextMenu + line 1029 testid). The instant-delete code path itself was verified via code review (no modal opened in any of the iterations of the dm-actions menu). Could not fully UI-exercise instant delete; backend DELETE /api/messages/{id} is already covered by test_messaging_and_post_mgmt.py.", "affected_selectors": ["[data-testid^='dm-actions-']"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_p3_p4_threads_and_community_msg.py",
+    "/app/test_reports/pytest/p3_p4.xml"
+  ],
+  "action_items": [
+    "(optional) Make dm-actions trigger always visible (or visible on hover-with-tap on touch) so end-to-end UI testing of DM instant-delete is repeatable. Today it requires onContextMenu / long-press which the auto-test harness doesn't synthesize.",
+    "(nice-to-have) Seed a group for tfone in the seed script so the Groups tab pin/delete row UI can also be UI-exercised end-to-end (today tfone owns no groups so the Groups tab on /messages renders empty for the test user)."
+  ],
+  "critical_code_review_comments": [
+    "messages.py list_threads correctly compares ISO strings for hidden_at vs last.created_at — works because all timestamps are RFC3339 with timezone, so lexicographic compare matches chronological. Verified via revive-on-new-message test.",
+    "communities.py edit_community_message refuses if !msg or msg.deleted_at — good. 403 returned for non-author normal members on PATCH and DELETE. Founder/support/moderator admins can bypass via get_admin_role check on DELETE only (intentional per existing moderation rules).",
+    "Messages.jsx TypeDeleteThreadModal uses val.trim().toLowerCase() === 'delete' — matches the explicit case-insensitive spec.",
+    "CommunityChat.jsx deleteCommunityMessage is optimistic (filter from list immediately + rollback on error) and contains NO modal/confirmation step — matches the 'instant individual-message delete' spec.",
+    "Backend /api/community-chats/{chat_id}/messages list filters {deleted_at: {$exists: False}} so deleted msgs disappear immediately after DELETE. Verified in tests."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_p3_p4_threads_and_community_msg.py"
+  ],
+  "success_rate": {
+    "backend": "100% (7/7 pytest)",
+    "frontend": "P3 Chats tab + pin + type-delete modal 100% verified live. P3 Groups tab UI exists but empty for tfone (not exercised live). P3 DM instant-delete inside overlay: NOT exercised live (dm-actions trigger only fires on long-press/context-menu, code reviewed instead). P4 verified by code review only."
+  },
+  "test_credentials": "Used stealth (slopestyle2022@gmail.com / Password1$) and tfone (testfriend1@example.com / pass1234) from /app/memory/test_credentials.md.",
+  "seed_data_creation": "Sent TEST_p3_* DMs (stealth<->tfone) and TEST_p4_* community messages in DJ Realm chat as part of pytest. TEST_p4_* messages are cleaned up by the test itself. TEST_p3_* DMs intentionally left in DB so the thread revival assertion is reproducible.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression: pytest /app/backend/tests/test_p3_p4_threads_and_community_msg.py — 7 tests, ~3s. Key constants: REALM_CHAT_ID=f73c942f998548b9bccc87bd7b48950f (DJ Realm community-chat) — if seed changes you'll need to refresh this via GET /api/communities/my-realms. Frontend P3 selectors are stable: chat-row-{username}, chat-row-{username}-pin, chat-row-{username}-delete, chat-row-{username}-pinned-badge, chat-delete-confirm + -input + -confirm + -cancel. Groups tab selectors mirror: group-row-{id}-*. P4 community-chat selectors: community-chat-msg-edit-{id}, community-chat-msg-delete-{id}, community-chat-msg-edit-input-{id}, community-chat-msg-edit-save-{id}.",
+  "rca of the issue": "N/A — no defects found in scope. The one not-fully-exercised area (DM instant-delete via UI) is a test-harness limitation (no synthetic long-press / context-menu in headless harness), not a product bug. The code path is straightforward (instant filter + DELETE /api/messages/{id}) and matches spec."
+}

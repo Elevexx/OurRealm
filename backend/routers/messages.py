@@ -214,6 +214,16 @@ async def list_threads(current: CurrentUser):
     me_id = current["id"]
     pinned = set(current.get("pinned_threads") or [])
 
+    # Threads the user previously deleted from their list. Hide them
+    # until a NEW message arrives in that conv after the hide moment.
+    hidden_map: dict[str, str] = {}
+    async for row in db.message_threads_hidden.find(
+        {"user_id": me_id},
+        {"_id": 0, "peer_id": 1, "hidden_at": 1},
+    ):
+        if row.get("peer_id") and row.get("hidden_at"):
+            hidden_map[row["peer_id"]] = row["hidden_at"]
+
     # Pull every message I sent or received and group by conv_id
     pipeline = [
         {"$match": {"$or": [{"from_user_id": me_id}, {"to_user_id": me_id}]}},
@@ -241,6 +251,12 @@ async def list_threads(current: CurrentUser):
     for fid, fdoc in friends_map.items():
         cid = conv_id(me_id, fid)
         last = grouped.get(cid)
+        hidden_at = hidden_map.get(fid)
+        # If hidden and no NEW activity after the hide, skip this thread.
+        if hidden_at:
+            last_at_str = last.get("created_at") if last else None
+            if not last_at_str or last_at_str <= hidden_at:
+                continue
         threads.append({
             "conv_id": cid,
             "peer": fdoc,
@@ -292,3 +308,34 @@ async def unpin_thread(payload: PinThreadPayload, current: CurrentUser):
         {"id": current["id"]}, {"$pull": {"pinned_threads": peer["id"]}}
     )
     return {"ok": True, "pinned": False}
+
+
+@router.delete("/threads/{username}")
+async def delete_thread(username: str, current: CurrentUser):
+    """Delete the entire DM thread between current user and `username`.
+
+    Soft-deletes every message in the conversation by stamping
+    `deleted_at` + `deleted_by` so the rows remain available for the
+    peer (one-sided delete). Removes the thread from the current user's
+    pinned list too. The peer's view is unaffected.
+    """
+    peer = await _user_by_username(username)
+    if not peer:
+        raise HTTPException(status_code=404, detail="User not found")
+    cid = conv_id(current["id"], peer["id"])
+    now = datetime.now(timezone.utc).isoformat()
+    await db.messages.update_many(
+        {"conv_id": cid, "from_user_id": current["id"]},
+        {"$set": {"deleted_at": now, "deleted_by": current["id"]}},
+    )
+    # Hide the thread for the current user only — by tagging on a
+    # `hidden_for` array. The thread list endpoint filters these out.
+    await db.message_threads_hidden.update_one(
+        {"user_id": current["id"], "peer_id": peer["id"]},
+        {"$set": {"user_id": current["id"], "peer_id": peer["id"], "hidden_at": now}},
+        upsert=True,
+    )
+    await db.users.update_one(
+        {"id": current["id"]}, {"$pull": {"pinned_threads": peer["id"]}}
+    )
+    return {"ok": True, "deleted": True}

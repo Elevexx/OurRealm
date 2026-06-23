@@ -48,6 +48,9 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 from pydantic import BaseModel, Field
 
 from core.community_chat import broadcast as room_broadcast, join as room_join, leave as room_leave
+from core.permissions import (
+    get_admin_role, ROLE_FOUNDER, ROLE_SUPPORT_ADMIN, ROLE_MODERATOR,
+)
 from core.config import JWT_ALGORITHM, get_jwt_secret
 from core.db import db
 from core.deps import CurrentUser
@@ -1052,6 +1055,54 @@ async def send_message(chat_id: str, payload: MessagePayload, current: CurrentUs
     msg.pop("_id", None)
     await room_broadcast(chat_id, {"type": "message:new", "message": msg})
     return msg
+
+
+@router.patch("/community-chats/messages/{message_id}")
+async def edit_community_message(message_id: str, payload: dict, current: CurrentUser):
+    """Edit a single community-chat message — author only."""
+    msg = await db.community_messages.find_one({"id": message_id}, {"_id": 0})
+    if not msg or msg.get("deleted_at"):
+        raise HTTPException(status_code=404, detail="Message not found")
+    if msg.get("user_id") != current["id"]:
+        raise HTTPException(status_code=403, detail="Not your message")
+    body = (payload or {}).get("body", "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="Body required")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.community_messages.update_one(
+        {"id": message_id},
+        {"$set": {"body": body, "edited_at": now}},
+    )
+    fresh = await db.community_messages.find_one({"id": message_id}, {"_id": 0})
+    try:
+        await room_broadcast(msg["chat_id"], {"type": "message:edited", "message": fresh})
+    except Exception:
+        pass
+    return {"ok": True, "message": fresh}
+
+
+@router.delete("/community-chats/messages/{message_id}")
+async def delete_community_message(message_id: str, current: CurrentUser):
+    """Delete a single community-chat message. Authors can delete their own;
+    founder + community admins/moderators can delete any (matches existing
+    moderation rules across the rest of the app)."""
+    msg = await db.community_messages.find_one({"id": message_id}, {"_id": 0})
+    if not msg or msg.get("deleted_at"):
+        raise HTTPException(status_code=404, detail="Message not found")
+    is_author = msg.get("user_id") == current["id"]
+    is_admin  = get_admin_role(current) in (ROLE_FOUNDER, ROLE_SUPPORT_ADMIN, ROLE_MODERATOR)
+    if not (is_author or is_admin):
+        raise HTTPException(status_code=403, detail="Not permitted")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.community_messages.update_one(
+        {"id": message_id},
+        {"$set": {"deleted_at": now, "deleted_by": current["id"]}},
+    )
+    try:
+        await room_broadcast(msg["chat_id"], {"type": "message:deleted", "message_id": message_id})
+    except Exception:
+        pass
+    return {"ok": True}
 
 
 # --------------------------------------------------------------------- #

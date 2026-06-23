@@ -11,7 +11,7 @@
  * one consistent chat experience across DMs and community rooms.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Send, Edit3, Loader2, MessageSquare, Pin } from "lucide-react";
+import { Send, Edit3, Loader2, MessageSquare, Pin, MoreVertical, Trash2 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import ReactionAttachment from "@/components/ReactionAttachment";
@@ -31,6 +31,7 @@ function wsUrl(chatId) {
 export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
+  const [editingMsgId, setEditingMsgId] = useState(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -61,6 +62,10 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
         const msg = JSON.parse(ev.data);
         if (msg.type === "message:new") {
           setMessages((prev) => prev.find((m) => m.id === msg.message.id) ? prev : [...prev, msg.message]);
+        } else if (msg.type === "message:edited") {
+          setMessages((prev) => prev.map((m) => m.id === msg.message.id ? { ...m, ...msg.message } : m));
+        } else if (msg.type === "message:deleted") {
+          setMessages((prev) => prev.filter((m) => m.id !== msg.message_id));
         } else if (msg.type === "typing") {
           const uid = msg.user_id, uname = msg.username;
           setTypingUsers((p) => ({ ...p, [uid]: uname }));
@@ -123,6 +128,37 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
     } catch { /* */ } finally { setSending(false); }
   };
 
+  // ── Edit own message — author only. The backend rejects others with
+  // 403 so we let it gate; the UI only shows the button on own bubbles.
+  const saveEdit = async (messageId, nextBody) => {
+    const body = (nextBody || "").trim();
+    if (!body) { setEditingMsgId(null); return; }
+    try {
+      const { data } = await apiClient.patch(
+        `/community-chats/messages/${messageId}`,
+        { body },
+      );
+      const fresh = data?.message;
+      if (fresh) {
+        setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, ...fresh } : m));
+      }
+    } catch { /* ignore — keep input open on failure */ }
+    finally { setEditingMsgId(null); }
+  };
+
+  // ── Delete own message — INSTANT, no confirmation modal (spec: type-
+  // delete confirmation only applies to whole conversations, not single
+  // messages). Optimistic remove with rollback on failure.
+  const deleteCommunityMessage = async (messageId) => {
+    const snapshot = messages;
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    try {
+      await apiClient.delete(`/community-chats/messages/${messageId}`);
+    } catch (e) {
+      setMessages(snapshot);
+    }
+  };
+
   const onKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
     if (wsRef.current && wsRef.current.readyState === 1) {
@@ -171,6 +207,7 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
           </div>
         ) : messages.map((m) => {
           const mine = user && m.user_id === user.id;
+          const isEditing = editingMsgId === m.id;
           return (
             <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`} data-testid={`community-chat-msg-${m.id}`}>
               {!mine && (
@@ -178,7 +215,7 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
               )}
               <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`} style={{ maxWidth: "75%" }}>
                 <div
-                  className="px-3 py-2 text-sm relative"
+                  className="px-3 py-2 text-sm relative group"
                   style={{
                     background: mine ? "var(--primary)" : "var(--surface-2)",
                     color: mine ? "var(--primary-fg)" : "var(--text-main)",
@@ -188,8 +225,49 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
                   {!mine && (
                     <div className="text-[11px] font-bold mb-0.5" style={{ color: "var(--primary)" }}>{m.display_name || m.username}</div>
                   )}
-                  <div className="or-wrap whitespace-pre-wrap">{m.body}</div>
-                  <div className="text-[10px] mt-1 opacity-70 text-right">{formatTime(m.created_at)}</div>
+                  {isEditing ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        autoFocus
+                        defaultValue={m.body}
+                        className="or-input text-sm flex-1"
+                        style={{ padding: "0.25rem 0.5rem" }}
+                        data-testid={`community-chat-msg-edit-input-${m.id}`}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter")  saveEdit(m.id, e.currentTarget.value);
+                          if (e.key === "Escape") setEditingMsgId(null);
+                        }}
+                      />
+                      <button onClick={(e) => saveEdit(m.id, e.currentTarget.previousSibling.value)}
+                              data-testid={`community-chat-msg-edit-save-${m.id}`}>✓</button>
+                      <button onClick={() => setEditingMsgId(null)}
+                              data-testid={`community-chat-msg-edit-cancel-${m.id}`}>✕</button>
+                    </div>
+                  ) : (
+                    <div className="or-wrap whitespace-pre-wrap">
+                      {m.body}
+                      {m.edited_at ? <span className="ml-1 text-[10px] opacity-60">(edited)</span> : null}
+                    </div>
+                  )}
+                  <div className="text-[10px] mt-1 opacity-70 text-right flex items-center justify-end gap-2">
+                    <span>{formatTime(m.created_at)}</span>
+                    {mine && !isEditing && (
+                      <>
+                        <button
+                          onClick={() => setEditingMsgId(m.id)}
+                          data-testid={`community-chat-msg-edit-${m.id}`}
+                          title="Edit"
+                          style={{ color: "inherit", opacity: 0.7 }}
+                        ><Edit3 size={12} /></button>
+                        <button
+                          onClick={() => deleteCommunityMessage(m.id)}
+                          data-testid={`community-chat-msg-delete-${m.id}`}
+                          title="Delete"
+                          style={{ color: "inherit", opacity: 0.7 }}
+                        ><Trash2 size={12} /></button>
+                      </>
+                    )}
+                  </div>
                 </div>
                 <div className="mt-1">
                   <ReactionAttachment
