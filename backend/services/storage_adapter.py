@@ -55,6 +55,50 @@ from .storage import media_dir, uploads_root
 log = logging.getLogger("ourrealm.storage_adapter")
 
 
+# Canonical browser-friendly Content-Types. Used when uploading to R2/S3
+# so the response carries a MIME every browser accepts — critically,
+# `.m4a` MUST be served as `audio/mp4` (NOT the legacy `audio/x-m4a`,
+# which Chrome / Edge / Brave reject with MEDIA_ERR_SRC_NOT_SUPPORTED).
+# Keep this list explicit and minimal; falls through to `binary/octet-stream`.
+_CANONICAL_MIME: dict[str, str] = {
+    # Audio
+    "mp3":  "audio/mpeg",
+    "m4a":  "audio/mp4",        # canonical (NOT audio/x-m4a)
+    "mp4a": "audio/mp4",
+    "aac":  "audio/aac",
+    "wav":  "audio/wav",
+    "wave": "audio/wav",
+    "ogg":  "audio/ogg",
+    "oga":  "audio/ogg",
+    "opus": "audio/ogg",
+    "flac": "audio/flac",
+    "webm": "audio/webm",       # ambiguous w/ video — caller can override
+    # Images
+    "jpg":  "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png":  "image/png",
+    "gif":  "image/gif",
+    "webp": "image/webp",
+    "avif": "image/avif",
+    # Videos
+    "mp4":  "video/mp4",
+    "m4v":  "video/mp4",
+    "mov":  "video/quicktime",
+    "qt":   "video/quicktime",
+    "mkv":  "video/x-matroska",
+    "3gp":  "video/3gpp",
+}
+
+
+def _canonical_mime_for(filename: str) -> str:
+    """Return the canonical Content-Type for an extension, or
+    `binary/octet-stream` when we don't recognise it."""
+    if "." not in filename:
+        return "binary/octet-stream"
+    ext = filename.rsplit(".", 1)[-1].lower()
+    return _CANONICAL_MIME.get(ext, "binary/octet-stream")
+
+
 class StorageAdapter:
     """Abstract storage backend. Implementations need not be thread-
     safe; the FastAPI request workers serialise uploads via the
@@ -168,10 +212,24 @@ class S3CompatibleAdapter(StorageAdapter):
             region_name=self.region or "auto",
         )
 
-    def put(self, kind: str, filename: str, src_path: Path) -> str:
+    def put(self, kind: str, filename: str, src_path: Path,
+            content_type: Optional[str] = None) -> str:
+        """Upload `src_path` to `<kind>/<filename>` in the bucket.
+
+        `content_type` is the **canonical** MIME the browser expects to
+        see in the response. R2 (and S3-clones in general) sniff
+        unknown extensions inconsistently — most notably `.m4a` is
+        served as `audio/x-m4a` which Chrome rejects with
+        `MEDIA_ERR_SRC_NOT_SUPPORTED`. Passing a canonical type here
+        pins the response header so playback works in every browser.
+        Falls back to extension-based inference when not supplied.
+        """
+        if content_type is None:
+            content_type = _canonical_mime_for(filename)
         key = f"{kind}/{filename}"
+        extra = {"ContentType": content_type} if content_type else {}
         with src_path.open("rb") as fh:
-            self._client().upload_fileobj(fh, self.bucket, key)
+            self._client().upload_fileobj(fh, self.bucket, key, ExtraArgs=extra)
         # Caller is responsible for deleting the src file after upload
         # — leaving it in place lets the local persistent layer keep
         # serving the same asset until the CDN warms up.
