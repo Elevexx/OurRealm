@@ -1003,6 +1003,19 @@ async def list_messages(
     cursor = db.community_messages.find(filt, {"_id": 0}).sort("created_at", -1).limit(min(limit, 200))
     msgs = [m async for m in cursor]
     msgs.reverse()  # ascending for the UI
+
+    # Attach emoji reaction summaries in one batch call.
+    try:
+        from routers.reactions import reaction_summaries_for
+        ids = [m["id"] for m in msgs if m.get("id")]
+        if ids:
+            rmap = await reaction_summaries_for("community_message", ids, viewer_id=current["id"])
+            empty = {"summary": [], "my_reaction": None}
+            for m in msgs:
+                m["reactions"] = rmap.get(m.get("id"), empty)
+    except Exception:
+        pass
+
     return {"messages": msgs}
 
 

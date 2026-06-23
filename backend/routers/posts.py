@@ -419,6 +419,18 @@ async def list_posts(
     except Exception as e:
         log.warning(f"[pinned-post] failed: {e}")
 
+    # Attach emoji reaction summaries (batch query — one round-trip).
+    try:
+        from routers.reactions import reaction_summaries_for
+        ids = [p.get("id") for p in items if p.get("id")]
+        if ids:
+            rmap = await reaction_summaries_for("post", ids, viewer_id=viewer_id)
+            for p in items:
+                pid = p.get("id")
+                p["reactions"] = rmap.get(pid, {"summary": [], "my_reaction": None})
+    except Exception as e:
+        log.warning(f"[reactions] post summary attach failed: {e}")
+
     return {"posts": items}
 
 
@@ -540,7 +552,13 @@ async def get_post(post_id: str, viewer: Optional[str] = None):
     if viewer:
         vd = await db.users.find_one({"username": viewer.lower()}, {"_id": 0, "id": 1})
         viewer_id = (vd or {}).get("id")
-    return {"post": _public_post(p, viewer_id=viewer_id)}
+    public = _public_post(p, viewer_id=viewer_id)
+    try:
+        from routers.reactions import reaction_summary_for
+        public["reactions"] = await reaction_summary_for("post", post_id, viewer_id=viewer_id)
+    except Exception as e:
+        log.warning(f"[reactions] single post attach failed: {e}")
+    return {"post": public}
 
 
 @router.get("/{post_id}/comments")
@@ -573,6 +591,23 @@ async def list_comments(post_id: str, limit: int = 200, viewer: Optional[str] = 
             by_parent.setdefault(pid, []).append(hydrate(c))
     for p in parents:
         p["replies"] = by_parent.get(p["id"], [])
+
+    # Attach emoji reaction summaries for every comment + reply in one
+    # round-trip. Same `comment` target_type for both because they share
+    # the `comments` collection and id space.
+    try:
+        from routers.reactions import reaction_summaries_for
+        ids = [c["id"] for c in all_items if c.get("id")]
+        if ids:
+            rmap = await reaction_summaries_for("comment", ids, viewer_id=viewer_id)
+            empty = {"summary": [], "my_reaction": None}
+            for p in parents:
+                p["reactions"] = rmap.get(p["id"], empty)
+                for r in p.get("replies") or []:
+                    r["reactions"] = rmap.get(r["id"], empty)
+    except Exception as e:
+        log.warning(f"[reactions] comment summary attach failed: {e}")
+
     return {"comments": parents}
 
 

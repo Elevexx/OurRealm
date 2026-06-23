@@ -1,0 +1,47 @@
+{
+  "summary": "Tested universal emoji reactions (backend Mongo path + frontend /feed) + Sounds genre dropdown (page filter + upload modal) + P2-a assignee smoke. Backend: 21/21 pytest pass. Frontend: feed reactions trigger+picker+chip all working, ESC closes picker, Sounds page genre dropdown shows All + full 50-genre list, Upload modal renders Genre as native <select> mirroring Mood. No legacy chip picker. Supabase-backed surfaces (group/floating-DM/community WS reactions) NOT exercised live because Supabase service-role unavailable in this env and the user said it degrades gracefully.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_reactions.py",
+    "/app/test_reports/pytest/reactions.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routers/posts.list_posts depends on `?viewer=<username>` query param (not the Authorization header) to determine viewer_id for my_reaction. Two clients could miss this and get my_reaction=null even when authenticated. Consider falling back to the bearer-token user if `?viewer` is absent.",
+    "_target_exists in reactions.py performs a Mongo lookup on every set call. Fine, but if the surface grows hot consider a small TTL cache."
+  ],
+  "updated_files": ["/app/backend/tests/test_reactions.py"],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% on the surfaces exercised (feed reactions + sounds page dropdown + upload modal)"},
+  "test_credentials": "Used stealth / Password1$ (founder) and tfone / pass1234 from /app/memory/test_credentials.md. Both verified live.",
+  "seed_data_creation": "Created throwaway posts/comments/DMs prefixed TEST_react_* via the test suite. Not cleaned up — harmless test data in feed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend Mongo reactions API (/api/reactions/set, /api/reactions/summary) fully covered in /app/backend/tests/test_reactions.py — re-runnable. Key gotcha: /api/posts and /api/posts/{id}/comments need `?viewer=<username>` query param for `my_reaction` to populate; the bearer token alone is NOT consulted. /api/messages/thread/{u} correctly uses the bearer token. POST /api/posts uses `content` field (not `text`). DM endpoint is POST /api/messages (root), not /api/messages/send. Supabase migration 01_message_reactions.sql is documented for manual apply; testing agent must NOT block on its absence. P2-a /api/admin/support/assignable smoke verified — returns stealth + support.",
+  "verified_features": [
+    "POST /api/reactions/set: add / replace / remove (same emoji toggle) on a post — 200",
+    "All 7 ALLOWED emojis accepted (❤️ 😍 😘 🔥 🙏 💪 ⚡️) — parametrized 7/7 pass",
+    "Disallowed emojis (👍 💩 🚀) → 400",
+    "Bad target_type 'banana' → 400; non-existent target_id → 404",
+    "Unauthenticated /api/reactions/set → 401/403",
+    "Mongo uniqueness: 3 sequential set calls from same user stay as 1 row (last emoji wins)",
+    "GET /api/reactions/summary batch endpoint works; >200 ids gracefully truncated",
+    "GET /api/posts?viewer=stealth embeds reactions{summary,my_reaction} on each row",
+    "GET /api/posts/{id}/comments?viewer=stealth embeds reactions on every comment",
+    "GET /api/messages/thread/tfone embeds reactions on every DM",
+    "POST /api/admin/support/assignable returns stealth + support (P2-a regression)",
+    "Frontend /feed: 74 reaction triggers + 74 reaction rows rendered; picker shows exactly the 7 allowed emojis; clicking ❤️ creates a chip; ESC closes picker",
+    "Frontend /sounds page: GENRE custom Dropdown opens with All + full 50-genre list (Pop, Hip-Hop/Rap, Rock, R&B/Soul, ..., Lo-Fi, Reggaeton, Trap, Folk, Metal …)",
+    "Frontend Sound Upload modal: GENRE is now a native <select> visually mirroring the MOOD select (both show `—` placeholder); legacy `sound-picker-genre-picker` testid is GONE"
+  ],
+  "not_exercised": [
+    "Supabase message_reactions table (group/realms-tab/floating-DM Supabase reactions) — env has no service-role key; per main-agent note the frontend degrades gracefully, so not tested live",
+    "Community-chat WS `reaction:update` broadcast — backend code path exists and is unit-covered indirectly (the POST returns 200 for community_message target_type when the message exists). Live WS broadcast not exercised by an actual second client.",
+    "R2 MP3 upload + playback regression — not re-tested in this iteration; covered by prior /app/test_reports/iteration_3* runs"
+  ],
+  "rca of the issue": "N/A — no defects found in scope."
+}

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import useHeartbeat from "@/hooks/useHeartbeat";
 import { useNavigate } from "react-router-dom";
 import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, Users as UsersIcon, Lock, UserCheck, MessageSquare, Image as ImageIcon, Video, Link2, BarChart3, Music2 } from "lucide-react";
+import ReactionAttachment from "@/components/ReactionAttachment";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { makeMockPosts } from "@/data/mockData";
@@ -754,6 +755,24 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
           <Bookmark size={16} />
         </button>
       </footer>
+      <div
+        className="mt-2"
+        onClick={(e) => e.stopPropagation()}
+        data-testid={`feed-reactions-row-${p.id}`}
+      >
+        <ReactionAttachment
+          mode="mongo"
+          targetType="post"
+          targetId={p.id}
+          summary={p.reactions?.summary}
+          myReaction={p.reactions?.my_reaction}
+          isGuest={isGuest}
+          onGuestAction={(why) => onGuestAction(why || "react")}
+          pickerAlign="left"
+          pickerPosition="above"
+          testIdPrefix={`feed-reaction-${p.id}`}
+        />
+      </div>
       <ShareToUserModal
         open={shareOpen}
         postId={p.id}

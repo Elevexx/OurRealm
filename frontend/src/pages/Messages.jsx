@@ -19,8 +19,10 @@ import {
   listRealms, createRealm, joinRealm, leaveRealm,
   fetchMessages, sendMessage, subscribeToConversation,
 } from "@/lib/messaging";
+import { fetchSupabaseReactionSummary, subscribeToReactions } from "@/lib/reactions";
 import ImageUploadPicker from "@/components/ImageUploadPicker";
 import MessageActionMenu from "@/components/MessageActionMenu";
+import ReactionAttachment from "@/components/ReactionAttachment";
 import ReportButton from "@/components/ReportButton";
 import SharedPostCard from "@/components/SharedPostCard";
 import { usePresence } from "@/contexts/PresenceContext";
@@ -717,7 +719,7 @@ function DMConversationOverlay({ me, peer, onClose }) {
             const isEditing = editingId === m.id;
             const status = m.read_at ? "Read" : m.delivered_at ? "Delivered" : "Sent";
             return (
-              <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div key={m.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
                 <div
                   className="max-w-[80%] px-3 py-2 text-sm relative"
                   style={{
@@ -798,6 +800,25 @@ function DMConversationOverlay({ me, peer, onClose }) {
                     </>
                   )}
                 </div>
+                <div
+                  className="mt-1"
+                  style={{ maxWidth: "80%" }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ReactionAttachment
+                    mode="mongo"
+                    targetType="dm_message"
+                    targetId={m.id}
+                    summary={m.reactions?.summary}
+                    myReaction={m.reactions?.my_reaction}
+                    pickerAlign={mine ? "right" : "left"}
+                    pickerPosition="above"
+                    barAlign={mine ? "end" : "start"}
+                    barSize="xs"
+                    triggerSize={12}
+                    testIdPrefix={`dm-reaction-${m.id}`}
+                  />
+                </div>
               </div>
             );
           })}
@@ -862,6 +883,7 @@ function ConversationOverlay({ me, contextType, contextId, title, subtitle, onCl
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [imagePicker, setImagePicker] = useState(false);
+  const [reactionMap, setReactionMap] = useState({}); // {messageId: {summary, my_reaction}}
   const endRef = useRef(null);
   const { cache, resolve } = useProfileCache();
 
@@ -891,6 +913,43 @@ function ConversationOverlay({ me, contextType, contextId, title, subtitle, onCl
     });
     return off;
   }, [contextType, contextId, resolve]);
+
+  // Reactions — batch-fetch summaries whenever the message set changes
+  // AND subscribe to live updates so reaction changes from peers appear
+  // without a refresh.
+  const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
+  useEffect(() => {
+    let cancelled = false;
+    if (messageIds.length === 0) return undefined;
+    (async () => {
+      try {
+        const map = await fetchSupabaseReactionSummary({
+          messageIds, userId: me.id,
+        });
+        if (!cancelled) setReactionMap((prev) => ({ ...prev, ...map }));
+      } catch { /* table not migrated — ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [messageIds, me.id]);
+
+  useEffect(() => {
+    if (messageIds.length === 0) return undefined;
+    let active = true;
+    const off = subscribeToReactions({
+      messageIds,
+      contextType,
+      onChange: async () => {
+        if (!active) return;
+        try {
+          const map = await fetchSupabaseReactionSummary({
+            messageIds, userId: me.id,
+          });
+          if (active) setReactionMap((prev) => ({ ...prev, ...map }));
+        } catch { /* ignore */ }
+      },
+    });
+    return () => { active = false; off(); };
+  }, [messageIds, contextType, me.id]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
 
@@ -959,8 +1018,9 @@ function ConversationOverlay({ me, contextType, contextId, title, subtitle, onCl
           ) : messages.map((m) => {
             const mine = m.sender_id === me.id;
             const sender = cache[m.sender_id];
+            const reactions = reactionMap[m.id] || { summary: [], my_reaction: null };
             return (
-              <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div key={m.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
                 <div
                   className="max-w-[75%] px-3 py-2 text-sm"
                   style={{
@@ -984,6 +1044,22 @@ function ConversationOverlay({ me, contextType, contextId, title, subtitle, onCl
                   <div className="text-[10px] mt-1 opacity-70 text-right">
                     {formatTime(m.created_at)}
                   </div>
+                </div>
+                <div className="mt-1" style={{ maxWidth: "75%" }} onClick={(e) => e.stopPropagation()}>
+                  <ReactionAttachment
+                    mode="supabase"
+                    targetId={m.id}
+                    supabaseContextType={contextType}
+                    currentUserId={me.id}
+                    summary={reactions.summary}
+                    myReaction={reactions.my_reaction}
+                    pickerAlign={mine ? "right" : "left"}
+                    pickerPosition="above"
+                    barAlign={mine ? "end" : "start"}
+                    barSize="xs"
+                    triggerSize={12}
+                    testIdPrefix={`conv-reaction-${m.id}`}
+                  />
                 </div>
               </div>
             );

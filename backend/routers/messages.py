@@ -94,6 +94,18 @@ async def get_thread(username: str, current: CurrentUser):
             if not m.get("delivered_at"):
                 m["delivered_at"] = now_iso
 
+    # Attach emoji reaction summaries — batch lookup over Mongo.
+    try:
+        from routers.reactions import reaction_summaries_for
+        ids = [m["id"] for m in items if m.get("id")]
+        if ids:
+            rmap = await reaction_summaries_for("dm_message", ids, viewer_id=current["id"])
+            empty = {"summary": [], "my_reaction": None}
+            for m in items:
+                m["reactions"] = rmap.get(m.get("id"), empty)
+    except Exception:
+        pass
+
     return {"messages": items, "peer": {
         "id": target["id"], "username": target.get("username"),
         "name": target.get("name"), "avatar_url": target.get("avatar_url"),

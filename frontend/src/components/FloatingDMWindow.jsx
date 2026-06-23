@@ -15,6 +15,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { X, Minus, Send, Loader2, MessageCircle } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import ReactionAttachment from "@/components/ReactionAttachment";
 
 const WIDTH  = 340;
 const HEIGHT = 460;
@@ -211,7 +212,7 @@ export default function FloatingDMWindow({ peer, onClose }) {
             ) : messages.map((m) => {
               const mine = user && (m.from_user_id === user.id || m.sender_id === user.id);
               return (
-                <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                <div key={m.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
                   <div
                     className="max-w-[80%] px-3 py-2 text-sm"
                     style={{
@@ -222,6 +223,21 @@ export default function FloatingDMWindow({ peer, onClose }) {
                   >
                     <div className="or-wrap whitespace-pre-wrap">{m.text || m.body}</div>
                     <div className="text-[10px] mt-0.5 opacity-70 text-right">{formatTime(m.created_at)}</div>
+                  </div>
+                  <div className="mt-1" style={{ maxWidth: "80%" }}>
+                    <ReactionAttachment
+                      mode="mongo"
+                      targetType="dm_message"
+                      targetId={m.id}
+                      summary={m.reactions?.summary}
+                      myReaction={m.reactions?.my_reaction}
+                      pickerAlign={mine ? "right" : "left"}
+                      pickerPosition="above"
+                      barAlign={mine ? "end" : "start"}
+                      barSize="xs"
+                      triggerSize={11}
+                      testIdPrefix={`floating-dm-reaction-${m.id}`}
+                    />
                   </div>
                 </div>
               );

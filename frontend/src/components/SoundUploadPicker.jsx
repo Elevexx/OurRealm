@@ -1,9 +1,9 @@
 // Reusable Sound Upload modal. Mirrors ImageUploadPicker's UX.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Upload, X, Loader2, Music as MusicIcon, AlertCircle, Image as ImageIcon, Search } from "lucide-react";
+import { Upload, X, Loader2, Music as MusicIcon, AlertCircle, Image as ImageIcon } from "lucide-react";
 import apiClient from "@/api/client";
 import ImageUploadPicker from "@/components/ImageUploadPicker";
-import { GENRES, TOP_VISIBLE } from "@/data/musicGenres";
+import { GENRES } from "@/data/musicGenres";
 
 const MOODS  = ["Energetic", "Chill", "Dark", "Uplifting", "Focus", "Party"];
 
@@ -167,7 +167,15 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
             </div>
             <div>
               <label className="text-[11px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Genre</label>
-              <GenrePicker value={genre} onChange={setGenre} testid={testid} />
+              <select
+                className="or-input w-full"
+                value={genre}
+                onChange={(e) => setGenre(e.target.value)}
+                data-testid={`${testid}-genre`}
+              >
+                <option value="">—</option>
+                {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
             </div>
             <div>
               <label className="text-[11px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Mood</label>
@@ -260,79 +268,6 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
           testid={`${testid}-cover-picker`}
         />
       </div>
-    </div>
-  );
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-// Genre picker — chip grid with View More + search.
-// 20 chips visible by default, the remaining 30 reveal inline on
-// "View More". Single-select; selecting a chip writes the canonical
-// genre string straight to the parent state.
-// ─────────────────────────────────────────────────────────────────────
-function GenrePicker({ value, onChange, testid }) {
-  const [expanded, setExpanded] = useState(false);
-  const [query, setQuery] = useState("");
-  const q = query.trim().toLowerCase();
-  const filtered = useMemo(() => {
-    if (q) return GENRES.filter((g) => g.toLowerCase().includes(q));
-    return expanded ? GENRES : GENRES.slice(0, TOP_VISIBLE);
-  }, [q, expanded]);
-  // If the saved value is outside the visible window (legacy or just
-  // not in top 20), surface it as a leading chip so the user always
-  // sees the current selection.
-  const tail = value && !filtered.includes(value) ? [value] : [];
-  const visible = [...tail, ...filtered];
-  return (
-    <div data-testid={`${testid}-genre-picker`}>
-      {expanded || q ? (
-        <div className="relative mb-2">
-          <Search size={12} style={{ position: "absolute", left: 8, top: 8, color: "var(--text-muted)" }} />
-          <input
-            className="or-input w-full text-sm"
-            placeholder="Search genres…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            style={{ paddingLeft: 26, height: 32 }}
-            data-testid={`${testid}-genre-search`}
-          />
-        </div>
-      ) : null}
-      <div className="flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          className="or-chip"
-          data-active={!value}
-          onClick={() => onChange("")}
-          data-testid={`${testid}-genre-clear`}
-        >
-          — None
-        </button>
-        {visible.map((g) => (
-          <button
-            key={g}
-            type="button"
-            className="or-chip"
-            data-active={value === g}
-            onClick={() => onChange(g)}
-            data-testid={`${testid}-genre-${g.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`}
-          >
-            {g}
-          </button>
-        ))}
-      </div>
-      {!q && (
-        <button
-          type="button"
-          className="or-chip mt-2"
-          onClick={() => setExpanded((v) => !v)}
-          data-testid={`${testid}-genre-toggle`}
-          style={{ color: "var(--primary)" }}
-        >
-          {expanded ? "Show Less" : `View More (${GENRES.length - TOP_VISIBLE})`}
-        </button>
-      )}
     </div>
   );
 }

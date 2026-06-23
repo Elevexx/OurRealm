@@ -22,6 +22,7 @@ import UserAvatar from "@/components/UserAvatar";
 import ReportButton from "@/components/ReportButton";
 import ImageLightbox from "@/components/ImageLightbox";
 import ShareToUserModal from "@/components/ShareToUserModal";
+import ReactionAttachment from "@/components/ReactionAttachment";
 
 function fmtTime(iso) {
   if (!iso) return "";
@@ -161,6 +162,21 @@ function CommentBody({ c, isOwn, onLike, onToggleReply, targetType, compact = fa
               title={`Report ${targetType}`}
             />
           )}
+        </div>
+        <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+          <ReactionAttachment
+            mode="mongo"
+            targetType="comment"
+            targetId={c.id}
+            summary={c.reactions?.summary}
+            myReaction={c.reactions?.my_reaction}
+            isGuest={false}
+            pickerAlign="left"
+            pickerPosition="above"
+            barSize="xs"
+            triggerSize={12}
+            testIdPrefix={`post-popup-${targetType}-reaction-${c.id}`}
+          />
         </div>
       </div>
     </div>

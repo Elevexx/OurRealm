@@ -14,6 +14,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Send, Edit3, Loader2, MessageSquare, Pin } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import ReactionAttachment from "@/components/ReactionAttachment";
 
 const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
 
@@ -74,6 +75,26 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
           // Same event channel — RealmDetail listens for widget layout
           // changes here so it can refetch the widgets list.
           window.dispatchEvent(new CustomEvent("community-chat:updated", { detail: msg }));
+        } else if (msg.type === "reaction:update") {
+          // Live reaction sync — fan out from the backend after another
+          // member reacts. Only update OTHER users' rows so the actor's
+          // own optimistic state is preserved.
+          setMessages((prev) => prev.map((m) => {
+            if (m.id !== msg.target_id) return m;
+            // Preserve my_reaction unless the backend echo confirms it
+            // differs. Since the broadcast doesn't carry per-viewer state,
+            // we only update `summary`; the viewer's own row was already
+            // updated optimistically by ReactionAttachment.
+            const same = (m.reactions || {}).summary;
+            const mySameUser = user && msg.actor_id === user.id;
+            return {
+              ...m,
+              reactions: {
+                summary: msg.summary || same || [],
+                my_reaction: mySameUser ? (m.reactions?.my_reaction || null) : (m.reactions?.my_reaction || null),
+              },
+            };
+          }));
         }
       } catch { /* */ }
     };
@@ -155,19 +176,36 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
               {!mine && (
                 <img src={m.avatar_url || "/avatar-placeholder.svg"} alt="" className="rounded-full mr-2 mt-1" style={{ width: 24, height: 24 }} />
               )}
-              <div
-                className="max-w-[75%] px-3 py-2 text-sm relative"
-                style={{
-                  background: mine ? "var(--primary)" : "var(--surface-2)",
-                  color: mine ? "var(--primary-fg)" : "var(--text-main)",
-                  borderRadius: "var(--radius)",
-                }}
-              >
-                {!mine && (
-                  <div className="text-[11px] font-bold mb-0.5" style={{ color: "var(--primary)" }}>{m.display_name || m.username}</div>
-                )}
-                <div className="or-wrap whitespace-pre-wrap">{m.body}</div>
-                <div className="text-[10px] mt-1 opacity-70 text-right">{formatTime(m.created_at)}</div>
+              <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`} style={{ maxWidth: "75%" }}>
+                <div
+                  className="px-3 py-2 text-sm relative"
+                  style={{
+                    background: mine ? "var(--primary)" : "var(--surface-2)",
+                    color: mine ? "var(--primary-fg)" : "var(--text-main)",
+                    borderRadius: "var(--radius)",
+                  }}
+                >
+                  {!mine && (
+                    <div className="text-[11px] font-bold mb-0.5" style={{ color: "var(--primary)" }}>{m.display_name || m.username}</div>
+                  )}
+                  <div className="or-wrap whitespace-pre-wrap">{m.body}</div>
+                  <div className="text-[10px] mt-1 opacity-70 text-right">{formatTime(m.created_at)}</div>
+                </div>
+                <div className="mt-1">
+                  <ReactionAttachment
+                    mode="mongo"
+                    targetType="community_message"
+                    targetId={m.id}
+                    summary={m.reactions?.summary}
+                    myReaction={m.reactions?.my_reaction}
+                    pickerAlign={mine ? "right" : "left"}
+                    pickerPosition="above"
+                    barAlign={mine ? "end" : "start"}
+                    barSize="xs"
+                    triggerSize={12}
+                    testIdPrefix={`community-chat-reaction-${m.id}`}
+                  />
+                </div>
               </div>
             </div>
           );

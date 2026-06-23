@@ -17,6 +17,7 @@ import SoundUploadPicker from "@/components/SoundUploadPicker";
 import SoundManagementMenu from "@/components/SoundManagementMenu";
 import ShareToChatModal from "@/components/ShareToChatModal";
 import ZipRequiredModal from "@/components/ZipRequiredModal";
+import { GENRES as ALL_GENRES } from "@/data/musicGenres";
 import { play as playerPlay, formatTime } from "@/lib/audioPlayer";
 import { TRENDING_TRACKS } from "@/data/mockData";
 
@@ -27,7 +28,7 @@ const TABS = [
   { id: "FX",       Icon: Sparkles,  color: "#FFB72E" },
   { id: "AI",       Icon: Wand2,     color: "#3CFFB0" },
 ];
-const GENRES = ["All", "Psytrance", "House", "Techno", "Drum & Bass", "Ambient", "Hip-Hop", "Indie", "Pop", "Rock", "Jazz", "Classical", "Lo-fi"];
+const GENRES = ["All", ...ALL_GENRES];
 const CHARTS = ["Top 100", "Trending", "New Releases", "Up & Coming", "Editor's Picks"];
 const MOODS  = ["Any", "Energetic", "Chill", "Dark", "Uplifting", "Focus", "Party"];
 const RADII  = ["10", "20", "50", "100", "250", "500"];   // "Any" handled by the chip toggle
