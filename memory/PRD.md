@@ -1,6 +1,49 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Universal Emoji Reactions + Genre Dropdown Refresh + Support Assignee Picker (Feb 23, 2026, iter 36)
+
+### Universal Emoji Reactions (NEW)
+Reactions are now available on every comment and message-style surface plus standalone posts (existing post Likes stay separate). One-emoji-per-user-per-target. Tap same emoji again → remove; tap different → replace.
+
+**Allowed emojis (server-validated):** ❤️ 😍 😘 🔥 🙏 💪 ⚡️ — exactly 7, nothing else.
+
+**Backend (Mongo side — primary):**
+- New router `/app/backend/routers/reactions.py` exposing:
+  - `POST /api/reactions/set {target_type, target_id, emoji}` — upsert / replace / remove. Returns `{summary, my_reaction, removed}`.
+  - `GET  /api/reactions/summary?target_type=…&target_ids=…` — batch fetch for up to 200 ids.
+- Target types: `post`, `comment` (covers both top-level + replies — same collection), `dm_message`, `community_message`.
+- Mongo collection `db.reactions` with unique compound index `(target_type, target_id, user_id)`. Inline summaries are batch-attached to every list endpoint:
+  - `GET /api/posts` → embeds `reactions` per row
+  - `GET /api/posts/{id}` → embeds `reactions`
+  - `GET /api/posts/{id}/comments` → embeds on every comment AND every reply
+  - `GET /api/messages/thread/{username}` → embeds on every DM
+  - `GET /api/community-chats/{chat_id}/messages` → embeds on every realm community-chat msg
+- Realtime: realm community-chat messages broadcast `{type:'reaction:update', target_type, target_id, summary, actor_id}` over the existing community-chat WS room — no new WS channel introduced.
+
+**Backend (Supabase side):**
+- `/app/backend/supabase_migrations/01_message_reactions.sql` provides the Postgres schema for groups + realm-thread reactions (Supabase `messages` table targets). Includes RLS policies, indexes, and `alter publication supabase_realtime add table` for native realtime. **MUST BE APPLIED MANUALLY** via Supabase Studio → SQL Editor before group/realm-thread reactions become live; frontend degrades gracefully if absent.
+
+**Frontend:**
+- `/app/frontend/src/lib/reactions.js` — `setMongoReaction`, `fetchMongoReactionSummary`, `setSupabaseReaction`, `fetchSupabaseReactionSummary`, `subscribeToReactions`. `ALLOWED_EMOJIS` is the single source of truth.
+- `/app/frontend/src/components/ReactionPicker.jsx` — horizontal 7-emoji popover; tap-outside + Esc close.
+- `/app/frontend/src/components/ReactionBar.jsx` — summary chips (`❤️ 3 🔥 2`); count hides for solo reactions.
+- `/app/frontend/src/components/ReactionAttachment.jsx` — drop-in composite (trigger + picker + bar) used everywhere; optimistic UI + rollback on failure.
+- Wired into: `Feed.jsx` (post cards), `PostPopup.jsx` (comments + replies), `Messages.jsx` (Mongo DMs AND Supabase groups/realm threads — Supabase path uses live subscribe + batch summary), `FloatingDMWindow.jsx`, `CommunityChat.jsx` (realm community chat with WS `reaction:update` consumer).
+
+**Verified:** 21/21 backend pytest, 100% on every frontend surface exercised (testing-agent iteration_36). Picker shows exactly the 7 allowed emojis on /feed; chips form / replace / remove correctly; reactions persist across refresh; no duplicate chips; existing likes / read receipts / edit-delete unaffected.
+
+### Genre Dropdown Refresh
+- `SoundUploadPicker.jsx` — Genre control converted from chip grid to a native `<select>` (testid `sound-picker-genre`) that visually mirrors the Mood select. All 50 genres from `/app/frontend/src/data/musicGenres.js` listed; legacy `GenrePicker` subcomponent removed.
+- `Sounds.jsx` — Page filter now `["All", ...ALL_GENRES]` (51 entries). Selected genre filters track list without crashes.
+
+### Support Assignee Picker (P2-a, shipped earlier this session)
+- `tickets.py` — `GET /api/admin/support/assignable` returns founder + support_admin + moderator rows (founder first), tolerant of unseeded `admin_role`. `TicketUpdate` accepts `assignee_id` (`""` or `null` = unassign; valid id = set; non-admin user = 400). `GET /api/admin/support/tickets?assignee_id=…` filters; `assignee_id=unassigned` returns null-assignee tickets.
+- `AdminSupport.jsx` — Per-row assignee `<select>`, assignee badge (`@stealth`) on each ticket header, and `Assignee:` chip row at top with `All / Unassigned / @stealth / @support / …`.
+- Tests: `/app/backend/tests/test_ticket_assignee.py` (12/13 written; agent test report covered all behaviours green during iter 36).
+
+
+
 ## Messages Cleanup + Profile Refresh + Realm Activity Notifications + Media Audit (Feb 20, 2026, iter 38)
 
 **Item 1 — Messages tabs cleaned up.** `/messages` now only renders **Chats** + **Groups**. The legacy `Realms` and `Calls` tabs are removed from the tab strip, the render switch, and the URL coercion logic (any stale `?tab=realms` deep-link silently falls back to Chats).
