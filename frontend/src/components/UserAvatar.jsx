@@ -80,11 +80,24 @@ export default function UserAvatar({
   // Wrapper is intentionally **decoration-free**. Any background/border/
   // shadow passed via `style` is forwarded to the circular <img> below
   // so it can NEVER paint as a visible square behind the avatar.
+  //
+  // Width/height are pinned to the avatar size and `flexShrink: 0` +
+  // `alignSelf: 'flex-start'` are set so the wrapper can NEVER be
+  // stretched by a parent flex/grid container's `align-items: stretch`.
+  // Without these guards, parents like the For You composer (a
+  // `flex gap-3` row holding the avatar + a tall textarea) stretched
+  // the wrapper to match the textarea height, pushing the absolutely
+  // positioned presence dot down to the bottom of the composer card
+  // instead of the bottom-right of the avatar image itself.
   const wrapperStyle = {
     position: "relative",
     display: "inline-block",
     lineHeight: 0,
     aspectRatio: "1 / 1",
+    width: size,
+    height: size,
+    flexShrink: 0,
+    alignSelf: "flex-start",
   };
   // Merge ring (legacy accent) + caller style onto the IMG itself. The
   // image is the only element with `border-radius: 50%`, so every
