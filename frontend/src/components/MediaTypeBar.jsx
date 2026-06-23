@@ -1,9 +1,10 @@
 import React from "react";
-import { Radio, Video, Image as ImageIcon, Music2, Lightbulb, ArrowRight } from "lucide-react";
+import { Radio, Video, Image as ImageIcon, Music2, Lightbulb, ArrowRight, BarChart3 } from "lucide-react";
 
-// Exact order from the design spec:
-// Lives → Videos → Images → Sounds → Thoughts → Next →
-const TYPES = [
+// Lives → Videos → Images → Sounds → Thoughts.
+// Polls is appended as a regular filter on the For You page only
+// (see `trailing` prop) so home/customize keeps the Next arrow.
+const BASE_TYPES = [
   { id: "live",    label: "Lives",    Icon: Radio,     color: "#FF3F5A" },
   { id: "video",   label: "Videos",   Icon: Video,     color: "var(--brand-blue)" },
   { id: "image",   label: "Images",   Icon: ImageIcon, color: "var(--brand-green)" },
@@ -11,37 +12,44 @@ const TYPES = [
   { id: "thought", label: "Thoughts", Icon: Lightbulb, color: "#F4C84A" },
 ];
 
+const POLL_TYPE = { id: "poll", label: "Polls", Icon: BarChart3, color: "#5BE3C8" };
+
 /**
  * Persistent Media Selection bar.
  *
- * Mobile (<sm, ≤639px): icon-only — every chip + the Next arrow fit on
- *   one row with no horizontal scrolling, no cut-off, no swiping.
- * Desktop (≥sm, 640px+): icon + text label like the original design.
+ * `trailing` controls the last chip:
+ *   - "next"  → arrow that calls `onNext()` (Home / Customize page)
+ *   - "poll"  → 6th filter chip toggling the "poll" media type
+ *     (For You page only — feed surfaces polls when this is active)
  *
- * Same chip shape, glow, sizing, and border-radius across breakpoints —
- * we only swap the label visibility via the `hidden sm:inline` Tailwind
- * pair and let the chips lay out via flex so the row stays centered.
+ * Mobile (<sm): icon-only — every chip + the trailing element fit on
+ *   one row with no horizontal scroll.
+ * Desktop (≥sm): icon + label.
  */
-export default function MediaTypeBar({ value = [], onChange, onNext, embedded = false }) {
+export default function MediaTypeBar({
+  value = [],
+  onChange,
+  onNext,
+  embedded = false,
+  trailing = "next",
+}) {
   const toggle = (id) => {
     const set = new Set(value);
     if (set.has(id)) set.delete(id); else set.add(id);
     onChange?.([...set]);
   };
+  const types = trailing === "poll" ? [...BASE_TYPES, POLL_TYPE] : BASE_TYPES;
   return (
     <div
       className={`flex items-center gap-1.5 sm:gap-2 ${embedded ? "" : "or-surface p-2 sm:p-2.5"}`}
       data-testid="media-type-bar"
       style={{ minWidth: 0 }}
     >
-      {/* Chip row — no horizontal overflow on mobile so every type is
-          visible at the same time. Even spacing via flex+gap, centred
-          via justify-between to spread the icons across the bar. */}
       <div
         className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0 justify-between sm:justify-start"
         data-testid="media-type-chips"
       >
-        {TYPES.map(({ id, label, Icon, color }) => {
+        {types.map(({ id, label, Icon, color }) => {
           const active = value.includes(id);
           return (
             <button
@@ -60,23 +68,22 @@ export default function MediaTypeBar({ value = [], onChange, onNext, embedded = 
             </button>
           );
         })}
-        {/* Next button sits in the same flex row at the same chip size
-            on mobile, so all six elements (5 types + Next) line up
-            evenly. On ≥sm it keeps its "Next →" label. */}
-        <button
-          className="or-chip shrink-0"
-          onClick={() => onNext?.()}
-          data-testid="media-type-next"
-          title="Next"
-          aria-label="Next"
-          style={{ color: "var(--primary)" }}
-        >
-          <span className="hidden sm:inline mr-1">Next</span>
-          <ArrowRight size={14} />
-        </button>
+        {trailing === "next" && (
+          <button
+            className="or-chip shrink-0"
+            onClick={() => onNext?.()}
+            data-testid="media-type-next"
+            title="Next"
+            aria-label="Next"
+            style={{ color: "var(--primary)" }}
+          >
+            <span className="hidden sm:inline mr-1">Next</span>
+            <ArrowRight size={14} />
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-export { TYPES as MEDIA_TYPES };
+export { BASE_TYPES as MEDIA_TYPES };

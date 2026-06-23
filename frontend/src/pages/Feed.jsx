@@ -142,7 +142,16 @@ export default function Feed() {
       seen.add(p.id);
       return true;
     });
-    if (media.length > 0) filtered = filtered.filter((p) => media.includes(p.media_type));
+    // Media type filter. "poll" is special-cased — a post is a poll
+    // when its `poll` field is truthy, regardless of its `media_type`
+    // bucket (poll posts are usually authored as media_type="thought"
+    // + an attached `poll` object).
+    if (media.length > 0) {
+      filtered = filtered.filter((p) => {
+        if (media.includes("poll") && p?.poll) return true;
+        return media.includes(p.media_type);
+      });
+    }
     // Images category only: hide the two seeded "@Realm Admin" placeholder posts.
     // Scoped strictly to the Images filter — does not affect other categories
     // or the global post data.
@@ -268,8 +277,10 @@ export default function Feed() {
       {/* Media type bar — sits between Trending Hashtags and the
           composer so users can refine the feed by content type after
           glancing at trends. Icon-only on mobile (handled inside the
-          MediaTypeBar component itself). */}
-      <MediaTypeBar value={media} onChange={setMedia} onNext={() => {}} />
+          MediaTypeBar component itself). The For You page uses Polls
+          as the 6th filter chip (Next arrow is reserved for Customize
+          Feed / Home onboarding only). */}
+      <MediaTypeBar value={media} onChange={setMedia} trailing="poll" />
 
       {/* Composer */}
       <div className="or-surface p-4 mt-4" data-testid="feed-composer">
