@@ -23,12 +23,14 @@
  */
 
 const BACKEND = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
-// Canonical R2 public base — synced with backend `R2_PUBLIC_BASE_URL`.
-// Legacy sound rows that still carry `/api/sounds/file/<name>` URLs
-// get rewritten to the R2 path here so they keep playing on pods
-// whose local-disk fallback isn't populated (e.g. production after a
-// container rotation).
+// Canonical R2 public base — kept here only so we can DETECT and
+// REWRITE legacy `media.ourrealm.social/...` URLs to the new stable
+// proxy path `/api/media/<kind>/<name>`. After Feb 2026 the public
+// bucket access keeps flipping off in Cloudflare; routing through the
+// backend lets us mint a fresh presigned URL on every fetch and
+// playback survives those regressions.
 const R2_BASE = "https://media.ourrealm.social";
+const R2_HOST = "media.ourrealm.social";
 
 // Domains that are ALWAYS playable without a HEAD probe (YouTube /
 // Vimeo are iframe embeds, not <video>; same-origin probes would be
@@ -60,19 +62,32 @@ export function resolveMediaUrl(url) {
   if (url === null || url === undefined) return "";
   const s = String(url).trim();
   if (!s) return "";
-  if (/^https?:\/\//i.test(s)) return s;
+  // ── Direct R2 public CDN URLs → route through the backend proxy so
+  // playback survives Cloudflare public-access regressions. The backend
+  // mints a fresh presigned GET URL and 307-redirects to it.
+  if (/^https?:\/\//i.test(s)) {
+    try {
+      const u = new URL(s);
+      if (u.host === R2_HOST) {
+        // path looks like `/audio/<name>` / `/images/<name>` / `/videos/<name>`
+        const m = u.pathname.match(/^\/(audio|images|videos)\/([^/?#]+)/);
+        if (m) return `${BACKEND}/api/media/${m[1]}/${m[2]}`;
+      }
+    } catch { /* fall through */ }
+    return s;
+  }
   if (/^\/\//.test(s))         return `https:${s}`;
-  // Legacy sound rows ('/api/sounds/file/<name>') → R2 CDN path.
-  // Files were duplicated to R2 during the Feb 2026 migration, so the
-  // rewritten URL is the canonical source of truth. If the file ever
-  // disappears from R2 the player surfaces a real 404 instead of a
-  // silent local-disk miss.
+  // Legacy sound rows ('/api/sounds/file/<name>') → backend media proxy.
+  // The proxy reads from R2 (or local disk) and emits the canonical
+  // Content-Type so Chrome can decode AAC / M4A correctly.
   if (s.startsWith("/api/sounds/file/")) {
     const name = s.slice("/api/sounds/file/".length);
     if (name && !name.includes("/") && !name.includes("..")) {
-      return `${R2_BASE}/audio/${name}`;
+      return `${BACKEND}/api/media/audio/${name}`;
     }
   }
+  // New canonical URL shape persisted by `r2_mirror.mirror_to_cloud()`
+  // — relative `/api/media/<kind>/<name>`. Prepend the backend host.
   if (s.startsWith("/"))       return `${BACKEND}${s}`;
   return s;
 }

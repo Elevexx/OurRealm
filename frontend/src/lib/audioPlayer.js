@@ -2,44 +2,23 @@
 // One <audio> element drives the whole app — Sounds page, MiniPlayer,
 // detail modal — through a simple subscribe pattern.
 import apiClient from "@/api/client";
+import { resolveMediaUrl } from "@/lib/mediaUrl";
 
 const BACKEND = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
-// Canonical R2 public base. Synced with backend `R2_PUBLIC_BASE_URL`.
-// Lives here so legacy DB rows that still carry the local-disk URL
-// (`/api/sounds/file/<id>.<ext>`) can be auto-rewritten on the client
-// to the R2 CDN path. Crucial for production pods whose local disk
-// starts empty on every container rotation — the legacy route 404s
-// there even though R2 has the file.
-const R2_BASE = "https://media.ourrealm.social";
 
 /**
- * Resolve a sound's playable URL with legacy + storage-shape tolerance.
- *
- *   • Absolute http(s) URL → unchanged.
- *   • `/api/sounds/file/<id>.<ext>` (legacy local-disk route)
- *       → rewritten to `<R2_BASE>/audio/<id>.<ext>`.
- *       The same file ALWAYS exists in R2 after the Feb 2026 migration
- *       — and even if it doesn't, the rewritten URL fails fast with
- *       a real CORS error we can surface, rather than a silent 404
- *       on the legacy local-disk route.
- *   • `/...` (any other relative path) → pinned to REACT_APP_BACKEND_URL.
- *   • Other shapes → unchanged.
+ * Resolve a sound's playable URL. Delegates to the shared media-URL
+ * resolver so every surface — feed, sounds page, post popup, mini
+ * player — agrees on the canonical playback path. The resolver
+ * rewrites legacy `/api/sounds/file/<name>` URLs AND public R2 CDN
+ * URLs through `/api/media/audio/<name>`, which mints a fresh signed
+ * GET on every fetch (immune to R2 public-access regressions).
  */
 export function resolveSoundUrl(track) {
-  // Accept either a string or a track-shaped object.
   const u = typeof track === "string"
     ? track
     : (track?.file_url || track?.audio_url || track?.media_url || track?.url || "");
-  if (!u) return "";
-  if (/^https?:\/\//i.test(u)) return u;
-  if (u.startsWith("/api/sounds/file/")) {
-    const name = u.slice("/api/sounds/file/".length);
-    if (name && !name.includes("/") && !name.includes("..")) {
-      return `${R2_BASE}/audio/${name}`;
-    }
-  }
-  if (u.startsWith("/")) return `${BACKEND}${u}`;
-  return u;
+  return resolveMediaUrl(u);
 }
 
 function absUrl(u) {

@@ -34,7 +34,14 @@ log = logging.getLogger("ourrealm.r2_mirror")
 
 def mirror_to_cloud(kind: str, filename: str, src_path: Path, fallback_url: str) -> str:
     """Upload `src_path` to the active storage adapter and return the
-    public URL. When the adapter is local, `fallback_url` is returned
+    URL that should be persisted in Mongo.
+
+    Returns the STABLE PROXY URL (`/api/media/<kind>/<filename>`) when
+    R2 is the active adapter — NOT the public CDN URL. The proxy URL
+    is resolved server-side via signed GET on every fetch so the app
+    no longer depends on Cloudflare R2 public bucket access (which
+    has historically flipped off during deploys). When the local
+    adapter is active, the original `fallback_url` is returned
     unchanged."""
     adapter = get_storage_adapter()
     if not isinstance(adapter, S3CompatibleAdapter):
@@ -42,11 +49,11 @@ def mirror_to_cloud(kind: str, filename: str, src_path: Path, fallback_url: str)
     try:
         if not src_path.is_file():
             return fallback_url
-        public_url = adapter.put(kind, filename, src_path)
-        # Some adapters return None / empty — defend against that.
-        if not public_url or not isinstance(public_url, str):
-            return fallback_url
-        return public_url
+        # Upload happens with canonical Content-Type (set inside put()).
+        adapter.put(kind, filename, src_path)
+        # We store the STABLE proxy URL — not the public CDN URL — so
+        # playback survives the recurring R2 public-access regressions.
+        return f"/api/media/{kind}/{filename}"
     except Exception as e:  # noqa: BLE001 — never block the user's upload
         log.warning(f"[r2_mirror] failed to mirror {kind}/{filename}: {e}")
         return fallback_url

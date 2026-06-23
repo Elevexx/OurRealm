@@ -1,6 +1,38 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Presigned R2 Media Proxy — CDN-public-access independence (Feb 23, 2026, iter 38)
+
+**Symptom that triggered this:** Cloudflare R2 bucket "Public access" / custom-domain binding on `media.ourrealm.social` kept flipping off, returning 403 for every audio/image/video file across the whole bucket. Twice in one day. Each time the only fix was a manual dashboard re-toggle that didn't survive the next deploy.
+
+**Architecture change:** stop persisting public CDN URLs in Mongo. Persist a stable, server-routed path (`/api/media/<kind>/<name>`) that the backend resolves to a fresh **R2 presigned GET URL** on every fetch via a `307 Temporary Redirect`. The bucket can remain entirely private — the backend owns the R2 credentials and mints short-lived signed URLs from them.
+
+**Code paths changed:**
+- `services/storage_adapter.py` — new `S3CompatibleAdapter.presigned_get(kind, filename, ttl=3600, content_type=…)` method. `ResponseContentType` pinning preserves the canonical MIME (`.m4a` → `audio/mp4`) even if the stored object metadata drifts.
+- `routers/media_proxy.py` (new) — `GET /api/media/<kind>/<name>` returns `307` → presigned URL. `Cache-Control: private, max-age=3000`, `Vary: Range, Origin`. Allow-list kinds = `audio|images|videos`. Filename sanitised against traversal. Falls back to local-disk `FileResponse` for the local adapter (preview/dev parity).
+- `services/r2_mirror.py` — `mirror_to_cloud()` now returns the stable proxy URL `/api/media/<kind>/<name>` instead of the public CDN URL. Existing files in R2 untouched.
+- `lib/mediaUrl.js` — `resolveMediaUrl()` rewrites legacy `https://media.ourrealm.social/<kind>/<name>` AND legacy `/api/sounds/file/<name>` URLs through the proxy.
+- `lib/audioPlayer.js` — `resolveSoundUrl()` delegates to `resolveMediaUrl()` so every surface agrees on the playback path.
+
+**One-shot DB migration:** `scripts/migrate_to_media_proxy.py` walks `db.tracks`, `db.images`, `db.videos`, `db.posts`, `db.community_messages`, `db.messages` and rewrites any `media.ourrealm.social/<kind>/<name>` URL (and legacy `/api/sounds/file/<name>`) to the new proxy path. Idempotent. Preview run: **14 rows rewritten cleanly** (7 audio file_urls, 3 image originals, 3 image thumbnails, 1 video).
+
+**Browser network capture verifying the new pipeline:**
+```
+RESP 307 .../api/media/audio/d4fe…mp3
+RESP 206 .../ourrealm-media/audio/d4fe…mp3?X-Amz-Signature=… ct=audio/mpeg
+RESP 307 .../api/media/images/0117…jpg
+RESP 200 .../ourrealm-media/images/0117…jpg?X-Amz-Signature=… ct=image/jpeg
+```
+Mini player: `sound-probe · Pop · 0:00 / 0:03`. No `[audio]` errors. Zero requests to `media.ourrealm.social`.
+
+**Production rollout:**
+1. Redeploy.
+2. Run `cd /app/backend && python scripts/migrate_to_media_proxy.py` once against production Mongo.
+3. (Optional) Set `MEDIA_PROXY_TTL_SECONDS` in production .env if you want signed URLs longer/shorter than 1 h.
+4. (Optional but recommended) **You can now turn Cloudflare R2 public access OFF and leave it off** — the app no longer needs it. `media.ourrealm.social` becomes unused / can be retired.
+
+---
+
 ## Standalone Sound Upload + Playback Fix (Feb 23, 2026, iter 37)
 
 **Symptom (user-reported, repro'd on both preview + production):**

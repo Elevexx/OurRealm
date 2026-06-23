@@ -267,6 +267,29 @@ class S3CompatibleAdapter(StorageAdapter):
         except Exception:  # noqa: BLE001
             return f"/api/{kind}/file/{filename}"
 
+    def presigned_get(self, kind: str, filename: str, ttl: int = 3600,
+                      content_type: Optional[str] = None) -> str:
+        """Mint a short-lived, single-use GET URL for an object.
+
+        This is the **CDN-independent** way to serve R2 objects. We use
+        it from `/api/media/<kind>/<filename>` so the app stops
+        depending on the bucket's public-access toggle (which Cloudflare
+        keeps flipping off during deploys). The presigned URL embeds
+        the GET signature directly — anyone holding the URL can fetch
+        the bytes for `ttl` seconds, with full Range / 206 support
+        because R2 honours Range on signed GETs.
+
+        `content_type` lets the caller pin the response Content-Type
+        even if the stored object's metadata is stale (cheap insurance
+        on top of the backfilled metadata).
+        """
+        params = {"Bucket": self.bucket, "Key": f"{kind}/{filename}"}
+        if content_type:
+            params["ResponseContentType"] = content_type
+        return self._client().generate_presigned_url(
+            "get_object", Params=params, ExpiresIn=ttl,
+        )
+
 
 # --------------------------------------------------------------------- #
 # Adapter selection — single read at module import so swapping
