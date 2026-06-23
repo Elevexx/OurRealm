@@ -258,6 +258,26 @@ async def on_startup():
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[purge_cron] startup failed: {e}")
 
+    # One-time idempotent migration — rewrite any stored media URLs
+    # that still point at the public Cloudflare R2 CDN
+    # (`media.ourrealm.social`) or the legacy local-disk fallback
+    # (`/api/sounds/file/<name>`) to the new stable proxy path
+    # (`/api/media/<kind>/<name>`). Running on every boot is safe
+    # because the script no-ops when nothing matches.
+    try:
+        from scripts.migrate_to_media_proxy import main as media_migrate_main
+        import sys as _sys
+        # `argparse` reads from sys.argv — strip flags so we always
+        # apply (no `--dry-run`) regardless of how uvicorn was invoked.
+        _saved_argv = _sys.argv[:]
+        _sys.argv = [_sys.argv[0]]
+        try:
+            await media_migrate_main()
+        finally:
+            _sys.argv = _saved_argv
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[media-proxy] startup migration failed: {e}")
+
     logger.info("OurRealm startup complete (moderation loop armed)")
 
 
