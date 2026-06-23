@@ -116,6 +116,16 @@ export default function Feed() {
       const params = {};
       // Always pass viewer so backend can mark poll votes for the current user.
       if (user?.username) params.viewer = user.username;
+      // Pass the active media filter so the backend can serve the right
+      // surface. Critical for `media === ["sound"]` because the server
+      // merges real `db.tracks` rows into the response only when the
+      // filter is explicit — without this, the Sounds tab fell back to
+      // the client-side mockPosts buffer (the "fake sound posts" bug).
+      // `media` is an array (multi-select); we only pass it when there's
+      // exactly one selection, since the backend accepts a single string.
+      if (Array.isArray(media) && media.length === 1) {
+        params.media_type = media[0];
+      }
       if (radius && radius !== "any") {
         if (!user?.zip_code) {
           setRadius("any");
@@ -130,9 +140,16 @@ export default function Feed() {
       setServerPosts(data.posts || []);
     } catch { setServerPosts([]); }
   };
-  useEffect(() => { loadPosts(); }, [radius, user?.zip_code, user?.username]);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadPosts(); }, [radius, JSON.stringify(media), user?.zip_code, user?.username]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const mockPosts = useMemo(() => makeMockPosts(24), []);
+  // Hard-coded mock posts (kept ONLY for dev/empty-state padding on
+  // non-sound surfaces). The "sound" mocks were the source of the
+  // "fake sound posts appearing on /foryou" bug — strip them so the
+  // Sounds tab only ever surfaces real DB rows.
+  const mockPosts = useMemo(
+    () => makeMockPosts(24).filter((p) => p?.media_type !== "sound"),
+    []
+  );
   const allPosts = useMemo(() => {
     const merged = [...serverPosts, ...mockPosts];
     // De-dupe by id (server backfill can produce overlapping ids,

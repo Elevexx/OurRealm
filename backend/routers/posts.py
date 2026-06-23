@@ -402,6 +402,104 @@ async def list_posts(
 
     items = [_public_post(p, viewer_id=viewer_id) for p in items]
 
+    # Phase G — merge real uploaded sounds into the For You "Sounds"
+    # filter. Tracks live in `db.tracks` (driven by /api/sounds/upload),
+    # not `db.posts`, so the existing post query never surfaced them.
+    # When the caller is asking for sound items we transform each
+    # visible track into a feed-post shape and merge it into `items`,
+    # then re-sort newest-first. Dedupes by id so a track that ALSO
+    # has a companion post row (rare — composer-driven) only appears
+    # once.
+    if media_type == "sound":
+        try:
+            from routers.sounds import _can_view_track, _normalise_visibility
+            t_cursor = db.tracks.find({}, {"_id": 0}).sort("created_at", -1).limit(200)
+            already = {p.get("id") for p in items if p.get("id")}
+            full_viewer = None
+            if viewer_id:
+                full_viewer = await db.users.find_one(
+                    {"id": viewer_id},
+                    {"_id": 0, "id": 1, "friends": 1, "admin_role": 1},
+                )
+            visible_tracks: list[dict] = []
+            async for t in t_cursor:
+                tid = t.get("id")
+                if not tid or tid in already:
+                    continue
+                if t.get("moderation_status") in ("rejected", "hidden", "removed"):
+                    continue
+                if t.get("deleted_at"):
+                    continue
+                if not _can_view_track(t, full_viewer):
+                    continue
+                visible_tracks.append(t)
+
+            # Batch-lookup artist info for any track row that doesn't
+            # carry the denormalised `artist_*` fields. Single round-trip.
+            missing_uids = list({
+                t.get("user_id") for t in visible_tracks
+                if t.get("user_id") and not t.get("artist_username")
+            })
+            user_map: dict[str, dict] = {}
+            if missing_uids:
+                async for u in db.users.find(
+                    {"id": {"$in": missing_uids}},
+                    {"_id": 0, "id": 1, "username": 1, "display_name": 1,
+                     "name": 1, "avatar_url": 1},
+                ):
+                    user_map[u["id"]] = u
+
+            track_posts = []
+            for t in visible_tracks:
+                tid = t["id"]
+                u  = user_map.get(t.get("user_id")) or {}
+                username = t.get("artist_username") or u.get("username")
+                track_posts.append({
+                    "id":              tid,
+                    # Backend serialiser writes `author_*` keys onto posts;
+                    # FeedCard reads from those exact keys, so the merged
+                    # track row mirrors the same shape.
+                    "author_id":       t.get("user_id"),
+                    "author_username": username,
+                    "author_name":     (t.get("artist_display_name") or u.get("display_name")
+                                        or u.get("name") or username),
+                    "author_avatar":   t.get("artist_avatar_url") or u.get("avatar_url"),
+                    "user_id":         t.get("user_id"),
+                    "username":        username,
+                    "name":            (t.get("artist_display_name") or u.get("display_name")
+                                        or u.get("name") or username),
+                    "avatar_url":      t.get("artist_avatar_url") or u.get("avatar_url"),
+                    "content":         t.get("title") or "",
+                    "media_type":      "sound",
+                    "sound_url":       t.get("file_url"),
+                    "media_url":       t.get("file_url"),
+                    "sound_title":     t.get("title"),
+                    "sound_cover_url": t.get("cover_url"),
+                    "cover_url":       t.get("cover_url"),
+                    "genre":           t.get("genre"),
+                    "mood":            t.get("mood"),
+                    "duration_seconds": t.get("duration_seconds"),
+                    "mime":            t.get("mime"),
+                    "visibility":      _normalise_visibility(t.get("visibility")),
+                    "created_at":      t.get("created_at"),
+                    "likes":           int(t.get("likes") or 0),
+                    "comments":        0,
+                    "liked":           bool(viewer_id and viewer_id in (t.get("liked_by") or [])),
+                    "is_owner":        bool(viewer_id and viewer_id == t.get("user_id")),
+                    "is_sound_track":  True,
+                    "track_id":        tid,
+                })
+            if track_posts:
+                items.extend(track_posts)
+                def _ts(p):
+                    v = p.get("created_at")
+                    if isinstance(v, datetime):
+                        return v.isoformat()
+                    return v or ""
+                items.sort(key=_ts, reverse=True)
+        except Exception as e:
+            log.warning(f"[sounds-feed-merge] failed: {e}")
+
     # Phase F.6 — prepend the global pinned announcement, if any. Decoded
     # to the same _public_post shape and tagged with `is_pinned: true` so
     # the client can render the Founder-Announcement banner.
