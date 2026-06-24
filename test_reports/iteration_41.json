@@ -1,0 +1,45 @@
+{
+  "summary": "Iter-41 Phase 15 (15-widget allow-list + Notes/Blog/Polls/Videos/Music/Podcasts overhaul). BACKEND: 13/13 pytest PASS — allow-list strips deprecated types on PATCH; Notes (VIP 500/stealth ∞) + Blog (VIP 2000/stealth ∞) + Videos (4) + Music/Podcasts (10) caps enforced with 400s; public profile filter clean; polls vote round-trip + idempotent upsert + public GET works; sounds/by-user returns tracks; migrate_strip_deprecated_widgets is idempotent (no churn on 2nd boot). FRONTEND: BLOCKED by two critical bugs introduced by the WidgetBody refactor — (1) ProfileWidgetBodies.jsx imported a non-existent symbol `mediaUrl` from @/lib/mediaUrl (real export is `resolveMediaUrl`) causing webpack to show a 'Compiled with problems' overlay across the entire app on first load; testing agent applied an import-alias fix to unblock testing. (2) Profile.jsx SortableWidget renders `w.size[0].toUpperCase()` unguarded at line 169 — when any widget lacks `size` (which happens for the cleanup payload main agent's curl set, AND will happen for newly-added widgets via the multi-select picker if `size` isn't defaulted in onPickMany) the page throws 'Cannot read properties of undefined (reading 0)' and renders the React error overlay. Testing agent re-seeded tftwo with `size:'medium'` to unblock further checks. After those mitigations the picker modal did NOT open in our automation (clicking 'ADD NEW WIDGET' and 'EDIT WIDGETS' did not surface [data-testid='add-widget-picker'] tiles), so multi-select / char-counter / polls-vote / radar UI flows could NOT be verified end-to-end. Older pytest test_profile_widgets_top8_above_myfeed.py has 3 expected failures (FOUNDER_WIDGETS no longer includes 'merch'/'custom' per Phase 15 spec — that test file's hard-coded order list is now outdated and must be updated by main agent).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ProfileWidgetBodies.jsx (line 21)", "issue": "Imports `mediaUrl` from @/lib/mediaUrl which does NOT export that symbol (available: resolveMediaUrl, isPlayableMediaUrl, probeMediaUrl, markMediaUrlBroken). Causes app-wide 'Compiled with problems' overlay on first load. Testing agent applied import-alias mitigation; main agent should decide whether to keep the alias or refactor callers to use resolveMediaUrl directly.", "selector": "import { mediaUrl } from \"@/lib/mediaUrl\";", "priority": "CRITICAL"},
+      {"component": "Profile.jsx SortableWidget (line 169)", "issue": "`{w.size[0].toUpperCase()}` crashes when w.size is undefined — happens for widgets seeded/PATCHed without a size field and likely for newly-added widgets via AddWidgetPicker.onPickMany if size isn't defaulted. Throws 'Cannot read properties of undefined (reading 0)' and shows React error overlay. Guard with `(w.size||'medium')[0].toUpperCase()` AND ensure onPickMany sets size='medium' on new items.", "selector": "[data-testid='profile-widget-…'] resize button", "priority": "CRITICAL"},
+      {"component": "AddWidgetPicker trigger", "issue": "Could not open the multi-select widget library modal via 'ADD NEW WIDGET' tile or 'EDIT WIDGETS' header button in automation — modal [data-testid='add-widget-picker'] never appeared. Either the trigger button lacks a data-testid or the click target is wrapped/intercepted. Main agent should add data-testid on the trigger (e.g. 'open-widget-picker') so tests can reliably open the library, and verify the trigger actually toggles the open state.", "selector": "Add New Widget tile / Edit Widgets button", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_widget_allowlist_phase15.py",
+    "/app/test_reports/pytest/iter41_widget_phase15.xml"
+  ],
+  "action_items": [
+    "FIX import in /app/frontend/src/components/ProfileWidgetBodies.jsx — agent already aliased to resolveMediaUrl; either keep that or rename the 4 call sites to resolveMediaUrl.",
+    "FIX /app/frontend/src/pages/Profile.jsx line 169 unguarded `w.size[0]` — add fallback to 'medium' OR guarantee every widget in state has size set (default in onPickMany and in any migration that creates widgets).",
+    "VERIFY AddWidgetPicker trigger — add data-testid (e.g. 'open-widget-picker') and confirm clicking it opens the modal. The tile labelled ADD NEW WIDGET in the grid + the 'EDIT WIDGETS' header button did NOT open the modal in automated clicks.",
+    "RE-RUN frontend testing after the two fixes — multi-select add (notes+blog+radar), notes/blog char counter + save + reload + public view, polls owner-edit + tfone public vote, stealth public profile 15-allowed render, /messages tab order, /notifications filter.",
+    "UPDATE /app/backend/tests/test_profile_widgets_top8_above_myfeed.py — FOUNDER_WIDGETS no longer includes 'merch'/'custom' per Phase 15 spec, so its hard-coded order list and tftwo baseline ['top8','myfeed'] assertions need refresh (3 tests currently fail for this reason)."
+  ],
+  "critical_code_review_comments": [
+    "Backend Phase 15 implementation is solid: allow-list, caps, polls upsert, public filter, sounds-by-user, idempotent boot migration — all verified by 13 pytest cases.",
+    "Frontend Profile.jsx WidgetBody refactor was NOT smoke-tested before handoff — both bugs surface on the very first /profile load (compile-error overlay and SortableWidget crash). Recommend main agent run `yarn build` or open /profile after any large refactor.",
+    "Defensive null-guard needed throughout SortableWidget: w.size, w.type, w.id should never be assumed truthy when iterating user data.",
+    "Polls vote endpoint correctly enforces unique (widget_id, user_id) at the DB index level — verified by re-vote returning total=1.",
+    "All char-limit error messages include the cap number in the detail string, which is useful for surfacing to the UI."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_widget_allowlist_phase15.py",
+    "/app/frontend/src/components/ProfileWidgetBodies.jsx (mediaUrl import alias mitigation)"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 Phase 15 + 9/12 prior widget test file — 3 prior failures are stale assertions, not regressions)",
+    "frontend": "0% — blocked by two critical bugs; agent could not verify multi-select picker, char-counter, polls vote, radar, or public Stealth render."
+  },
+  "test_credentials": "stealth/Password1$, tftwo/pass1234, tfone/pass1234 — all verified working.",
+  "seed_data_creation": "tftwo widgets reset to [{id:'w-top8',type:'top8',size:'medium'},{id:'w-myfeed',type:'myfeed',size:'medium'}] via curl to unblock UI render after the SortableWidget crash. Stealth widgets untouched (long notes/blog stress widgets added then deleted in tests).",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "BACKEND solid — re-run `pytest /app/backend/tests/test_widget_allowlist_phase15.py` (13 tests, <11s). For FRONTEND: login flow is /signin (NOT /login — /login is the welcome screen with SIGN IN/SIGN UP/BROWSE buttons). Use [data-testid='signin-email'] and [data-testid='signin-password']. After login, /profile renders. The two critical frontend bugs must be fixed before any Phase 15 UI flow can be tested. The AddWidgetPicker trigger button needs a data-testid — main agent must add one so the picker can be opened in automation. tftwo widgets currently at baseline [top8, myfeed] sizes=medium.",
+  "rca of the issue": "(1) ProfileWidgetBodies.jsx import bug: agent imported the lib by its presumed default export name `mediaUrl` instead of the real `resolveMediaUrl`. Webpack flags this as a non-fatal warning at compile time but the dev overlay aggressively shows it as 'Compiled with problems', blocking the UI. Repro: any unauthenticated visit to /. (2) Profile.jsx crash: w.size[0] is called unguarded. Repro: PATCH any widget without a 'size' field (or fresh widget added through onPickMany if it doesn't default size), then load /profile in edit mode — React error overlay appears. Mitigation while testing: aliased import + curl-seeded tftwo with size='medium'."
+}

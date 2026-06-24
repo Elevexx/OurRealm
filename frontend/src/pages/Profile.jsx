@@ -10,7 +10,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  DEFAULT_WIDGETS, WIDGET_TYPES, TRENDING_TRACKS, CHARACTERS, WALLET, MARKETPLACE_ADS, MODE_PREVIEW_IMG,
+  DEFAULT_WIDGETS, WIDGET_TYPES, ALLOWED_WIDGET_TYPES, TRENDING_TRACKS, CHARACTERS, WALLET, MARKETPLACE_ADS, MODE_PREVIEW_IMG,
 } from "@/data/mockData";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -21,6 +21,9 @@ import UserAvatar from "@/components/UserAvatar";
 import VipBadge from "@/components/VipBadge";
 import AvatarPicker from "@/components/AvatarPicker";
 import BannerEditor, { BannerView } from "@/components/BannerEditor";
+import {
+  NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PollsBody, RadarBody,
+} from "@/components/ProfileWidgetBodies";
 
 const SIZE_TO_CLASS = {
   small:  "col-span-2 sm:col-span-1 row-span-1",
@@ -30,43 +33,12 @@ const SIZE_TO_CLASS = {
 };
 
 /* -------------------------- widget renderers -------------------------- */
-const DEFAULT_NOTES_TEXT = '"Discover should feel inevitable, not optional."\n— shipping log';
-
-/**
- * Notes widget body — read-only on public profiles, inline editable
- * for the owner while in Edit mode. Empty/whitespace `text` falls back
- * to the default shipping-log quote so the widget never renders blank.
- * Persistence is handled at save time by the parent: `onUpdate(id, {text})`
- * mutates the widgets array; clicking Save in the profile header writes
- * the whole array (including this widget's `text`) to /api/profile/me.
- */
-function NotesBody({ w, editing, onUpdate }) {
-  const display = (w.text && w.text.trim()) ? w.text : DEFAULT_NOTES_TEXT;
-  if (!editing) {
-    return (
-      <div
-        className="text-xs leading-relaxed italic whitespace-pre-line"
-        style={{ color: "var(--text-main)" }}
-        data-testid={`notes-body-${w.id}`}
-      >
-        {display}
-      </div>
-    );
-  }
-  return (
-    <textarea
-      className="or-input text-xs leading-relaxed italic w-full h-full resize-none"
-      style={{ color: "var(--text-main)", minHeight: 80 }}
-      value={w.text ?? ""}
-      placeholder={DEFAULT_NOTES_TEXT}
-      onChange={(e) => onUpdate?.(w.id, { text: e.target.value })}
-      data-testid={`notes-edit-${w.id}`}
-      aria-label="Edit notes"
-    />
-  );
-}
-
-function WidgetBody({ w, mode, ownerUsername, isOwner, editing, onUpdate }) {
+// Spec (Feb 24, 2026): only 15 widget types exist. The renderer
+// delegates the dynamic/editable bodies (Notes, Blog, Videos,
+// Music, Podcasts, Polls, Radar) to the shared ProfileWidgetBodies
+// module so /profile (owner edit) and /profile/:username (public)
+// render identical DOM and data flow.
+function WidgetBody({ w, mode, ownerUsername, isOwner, editing, onUpdate, viewer }) {
   switch (w.type) {
     case "myfeed":
       return <MyFeedWidget username={ownerUsername} isOwner={isOwner} />;
@@ -87,65 +59,11 @@ function WidgetBody({ w, mode, ownerUsername, isOwner, editing, onUpdate }) {
         </div>
       );
     case "videos":
-      return (
-        <div className="grid grid-cols-2 gap-2 h-full">
-          {[0,1,2,3].map((i) => (
-            <div key={i} className="relative overflow-hidden" style={{ borderRadius: 8, background: "var(--surface-2)" }}>
-              <img src={`https://picsum.photos/200/200?random=${i + 40}`} alt="" className="w-full h-full object-cover" />
-              <Icons.PlayCircle size={22} className="absolute inset-0 m-auto" style={{ color: "#fff", opacity: 0.95 }} />
-            </div>
-          ))}
-        </div>
-      );
+      return <VideosBody w={w} editing={editing} isOwner={isOwner} ownerUsername={ownerUsername} onUpdate={onUpdate} />;
     case "music":
-      return (
-        <div className="grid grid-cols-2 gap-2 h-full">
-          {TRENDING_TRACKS.slice(0, 4).map((t) => (
-            <div key={t.id} className="overflow-hidden" style={{ borderRadius: "calc(var(--radius) - 4px)", background: "var(--surface-2)" }}>
-              <img src={t.cover} alt="" className="w-full h-16 object-cover" />
-              <div className="p-2">
-                <div className="text-xs font-semibold truncate" style={{ color: "var(--text-main)" }}>{t.title}</div>
-                <div className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>@{t.artist}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      );
+      return <MusicBody w={w} editing={editing} isOwner={isOwner} ownerUsername={ownerUsername} onUpdate={onUpdate} />;
     case "podcasts":
-      return (
-        <div className="space-y-2">
-          {TRENDING_TRACKS.slice(0, 3).map((t, i) => (
-            <div key={t.id} className="flex items-center gap-2">
-              <div className="w-9 h-9 shrink-0 rounded-md overflow-hidden"><img src={t.cover} alt="" className="w-full h-full object-cover" /></div>
-              <div className="min-w-0">
-                <div className="text-xs font-semibold truncate" style={{ color: "var(--text-main)" }}>EP{40 + i} · {t.title}</div>
-                <div className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>@{t.artist} · 42 min</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      );
-    case "photos":
-      return (
-        <div className="grid grid-cols-3 gap-1.5 h-full">
-          {[0,1,2,3,4,5].map((i) => (
-            <img key={i} src={`https://picsum.photos/200/200?random=${i + 12}`} alt="" className="w-full h-full object-cover" style={{ borderRadius: 8 }} />
-          ))}
-        </div>
-      );
-    case "merch":
-      return (
-        <div className="grid grid-cols-4 gap-2 h-full">
-          {[0,1,2,3].map((i) => (
-            <div key={i} className="relative overflow-hidden" style={{ borderRadius: "calc(var(--radius) - 4px)" }}>
-              <img src={`https://picsum.photos/200/200?random=${i + 30}`} alt="" className="w-full h-full object-cover" />
-              <div className="absolute bottom-1 left-1 text-[10px] font-bold px-1 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.6)", color: "#fff" }}>
-                ${(20 + i * 5).toFixed(0)}
-              </div>
-            </div>
-          ))}
-        </div>
-      );
+      return <PodcastsBody w={w} editing={editing} isOwner={isOwner} ownerUsername={ownerUsername} onUpdate={onUpdate} />;
     case "events":
       return (
         <div>
@@ -154,69 +72,12 @@ function WidgetBody({ w, mode, ownerUsername, isOwner, editing, onUpdate }) {
           <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Sat · 9 PM · Sky Park</div>
         </div>
       );
-    case "tour":
-      return (
-        <div className="space-y-2 text-xs" style={{ color: "var(--text-main)" }}>
-          {[["NYC","Mar 14"],["LA","Mar 22"],["Berlin","Apr 06"],["Tokyo","May 02"]].map(([city, date]) => (
-            <div key={city} className="flex justify-between">
-              <span>{city}</span><span style={{ color: "var(--text-muted)" }}>{date}</span>
-            </div>
-          ))}
-        </div>
-      );
-    case "friends":
-      return (
-        <div className="space-y-2">
-          {CHARACTERS.slice(0, 3).map((f) => (
-            <div key={f.id} className="flex items-center gap-2">
-              <img src={f.avatar} alt="" className="rounded-full" style={{ width: 24, height: 24, border: `1px solid ${f.ringColor}` }} />
-              <div className="text-xs truncate" style={{ color: "var(--text-main)" }}>@{f.name}</div>
-              <span className="ml-auto text-[10px]" style={{ color: f.ringColor }}>{f.label}</span>
-            </div>
-          ))}
-        </div>
-      );
     case "weather":
       return (
         <div className="text-center">
           <Icons.CloudSun size={32} style={{ color: "var(--primary)" }} className="mx-auto" />
           <div className="text-2xl mt-1" style={{ fontFamily: "var(--font-display)", color: "var(--text-main)" }}>72°</div>
           <div className="text-xs" style={{ color: "var(--text-muted)" }}>Clear · LA</div>
-        </div>
-      );
-    case "news":
-      return (
-        <div className="space-y-2 text-xs">
-          {["Crypto rallies on chain activity", "Indie label drops new compilation", "OurRealm hits 1M creators"].map((t, i) => (
-            <div key={i} className="flex gap-2 items-start">
-              <div className="w-1 h-3 mt-1" style={{ background: "var(--primary)" }} />
-              <div style={{ color: "var(--text-main)" }} className="line-clamp-2">{t}</div>
-            </div>
-          ))}
-        </div>
-      );
-    case "crypto":
-      return (
-        <div className="space-y-1.5 text-xs">
-          {[["BTC","$68,420","+2.4%"],["ETH","$3,580","+1.2%"],["SOL","$148.20","+5.8%"]].map(([s,p,c]) => (
-            <div key={s} className="flex justify-between">
-              <span className="font-bold" style={{ color: "var(--text-main)" }}>{s}</span>
-              <span style={{ color: "var(--text-main)" }}>{p}</span>
-              <span style={{ color: "#10E670" }}>{c}</span>
-            </div>
-          ))}
-        </div>
-      );
-    case "stocks":
-      return (
-        <div className="space-y-1.5 text-xs">
-          {[["AAPL","$224","+0.4%"],["NVDA","$880","+3.1%"],["TSLA","$254","-0.8%"]].map(([s,p,c]) => (
-            <div key={s} className="flex justify-between">
-              <span className="font-bold" style={{ color: "var(--text-main)" }}>{s}</span>
-              <span style={{ color: "var(--text-main)" }}>{p}</span>
-              <span style={{ color: c.startsWith("-") ? "#FF3F5A" : "#10E670" }}>{c}</span>
-            </div>
-          ))}
         </div>
       );
     case "calendar":
@@ -230,65 +91,40 @@ function WidgetBody({ w, mode, ownerUsername, isOwner, editing, onUpdate }) {
           </div>
         </div>
       );
+    case "countdown":
+      return (
+        <div className="text-center">
+          <div className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Until next drop</div>
+          <div className="text-3xl mt-1" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>07d</div>
+          <div className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>14h 32m</div>
+        </div>
+      );
     case "notes":
-      return <NotesBody w={w} editing={editing && isOwner} onUpdate={onUpdate} />;
+      return <NotesBody w={w} editing={editing} isOwner={isOwner} viewer={viewer} onUpdate={onUpdate} />;
+    case "blog":
+      return <BlogBody w={w} editing={editing} isOwner={isOwner} viewer={viewer} onUpdate={onUpdate} />;
     case "polls":
+      return <PollsBody w={w} editing={editing} isOwner={isOwner} ownerUsername={ownerUsername} viewer={viewer} onUpdate={onUpdate} />;
+    case "survey":
       return (
-        <div className="text-xs space-y-1.5">
-          <div className="font-semibold mb-1" style={{ color: "var(--text-main)" }}>Drop the EP on…</div>
-          {[["Fri 8 PM",64],["Sat noon",24],["Sun 6 PM",12]].map(([o,p]) => (
-            <div key={o}>
-              <div className="flex justify-between"><span>{o}</span><span style={{ color: "var(--primary)" }}>{p}%</span></div>
-              <div className="h-1.5 rounded" style={{ background: "var(--border-col)" }}>
-                <div className="h-full rounded" style={{ background: "var(--primary)", width: `${p}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      );
-    case "wallet":
-      return (
-        <div>
-          <div className="text-[11px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Balance</div>
-          <div className="text-2xl mt-1" style={{ fontFamily: "var(--font-display)", color: "var(--text-main)" }}>
-            ${WALLET.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-          </div>
-          <div className="text-[11px] mt-1" style={{ color: "var(--brand-green)" }}>+{WALLET.monthly_change_pct}% this month</div>
-        </div>
-      );
-    case "ads":
-      return (
-        <div className="flex items-center gap-3">
-          <img src={MARKETPLACE_ADS[0].cover} alt="" className="w-12 h-12 object-cover" style={{ borderRadius: 8 }} />
-          <div className="text-xs">
-            <div className="font-semibold" style={{ color: "var(--text-main)" }}>{MARKETPLACE_ADS[0].brand}</div>
-            <div style={{ color: "var(--text-muted)" }}>{MARKETPLACE_ADS[0].payout}</div>
-          </div>
+        <div className="text-xs" style={{ color: "var(--text-main)" }}>
+          <div className="font-semibold mb-1">Quick survey</div>
+          <div style={{ color: "var(--text-muted)" }}>Open in app to participate.</div>
         </div>
       );
     case "radar":
-      return (
-        <div className="flex items-center justify-center h-full">
-          <div style={{ width: "85%" }}><div className="radar-disc" /></div>
-        </div>
-      );
-    case "custom":
+      return <RadarBody w={w} />;
     default:
-      return (
-        <div className="flex flex-col items-center justify-center h-full text-center" style={{ color: "var(--text-muted)" }}>
-          {mode === "stealth" ? (<span className="terminal-cursor text-xs">CUSTOM</span>) : (
-            <>
-              <Icons.Sparkles size={20} style={{ color: "var(--primary)" }} />
-              <div className="text-xs mt-1.5">{WIDGET_TYPES.find((x) => x.id === w.type)?.label || "Widget"}</div>
-            </>
-          )}
-        </div>
-      );
+      // Defense in depth — any widget whose type is not in the allow-list
+      // never reaches here because the API filters them, but if a stale
+      // payload sneaks through we render an empty cell rather than crash.
+      return null;
   }
 }
 
+
 /* -------------------------- sortable widget item -------------------------- */
-function SortableWidget({ w, mode, editing, onCycleSize, onRemove, onUpdate, ownerUsername, isOwner }) {
+function SortableWidget({ w, mode, editing, onCycleSize, onRemove, onUpdate, ownerUsername, isOwner, viewer }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: w.id });
   const def = WIDGET_TYPES.find((x) => x.id === w.type);
   const Icon = Icons[def?.icon || "Sparkles"] || Icons.Sparkles;
@@ -344,14 +180,34 @@ function SortableWidget({ w, mode, editing, onCycleSize, onRemove, onUpdate, own
           </div>
         )}
       </div>
-      <div className="h-[calc(100%-2rem)]"><WidgetBody w={w} mode={mode} ownerUsername={ownerUsername} isOwner={isOwner} editing={editing} onUpdate={onUpdate} /></div>
+      <div className="h-[calc(100%-2rem)]"><WidgetBody w={w} mode={mode} ownerUsername={ownerUsername} isOwner={isOwner} editing={editing} onUpdate={onUpdate} viewer={viewer} /></div>
     </div>
   );
 }
 
 /* -------------------------- add widget picker -------------------------- */
-function AddWidgetPicker({ open, onClose, onPick }) {
+/**
+ * Multi-select widget library (Feb 24, 2026 spec). Owner ticks every
+ * widget they want to add, then hits a single Save button — all
+ * selections are appended to the widgets array in one shot. Closes
+ * via the X button or by clicking the backdrop.
+ */
+function AddWidgetPicker({ open, onClose, onPickMany }) {
+  const [selected, setSelected] = useState(new Set());
+  useEffect(() => { if (!open) setSelected(new Set()); }, [open]);
   if (!open) return null;
+  const toggle = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const save = () => {
+    const items = WIDGET_TYPES.filter((w) => selected.has(w.id));
+    if (items.length) onPickMany(items);
+    onClose();
+  };
   return (
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center px-4"
@@ -359,28 +215,64 @@ function AddWidgetPicker({ open, onClose, onPick }) {
       onClick={onClose}
       data-testid="add-widget-picker"
     >
-      <div className="or-surface w-full max-w-3xl p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="or-surface w-full max-w-3xl p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl" style={{ fontFamily: "var(--font-display)" }}>Widget Library</h3>
-          <button className="starbar-icon" style={{ width: 36, height: 36 }} onClick={onClose}><Icons.X size={16} /></button>
+          <div>
+            <h3 className="text-xl" style={{ fontFamily: "var(--font-display)" }}>Widget Library</h3>
+            <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Tap to select multiple, then Save.
+            </div>
+          </div>
+          <button className="starbar-icon" style={{ width: 36, height: 36 }} onClick={onClose}>
+            <Icons.X size={16} />
+          </button>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {WIDGET_TYPES.map((w) => {
             const Icon = Icons[w.icon] || Icons.Sparkles;
+            const isSelected = selected.has(w.id);
             return (
               <button
                 key={w.id}
                 data-testid={`add-widget-${w.id}`}
-                onClick={() => { onPick(w); onClose(); }}
-                className="or-surface p-4 text-left transition-transform hover:-translate-y-0.5"
-                style={{ background: "var(--surface-2)" }}
+                data-selected={isSelected ? "true" : "false"}
+                aria-pressed={isSelected}
+                onClick={() => toggle(w.id)}
+                className="or-surface p-4 text-left transition-transform hover:-translate-y-0.5 relative"
+                style={{
+                  background: "var(--surface-2)",
+                  outline: isSelected ? "2px solid var(--primary)" : "none",
+                }}
               >
+                {isSelected && (
+                  <Icons.Check
+                    size={14}
+                    className="absolute top-2 right-2"
+                    style={{ color: "var(--primary)" }}
+                  />
+                )}
                 <Icon size={20} style={{ color: "var(--primary)" }} />
                 <div className="mt-2 font-semibold text-sm" style={{ color: "var(--text-main)" }}>{w.label}</div>
                 <div className="text-[10px] uppercase tracking-widest mt-0.5" style={{ color: "var(--text-muted)" }}>{w.default_size}</div>
               </button>
             );
           })}
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <button
+            className="or-btn or-btn-ghost"
+            onClick={onClose}
+            data-testid="add-widget-cancel"
+          >Cancel</button>
+          <button
+            className="or-btn or-btn-primary"
+            onClick={save}
+            disabled={selected.size === 0}
+            data-testid="add-widget-save-many"
+            style={{ opacity: selected.size === 0 ? 0.5 : 1 }}
+          >
+            <Icons.Plus size={14} /> Add {selected.size > 0 ? `${selected.size} widget${selected.size === 1 ? "" : "s"}` : "selected"}
+          </button>
         </div>
       </div>
     </div>
@@ -428,6 +320,19 @@ export default function Profile() {
   };
   const removeWidget = (id) => setWidgets((arr) => arr.filter((x) => x.id !== id));
   const addWidget = (w) => setWidgets((arr) => [...arr, { id: `w-${Date.now()}`, type: w.id, size: w.default_size }]);
+  // Multi-select picker variant — appends an array of selections in one
+  // shot, generating unique ids per entry so the React keys never collide.
+  const addWidgets = (items) => {
+    setWidgets((arr) => {
+      let stamp = Date.now();
+      const next = [...arr];
+      items.forEach((w) => {
+        stamp += 1;
+        next.push({ id: `w-${stamp}`, type: w.id, size: w.default_size });
+      });
+      return next;
+    });
+  };
   // Patch a single widget's fields in place. Used by Notes (text edit)
   // and any future widget-specific config UI. Preserves order + sizes.
   const updateWidget = (id, patch) =>
@@ -605,7 +510,9 @@ export default function Profile() {
             style={{ gridAutoRows: "minmax(150px, auto)" }}
             data-testid="profile-widget-grid"
           >
-            {widgets.map((w) => (
+            {widgets
+              .filter((w) => ALLOWED_WIDGET_TYPES.has(w.type))
+              .map((w) => (
               <SortableWidget
                 key={w.id}
                 w={w}
@@ -616,6 +523,7 @@ export default function Profile() {
                 onUpdate={updateWidget}
                 ownerUsername={user?.username}
                 isOwner={true}
+                viewer={user}
               />
             ))}
             {/* "+ Add New Widget" tile — always visible on the owner's
@@ -650,7 +558,7 @@ export default function Profile() {
         </SortableContext>
       </DndContext>
 
-      <AddWidgetPicker open={addOpen} onClose={() => setAddOpen(false)} onPick={addWidget} />
+      <AddWidgetPicker open={addOpen} onClose={() => setAddOpen(false)} onPickMany={addWidgets} />
       <AvatarPicker
         open={avatarPickerOpen}
         onClose={() => setAvatarPickerOpen(false)}

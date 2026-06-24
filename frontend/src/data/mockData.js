@@ -261,69 +261,32 @@ export const MARKETPLACE_ADS = Array.from({ length: 8 }).map((_, i) => ({
   category: ["Music","Tech","Fashion","Crypto"][i % 4],
 }));
 
+// ONLY THESE 15 WIDGET TYPES EXIST (Feb 24, 2026 spec). Backend
+// enforces the same list via `core/widget_types.py:ALLOWED_WIDGET_TYPES`
+// — any saved widget with a type not in this set is stripped on read
+// AND on PATCH. Adding a new type requires updating BOTH files.
 export const WIDGET_TYPES = [
-  // My Feed — default top widget for every account
-  { id: "myfeed",   label: "My Feed",         icon: "Sparkles",    default_size: "large",  cat: "feed" },
-  // Top 8 — favorite friends grid (Inner-8)
-  { id: "top8",     label: "Top 8 Friends",   icon: "Users",       default_size: "medium", cat: "social" },
-  // Core content widgets
-  { id: "live",     label: "Live Stream",     icon: "Radio",       default_size: "large",  cat: "content" },
-  { id: "videos",   label: "Videos",          icon: "PlayCircle",  default_size: "medium", cat: "content" },
-  { id: "music",    label: "Music",           icon: "Music",       default_size: "medium", cat: "content" },
-  { id: "podcasts", label: "Podcasts",        icon: "Mic",         default_size: "medium", cat: "content" },
-  { id: "photos",   label: "Photos",          icon: "Image",       default_size: "medium", cat: "content" },
-  { id: "merch",    label: "Merch",           icon: "ShoppingBag", default_size: "full",   cat: "commerce" },
-  { id: "events",   label: "Events",          icon: "Calendar",    default_size: "small",  cat: "schedule" },
-  { id: "tour",     label: "Tour Dates",      icon: "MapPin",      default_size: "medium", cat: "schedule" },
-  // Personal / utility
-  { id: "weather",  label: "Weather",         icon: "CloudSun",    default_size: "small",  cat: "utility" },
-  { id: "weatherRadar", label: "Weather Radar", icon: "CloudRain", default_size: "medium", cat: "utility" },
-  { id: "calendar", label: "Calendar",        icon: "CalendarDays",default_size: "small",  cat: "utility" },
-  { id: "countdown",label: "Countdown",       icon: "Timer",       default_size: "small",  cat: "utility" },
-  { id: "notes",    label: "Notes",           icon: "StickyNote",  default_size: "small",  cat: "utility" },
-  // Engagement
-  { id: "polls",    label: "Polls",           icon: "BarChart3",   default_size: "medium", cat: "engagement" },
-  { id: "survey",   label: "Survey",          icon: "ClipboardList", default_size: "medium", cat: "engagement" },
-  { id: "leaderboard", label: "Leaderboard",  icon: "Trophy",      default_size: "medium", cat: "engagement" },
-  { id: "goal",     label: "Goal Tracker",    icon: "Target",      default_size: "small",  cat: "engagement" },
-  { id: "habit",    label: "Habit Tracker",   icon: "CheckSquare", default_size: "small",  cat: "engagement" },
-  // News / data
-  { id: "news",     label: "News",            icon: "Newspaper",   default_size: "medium", cat: "info" },
-  { id: "sports",   label: "Sports Scores",   icon: "Trophy",      default_size: "medium", cat: "info" },
-  { id: "crypto",   label: "Crypto",          icon: "Bitcoin",     default_size: "small",  cat: "finance" },
-  { id: "cryptoPortfolio", label: "Crypto Portfolio", icon: "PieChart", default_size: "medium", cat: "finance" },
-  { id: "stocks",   label: "Stocks",          icon: "TrendingUp",  default_size: "small",  cat: "finance" },
-  { id: "stockPortfolio",  label: "Stock Portfolio",  icon: "LineChart", default_size: "medium", cat: "finance" },
-  { id: "nft",      label: "NFT Showcase",    icon: "Sparkle",     default_size: "medium", cat: "finance" },
-  // Social
-  { id: "friends",  label: "Friends",         icon: "Users",       default_size: "small",  cat: "social" },
-  { id: "wallet",   label: "Wallet",          icon: "Wallet",      default_size: "small",  cat: "finance" },
-  // Monetization / store
-  { id: "ads",      label: "Marketplace Ads", icon: "Megaphone",   default_size: "medium", cat: "commerce" },
-  { id: "store",    label: "Store",           icon: "Store",       default_size: "medium", cat: "commerce" },
-  { id: "course",   label: "Course",          icon: "GraduationCap", default_size: "medium", cat: "commerce" },
-  { id: "blog",     label: "Blog",            icon: "BookOpen",    default_size: "medium", cat: "content" },
-  { id: "forum",    label: "Forum",           icon: "MessagesSquare", default_size: "medium", cat: "social" },
-  { id: "affiliate",label: "Affiliate",       icon: "Link2",       default_size: "small",  cat: "commerce" },
-  { id: "donation", label: "Donation",        icon: "HeartHandshake", default_size: "small", cat: "commerce" },
-  // Payments
-  { id: "cashapp",  label: "CashApp",         icon: "DollarSign",  default_size: "small",  cat: "payments" },
-  { id: "paypal",   label: "PayPal",          icon: "DollarSign",  default_size: "small",  cat: "payments" },
-  { id: "venmo",    label: "Venmo",           icon: "DollarSign",  default_size: "small",  cat: "payments" },
-  { id: "patreon",  label: "Patreon",         icon: "Heart",       default_size: "small",  cat: "payments" },
-  // External (link previews — never embed without explicit user opt-in)
-  { id: "youtube",  label: "YouTube",         icon: "Youtube",     default_size: "medium", cat: "external" },
-  { id: "spotify",  label: "Spotify",         icon: "Music",       default_size: "medium", cat: "external" },
-  { id: "tiktok",   label: "TikTok",          icon: "Video",       default_size: "small",  cat: "external" },
-  { id: "instagram",label: "Instagram",       icon: "Camera",      default_size: "small",  cat: "external" },
-  { id: "x",        label: "X",               icon: "Twitter",     default_size: "small",  cat: "external" },
-  { id: "facebook", label: "Facebook",        icon: "Facebook",    default_size: "small",  cat: "external" },
-  { id: "discord",  label: "Discord",         icon: "MessageCircle", default_size: "small", cat: "external" },
-  { id: "telegram", label: "Telegram",        icon: "Send",        default_size: "small",  cat: "external" },
-  // Modes / signature
-  { id: "radar",    label: "Stealth Radar",   icon: "Radar",       default_size: "medium", cat: "signature" },
-  { id: "custom",   label: "Custom",          icon: "Sparkles",    default_size: "small",  cat: "signature" },
+  { id: "myfeed",    label: "My Feed",         icon: "Sparkles",    default_size: "large",  cat: "feed" },
+  { id: "top8",      label: "Top 8 Friends",   icon: "Users",       default_size: "medium", cat: "social" },
+  { id: "live",      label: "Live Stream",     icon: "Radio",       default_size: "large",  cat: "content" },
+  { id: "videos",    label: "Videos",          icon: "PlayCircle",  default_size: "medium", cat: "content" },
+  { id: "music",     label: "Music",           icon: "Music",       default_size: "medium", cat: "content" },
+  { id: "podcasts",  label: "Podcasts",        icon: "Mic",         default_size: "medium", cat: "content" },
+  { id: "events",    label: "Events",          icon: "Calendar",    default_size: "small",  cat: "schedule" },
+  { id: "weather",   label: "Weather",         icon: "CloudSun",    default_size: "small",  cat: "utility" },
+  { id: "calendar",  label: "Calendar",        icon: "CalendarDays",default_size: "small",  cat: "utility" },
+  { id: "countdown", label: "Countdown",       icon: "Timer",       default_size: "small",  cat: "utility" },
+  { id: "notes",     label: "Notes",           icon: "StickyNote",  default_size: "small",  cat: "utility" },
+  { id: "polls",     label: "Polls",           icon: "BarChart3",   default_size: "medium", cat: "engagement" },
+  { id: "survey",    label: "Survey",          icon: "ClipboardList", default_size: "medium", cat: "engagement" },
+  { id: "blog",      label: "Blog",            icon: "BookOpen",    default_size: "medium", cat: "content" },
+  { id: "radar",     label: "Stealth Radar",   icon: "Radar",       default_size: "medium", cat: "signature" },
 ];
+
+// Mirror of backend ALLOWED_WIDGET_TYPES — used to defensively filter
+// any legacy widget rows the API might still hand us during the
+// strip migration's rollout window.
+export const ALLOWED_WIDGET_TYPES = new Set(WIDGET_TYPES.map((w) => w.id));
 
 // Default profile widget layout for NEW users (Feb 20, 2026).
 // Spec: new profiles start with exactly:

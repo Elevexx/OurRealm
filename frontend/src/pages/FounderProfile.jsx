@@ -14,6 +14,10 @@ import MyFeedWidget from "@/components/MyFeedWidget";
 import TopEightWidget from "@/components/TopEightWidget";
 import VipBadge from "@/components/VipBadge";
 import ReportButton from "@/components/ReportButton";
+import {
+  NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PollsBody, RadarBody,
+} from "@/components/ProfileWidgetBodies";
+import { ALLOWED_WIDGET_TYPES } from "@/data/mockData";
 
 const SIZE_TO_CLASS = {
   small:  "col-span-2 sm:col-span-1 row-span-1",
@@ -61,38 +65,28 @@ function MerchItem({ m }) {
   );
 }
 
-function WidgetBody({ w, ownerUsername, isOwner }) {
+function WidgetBody({ w, ownerUsername, isOwner, viewer }) {
+  // Public profile renders the EXACT same 15 widget bodies as the
+  // owner-edit view (Profile.jsx). Editing is always disabled here.
   switch (w.type) {
     case "myfeed":
       return <MyFeedWidget username={ownerUsername} isOwner={isOwner} />;
     case "top8":
       return <TopEightWidget username={ownerUsername} />;
-    case "notes": {
-      // Notes render identically on the owner's edit view and on the
-      // public profile — text is whatever the owner saved, or the
-      // shipping-log quote when blank. Public viewers can't edit.
-      const txt = (w.text && w.text.trim())
-        ? w.text
-        : '"Discover should feel inevitable, not optional."\n— shipping log';
-      return (
-        <div
-          className="text-xs leading-relaxed italic whitespace-pre-line"
-          style={{ color: "var(--text-main)" }}
-          data-testid={`founder-notes-body-${w.id}`}
-        >
-          {txt}
-        </div>
-      );
-    }
+    case "notes":
+      return <NotesBody w={w} editing={false} isOwner={false} viewer={viewer} />;
+    case "blog":
+      return <BlogBody w={w} editing={false} isOwner={false} viewer={viewer} />;
+    case "videos":
+      return <VideosBody w={w} editing={false} isOwner={false} ownerUsername={ownerUsername} />;
+    case "music":
+      return <MusicBody w={w} editing={false} isOwner={false} ownerUsername={ownerUsername} />;
+    case "podcasts":
+      return <PodcastsBody w={w} editing={false} isOwner={false} ownerUsername={ownerUsername} />;
+    case "polls":
+      return <PollsBody w={w} editing={false} isOwner={false} ownerUsername={ownerUsername} viewer={viewer} />;
     case "radar":
-      // Animated signature widget — must render the SAME way as on the
-      // owner's edit view (Profile.jsx). The `.radar-disc` keyframe CSS
-      // lives in index.css and animates from any container size.
-      return (
-        <div className="flex items-center justify-center h-full" data-testid={`founder-radar-${w.id}`}>
-          <div style={{ width: "85%" }}><div className="radar-disc" /></div>
-        </div>
-      );
+      return <RadarBody w={w} />;
     case "live":
       return (
         <div className="h-full flex flex-col">
@@ -104,31 +98,6 @@ function WidgetBody({ w, ownerUsername, isOwner }) {
           <div className="flex-1 rounded-lg flex items-center justify-center" style={{ background: "linear-gradient(135deg, rgba(0,255,102,0.18), rgba(46,160,255,0.18))", border: "1px solid var(--border-col)" }}>
             <button className="or-btn"><Icons.Radio size={14} /> Go Live</button>
           </div>
-          <div className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>4,182 followers will be notified</div>
-        </div>
-      );
-    case "merch":
-      return (
-        <div className="grid grid-cols-3 gap-2 h-full">
-          {MERCH.map((m) => <MerchItem key={m.name} m={m} />)}
-        </div>
-      );
-    case "music":
-      return (
-        <div className="space-y-1.5">
-          {TRACKS.map((t, i) => (
-            <div key={t.title} className="flex items-center gap-2 p-1.5 rounded" style={{ background: "var(--surface-2)" }}>
-              <button className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--primary)", color: "var(--primary-fg)" }}>
-                <Icons.Play size={12} />
-              </button>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold truncate" style={{ color: "var(--text-main)" }}>{t.title}</div>
-                <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>{t.duration} · {t.plays.toLocaleString()} plays</div>
-              </div>
-              <button className="text-[10px]" style={{ color: "var(--text-muted)" }}><Icons.Heart size={12} /> {(t.likes/1000).toFixed(1)}k</button>
-              <button className="text-[10px]" style={{ color: "var(--text-muted)" }}><Icons.Bookmark size={12} /></button>
-            </div>
-          ))}
         </div>
       );
     case "events":
@@ -146,45 +115,44 @@ function WidgetBody({ w, ownerUsername, isOwner }) {
           ))}
         </div>
       );
-    case "polls": // Fan Wall
+    case "weather":
       return (
-        <div className="space-y-2">
-          {FANS.map((f) => (
-            <div key={f.handle} className="flex gap-2 items-start text-xs">
-              <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${f.handle}`} alt="" className="rounded-full" style={{ width: 24, height: 24 }} />
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold" style={{ color: "var(--text-main)" }}>@{f.handle}</div>
-                <div style={{ color: "var(--text-muted)" }}>{f.text}</div>
-              </div>
-            </div>
-          ))}
+        <div className="text-center">
+          <Icons.CloudSun size={32} style={{ color: "var(--primary)" }} className="mx-auto" />
+          <div className="text-2xl mt-1" style={{ fontFamily: "var(--font-display)", color: "var(--text-main)" }}>72°</div>
+          <div className="text-xs" style={{ color: "var(--text-muted)" }}>Clear · LA</div>
         </div>
       );
-    case "custom": // Social
+    case "calendar":
       return (
-        <div className="flex flex-col gap-2 h-full justify-center">
-          <a href="https://tiktok.com/@stealth.hq" target="_blank" rel="noreferrer" className="flex items-center gap-2 p-2 rounded transition-transform hover:translate-x-1" style={{ background: "var(--surface-2)" }} data-testid="social-tiktok">
-            <Icons.Video size={16} style={{ color: "var(--primary)" }} />
-            <div className="flex-1 min-w-0">
-              <div className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>TikTok</div>
-              <div className="text-xs font-semibold truncate" style={{ color: "var(--text-main)" }}>@stealth.hq</div>
-            </div>
-          </a>
-          <a href="https://instagram.com/djstealthx" target="_blank" rel="noreferrer" className="flex items-center gap-2 p-2 rounded transition-transform hover:translate-x-1" style={{ background: "var(--surface-2)" }} data-testid="social-instagram">
-            <Icons.Camera size={16} style={{ color: "#FF8AC2" }} />
-            <div className="flex-1 min-w-0">
-              <div className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Instagram</div>
-              <div className="text-xs font-semibold truncate" style={{ color: "var(--text-main)" }}>@djstealthx</div>
-            </div>
-          </a>
+        <div className="text-xs">
+          <div className="uppercase tracking-widest mb-1" style={{ color: "var(--primary)" }}>Today</div>
+          <div className="space-y-1" style={{ color: "var(--text-main)" }}>
+            <div><b>10:00</b> Studio block</div>
+            <div><b>14:30</b> Brand sync</div>
+            <div><b>19:00</b> Live set</div>
+          </div>
         </div>
+      );
+    case "countdown":
+      return (
+        <div className="text-center">
+          <div className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Until next drop</div>
+          <div className="text-3xl mt-1" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>07d</div>
+        </div>
+      );
+    case "survey":
+      return (
+        <div className="text-xs" style={{ color: "var(--text-main)" }}>Survey · Open in app.</div>
       );
     default:
-      return <div className="text-xs" style={{ color: "var(--text-muted)" }}>{w.title || w.type}</div>;
+      // Any deprecated type that survived the strip migration falls
+      // through here and renders nothing.
+      return null;
   }
 }
 
-function SortableWidget({ w, editing, onCycleSize, ownerUsername, isOwner }) {
+function SortableWidget({ w, editing, onCycleSize, ownerUsername, isOwner, viewer }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: w.id });
   return (
     <div
@@ -206,7 +174,7 @@ function SortableWidget({ w, editing, onCycleSize, ownerUsername, isOwner }) {
           </div>
         )}
       </div>
-      <div className="h-[calc(100%-2rem)]"><WidgetBody w={w} ownerUsername={ownerUsername} isOwner={isOwner} /></div>
+      <div className="h-[calc(100%-2rem)]"><WidgetBody w={w} ownerUsername={ownerUsername} isOwner={isOwner} viewer={viewer} /></div>
     </div>
   );
 }
@@ -402,9 +370,9 @@ export default function FounderProfile() {
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-        <SortableContext items={widgets.map((w) => w.id)} strategy={rectSortingStrategy}>
+        <SortableContext items={widgets.filter((w) => ALLOWED_WIDGET_TYPES.has(w.type)).map((w) => w.id)} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4" style={{ gridAutoRows: "minmax(160px, auto)" }} data-testid="founder-widget-grid">
-            {widgets.map((w) => <SortableWidget key={w.id} w={w} editing={editing} onCycleSize={cycleSize} ownerUsername={profile.username} isOwner={isOwner} />)}
+            {widgets.filter((w) => ALLOWED_WIDGET_TYPES.has(w.type)).map((w) => <SortableWidget key={w.id} w={w} editing={editing} onCycleSize={cycleSize} ownerUsername={profile.username} isOwner={isOwner} viewer={user} />)}
           </div>
         </SortableContext>
       </DndContext>

@@ -13,6 +13,10 @@ from core.account_lifecycle import (
     mark_self_delete, mark_restore,
     should_hide_from_public, pending_deletion_meta,
 )
+from core.widget_types import (
+    ALLOWED_WIDGET_TYPES, VIDEOS_MAX, MUSIC_SOUNDS_MAX, PODCASTS_SOUNDS_MAX,
+    notes_limit_for, blog_limit_for,
+)
 from models.schemas import (
     ProfileUpdate, UsernameChangePayload, PasswordChangePayload, serialize_user,
 )
@@ -70,6 +74,75 @@ async def update_profile(update: ProfileUpdate, current: CurrentUser):
             set_doc["zip_lat"] = coords[0]
             set_doc["zip_lng"] = coords[1]
     if set_doc:
+        # Widget validation (Feb 24, 2026 spec):
+        #   • drop any widget whose type isn't in the allow-list
+        #   • cap notes/blog text length per role (stealth bypasses)
+        #   • cap music_sound_ids / podcast_sound_ids at 10
+        #   • cap videos array (uploaded + pinned combined) at 4
+        # Validation happens BEFORE the customized flag flip so
+        # rejected payloads don't accidentally mark the account dirty.
+        if "widgets" in set_doc:
+            cleaned = []
+            for w in (set_doc["widgets"] or []):
+                if not isinstance(w, dict):
+                    continue
+                t = w.get("type")
+                if t not in ALLOWED_WIDGET_TYPES:
+                    continue
+                if t == "notes":
+                    limit = notes_limit_for(current)
+                    text = w.get("text") or ""
+                    if limit is not None and len(text) > limit:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Notes too long (max {limit} characters)",
+                        )
+                if t == "blog":
+                    limit = blog_limit_for(current)
+                    text = w.get("text") or ""
+                    if limit is not None and len(text) > limit:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Blog too long (max {limit} characters)",
+                        )
+                if t == "music":
+                    ids = w.get("sound_ids") or []
+                    if not isinstance(ids, list):
+                        ids = []
+                    if len(ids) > MUSIC_SOUNDS_MAX:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Music widget supports max {MUSIC_SOUNDS_MAX} sounds",
+                        )
+                    w["sound_ids"] = ids[:MUSIC_SOUNDS_MAX]
+                if t == "podcasts":
+                    ids = w.get("sound_ids") or []
+                    if not isinstance(ids, list):
+                        ids = []
+                    if len(ids) > PODCASTS_SOUNDS_MAX:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Podcasts widget supports max {PODCASTS_SOUNDS_MAX} sounds",
+                        )
+                    w["sound_ids"] = ids[:PODCASTS_SOUNDS_MAX]
+                if t == "videos":
+                    # `items` is the user-selected mix of uploaded
+                    # (kind='upload') and pinned (kind='post') video
+                    # entries. The actual upload bytes are persisted by
+                    # /api/profile/me/videos/upload — this field just
+                    # records what to show + in what order.
+                    items = w.get("items") or []
+                    if not isinstance(items, list):
+                        items = []
+                    if len(items) > VIDEOS_MAX:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Videos widget supports max {VIDEOS_MAX} videos",
+                        )
+                    w["items"] = items[:VIDEOS_MAX]
+                cleaned.append(w)
+            set_doc["widgets"] = cleaned
+
         # Phase Feb-2026: any time the owner saves a `widgets` array
         # from the editor we mark the profile as customized so future
         # default-layout migrations stop touching it. Skip @stealth —
@@ -180,7 +253,14 @@ async def get_public_profile_by_username(username: str):
     if should_hide_from_public(user):
         raise HTTPException(status_code=404, detail="Profile not found")
     out = serialize_user(user)
-    out["widgets"] = user.get("widgets") or []
+    # Strip any deprecated widget types defensively before returning to
+    # public viewers. The boot migration also wipes them in Mongo, but
+    # this guarantees no legacy entry ever leaks via the public surface
+    # if a future write path bypasses validation.
+    out["widgets"] = [
+        w for w in (user.get("widgets") or [])
+        if isinstance(w, dict) and w.get("type") in ALLOWED_WIDGET_TYPES
+    ]
     out["social"] = user.get("social", {})
     # ── PRIVACY: ZIP code never leaves the owner's session. ──
     # The serializer adds it for /auth/me; we strip here for the public

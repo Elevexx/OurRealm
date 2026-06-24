@@ -427,6 +427,7 @@ async def run_startup():
     await migrate_inject_myfeed_widget()
     await migrate_inject_top8_widget()
     await migrate_reorder_top8_above_myfeed()
+    await migrate_strip_deprecated_widgets()
     await migrate_text_posts_to_thoughts()
     await migrate_video_urls_to_relative()
     await migrate_backfill_presence()
@@ -628,6 +629,34 @@ async def migrate_inject_myfeed_widget():
         n += 1
     if n:
         log.info(f"Injected My Feed widget into {n} existing profiles")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# STRIP DEPRECATED WIDGETS — Feb 24, 2026. Only the 15 types in
+# ALLOWED_WIDGET_TYPES survive. Applies to EVERY user including
+# @stealth (the founder cluster previously included `merch` and
+# `custom` which are no longer allowed). Order of remaining widgets
+# is preserved verbatim. Idempotent.
+# ─────────────────────────────────────────────────────────────────────
+async def migrate_strip_deprecated_widgets():
+    import logging
+    from core.widget_types import ALLOWED_WIDGET_TYPES
+    log = logging.getLogger("ourrealm.seed")
+    n = 0
+    async for u in db.users.find({}, {"_id": 0, "id": 1, "widgets": 1}):
+        widgets = u.get("widgets") or []
+        cleaned = [
+            w for w in widgets
+            if isinstance(w, dict) and w.get("type") in ALLOWED_WIDGET_TYPES
+        ]
+        if len(cleaned) != len(widgets):
+            await db.users.update_one(
+                {"id": u["id"]},
+                {"$set": {"widgets": cleaned}},
+            )
+            n += 1
+    if n:
+        log.info(f"Stripped deprecated widgets from {n} profiles")
 
 
 # ─────────────────────────────────────────────────────────────────────

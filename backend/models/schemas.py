@@ -3,6 +3,20 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
+from core.widget_types import ALLOWED_WIDGET_TYPES
+
+
+def _filter_allowed_widgets(widgets):
+    """Drop any widget whose type isn't in the 15-widget allow-list.
+    Defense in depth — write paths validate too, but legacy rows from
+    before the lockdown migration must never reach the UI."""
+    if not widgets:
+        return []
+    return [
+        w for w in widgets
+        if isinstance(w, dict) and w.get("type") in ALLOWED_WIDGET_TYPES
+    ]
+
 
 # ----- Auth -----
 class RegisterPayload(BaseModel):
@@ -215,7 +229,7 @@ def serialize_user(doc: dict) -> dict:
         "bio": doc.get("bio", ""),
         "interests": doc.get("interests", []),
         "mode": doc.get("mode", "neon"),
-        "widgets": doc.get("widgets", []),
+        "widgets": _filter_allowed_widgets(doc.get("widgets", [])),
         "profile_widgets_customized": bool(doc.get("profile_widgets_customized", False)),
         "is_founder": bool(doc.get("is_founder")),
         "is_verified": bool(doc.get("is_verified")),

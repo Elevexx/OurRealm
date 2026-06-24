@@ -42,6 +42,7 @@ from routers import communities as communities_router_mod
 from routers import realm_widgets as realm_widgets_router_mod
 from routers import admin_user_control as admin_user_control_router_mod
 from routers import reactions as reactions_router_mod
+from routers import profile_polls as profile_polls_router_mod
 from routers import media_proxy as media_proxy_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
@@ -88,6 +89,7 @@ app.include_router(communities_router_mod.router)
 app.include_router(realm_widgets_router_mod.router)
 app.include_router(admin_user_control_router_mod.router)
 app.include_router(reactions_router_mod.router)
+app.include_router(profile_polls_router_mod.router)
 app.include_router(media_proxy_router_mod.router)
 
 app.add_middleware(
@@ -212,6 +214,12 @@ async def on_startup():
         _pulse_task = asyncio.create_task(_realm_pulse_loop())
     except Exception as e:
         logger.warning(f"[realm_pulse] startup failed: {e}")
+
+    # Profile poll widget — unique (widget_id, user_id) index for votes.
+    try:
+        await profile_polls_router_mod.ensure_indexes()
+    except Exception as e:
+        logger.warning(f"[profile_polls] index init failed: {e}")
 
     # Communities (Realms + Groups + Chats) — ensure indexes + seed
     # the legacy mock realms into Mongo on the very first startup.

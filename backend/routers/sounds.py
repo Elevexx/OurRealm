@@ -702,6 +702,39 @@ async def my_tracks(current: CurrentUser, limit: int = 60):
     return {"tracks": [_public(t, viewer_id=current["id"]) for t in items]}
 
 
+@router.get("/by-user/{username}")
+async def tracks_by_username(
+    username: str,
+    category: Optional[str] = None,
+    limit: int = 60,
+):
+    """Public — list a profile's uploaded sounds, optionally filtered by
+    category (Music/Podcasts/FX). Used by the Music + Podcasts profile
+    widgets to populate the owner's sound picker AND to render the
+    pinned sounds on public profile views. Visibility filters mirror
+    /sounds/feed."""
+    user = await db.users.find_one(
+        {"username": username.lower()}, {"_id": 0, "id": 1},
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    query: dict = {"user_id": user["id"], "is_ai_generated": False}
+    if category and category != "All":
+        if category not in CATEGORIES:
+            raise HTTPException(status_code=400, detail="Invalid category")
+        query["category"] = category
+    cursor = (
+        db.tracks.find(query)
+        .sort("created_at", -1)
+        .limit(min(max(1, int(limit)), 200))
+    )
+    items = [doc async for doc in cursor]
+    # Filter for public-visible tracks. We pass viewer_id=None since this
+    # is a public endpoint; only `visibility=public` rows will survive.
+    items = [t for t in items if _can_view_track(t, None)]
+    return {"tracks": [_public(t, viewer_id=None) for t in items]}
+
+
 @router.get("/me/personalized")
 async def my_personalization_status(current: CurrentUser):
     """Phase 4B follow-up — drives the 'Made for You' rail visibility.
