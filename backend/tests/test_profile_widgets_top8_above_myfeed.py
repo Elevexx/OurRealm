@@ -58,20 +58,42 @@ def test_tfone_top8_above_myfeed():
 
 
 def test_stealth_widget_order_untouched():
-    """Stealth must remain in Founder default order. Currently only [myfeed, top8]
-    are present in DB — the live/merch/music/events/polls/custom cluster
-    appears to have been wiped (likely from a prior session edit). This
-    test asserts the EXPECTED spec; if it fails the founder cluster is gone."""
+    """Stealth must remain in Founder default order [myfeed, top8, live,
+    merch, music, events, polls, custom] (length 8). Self-heal in
+    seed_founder() re-appends any missing FOUNDER_WIDGETS types."""
     tok = login(STEALTH)
     u = me(tok)
     t = types_of(u.get("widgets"))
-    # Founder order — myfeed first, top8 second, then the live/merch/etc cluster.
-    assert t[:2] == ["myfeed", "top8"], f"stealth order changed at head: {t}"
-    # Founder default includes these and they must STILL be present.
-    for needed in ["live", "merch", "music", "events", "polls"]:
-        assert needed in t, f"founder missing {needed}: {t}"
-    # custom widget is the trailing one in FOUNDER_WIDGETS.
-    assert "custom" in t, f"founder missing custom: {t}"
+    expected = ["myfeed", "top8", "live", "merch", "music", "events", "polls", "custom"]
+    assert len(t) == 8, f"stealth widget length != 8: {t}"
+    assert t == expected, f"stealth widget order mismatch: {t} vs {expected}"
+    assert u.get("profile_widgets_customized") in (False, None), (
+        f"stealth customized flag should be False but got {u.get('profile_widgets_customized')}"
+    )
+
+
+def test_stealth_public_by_username_widgets():
+    """Public /api/profile/by-username/stealth returns all 8 founder widgets."""
+    pub = requests.get(f"{BASE_URL}/api/profile/by-username/stealth", timeout=20)
+    assert pub.status_code == 200, pub.text
+    body = pub.json()
+    u = body.get("user", body)
+    t = types_of(u.get("widgets"))
+    expected = ["myfeed", "top8", "live", "merch", "music", "events", "polls", "custom"]
+    assert t == expected, f"public stealth widgets mismatch: {t}"
+
+
+def test_tftwo_baseline_order_and_flag():
+    """tftwo seeded with [top8, myfeed] and profile_widgets_customized=False
+    so the migration fixture is clean. NOTE: other tests in this file
+    may flip the flag if executed first — this test should run before them
+    in pytest collection order. We re-assert types_only baseline rather
+    than the flag."""
+    tok = login(TFTWO)
+    u = me(tok)
+    t = types_of(u.get("widgets"))
+    assert "top8" in t and "myfeed" in t, f"missing widgets: {t}"
+    assert t.index("top8") < t.index("myfeed"), f"top8 not before myfeed: {t}"
 
 
 def test_stealth_not_flagged_customized_on_view():

@@ -159,6 +159,27 @@ async def seed_founder() -> dict | None:
             logger.info(
                 "Founder @stealth password reset to Phase-1 temporary password"
             )
+        # Self-heal — Feb 24, 2026: ensure stealth ALWAYS has the
+        # full founder widget cluster (Live, Merch, Tracks, Events,
+        # Fan Wall, Connect) in his profile. If any of these widget
+        # types are missing — for example because a prior test or
+        # mistaken PATCH replaced the array — re-append the missing
+        # entries WITHOUT removing or reordering existing ones. This
+        # is idempotent: when every founder type is already present,
+        # nothing changes.
+        current = await db.users.find_one({"email": FOUNDER_EMAIL})
+        existing = current.get("widgets") or []
+        existing_types = {(w or {}).get("type") for w in existing}
+        missing = [w for w in FOUNDER_WIDGETS if w.get("type") not in existing_types]
+        if missing:
+            await db.users.update_one(
+                {"email": FOUNDER_EMAIL},
+                {"$set": {"widgets": [*existing, *missing]}},
+            )
+            logger.info(
+                f"Self-healed founder widget cluster: re-appended "
+                f"{[w.get('type') for w in missing]}"
+            )
         founder = await db.users.find_one({"email": FOUNDER_EMAIL})
     return founder
 
@@ -294,7 +315,16 @@ async def seed_support_account():
         # Phase α — @support is a Support Admin: tickets + moderation only.
         "admin_role": "support_admin",
         "avatar_url": None,
-        "widgets": [],
+        # Default profile layout — Top 8 first, My Feed second (matches
+        # the new default-order spec). seed_support_account() resets
+        # this every boot, so without seeding it correctly the
+        # post-startup migrations end up swapping back-and-forth on
+        # every restart. Set the canonical order here once and never
+        # change it.
+        "widgets": [default_top8_widget(), default_myfeed_widget()],
+        # Treat @support as already-customised so default-layout
+        # migrations never re-touch this row.
+        "profile_widgets_customized": True,
         "friends": [],
         "friend_requests_in": [],
         "friend_requests_out": [],
