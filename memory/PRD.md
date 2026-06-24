@@ -1,6 +1,81 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Phase 3.5 — Conversational AI Widgets (Feb 26, 2026, iters 53–54) ✅ COMPLETE
+
+**Status:** 26/26 backend pytest pass + Playwright E2E builder pre-population verified. Zero critical/minor issues remaining. Zero OpenAI key leaks. SSE streaming working.
+
+### What shipped
+Founders can now create true ChatGPT-style conversational widgets through the Custom Widget Builder. Persistent per-user history. Founder-only gating. SSE streaming. Variable interpolation. All OpenAI traffic stays inside the backend pod — the browser never sees an API key.
+
+### Backend
+- `services/chat_conversations.py` (new):
+  - `widget_conversations` Mongo collection, keyed `widget_id::user_id`, capped at 40 turns.
+  - Variable interpolation: `{{user_message}}` `{{username}}` `{{display_name}}` `{{profile_id}}` `{{widget_id}}` `{{realm_id}}`.
+  - `call_openai_chat()` — non-streaming Chat Completions wrapper.
+  - `compose_messages()` — builds the OpenAI message array from system_prompt + history + new user turn (memory-mode aware).
+- `routers/widget_chat.py` (new):
+  - `POST /api/widgets/chat/message` — send a user turn, get AI reply (persisted iff memory ≠ off).
+  - `GET  /api/widgets/chat/history` — load persisted history.
+  - `POST /api/widgets/chat/clear` — wipe a conversation.
+  - `POST /api/widgets/chat/regenerate` — re-run the last user turn.
+  - `POST /api/widgets/chat/stream` — SSE streaming reply (Phase 3.5d).
+  - All endpoints honor provider enabled flag + sliding-window rate limit (30 calls/min per user+widget) + founder-only access flag.
+- `core/widget_layouts.py` — added `chat` layout + `chat_input` / `ai_response` field types.
+- `core/widget_templates.py` — added `stealth_ai` (founder-only, streaming, memory=persistent) and `realm_assistant` (public, memory=persistent) templates.
+- `routers/admin_widgets.py` — `_validate_editor_config` now calls a new `_validate_chat_config` that validates mode / system_prompt(≤8000) / model(≤64) / temperature(0..2) / max_tokens(1..4000) / memory_mode(off|session|persistent) / founder_only / enable_streaming / quick_actions(≤8, ≤120 chars each). Each invalid input emits 400 with a clear field-named message.
+- `core/api_providers.py` already supports OpenAI chat completions (from Phase 3.4) — no changes needed.
+
+### Frontend
+- `components/widgets/ChatLayout.jsx` (new) — full chat UI:
+  - User bubble (right) / AI bubble (left) with Markdown + code blocks + copy button.
+  - Quick-action chips (configurable per widget).
+  - Multiline input (Enter to send, Shift+Enter for newline).
+  - Send / Clear / Regenerate buttons.
+  - SSE streaming via POST + fetch + ReadableStream (token-by-token render).
+  - Graceful fallback to non-streaming on stream errors.
+  - Auto-scroll on new messages + typing indicator.
+- `components/widgets/CustomWidgetRenderer.jsx` — `chat` layout wired into LAYOUT_RENDERERS; full widget object now passed to renderers so chat can read `id` + `editor_config.chat`.
+- `components/widget-builder/WidgetBuilder.jsx` — new `Chat AI` section tab with System Prompt, Model, Temperature, Max Tokens, Memory mode, Founder Only toggle, Enable Streaming toggle, Quick Actions textarea. seedForm now defaults a `chat` block.
+- `lib/widgetBuilder.js` — FIELD_TYPES list updated.
+
+### Security (verified)
+- `OPENAI_API_KEY` referenced ONLY in backend files: `/app/backend/.env`, `/app/backend/core/api_providers.py`, `/app/backend/services/chat_conversations.py`, `/app/backend/routers/widget_chat.py`, `/app/backend/tests/*.py`, `/app/memory/PRD.md`. Zero frontend references.
+- All OpenAI traffic originates from the backend pod. Browser sees only `/api/widgets/chat/*`. No `Authorization: Bearer sk-…` ever leaves the backend.
+- Founder-only gate enforced at request time: tfone POSTing to a stealth_ai widget returns 403.
+- Rate limit (30/min per user+widget) returns 429 with `Retry-After` header.
+
+### Templates
+- **Stealth AI (Founder-Only)** — private @stealth assistant with persistent memory, streaming, and 3 starter quick actions.
+- **Realm Assistant** — public friendly assistant for community realms.
+
+### Tests
+- `/app/backend/tests/test_phase35_chat.py` — 13 tests (auth gates, happy path, regenerate, clear, founder-only, variable interpolation, memory modes, streaming, security).
+- `/app/backend/tests/test_phase35_chat_extras.py` — 6 tests (schema, templates, clone, rate-limit, provider-disable, streaming-disabled).
+- `/app/backend/tests/test_phase35_chat_e2e.py` — 7 E2E tests against public URL.
+- Combined: **26/26 pass.** Plus the 25 Phase 3.4 tests still pass → 51/51 across both phases.
+
+### Files touched (Phase 3.5)
+- `backend/services/chat_conversations.py` (new)
+- `backend/routers/widget_chat.py` (new)
+- `backend/routers/admin_widgets.py` (`_validate_chat_config` + chat passthrough fix)
+- `backend/core/widget_layouts.py` (chat layout + field types)
+- `backend/core/widget_templates.py` (stealth_ai + realm_assistant)
+- `backend/server.py` (router include)
+- `backend/tests/test_phase35_chat.py` (new, 13)
+- `backend/tests/test_phase35_chat_extras.py` (new, 6)
+- `backend/tests/test_phase35_chat_e2e.py` (new, 7)
+- `frontend/src/components/widgets/ChatLayout.jsx` (new)
+- `frontend/src/components/widgets/CustomWidgetRenderer.jsx` (chat hookup)
+- `frontend/src/components/widget-builder/WidgetBuilder.jsx` (Chat AI section)
+- `frontend/src/lib/widgetBuilder.js` (FIELD_TYPES)
+
+### Known minor follow-ups (not blocking)
+- The Stealth AI template uses `max_tokens=600`. Consider lowering to 200–300 to keep cost predictable on heavily-used widgets.
+- ToggleChip uses `<button>` instead of `<input type=checkbox>` — Playwright `is_checked()` doesn't work on it. Adding `role="switch" aria-checked` would simplify future E2E assertions.
+
+
+
 ## Phase 3.4 — Provider Integrations + API Key Management (Feb 26, 2026, iter 52) ✅ COMPLETE
 
 **Status:** Backend 25/25 pytest pass, frontend verified for founder + support admin on desktop & mobile, zero secret leaks, zero regressions.
