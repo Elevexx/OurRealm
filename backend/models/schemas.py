@@ -78,6 +78,11 @@ class ProfileUpdate(BaseModel):
     interests: Optional[List[str]] = None
     mode: Optional[str] = None
     widgets: Optional[List[dict]] = None
+    # Set TRUE the first time a user saves a custom widget layout from
+    # the profile editor. Once true, default-layout migrations skip the
+    # account. UI never has to send this — `update_profile` flips it
+    # whenever `widgets` is included in the payload (except for @stealth).
+    profile_widgets_customized: Optional[bool] = None
     # Privacy visibility: public | friends | private
     profile_visibility: Optional[str] = None
     # Wallet payment placeholders (stored as-is, no real ACH)
@@ -211,6 +216,7 @@ def serialize_user(doc: dict) -> dict:
         "interests": doc.get("interests", []),
         "mode": doc.get("mode", "neon"),
         "widgets": doc.get("widgets", []),
+        "profile_widgets_customized": bool(doc.get("profile_widgets_customized", False)),
         "is_founder": bool(doc.get("is_founder")),
         "is_verified": bool(doc.get("is_verified")),
         "is_vip": bool(doc.get("is_vip")),

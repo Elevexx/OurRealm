@@ -1,0 +1,48 @@
+{
+  "summary": "Iter-39 — Profile widget fixes (Top 8 above My Feed migration, profile_widgets_customized flag, Notes text persistence + radar/notes on public view). BACKEND pytest 6/7 (test_profile_widgets_top8_above_myfeed.py). FRONTEND drove the full owner add-notes/type/save flow as tftwo and verified public-view rendering as tfone. CRITICAL: @stealth's DB widgets are currently ONLY ['myfeed','top8'] — the full Founder cluster (live, merch, music, events, polls, custom) IS MISSING from his account, contradicting the spec which says 'do NOT alter stealth's layout' and 'show Stealth Live first, Stealth Merch, Stealth Tracks, Upcoming Events, Fan Wall, Connect with Stealth.' Both /api/auth/me and the public /api/profile/by-username/stealth confirm only 2 widgets are stored.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "/api/profile/by-username/stealth + /api/auth/me (as stealth)", "issue": "@stealth's widget array in MongoDB only contains [myfeed, top8] — the FOUNDER_WIDGETS cluster (live/merch/music/events/polls/custom) has been wiped. profile_widgets_customized=False, so seed_founder() should have preserved or restored the founder defaults but doesn't (it deliberately leaves widgets alone on subsequent boots). Spec explicitly requires the founder cluster to be intact and untouched.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "startup migrate_reorder_top8_above_myfeed", "issue": "On every backend restart the log line reads 'Reordered Top 8 above My Feed for 1 non-customized profiles' instead of 0. The reorder filter excludes customized=True and @stealth, so this means 1 candidate keeps re-qualifying each boot — investigate which user (likely an uncustomized account that subsequently had myfeed re-inserted at index 0 by migrate_inject_myfeed_widget on the same boot). Idempotency is functionally fine (operation is repeatable) but the per-boot count should converge to 0."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Profile.jsx (owner view after reload)", "issue": "After hard reload (page.reload), the previously-saved notes widget element [data-testid='notes-body-{id}'] is no longer found in the DOM within 4.5s — count=0. The data IS persisted server-side (confirmed by the public profile view which shows the saved text immediately) so this is likely a test-injected-token lifecycle quirk (token was set in localStorage but the SW/asset-fail handler triggered a controllerchange/reload that wiped session state). Manual user reload should be re-verified by main agent.", "selector": "[data-testid^=\"notes-body-\"]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "@stealth public profile widget rendering", "issue": "Visiting /profile/stealth shows only My Feed + Top 8 widgets in [data-testid='founder-widget-grid']. The Stealth Live, Stealth Merch, Stealth Tracks, Upcoming Events, Fan Wall, Connect with Stealth cluster is absent from the DOM because they're absent from the underlying DB document. This is the same root cause as the BACKEND CRITICAL above.", "affected_selectors": ["[data-testid='founder-widget-grid']"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_profile_widgets_top8_above_myfeed.py",
+    "/app/test_reports/pytest/iter39_widgets.xml"
+  ],
+  "action_items": [
+    "RESTORE @stealth's founder widget cluster. Either: (a) re-run a one-time migration that re-injects the FOUNDER_WIDGETS list (live/merch/music/events/polls/custom) at the end of stealth's widgets array whenever those types are missing AND profile_widgets_customized=False; or (b) update seed_founder() to backfill the founder cluster on boot for stealth specifically when his widgets array is missing those types. Either path should be idempotent and skip if customized=True.",
+    "Investigate the '1 non-customized profile' that the reorder migration keeps touching on every restart — confirm which user and decide if it should be flagged customized=True after the first reorder so the count converges to 0.",
+    "Verify the owner-side reload of /profile re-renders the notes widget when auth was set normally via the login UI (not test-injected token). If main agent reproduces the wipe after a real user reload, that's a separate render bug to fix in Profile.jsx."
+  ],
+  "critical_code_review_comments": [
+    "backend/core/seed.py:migrate_reorder_top8_above_myfeed — filter is correct (excludes founder by username + excludes customized=True). Migration is monotone (only swaps when t8_idx >= mf_idx) so safe to run on every boot. BUT it does not record any 'migration version' / 'applied_at' marker, so each boot recomputes from scratch. Fine for current scale, just noting.",
+    "backend/routers/profile.py:update_profile — auto-flip logic correctly excludes uname=='stealth' before setting profile_widgets_customized=True. Verified empirically: PATCH widgets as stealth leaves flag False; PATCH as tftwo flips to True.",
+    "backend/models/schemas.py:serialize_user — profile_widgets_customized is exposed both via /auth/me and /profile/by-username; defaults to False with bool() coercion. Good.",
+    "CRITICAL — backend/core/seed.py:seed_founder — On subsequent boots only refreshes immutable_doc (role/is_founder/verified/featured/email/username/admin_role). User-customizable fields (incl. widgets) are NEVER restored. This means once stealth's widgets array is wiped by ANY path (manual PATCH, bad migration in a prior version, etc.) the FOUNDER_WIDGETS cluster cannot be recovered without a manual migration. Recommend adding a defensive backfill: 'if not any(w.type in {live,merch,music,events,polls,custom} for w in stealth.widgets): append the missing FOUNDER_WIDGETS entries.' Idempotent and self-healing."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_profile_widgets_top8_above_myfeed.py"
+  ],
+  "success_rate": {
+    "backend": "86% (6/7 pytest) — only failing test is the stealth founder-cluster integrity check which exposes the critical bug above.",
+    "frontend": "75% — owner edit/add-notes/type/save flow PASS (text rendered post-save). Public view of tftwo from tfone PASS (founder-notes-body renders with correct text). Stealth public view FAIL (founder cluster missing). Owner-reload persistence not conclusively re-verified due to test-token quirk."
+  },
+  "test_credentials": "tftwo (testfriend2@example.com / pass1234), tfone (testfriend1@example.com / pass1234), stealth (slopestyle2022@gmail.com / Password1$) — all from /app/memory/test_credentials.md.",
+  "seed_data_creation": "No new seed. Notes widget text 'my custom note ABC' written to tftwo via PATCH for one pytest, then cleaned up (restored to [top8, myfeed] baseline). UI test left tftwo with a notes widget containing 'my notes from UI test' which the public view confirmed. Main agent can clean this up if desired by re-PATCHing tftwo widgets to [top8, myfeed] only.",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "Pytest regression: pytest /app/backend/tests/test_profile_widgets_top8_above_myfeed.py — 7 tests, ~4s. Frontend selectors confirmed: [data-testid='profile-widget-grid'], [data-testid='profile-widget-w-{id}'], [data-testid='profile-add-widget-tile'], [data-testid='add-widget-notes'], [data-testid='notes-edit-{w.id}'], [data-testid='notes-body-{w.id}'], [data-testid='profile-save'], [data-testid='founder-widget-grid'], [data-testid='founder-widget-w-{id}'], [data-testid='founder-notes-body-{w.id}'], [data-testid='founder-radar-{w.id}'], [data-testid='profile-guard-signin']. Login tokens are stored under 'token' / 'or_token' / 'access_token' (multi-key, write all to be safe).",
+  "rca of the issue": "ROOT CAUSE — @stealth has had his widgets array reduced to [myfeed, top8] at some point (likely a previous test-session edit) and seed_founder() intentionally never re-overwrites the widgets field on subsequent boots (to preserve founder edits). Combined effect: the spec-required Founder cluster is lost and the seed code is structurally unable to restore it. REPRO: GET /api/profile/by-username/stealth → widgets.length === 2. MITIGATION: add a self-healing branch in seed_founder() that detects when stealth's widgets are missing the founder cluster types and re-appends the missing FOUNDER_WIDGETS entries while preserving any user-added ones — idempotent because it only acts when types are absent."
+}

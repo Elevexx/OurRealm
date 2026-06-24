@@ -30,7 +30,43 @@ const SIZE_TO_CLASS = {
 };
 
 /* -------------------------- widget renderers -------------------------- */
-function WidgetBody({ w, mode, ownerUsername, isOwner }) {
+const DEFAULT_NOTES_TEXT = '"Discover should feel inevitable, not optional."\n— shipping log';
+
+/**
+ * Notes widget body — read-only on public profiles, inline editable
+ * for the owner while in Edit mode. Empty/whitespace `text` falls back
+ * to the default shipping-log quote so the widget never renders blank.
+ * Persistence is handled at save time by the parent: `onUpdate(id, {text})`
+ * mutates the widgets array; clicking Save in the profile header writes
+ * the whole array (including this widget's `text`) to /api/profile/me.
+ */
+function NotesBody({ w, editing, onUpdate }) {
+  const display = (w.text && w.text.trim()) ? w.text : DEFAULT_NOTES_TEXT;
+  if (!editing) {
+    return (
+      <div
+        className="text-xs leading-relaxed italic whitespace-pre-line"
+        style={{ color: "var(--text-main)" }}
+        data-testid={`notes-body-${w.id}`}
+      >
+        {display}
+      </div>
+    );
+  }
+  return (
+    <textarea
+      className="or-input text-xs leading-relaxed italic w-full h-full resize-none"
+      style={{ color: "var(--text-main)", minHeight: 80 }}
+      value={w.text ?? ""}
+      placeholder={DEFAULT_NOTES_TEXT}
+      onChange={(e) => onUpdate?.(w.id, { text: e.target.value })}
+      data-testid={`notes-edit-${w.id}`}
+      aria-label="Edit notes"
+    />
+  );
+}
+
+function WidgetBody({ w, mode, ownerUsername, isOwner, editing, onUpdate }) {
   switch (w.type) {
     case "myfeed":
       return <MyFeedWidget username={ownerUsername} isOwner={isOwner} />;
@@ -195,11 +231,7 @@ function WidgetBody({ w, mode, ownerUsername, isOwner }) {
         </div>
       );
     case "notes":
-      return (
-        <div className="text-xs leading-relaxed italic" style={{ color: "var(--text-main)" }}>
-          "Discover should feel inevitable, not optional."<br />— shipping log
-        </div>
-      );
+      return <NotesBody w={w} editing={editing && isOwner} onUpdate={onUpdate} />;
     case "polls":
       return (
         <div className="text-xs space-y-1.5">
@@ -256,7 +288,7 @@ function WidgetBody({ w, mode, ownerUsername, isOwner }) {
 }
 
 /* -------------------------- sortable widget item -------------------------- */
-function SortableWidget({ w, mode, editing, onCycleSize, onRemove, ownerUsername, isOwner }) {
+function SortableWidget({ w, mode, editing, onCycleSize, onRemove, onUpdate, ownerUsername, isOwner }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: w.id });
   const def = WIDGET_TYPES.find((x) => x.id === w.type);
   const Icon = Icons[def?.icon || "Sparkles"] || Icons.Sparkles;
@@ -312,7 +344,7 @@ function SortableWidget({ w, mode, editing, onCycleSize, onRemove, ownerUsername
           </div>
         )}
       </div>
-      <div className="h-[calc(100%-2rem)]"><WidgetBody w={w} mode={mode} ownerUsername={ownerUsername} isOwner={isOwner} /></div>
+      <div className="h-[calc(100%-2rem)]"><WidgetBody w={w} mode={mode} ownerUsername={ownerUsername} isOwner={isOwner} editing={editing} onUpdate={onUpdate} /></div>
     </div>
   );
 }
@@ -396,6 +428,10 @@ export default function Profile() {
   };
   const removeWidget = (id) => setWidgets((arr) => arr.filter((x) => x.id !== id));
   const addWidget = (w) => setWidgets((arr) => [...arr, { id: `w-${Date.now()}`, type: w.id, size: w.default_size }]);
+  // Patch a single widget's fields in place. Used by Notes (text edit)
+  // and any future widget-specific config UI. Preserves order + sizes.
+  const updateWidget = (id, patch) =>
+    setWidgets((arr) => arr.map((x) => x.id === id ? { ...x, ...patch } : x));
 
   const saveLayout = async () => {
     if (user) await updateProfile({ widgets, name: form.name, bio: form.bio });
@@ -577,6 +613,7 @@ export default function Profile() {
                 editing={editing}
                 onCycleSize={cycleSize}
                 onRemove={removeWidget}
+                onUpdate={updateWidget}
                 ownerUsername={user?.username}
                 isOwner={true}
               />

@@ -70,6 +70,14 @@ async def update_profile(update: ProfileUpdate, current: CurrentUser):
             set_doc["zip_lat"] = coords[0]
             set_doc["zip_lng"] = coords[1]
     if set_doc:
+        # Phase Feb-2026: any time the owner saves a `widgets` array
+        # from the editor we mark the profile as customized so future
+        # default-layout migrations stop touching it. Skip @stealth —
+        # the founder layout is preserved verbatim regardless.
+        if "widgets" in set_doc:
+            uname = (current.get("username") or "").lower()
+            if uname != "stealth":
+                set_doc["profile_widgets_customized"] = True
         await db.users.update_one({"id": current["id"]}, {"$set": set_doc})
     user = await db.users.find_one({"id": current["id"]}, {"_id": 0})
     return {"user": serialize_user(user)}

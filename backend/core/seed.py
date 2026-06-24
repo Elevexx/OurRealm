@@ -396,6 +396,7 @@ async def run_startup():
     await migrate_vip_and_strip_founder_badges(founder)
     await migrate_inject_myfeed_widget()
     await migrate_inject_top8_widget()
+    await migrate_reorder_top8_above_myfeed()
     await migrate_text_posts_to_thoughts()
     await migrate_video_urls_to_relative()
     await migrate_backfill_presence()
@@ -600,7 +601,67 @@ async def migrate_inject_myfeed_widget():
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TOP 8 FRIENDS WIDGET — auto-inject for every existing user that doesn't
+# REORDER WIDGETS — Top 8 above My Feed for non-customized profiles
+# (Feb 24, 2026). Earlier migrations (`migrate_inject_top8_widget`)
+# placed Top 8 right AFTER My Feed; spec now requires Top 8 to be the
+# FIRST widget and My Feed second. We only touch users who:
+#   • are NOT @stealth (case-insensitive — founder layout is sacred)
+#   • have BOTH widgets present
+#   • have not flipped `profile_widgets_customized=True` (i.e. they're
+#     still using the default order — first-time customisers will set
+#     this flag, see routers/profile.py:update_profile).
+#
+# We preserve every other widget's relative order and all widget sizes.
+# ─────────────────────────────────────────────────────────────────────
+async def migrate_reorder_top8_above_myfeed():
+    import logging
+    log = logging.getLogger("ourrealm.seed")
+    n = 0
+    cursor = db.users.find(
+        {
+            "username": {"$ne": FOUNDER_USERNAME.lower()},
+            # Only users who haven't manually saved a layout.
+            "$or": [
+                {"profile_widgets_customized": {"$exists": False}},
+                {"profile_widgets_customized": False},
+            ],
+        },
+        {"_id": 0, "id": 1, "username": 1, "widgets": 1},
+    )
+    async for u in cursor:
+        widgets = u.get("widgets") or []
+        # Locate the first occurrences of each widget type.
+        mf_idx = next(
+            (i for i, w in enumerate(widgets)
+             if (w or {}).get("type") == MYFEED_WIDGET_TYPE),
+            None,
+        )
+        t8_idx = next(
+            (i for i, w in enumerate(widgets)
+             if (w or {}).get("type") == TOP8_WIDGET_TYPE),
+            None,
+        )
+        if mf_idx is None or t8_idx is None:
+            continue
+        # Already correctly ordered? (Top 8 strictly before My Feed)
+        if t8_idx < mf_idx:
+            continue
+        # Pull out the two widgets and prepend in the new order; keep
+        # all other widgets in their existing relative order behind them.
+        t8 = widgets[t8_idx]
+        mf = widgets[mf_idx]
+        rest = [
+            w for i, w in enumerate(widgets)
+            if i not in (t8_idx, mf_idx)
+        ]
+        new_widgets = [t8, mf, *rest]
+        await db.users.update_one(
+            {"id": u["id"]},
+            {"$set": {"widgets": new_widgets}},
+        )
+        n += 1
+    if n:
+        log.info(f"Reordered Top 8 above My Feed for {n} non-customized profiles")
 # already have one. Placed directly AFTER My Feed when present, otherwise
 # at the top. Idempotent.
 # ─────────────────────────────────────────────────────────────────────

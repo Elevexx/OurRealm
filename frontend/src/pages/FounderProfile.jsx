@@ -67,6 +67,32 @@ function WidgetBody({ w, ownerUsername, isOwner }) {
       return <MyFeedWidget username={ownerUsername} isOwner={isOwner} />;
     case "top8":
       return <TopEightWidget username={ownerUsername} />;
+    case "notes": {
+      // Notes render identically on the owner's edit view and on the
+      // public profile — text is whatever the owner saved, or the
+      // shipping-log quote when blank. Public viewers can't edit.
+      const txt = (w.text && w.text.trim())
+        ? w.text
+        : '"Discover should feel inevitable, not optional."\n— shipping log';
+      return (
+        <div
+          className="text-xs leading-relaxed italic whitespace-pre-line"
+          style={{ color: "var(--text-main)" }}
+          data-testid={`founder-notes-body-${w.id}`}
+        >
+          {txt}
+        </div>
+      );
+    }
+    case "radar":
+      // Animated signature widget — must render the SAME way as on the
+      // owner's edit view (Profile.jsx). The `.radar-disc` keyframe CSS
+      // lives in index.css and animates from any container size.
+      return (
+        <div className="flex items-center justify-center h-full" data-testid={`founder-radar-${w.id}`}>
+          <div style={{ width: "85%" }}><div className="radar-disc" /></div>
+        </div>
+      );
     case "live":
       return (
         <div className="h-full flex flex-col">

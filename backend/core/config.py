@@ -25,6 +25,8 @@ FOUNDER_WIDGETS = [
 VIP_CUTOFF = 1000
 MYFEED_WIDGET_TYPE = "myfeed"
 TOP8_WIDGET_TYPE = "top8"
+NOTES_WIDGET_TYPE = "notes"
+DEFAULT_NOTES_TEXT = '"Discover should feel inevitable, not optional."\n— shipping log'
 
 
 def default_myfeed_widget() -> dict:
@@ -43,6 +45,18 @@ def default_top8_widget() -> dict:
         "type": TOP8_WIDGET_TYPE,
         "size": "medium",
         "title": "Top 8 Friends",
+    }
+
+
+def default_notes_widget() -> dict:
+    """Notes widget — `text` defaults to the shipping-log quote but is
+    owner-editable from the profile edit UI."""
+    return {
+        "id": "w-notes",
+        "type": NOTES_WIDGET_TYPE,
+        "size": "small",
+        "title": "Notes",
+        "text": DEFAULT_NOTES_TEXT,
     }
 
 
