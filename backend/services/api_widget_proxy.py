@@ -291,6 +291,12 @@ async def _execute(url: str, method: str, query: Dict[str, Any],
         resp = await client.request(method, url, params=query, headers=headers, json=body if body else None)
     if resp.status_code >= 400:
         snippet = resp.text[:300]
+        # Forward 429 (and other rate-limit-shaped codes) verbatim so
+        # downstream callers can apply correct backoff. Other 4xx/5xx
+        # upstream errors collapse to 502 so we don't leak provider
+        # implementation details (e.g., "API key invalid" 401).
+        if resp.status_code in (429, 503, 504):
+            raise HTTPException(status_code=resp.status_code, detail=f"Upstream {resp.status_code}: {snippet}")
         raise HTTPException(status_code=502, detail=f"Upstream {resp.status_code}: {snippet}")
     try:
         return resp.json()

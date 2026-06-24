@@ -1,6 +1,62 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Phase 3 — API Widget Sources (Feb 25, 2026, iter 48) ✅ COMPLETE
+
+**Status:** Backend 19/19 tests pass. Frontend smoke-verified. Two MINOR/optional improvements suggested by testing agent — one (upstream 429 passthrough) applied; the other (sliding-window rate limit) deferred as P3.
+
+### Goals
+Founder (@stealth)-only authoring of widgets backed by live third-party APIs. All credentials backend-only; never exposed to frontend. Two-tier cache + provider/widget rate limits.
+
+### Backend
+- `core/api_providers.py` — pluggable provider registry. 11 providers:
+  - **Ready (no key):** CoinGecko, GitHub (public), Reddit (public), NASA (DEMO_KEY)
+  - **Need env key:** OpenWeather (`OPENWEATHER_API_KEY`), NewsAPI (`NEWSAPI_KEY`), Alpha Vantage (`ALPHA_VANTAGE_KEY`), OpenAI (`OPENAI_API_KEY`)
+  - **Coming Soon (OAuth):** Spotify, YouTube, Google Maps
+  - Each provider declares: auth_kind, endpoints, default refresh/cache, hourly quota, sample paths
+  - `public_provider_view()` strips `auth_env_var` before returning to frontend
+- `services/api_widget_proxy.py` — credentials injection + L1 (in-memory) + L2 (Mongo `api_cache`) two-tier cache, provider hourly quota + provider per-minute burst (60/min) + per-widget burst (30/min) via Mongo `api_quota` collection (TTL'd). Forwards upstream 429/503/504 verbatim; collapses other 4xx/5xx to 502 to avoid leaking provider errors.
+- `routers/api_widgets.py` — three endpoints:
+  - `GET /api/admin/widgets/api-providers` (any admin) — list providers + endpoint specs
+  - `POST /api/admin/widgets/test-api` (@stealth only) — ad-hoc test with response_map application
+  - `POST /api/widgets/api-call` (authed) — proxy for live widgets. Two modes: widget_id → hydrate from registry (trusted) OR direct provider/endpoint (@stealth only)
+- `routers/admin_widgets.py` `_validate_editor_config()` — extended to accept `data_source.kind='api'` with provider/endpoint validation, params dict, response_map dict
+- `core/widget_templates.py` — added 5 API templates: `live_weather`, `live_crypto`, `live_nasa_apod`, `live_github_repo`, `live_reddit_top` (ship as draft)
+- `server.py` — wires router + `ensure_indexes()` for TTL'd cache/quota collections
+
+### Frontend
+- `components/widget-builder/ApiSourceTab.jsx` — new "API Source" tab in the WidgetBuilder. Provider tiles (ready/add-key/coming-soon badges), endpoint pills, typed param inputs, Test API button, raw JSON viewer, quick-bind chips, field bindings, refresh/cache duration controls
+- `components/widget-builder/WidgetBuilder.jsx` — added `api` section between `data` and `placement`
+- `components/widgets/CustomWidgetRenderer.jsx` — when `editor_config.data_source.kind='api'`, polls `/api/widgets/api-call` on mount + at refresh interval; overlays mapped fields on top of static fallbacks; surfaces a small "API" error badge on failure
+
+### Security guarantees verified by tests
+- API keys ONLY in `.env` — frontend payload contains zero credentials (`auth_env_var` stripped)
+- `@stealth`-only for `test-api`, direct provider call, and from-template/clone/rollback (already)
+- Authenticated users with `widget_id` can render launched widgets; draft widgets return 404 to non-admins
+- Anonymous → 401 on all proxy endpoints
+- Coming-soon providers → 400 (no upstream call attempted)
+- Missing credential → 503 (provider config error, not 500)
+- Provider per-minute burst 429 confirmed firing in load test
+
+### Files touched (Phase 3)
+- `backend/core/api_providers.py` (new)
+- `backend/services/api_widget_proxy.py` (new)
+- `backend/routers/api_widgets.py` (new)
+- `backend/routers/admin_widgets.py` — `_validate_editor_config` upgraded
+- `backend/core/widget_templates.py` — `_ec()` accepts data_source; 5 new templates appended
+- `backend/server.py` — router include + ensure_indexes
+- `frontend/src/components/widget-builder/ApiSourceTab.jsx` (new)
+- `frontend/src/components/widget-builder/WidgetBuilder.jsx` — API tab wiring
+- `frontend/src/components/widgets/CustomWidgetRenderer.jsx` — live polling
+
+### Known limitations / backlog
+- Rate-limit window is fixed-minute (strftime bucket). At the :59→:00 boundary up to 2× cap can squeak through. Sliding-window upgrade deferred (testing agent flagged as optional).
+- `live_reddit_top` template's response_map is empty — list-of-objects → rich_item list transforms land in Phase 3.1.
+- OAuth providers (Spotify, YouTube, Google Maps) ship as Coming Soon tiles only — refuse upstream calls server-side.
+
+---
+
+
 ## Phase-1 Widgets & Badges Admin Panel — /admin/widgets (Feb 24, 2026, iter 44)
 
 **Status: ✅ COMPLETE** — Backend 24/24 phase-1 pytest pass; frontend live-verified including the picker disable + admin banner fix.
