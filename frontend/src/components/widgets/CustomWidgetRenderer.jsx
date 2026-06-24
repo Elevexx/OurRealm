@@ -342,6 +342,9 @@ export default function CustomWidgetRenderer({ w }) {
   // the registry config keyed by w.type (or w.key) and merge any
   // per-instance `data` overrides over the registry baseline.
   const [registryCfg, setRegistryCfg] = useState(w?.editor_config || null);
+  const [apiData, setApiData] = useState(null);   // mapped fields from live API
+  const [apiError, setApiError] = useState(null);
+  const [apiLoading, setApiLoading] = useState(false);
 
   useEffect(() => {
     if (w?.editor_config) {
@@ -355,9 +358,47 @@ export default function CustomWidgetRenderer({ w }) {
     return () => { cancelled = true; };
   }, [w]);
 
+  // API-backed widgets — fetch the proxied data on mount + at the
+  // configured refresh interval. The renderer overlays `mapped` on
+  // top of `editor_config.data` so static fallbacks always show
+  // until the first successful fetch completes.
+  const ds = registryCfg?.data_source || null;
+  const isApi = ds?.kind === "api";
+  const refreshMs = Math.max(15, (ds?.refresh_seconds || 600)) * 1000;
+  const widgetIdent = w?.id || w?.type || w?.key;
+
+  useEffect(() => {
+    if (!isApi || !registryCfg) return undefined;
+    let cancelled = false;
+    let timer = null;
+    const tick = async () => {
+      setApiLoading(true); setApiError(null);
+      try {
+        const { data } = await apiClient.post("/widgets/api-call", {
+          widget_id: w?.id,
+          widget_key: w?.type || w?.key,
+        });
+        if (!cancelled) {
+          setApiData(data?.mapped || {});
+          setApiError(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setApiError(e?.response?.data?.detail || "Failed to load");
+        }
+      } finally {
+        if (!cancelled) setApiLoading(false);
+      }
+    };
+    tick();
+    timer = setInterval(tick, refreshMs);
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isApi, widgetIdent, refreshMs]);
+
   const merged = registryCfg ? {
     ...registryCfg,
-    data: { ...(registryCfg.data || {}), ...(w?.data || {}) },
+    data: { ...(registryCfg.data || {}), ...(w?.data || {}), ...(apiData || {}) },
   } : null;
 
   if (!merged) {
@@ -368,14 +409,34 @@ export default function CustomWidgetRenderer({ w }) {
     );
   }
 
+  // First-load skeleton for API widgets that don't have static
+  // fallback values yet.
+  if (isApi && apiLoading && !apiData && (!merged.data || Object.keys(merged.data).every((k) => !merged.data[k]))) {
+    return (
+      <div className="h-full flex items-center justify-center" data-testid={`custom-widget-api-loading-${w?.type || "x"}`}>
+        <Icons.Loader2 size={18} className="animate-spin" style={{ color: "var(--primary)" }} />
+      </div>
+    );
+  }
+
   const layout = merged.layout || "card";
   const Renderer = LAYOUT_RENDERERS[layout] || CardLayout;
   const data = merged.data || {};
   const theme = merged.theme || {};
 
   return (
-    <div data-testid={`custom-widget-${w?.type || w?.key || "unknown"}`} className="h-full">
+    <div data-testid={`custom-widget-${w?.type || w?.key || "unknown"}`} className="h-full relative">
       <Renderer data={data} theme={theme} />
+      {isApi && apiError && (
+        <div
+          className="absolute top-1 right-1 text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded"
+          style={{ background: "rgba(255,90,107,0.18)", color: "#FF8080" }}
+          title={apiError}
+          data-testid="custom-widget-api-error"
+        >
+          <Icons.AlertTriangle size={9} className="inline" /> API
+        </div>
+      )}
     </div>
   );
 }

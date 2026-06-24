@@ -15,14 +15,15 @@ from typing import List, Dict, Any
 
 def _ec(layout: str, fields: List[Dict[str, Any]], data: Dict[str, Any],
         *, theme: Dict[str, Any] | None = None,
-        limits: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        limits: Dict[str, Any] | None = None,
+        data_source: Dict[str, Any] | None = None) -> Dict[str, Any]:
     """editor_config builder — keeps the shape identical everywhere."""
     return {
         "schema_version": 1,
         "layout": layout,
         "fields": fields,
         "data": data,
-        "data_source": {"kind": "static", "api": None, "refresh_seconds": 0},
+        "data_source": data_source or {"kind": "static", "api": None, "refresh_seconds": 0},
         "theme": theme or {},
         "limits": limits or {},
     }
@@ -230,6 +231,123 @@ TEMPLATES: List[Dict[str, Any]] = [
                 {"id": "a2", "label": "100 Friends", "icon": "Users"},
                 {"id": "a3", "label": "Top Creator", "icon": "Crown"},
             ]},
+        ),
+    },
+
+    # ─── Phase 3 — API-backed starter templates. Ship as DRAFT until
+    # the founder adds the corresponding env key + launches.
+    {
+        "key": "live_weather",
+        "name": "Live Weather",
+        "icon": "CloudSun",
+        "category_group": "utility",
+        "description": "Current temperature + conditions for a city (OpenWeather).",
+        "default_size": "small",
+        "editor_config": _ec(
+            "stat",
+            [
+                {"key": "label", "type": "text", "label": "City", "required": True, "max_length": 60},
+                {"key": "value", "type": "text", "label": "Temperature", "required": True, "max_length": 24},
+                {"key": "delta", "type": "text", "label": "Conditions", "max_length": 32},
+            ],
+            {"label": "London", "value": "—", "delta": "—"},
+            data_source={
+                "kind": "api", "provider": "openweather", "endpoint_key": "current",
+                "params": {"q": "London", "units": "metric"},
+                "response_map": {"label": "name", "value": "main.temp", "delta": "weather[0].main"},
+                "refresh_seconds": 600, "cache_seconds": 600,
+            },
+        ),
+    },
+    {
+        "key": "live_crypto",
+        "name": "Live Crypto",
+        "icon": "Bitcoin",
+        "category_group": "business",
+        "description": "Bitcoin USD price + 24h change (CoinGecko, no key needed).",
+        "default_size": "small",
+        "editor_config": _ec(
+            "stat",
+            [
+                {"key": "label", "type": "text", "label": "Label", "required": True, "max_length": 32},
+                {"key": "value", "type": "text", "label": "Price (USD)", "required": True, "max_length": 24},
+                {"key": "delta", "type": "text", "label": "24h Change", "max_length": 24},
+            ],
+            {"label": "Bitcoin", "value": "—", "delta": "—"},
+            data_source={
+                "kind": "api", "provider": "coingecko", "endpoint_key": "simple_price",
+                "params": {"ids": "bitcoin", "vs_currencies": "usd", "include_24hr_change": True},
+                "response_map": {"value": "bitcoin.usd", "delta": "bitcoin.usd_24h_change"},
+                "refresh_seconds": 120, "cache_seconds": 120,
+            },
+        ),
+    },
+    {
+        "key": "live_nasa_apod",
+        "name": "NASA APOD",
+        "icon": "Rocket",
+        "category_group": "media",
+        "description": "Astronomy Picture of the Day (DEMO_KEY works without signup).",
+        "default_size": "large",
+        "editor_config": _ec(
+            "card",
+            [
+                {"key": "title", "type": "text", "label": "Title", "max_length": 120},
+                {"key": "image", "type": "image", "label": "Cover", "max_count": 1},
+                {"key": "body", "type": "long_text", "label": "Explanation", "max_length": 800},
+            ],
+            {"title": "—", "image": "", "body": ""},
+            data_source={
+                "kind": "api", "provider": "nasa", "endpoint_key": "apod",
+                "params": {},
+                "response_map": {"title": "title", "image": "url", "body": "explanation"},
+                "refresh_seconds": 86400, "cache_seconds": 86400,
+            },
+        ),
+    },
+    {
+        "key": "live_github_repo",
+        "name": "GitHub Repo",
+        "icon": "Github",
+        "category_group": "utility",
+        "description": "Live stars + open issues for a public repo (no auth required).",
+        "default_size": "medium",
+        "editor_config": _ec(
+            "stat",
+            [
+                {"key": "label", "type": "text", "label": "Repo", "required": True, "max_length": 60},
+                {"key": "value", "type": "text", "label": "Stars", "required": True, "max_length": 24},
+                {"key": "delta", "type": "text", "label": "Open Issues", "max_length": 24},
+            ],
+            {"label": "torvalds/linux", "value": "—", "delta": "—"},
+            data_source={
+                "kind": "api", "provider": "github", "endpoint_key": "repo",
+                "params": {"owner": "torvalds", "repo": "linux"},
+                "response_map": {"label": "full_name", "value": "stargazers_count", "delta": "open_issues_count"},
+                "refresh_seconds": 600, "cache_seconds": 600,
+            },
+        ),
+    },
+    {
+        "key": "live_reddit_top",
+        "name": "Reddit Top Posts",
+        "icon": "MessageSquare",
+        "category_group": "community",
+        "description": "Top posts from a subreddit (no key needed).",
+        "default_size": "large",
+        "editor_config": _ec(
+            "list",
+            [
+                {"key": "title", "type": "text", "label": "Title", "max_length": 80},
+                {"key": "items", "type": "rich_item", "label": "Posts", "max_count": 5},
+            ],
+            {"title": "r/programming (top today)", "items": []},
+            data_source={
+                "kind": "api", "provider": "reddit", "endpoint_key": "subreddit_top",
+                "params": {"subreddit": "programming", "limit": 5, "t": "day"},
+                "response_map": {},  # NOTE: structured list-binding via transforms lands in Phase 3.1
+                "refresh_seconds": 600, "cache_seconds": 600,
+            },
         ),
     },
 ]

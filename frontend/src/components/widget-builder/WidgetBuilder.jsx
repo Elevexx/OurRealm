@@ -21,6 +21,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import * as Icons from "lucide-react";
 import apiClient from "@/api/client";
 import CustomWidgetRenderer from "@/components/widgets/CustomWidgetRenderer";
+import ApiSourceTab from "@/components/widget-builder/ApiSourceTab";
 import {
   FIELD_TYPES, CATEGORY_GROUPS, PLACEMENTS, ACCESS_GROUPS, SIZES,
   ICON_CHOICES, blankEditorConfig, slugifyKey,
@@ -33,6 +34,7 @@ const SECTIONS = [
   { id: "layout",     label: "Layout" },
   { id: "fields",     label: "Fields" },
   { id: "data",       label: "Data" },
+  { id: "api",        label: "API Source" },
   { id: "placement",  label: "Placement & Access" },
 ];
 
@@ -104,6 +106,9 @@ export default function WidgetBuilder({ open, initial, onClose, onSaved, layouts
             )}
             {section === "data" && (
               <DataSection form={form} setForm={setForm} />
+            )}
+            {section === "api" && (
+              <ApiSourceTab form={form} setForm={setForm} />
             )}
             {section === "placement" && (
               <PlacementSection form={form} setForm={setForm} />

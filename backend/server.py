@@ -45,6 +45,7 @@ from routers import reactions as reactions_router_mod
 from routers import profile_polls as profile_polls_router_mod
 from routers import admin_widgets as admin_widgets_router_mod
 from routers import home_widgets as home_widgets_router_mod
+from routers import api_widgets as api_widgets_router_mod
 from routers import media_proxy as media_proxy_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
@@ -94,6 +95,7 @@ app.include_router(reactions_router_mod.router)
 app.include_router(profile_polls_router_mod.router)
 app.include_router(admin_widgets_router_mod.router)
 app.include_router(home_widgets_router_mod.router)
+app.include_router(api_widgets_router_mod.router)
 app.include_router(media_proxy_router_mod.router)
 
 app.add_middleware(
@@ -232,6 +234,15 @@ async def on_startup():
         await admin_widgets_router_mod.seed_system_widgets()
     except Exception as e:
         logger.warning(f"[admin_widgets] startup failed: {e}")
+
+    # Phase 3 — API Widget proxy. Ensures TTL indexes for the
+    # api_cache and api_quota collections so cache/rate-limit docs
+    # self-expire without a cron.
+    try:
+        from services import api_widget_proxy
+        await api_widget_proxy.ensure_indexes()
+    except Exception as e:
+        logger.warning(f"[api_widgets] startup failed: {e}")
 
     # Communities (Realms + Groups + Chats) — ensure indexes + seed
     # the legacy mock realms into Mongo on the very first startup.

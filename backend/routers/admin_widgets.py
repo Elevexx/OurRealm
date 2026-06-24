@@ -250,8 +250,23 @@ def _validate_editor_config(cfg: Any) -> Optional[dict]:
     data_source = cfg.get("data_source") or {"kind": "static", "api": None, "refresh_seconds": 0}
     if not isinstance(data_source, dict):
         raise HTTPException(status_code=400, detail="editor_config.data_source must be an object")
-    if data_source.get("kind") not in (None, "static", "api"):
+    kind = data_source.get("kind") or "static"
+    if kind not in ("static", "api"):
         raise HTTPException(status_code=400, detail="data_source.kind must be 'static' or 'api'")
+    if kind == "api":
+        # Validate the API-backed payload. Lazy-imported so the registry
+        # module never depends on Phase-3 provider tables at import time.
+        from core.api_providers import get_provider, get_endpoint
+        prov_key = data_source.get("provider")
+        ep_key = data_source.get("endpoint_key")
+        if not prov_key or not get_provider(prov_key):
+            raise HTTPException(status_code=400, detail=f"data_source.provider '{prov_key}' is unknown")
+        if not ep_key or not get_endpoint(prov_key, ep_key):
+            raise HTTPException(status_code=400, detail=f"data_source.endpoint_key '{ep_key}' is unknown for provider '{prov_key}'")
+        if "params" in data_source and not isinstance(data_source["params"], dict):
+            raise HTTPException(status_code=400, detail="data_source.params must be an object")
+        if "response_map" in data_source and not isinstance(data_source["response_map"], dict):
+            raise HTTPException(status_code=400, detail="data_source.response_map must be an object (field_key → jsonpath)")
     theme = cfg.get("theme") or {}
     limits = cfg.get("limits") or {}
     return {
