@@ -1,6 +1,39 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Profile Widget Order + Editable Notes + Public Animated Widgets (Feb 24, 2026, iter 40)
+
+**Status: ✅ COMPLETE** — Backend 9/9 pytest pass; frontend owner-edit + public-view verified live.
+
+### New default widget order
+- Signup default already was `[Top 8, My Feed]` — unchanged. The previous boot migration that injected Top 8 placed it AFTER My Feed; new boot migration `migrate_reorder_top8_above_myfeed()` (in `core/seed.py`) swaps the two for any user where `profile_widgets_customized != True` AND username ≠ stealth. Preserves sizes, preserves every other widget's relative order.
+
+### `profile_widgets_customized` flag
+- New field on `users` collection. Auto-flipped to `True` by `update_profile` whenever the `widgets` array is included in the payload **except** when the caller is @stealth (founder layout is sacred).
+- Schema serializer exposes the flag in `/api/auth/me` and `/api/profile/by-username`.
+
+### @stealth self-healing
+- `seed_founder()` now compares stealth's widgets against `FOUNDER_WIDGETS` on every boot. Any missing type from {live, merch, music, events, polls, custom} is re-appended without altering existing entries or order. Idempotent — no churn when everything is present.
+
+### Notes widget — editable + persistent
+- `pages/Profile.jsx`: new `NotesBody` component renders an inline `<textarea data-testid="notes-edit-{id}">` in owner-edit mode and a read-only `<div data-testid="notes-body-{id}">` everywhere else. Falls back to the shipping-log quote when text is blank.
+- `pages/FounderProfile.jsx`: added `notes` and `radar` cases to the public WidgetBody switch — these were missing and were the root cause of "animated widgets only show after edit+save" (public view literally rendered nothing for those types).
+- `updateWidget(id, patch)` threads through `SortableWidget` → `WidgetBody` → `NotesBody`. Editing text updates state in place; clicking Save persists the entire widgets array via `PATCH /api/profile/me`.
+
+### Migration idempotency loop — root cause + fix
+- Earlier seed had `seed_support_account()` resetting `widgets:[]` to empty on every boot. `migrate_inject_myfeed_widget` + `migrate_inject_top8_widget` then filled them back in `[myfeed, top8]` and my reorder migration swapped them. Result: 1 row touched per restart.
+- Fix: seed @support directly with `[top8, myfeed]` and `profile_widgets_customized=True`. Migration now converges to 0 reorders on every subsequent boot.
+
+### Files touched
+- `backend/core/config.py` — `default_notes_widget()`, `DEFAULT_NOTES_TEXT`, `NOTES_WIDGET_TYPE`.
+- `backend/core/seed.py` — `migrate_reorder_top8_above_myfeed`, seed_founder self-heal, seed_support_account widgets default.
+- `backend/models/schemas.py` — `ProfileUpdate.profile_widgets_customized` + serializer.
+- `backend/routers/profile.py` — auto-flip on widgets PATCH (skip stealth).
+- `backend/tests/test_profile_widgets_top8_above_myfeed.py` — 9 regression tests.
+- `frontend/src/pages/Profile.jsx` — `NotesBody`, threading editing+onUpdate, `updateWidget`.
+- `frontend/src/pages/FounderProfile.jsx` — `radar` + `notes` cases in public WidgetBody.
+
+
 ## Notifications Cleanup + Calls Tab Restoration (Feb 24, 2026, iter 38)
 
 **Status: ✅ COMPLETE** — Backend 3/3 pytest pass; frontend live-verified on mobile + desktop.
