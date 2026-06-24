@@ -1,6 +1,57 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Phase 3.3 — Native OurRealm Sounds Library Picker (Feb 25, 2026, iter 51) ✅ COMPLETE
+
+**Status:** Backend 8/8 pytest pass, frontend zero issues, zero regressions, zero action items.
+
+### Goals
+Sound/Audio fields in custom widgets accept native OurRealm sound IDs in addition to legacy raw URLs. Saved sound IDs hydrate at render time so renames / cover updates / private-flag changes propagate automatically.
+
+### Backend
+- `routers/sounds.py` — new `GET /api/sounds/resolve?ids=a,b,c`:
+  - Optional auth (lazy `get_current_user` import — public tracks visible to anonymous viewers; private tracks only to owner / authorized viewer via existing `_can_view_track` gate).
+  - Caps at 50 IDs per call.
+  - Preserves caller-supplied ID order so the renderer's array indices line up.
+  - Silently drops missing/unauthorized IDs (renderer shows "Sound unavailable" fallback).
+
+### Frontend
+- `components/SoundsLibraryPicker.jsx` (new) — full-screen modal driven by `GET /api/sounds/me/tracks`:
+  - Per-row: cover thumbnail, title, category/genre/mood, inline play-preview button, Add/Pick toggle.
+  - Single + multi modes. Multi-mode shows live counter ("Use 3 sounds").
+  - Empty-state with deep-link to `/sounds`.
+  - Module-level audio singleton — only one preview plays at a time.
+- `components/widget-builder/WidgetBuilder.jsx` `MediaListInput`:
+  - Adds "Select from Sounds Library" button when `field.type === "sound"`.
+  - Multi-mode merges new IDs with any existing legacy URLs (keeps both).
+  - Renders a "NATIVE ID" green badge next to UUID-shaped rows.
+  - Help text clarifies legacy URLs still work.
+- `components/widgets/CustomWidgetRenderer.jsx`:
+  - Detects sound-type fields via `editor_config.fields`; collects all UUID-shaped values across them.
+  - One bulk `/api/sounds/resolve` call hydrates them; renders `NativeSoundList` inline below the main layout.
+  - Each row: `NativeSoundRow` for resolved (cover, title, category, play/pause button, hidden `<audio>`) / `LegacyUrlRow` for plain URLs / missing-state row with AlertTriangle icon for null tracks.
+
+### Verified end-to-end
+- Picker opens with 3 stealth tracks, multi-select counter increments, confirm writes IDs.
+- Live preview pane shows `FORYOU_PROBE_UPLOAD / Music` native player with cover + play button.
+- NATIVE ID badge confirms UUID detection works.
+- Anonymous /api/sounds/resolve returns public tracks only (gated).
+- Bogus / nonexistent IDs return `{tracks:[]}` cleanly (no 500).
+- Legacy URLs still render via LegacyUrlRow path.
+
+### Files touched (Phase 3.3)
+- `backend/routers/sounds.py` — `/api/sounds/resolve` endpoint
+- `frontend/src/components/SoundsLibraryPicker.jsx` (new)
+- `frontend/src/components/widget-builder/WidgetBuilder.jsx` — MediaListInput
+- `frontend/src/components/widgets/CustomWidgetRenderer.jsx` — NativeSoundList + NativeSoundRow + LegacyUrlRow
+
+### Known limitations
+- Picker pulls `/api/sounds/me/tracks` (the founder's uploads). If we later want to allow pinning OTHER users' public sounds, a `/api/sounds/search` integration would slot in here.
+- Native sound player is a minimal inline component; could be replaced with the full `SoundPlayerCard` for a richer experience in larger layouts.
+
+---
+
+
 ## Phase 3.2 — Value Formatters + Sliding-Window Rate Limit (Feb 25, 2026, iter 50) ✅ COMPLETE
 
 **Status:** 16/21 backend tests pass on a single run; remaining 5 skipped due to CoinGecko upstream rate limit (spec explicitly allows this — not code defects). Direct-module formatter math 8/8, sliding-window unit test pass, headers + 429 shape verified, frontend zero issues, zero regressions. One optional 2-line hardening applied (`isinstance` guard on `editor_config.layout`).
