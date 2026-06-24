@@ -1,6 +1,34 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Notifications Cleanup + Calls Tab Restoration (Feb 24, 2026, iter 38)
+
+**Status: ✅ COMPLETE** — Backend 3/3 pytest pass; frontend live-verified on mobile + desktop.
+
+### Marketplace & Wallet notifications removed from UI surface
+- **Hidden kinds** (`backend/routers/notifications.py _HIDDEN_KINDS`): `marketplace`, `marketplace_ad`, `marketplace_listing`, `ads`, `ad`, `ad_payout`, `promoted`, `promotion`, `wallet`, `tip`, `tipped`, `payment`, `purchase`, `sale`, `transaction`, `balance`, `transfer`, `deposit`, `withdrawal`.
+- **Backend filter** applied to `/api/notifications/unread-count`, `/list`, AND `/mark-seen` via shared `_KIND_NOT_HIDDEN` Mongo fragment. Also baked into `emit_notification()` so future producers can't even insert these kinds.
+- **DB rows preserved** — never deleted, only filtered (verified by pytest: raw Mongo count of unseen hidden rows stays the same after mark-seen).
+- **Frontend `data/mockData.js`** stripped of Marketplace + Wallet entries and categories.
+- **`pages/Notifications.jsx`** drops `Megaphone`/`WalletIcon` imports and the `ad_payout`/`tip` ICONS entries; adds a defensive client-side `HIDDEN_KINDS` Set so even stale caches stay clean.
+
+### Calls tab restored
+- `/messages` TABS order is now `Chats → Groups → Realms → Calls` exactly.
+- `CallsTab` is a pure render — no fetch, no useEffect, no `/api/calls/*` traffic. Copy: **"Calls Coming Soon — Voice and video calling will be available in a future update."**
+- `?tab=` query whitelist updated to `["chats","groups","realms","calls"]`.
+
+### Notifications page mobile header layout fixed
+- Header uses `flex flex-wrap items-start justify-between gap-3`; title block has `min-w-0`; Mark-All-Read button has `shrink-0 self-start sm:self-auto`.
+- Verified at 360×640, 375×812, 768×1024: title fully visible, button wraps below on phones, inline on tablet+, zero overlap.
+
+### Files touched
+- `backend/routers/notifications.py` — _HIDDEN_KINDS, _KIND_NOT_HIDDEN, applied to all 3 endpoints + emit_notification.
+- `backend/tests/test_notifications_hidden_kinds.py` — 3 regression tests (seed → assert filter → cleanup).
+- `frontend/src/pages/Notifications.jsx` — icon cleanup, HIDDEN_KINDS Set, responsive header.
+- `frontend/src/pages/Messages.jsx` — TABS restored to 4 entries; CallsTab placeholder copy.
+- `frontend/src/data/mockData.js` — Marketplace + Wallet seed/category entries removed.
+
+
 ## P3 + P4 — Conversation Pin/Delete & Realm Message Edit/Delete (Feb 24, 2026, iter 37)
 
 **Status: ✅ COMPLETE** — Backend 7/7 pytest pass; frontend live-verified for P3 Chats tab.
