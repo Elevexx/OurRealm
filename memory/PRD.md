@@ -1,6 +1,40 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Phase-16 Media Widgets Fix + Photos Widget (Feb 24, 2026, iter 43)
+
+**Status: ✅ COMPLETE** — Backend 19/19 pytest (13 phase-15 updated + 6 phase-16 new) + frontend live-verified.
+
+### Allow-list grows from 15 → 16: Photos added
+- `core/widget_types.py`: `ALLOWED_WIDGET_TYPES` includes `photos`; `PHOTOS_MAX=12` cap.
+- `routers/profile.py`: photos validation block enforces max 12 with HTTP 400 'Photos widget supports max 12 photos'; slices to 12 on overflow.
+- Frontend mirror: `WIDGET_TYPES` is now 16 entries (added `photos` with Image icon).
+
+### Videos playback fixed
+- Previous render placed a non-clickable `PlayCircle` icon over a poster-less `<video preload="metadata">` — playback was unreachable.
+- New `VideoTile` sub-component: while inactive renders thumbnail (poster for pinned posts, first-frame muted preload for uploads) + clickable PlayCircle overlay. On tap React state flips to `<video controls autoPlay playsInline>` so the browser owns playback.
+- Verified end-to-end with a real upload URL: `/api/media/videos/{id}.mp4` resolves to a 307 → presigned R2 URL which the browser plays cleanly.
+
+### New Photos widget
+- `PhotosBody` + `PinPhotoPicker` in `components/ProfileWidgetBodies.jsx`.
+- Owner can upload (POST `/api/images/upload`), pin existing image posts (GET `/api/posts?username&media_type=image`), remove, and move-left to reorder.
+- Items stored as `{kind:'upload', url, thumbnail_url}` or `{kind:'post', post_id, url}`. Grid cols scale with widget size (small=2, otherwise=3).
+- Max 12, friendly empty state, lazy-loaded thumbnails.
+
+### Friendly empty states everywhere
+- Videos / Photos: `No videos yet` / `No photos yet` on public view + owner non-edit view.
+- Music / Podcasts: empty state in the widget AND in the picker explains "Upload one from the Sounds page (set category to {Music|Podcasts}) and it'll appear here."
+
+### Files touched
+- `backend/core/widget_types.py` — `photos` + `PHOTOS_MAX=12`.
+- `backend/routers/profile.py` — photos validation.
+- `backend/tests/test_photos_widget_phase16.py` (new) — 6 regression tests.
+- `backend/tests/test_widget_allowlist_phase15.py` — ALLOWED set + strip test updated to include `photos`.
+- `frontend/src/components/ProfileWidgetBodies.jsx` — `VideoTile` sub-component, `PhotosBody`, `PinPhotoPicker`, empty states for Videos/Photos/Music/Podcasts.
+- `frontend/src/data/mockData.js` — `WIDGET_TYPES` 16th entry: photos.
+- `frontend/src/pages/Profile.jsx` + `pages/FounderProfile.jsx` — `case 'photos'` in both WidgetBody switches.
+
+
 ## Phase-15 Widget Lockdown + Editable Notes/Blog/Polls/Music/Podcasts/Videos (Feb 24, 2026, iter 41–42)
 
 **Status: ✅ COMPLETE** — Backend 22/22 pytest pass (13 phase-15 + 9 prior); frontend 100% live-verified.

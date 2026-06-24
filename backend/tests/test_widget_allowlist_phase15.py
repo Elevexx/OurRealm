@@ -25,7 +25,7 @@ CREDS = {
     "tfone":   {"email": "testfriend1@example.com", "password": "pass1234"},
 }
 
-ALLOWED = {"myfeed","top8","live","videos","music","podcasts","events","weather",
+ALLOWED = {"myfeed","top8","live","videos","music","podcasts","photos","events","weather",
            "calendar","countdown","notes","polls","survey","blog","radar"}
 
 
@@ -58,7 +58,6 @@ class TestWidgetAllowList:
         payload = {"widgets": [
             {"id": "w-top8-test", "type": "top8"},
             {"id": "w-merch-test", "type": "merch", "items": []},
-            {"id": "w-photos-test", "type": "photos"},
             {"id": "w-wallet-test", "type": "wallet"},
             {"id": "w-crypto-test", "type": "crypto"},
             {"id": "w-myfeed-test", "type": "myfeed"},
@@ -67,12 +66,11 @@ class TestWidgetAllowList:
         assert r.status_code == 200, r.text
         wtypes = [w["type"] for w in r.json()["user"]["widgets"]]
         assert "merch" not in wtypes
-        assert "photos" not in wtypes
         assert "wallet" not in wtypes
         assert "crypto" not in wtypes
         assert "top8" in wtypes
         assert "myfeed" in wtypes
-        # every remaining type must be in allow-list
+        # every remaining type must be in allow-list (Phase-16 includes photos)
         for t in wtypes:
             assert t in ALLOWED, f"Unexpected type {t} survived strip"
 
