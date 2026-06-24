@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional, List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field, ConfigDict
 
 from core.deps import CurrentUser, is_admin_user
@@ -21,6 +21,7 @@ from core.api_providers import (
     PROVIDERS, get_provider, get_endpoint, public_provider_view,
 )
 from services.api_widget_proxy import call_api
+from utils.sliding_window_rate_limit import aggregate_recent_denials
 
 logger = logging.getLogger("ourrealm.api_widgets")
 router = APIRouter(prefix="/api", tags=["api-widgets"])
@@ -47,7 +48,8 @@ class ApiTestPayload(BaseModel):
     params: Dict[str, Any] = Field(default_factory=dict)
     response_map: Optional[Dict[str, str]] = None
     array_bindings: Optional[List[Dict[str, Any]]] = None
-    bypass_cache: bool = True   # builder test always bypasses cache.
+    formatters: Optional[Dict[str, Dict[str, Any]]] = None
+    bypass_cache: bool = True
 
 
 class ApiCallPayload(BaseModel):
@@ -59,7 +61,20 @@ class ApiCallPayload(BaseModel):
     params: Optional[Dict[str, Any]] = None
     response_map: Optional[Dict[str, str]] = None
     array_bindings: Optional[List[Dict[str, Any]]] = None
+    formatters: Optional[Dict[str, Dict[str, Any]]] = None
     cache_seconds: Optional[int] = None
+
+
+def _set_rate_headers(response: Response, rl: Optional[Dict[str, Any]]) -> None:
+    """Attach X-RateLimit-* headers from the limiter result."""
+    if not rl:
+        return
+    if rl.get("limit") is not None:
+        response.headers["X-RateLimit-Limit"] = str(rl["limit"])
+    if rl.get("remaining") is not None:
+        response.headers["X-RateLimit-Remaining"] = str(rl["remaining"])
+    if rl.get("reset_in") is not None:
+        response.headers["X-RateLimit-Reset"] = str(rl["reset_in"])
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -77,19 +92,21 @@ async def list_api_providers(current: CurrentUser):
 # ─────────────────────────────────────────────────────────────────────
 
 @router.post("/admin/widgets/test-api")
-async def test_api(payload: ApiTestPayload, current: CurrentUser):
+async def test_api(payload: ApiTestPayload, current: CurrentUser, response: Response):
     _require_stealth(current)
     try:
         result = await call_api(
             payload.provider,
             payload.endpoint,
             payload.params,
-            widget_id=None,           # builder tests don't count toward per-widget burst
-            cache_seconds=0,          # don't pollute cache from the test surface
+            widget_id=None,
+            cache_seconds=0,
             bypass_cache=payload.bypass_cache,
             response_map=payload.response_map,
             array_bindings=payload.array_bindings,
+            formatters=payload.formatters,
         )
+        _set_rate_headers(response, result.get("rate_limit"))
         return result
     except HTTPException:
         raise
@@ -110,7 +127,7 @@ async def test_api(payload: ApiTestPayload, current: CurrentUser):
 # ─────────────────────────────────────────────────────────────────────
 
 @router.post("/widgets/api-call")
-async def widget_api_call(payload: ApiCallPayload, current: CurrentUser):
+async def widget_api_call(payload: ApiCallPayload, current: CurrentUser, response: Response):
     # Authenticated users only.
     if not current:
         raise HTTPException(status_code=401, detail="Login required")
@@ -135,18 +152,17 @@ async def widget_api_call(payload: ApiCallPayload, current: CurrentUser):
         params = {**(ds.get("params") or {}), **(payload.params or {})}
         response_map = payload.response_map or ds.get("response_map") or {}
         array_bindings = payload.array_bindings or ds.get("array_bindings") or []
+        formatters = payload.formatters or ds.get("formatters") or {}
         cache_seconds = payload.cache_seconds if payload.cache_seconds is not None else ds.get("cache_seconds")
         widget_id = widget["id"]
     else:
-        # No widget context — restricted to @stealth (matches test-api).
-        # Live widgets MUST go through widget_id/widget_key so the
-        # editor_config provides the trusted params + response_map.
         _require_stealth(current)
         provider = payload.provider
         endpoint_key = payload.endpoint
         params = payload.params or {}
         response_map = payload.response_map
         array_bindings = payload.array_bindings
+        formatters = payload.formatters
         cache_seconds = payload.cache_seconds
         widget_id = None
 
@@ -160,8 +176,20 @@ async def widget_api_call(payload: ApiCallPayload, current: CurrentUser):
         bypass_cache=False,
         response_map=response_map,
         array_bindings=array_bindings,
+        formatters=formatters,
     )
+    _set_rate_headers(response, result.get("rate_limit"))
     return result
+
+
+@router.get("/admin/analytics/rate-limits")
+async def admin_rate_limit_analytics(current: CurrentUser, hours: int = 24):
+    """Aggregated 429 activity over the last `hours` (default 24).
+    Admin-only — surfaces top abused keys, IPs, users, endpoints."""
+    if not is_admin_user(current):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    hours = max(1, min(int(hours or 24), 168))
+    return await aggregate_recent_denials(hours=hours)
 
 
 __all__ = ["router"]

@@ -30,6 +30,8 @@ from fastapi import HTTPException
 
 from core.db import db
 from core.api_providers import get_provider, get_endpoint, has_credential
+from utils.value_formatters import apply_formatters_dict
+from utils.sliding_window_rate_limit import rate_limit as sliding_rate_limit
 
 logger = logging.getLogger("ourrealm.api_proxy")
 
@@ -154,13 +156,21 @@ async def _cache_put(key: str, data: Any, ttl_seconds: int,
 # ─────────────────────────────────────────────────────────────────────
 
 async def _check_rate(provider_key: str, widget_id: Optional[str],
-                      provider_quota_per_hour: int) -> None:
-    """Raises HTTPException(429) if any bucket is exhausted."""
-    now = datetime.now(timezone.utc)
-    minute_bucket = now.strftime("%Y%m%d%H%M")
-    hour_bucket = now.strftime("%Y%m%d%H")
+                      provider_quota_per_hour: int) -> Dict[str, Any]:
+    """Raises HTTPException(429) if any bucket is exhausted.
 
-    # 1) Provider-wide hourly quota.
+    Sliding-window for per-minute caps (Phase 3.2) — no more
+    minute-boundary exploit. Fixed-hour Mongo bucket retained for
+    the cheap-to-evaluate hourly provider quota.
+
+    Returns the most-constrained `remaining`/`reset_in` for the
+    caller to emit X-RateLimit-* headers.
+    """
+    now = datetime.now(timezone.utc)
+    hour_bucket = now.strftime("%Y%m%d%H")
+    headers_meta = {"limit": None, "remaining": None, "reset_in": None}
+
+    # 1) Provider hourly quota — fixed-window Mongo bucket (cheap, OK).
     prov_key_h = f"prov:{provider_key}:h:{hour_bucket}"
     h = await db.api_quota.find_one_and_update(
         {"_id": prov_key_h},
@@ -172,31 +182,54 @@ async def _check_rate(provider_key: str, widget_id: Optional[str],
             },
         },
         upsert=True,
-        return_document=True,  # returns the doc AFTER increment
+        return_document=True,
     )
     if h and (h.get("count") or 0) > provider_quota_per_hour:
         raise HTTPException(status_code=429, detail=f"Provider quota exceeded for {provider_key} ({provider_quota_per_hour}/hour)")
 
-    # 2) Provider per-minute burst.
-    prov_key_m = f"prov:{provider_key}:m:{minute_bucket}"
-    m = await db.api_quota.find_one_and_update(
-        {"_id": prov_key_m},
-        {"$inc": {"count": 1}, "$setOnInsert": {"scope": "provider", "provider": provider_key, "bucket": "minute", "expires_at": _ttl(now, 120)}},
-        upsert=True, return_document=True,
+    # 2) Provider per-minute burst — sliding window.
+    prov_res = await sliding_rate_limit(
+        f"prov:{provider_key}:burst",
+        max_requests=PROVIDER_BURST_PER_MIN,
+        window_seconds=60,
+        event_meta={"scope": "provider", "provider": provider_key, "endpoint": "burst"},
     )
-    if m and (m.get("count") or 0) > PROVIDER_BURST_PER_MIN:
-        raise HTTPException(status_code=429, detail=f"Provider burst limit ({PROVIDER_BURST_PER_MIN}/min) on {provider_key}")
-
-    # 3) Per-widget burst (only if widget_id present — test-api calls skip).
-    if widget_id:
-        w_key = f"widget:{widget_id}:m:{minute_bucket}"
-        w = await db.api_quota.find_one_and_update(
-            {"_id": w_key},
-            {"$inc": {"count": 1}, "$setOnInsert": {"scope": "widget", "widget_id": widget_id, "bucket": "minute", "expires_at": _ttl(now, 120)}},
-            upsert=True, return_document=True,
+    if not prov_res["allowed"]:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "rate_limit_exceeded",
+                "scope": "provider_burst",
+                "retry_after": prov_res["retry_after"],
+                "message": f"Provider burst limit ({PROVIDER_BURST_PER_MIN}/min) on {provider_key}",
+            },
+            headers={"Retry-After": str(prov_res["retry_after"])},
         )
-        if w and (w.get("count") or 0) > PER_WIDGET_BURST_PER_MIN:
-            raise HTTPException(status_code=429, detail=f"Widget burst limit ({PER_WIDGET_BURST_PER_MIN}/min)")
+    headers_meta = {"limit": prov_res["limit"], "remaining": prov_res["remaining"], "reset_in": prov_res["reset_in"]}
+
+    # 3) Per-widget burst — sliding window.
+    if widget_id:
+        wres = await sliding_rate_limit(
+            f"widget:{widget_id}:burst",
+            max_requests=PER_WIDGET_BURST_PER_MIN,
+            window_seconds=60,
+            event_meta={"scope": "widget", "widget_id": widget_id},
+        )
+        if not wres["allowed"]:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error": "rate_limit_exceeded",
+                    "scope": "widget_burst",
+                    "retry_after": wres["retry_after"],
+                    "message": f"Widget burst limit ({PER_WIDGET_BURST_PER_MIN}/min)",
+                },
+                headers={"Retry-After": str(wres["retry_after"])},
+            )
+        # Tighter of the two surfaces what the caller can actually do.
+        if wres["remaining"] < (headers_meta["remaining"] or 0):
+            headers_meta = {"limit": wres["limit"], "remaining": wres["remaining"], "reset_in": wres["reset_in"]}
+    return headers_meta
 
 
 def _ttl(now: datetime, seconds: int) -> datetime:
@@ -321,10 +354,19 @@ async def call_api(
     bypass_cache: bool = False,
     response_map: Optional[Dict[str, str]] = None,
     array_bindings: Optional[List[Dict[str, Any]]] = None,
+    formatters: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    """Returns {data, mapped, mapped_arrays, cached, tier, debug}.
-    `mapped` holds single-value field results; `mapped_arrays` holds
-    repeated-item field results. Renderer merges both into editor_config.data."""
+    """Returns {data, mapped, mapped_formatted, mapped_arrays, mapped_arrays_formatted,
+    cached, tier, debug, rate_limit}.
+
+    Phase 3.2 additions:
+      • formatters — per-field formatter cfg; results land in mapped_formatted.
+      • Array bindings can carry their own `item_formatters` dict; we apply
+        it per-item and emit mapped_arrays_formatted[field_key] as a list of
+        {field_key: {raw, formatted, color}, ...} item dicts.
+      • Returns rate_limit headers metadata (limit/remaining/reset_in)
+        so the route can attach X-RateLimit-* headers.
+    """
     provider = get_provider(provider_key)
     if not provider:
         raise HTTPException(status_code=404, detail=f"Unknown provider '{provider_key}'")
@@ -340,20 +382,25 @@ async def call_api(
     ckey = _make_cache_key(provider_key, endpoint_key, norm_params)
 
     # Cache fast-path.
-    if not bypass_cache:
-        cached = await _cache_get(ckey)
-        if cached:
-            return {
-                "data": cached["data"],
-                "mapped": _apply_map(cached["data"], response_map),
-                "mapped_arrays": _apply_array_bindings(cached["data"], array_bindings),
-                "cached": True,
-                "cache_tier": cached["tier"],
-                "debug": {"cache_key": ckey},
-            }
+    cached = None if bypass_cache else await _cache_get(ckey)
+    if cached:
+        data = cached["data"]
+        mapped = _apply_map(data, response_map)
+        mapped_arrays = _apply_array_bindings(data, array_bindings)
+        return {
+            "data": data,
+            "mapped": mapped,
+            "mapped_formatted": apply_formatters_dict(mapped, formatters),
+            "mapped_arrays": mapped_arrays,
+            "mapped_arrays_formatted": _format_arrays(mapped_arrays, array_bindings),
+            "cached": True,
+            "cache_tier": cached["tier"],
+            "debug": {"cache_key": ckey},
+            "rate_limit": None,
+        }
 
     # Rate limit BEFORE making the upstream call.
-    await _check_rate(provider_key, widget_id, provider.get("provider_quota_per_hour") or 1000)
+    rl_meta = await _check_rate(provider_key, widget_id, provider.get("provider_quota_per_hour") or 1000)
 
     url, query, headers, body, debug = _resolve_url_and_request(provider, endpoint, norm_params)
     if debug.get("missing"):
@@ -365,14 +412,48 @@ async def call_api(
     ttl = cache_seconds if (cache_seconds is not None) else provider.get("default_cache_seconds", 300)
     await _cache_put(ckey, data, ttl, provider_key, endpoint_key)
 
+    mapped = _apply_map(data, response_map)
+    mapped_arrays = _apply_array_bindings(data, array_bindings)
+
     return {
         "data": data,
-        "mapped": _apply_map(data, response_map),
-        "mapped_arrays": _apply_array_bindings(data, array_bindings),
+        "mapped": mapped,
+        "mapped_formatted": apply_formatters_dict(mapped, formatters),
+        "mapped_arrays": mapped_arrays,
+        "mapped_arrays_formatted": _format_arrays(mapped_arrays, array_bindings),
         "cached": False,
         "cache_tier": "MISS",
         "debug": {"cache_key": ckey, "url": url, "method": method},
+        "rate_limit": rl_meta,
     }
+
+
+def _format_arrays(arrays: Dict[str, Any], bindings: Optional[List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
+    """Apply per-item formatters declared on each array_binding.
+    Returns {field_key: [{item_field: {raw, formatted, color}, ...}, ...]}.
+    Items lacking formatters are NOT included to keep payload size small."""
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    if not bindings:
+        return out
+    for b in bindings:
+        if not isinstance(b, dict):
+            continue
+        fk = b.get("field_key")
+        item_formatters = b.get("item_formatters") or {}
+        if not fk or not item_formatters:
+            continue
+        items = arrays.get(fk)
+        if not isinstance(items, list):
+            continue
+        out_items: List[Dict[str, Any]] = []
+        for it in items:
+            if not isinstance(it, dict):
+                out_items.append({})
+                continue
+            formatted_row = apply_formatters_dict(it, item_formatters)
+            out_items.append(formatted_row)
+        out[fk] = out_items
+    return out
 
 
 def _apply_map(data: Any, response_map: Optional[Dict[str, str]]) -> Dict[str, Any]:

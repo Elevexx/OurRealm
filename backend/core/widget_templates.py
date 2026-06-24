@@ -278,6 +278,11 @@ TEMPLATES: List[Dict[str, Any]] = [
                 "kind": "api", "provider": "coingecko", "endpoint_key": "simple_price",
                 "params": {"ids": "bitcoin", "vs_currencies": "usd", "include_24hr_change": True},
                 "response_map": {"value": "bitcoin.usd", "delta": "bitcoin.usd_24h_change"},
+                "formatters": {
+                    "value": {"type": "currency", "symbol": "$", "decimals": 2},
+                    "delta": {"type": "percent", "decimals": 2, "suffix": "%",
+                              "positive_color": "#10E670", "negative_color": "#FF5A6B"},
+                },
                 "refresh_seconds": 120, "cache_seconds": 120,
             },
         ),
@@ -425,6 +430,10 @@ TEMPLATES: List[Dict[str, Any]] = [
                         "body": "symbol",
                         "value": "current_price",
                         "image": "image",
+                    },
+                    "item_formatters": {
+                        "value": {"type": "currency", "symbol": "$", "decimals": 2},
+                        "body": {"type": "uppercase"},
                     },
                 }],
                 "refresh_seconds": 300, "cache_seconds": 300,

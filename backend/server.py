@@ -240,7 +240,9 @@ async def on_startup():
     # self-expire without a cron.
     try:
         from services import api_widget_proxy
+        from utils import sliding_window_rate_limit
         await api_widget_proxy.ensure_indexes()
+        await sliding_window_rate_limit.ensure_indexes()
     except Exception as e:
         logger.warning(f"[api_widgets] startup failed: {e}")
 

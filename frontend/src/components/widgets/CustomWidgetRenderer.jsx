@@ -171,8 +171,8 @@ function ListLayout({ data }) {
                 </div>
               )}
             </div>
-            {it.value && (
-              <div className="text-[11px] font-bold whitespace-nowrap" style={{ color: "var(--primary)" }}>
+            {it.value !== undefined && it.value !== null && it.value !== "" && (
+              <div className="text-[11px] font-bold whitespace-nowrap" style={{ color: (it._colors && it._colors.value) || "var(--primary)" }}>
                 {it.value}
               </div>
             )}
@@ -277,16 +277,17 @@ function PollLayout({ data }) {
 function StatLayout({ data, theme }) {
   const accent = theme?.accent || "var(--primary)";
   const trend = !!data.trend;
+  const colors = data._colors || {};
   return (
     <div className="h-full flex flex-col justify-center text-center" data-testid="custom-layout-stat">
       <div className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
         {data.label || ""}
       </div>
-      <div className="text-3xl mt-1" style={{ fontFamily: "var(--font-display)", color: accent }}>
+      <div className="text-3xl mt-1" style={{ fontFamily: "var(--font-display)", color: colors.value || accent }}>
         {data.value || "—"}
       </div>
       {data.delta && (
-        <div className="text-[11px] mt-1 inline-flex items-center gap-1 justify-center" style={{ color: trend ? "#10E670" : "var(--text-muted)" }}>
+        <div className="text-[11px] mt-1 inline-flex items-center gap-1 justify-center" style={{ color: colors.delta || (trend ? "#10E670" : "var(--text-muted)") }}>
           {trend ? <Icons.TrendingUp size={12} /> : <Icons.Minus size={12} />}
           {data.delta}
         </div>
@@ -381,15 +382,57 @@ export default function CustomWidgetRenderer({ w }) {
           widget_key: w?.type || w?.key,
         });
         if (!cancelled) {
-          // Merge single-value mapped fields with array bindings so
-          // the layout sees a single `data` dict regardless of source.
-          const merged = { ...(data?.mapped || {}), ...(data?.mapped_arrays || {}) };
+          // Phase 3.2 — prefer mapped_formatted over mapped, and apply
+          // per-item formatters from mapped_arrays_formatted to each
+          // array item. Color hints flow through `_colors` so the
+          // layout can pick them up without changing item shape.
+          const merged = {};
+          const colors = {};
+          // Single-value fields.
+          const mapped = data?.mapped || {};
+          const mappedFmt = data?.mapped_formatted || {};
+          for (const k of Object.keys(mapped)) {
+            if (mappedFmt[k] && mappedFmt[k].formatted !== null && mappedFmt[k].formatted !== undefined) {
+              merged[k] = mappedFmt[k].formatted;
+              if (mappedFmt[k].color) colors[k] = mappedFmt[k].color;
+            } else {
+              merged[k] = mapped[k];
+            }
+          }
+          // Array fields — overlay formatted values per item.
+          const arrays = data?.mapped_arrays || {};
+          const arraysFmt = data?.mapped_arrays_formatted || {};
+          for (const fk of Object.keys(arrays)) {
+            const items = arrays[fk] || [];
+            const itemsFmt = arraysFmt[fk] || [];
+            merged[fk] = items.map((it, i) => {
+              if (!it || typeof it !== "object") return it;
+              const fmtRow = itemsFmt[i] || {};
+              const out = { ...it };
+              for (const k of Object.keys(fmtRow)) {
+                if (fmtRow[k]?.formatted !== null && fmtRow[k]?.formatted !== undefined) {
+                  out[k] = fmtRow[k].formatted;
+                  if (fmtRow[k].color) {
+                    out._colors = { ...(out._colors || {}), [k]: fmtRow[k].color };
+                  }
+                }
+              }
+              return out;
+            });
+          }
+          merged._colors = colors;
           setApiData(merged);
           setApiError(null);
         }
       } catch (e) {
         if (!cancelled) {
-          setApiError(e?.response?.data?.detail || "Failed to load");
+          const detail = e?.response?.data?.detail;
+          // Phase 3.2 — 429 payload is shaped {error, scope, retry_after, message}.
+          let msg = "Failed to load";
+          if (typeof detail === "string") msg = detail;
+          else if (detail?.message) msg = detail.message;
+          else if (detail?.error) msg = detail.error;
+          setApiError(msg);
         }
       } finally {
         if (!cancelled) setApiLoading(false);

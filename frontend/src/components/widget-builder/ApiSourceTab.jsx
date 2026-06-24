@@ -18,6 +18,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import * as Icons from "lucide-react";
 import apiClient from "@/api/client";
+import FormatterPicker from "@/components/widget-builder/FormatterPicker";
 
 const DEFAULT_REFRESH_OPTIONS = [
   { v: 60, l: "1 min" },
@@ -105,6 +106,15 @@ export default function ApiSourceTab({ form, setForm }) {
     setDS({ response_map: next });
   };
 
+  // ─── Single-value formatters (Phase 3.2) ──────────────────────────
+  const formatters = ds.formatters || {};
+  const setFormatter = (fieldKey, cfg) => {
+    const next = { ...(ds.formatters || {}) };
+    if (!cfg || (cfg.type || "none") === "none") delete next[fieldKey];
+    else next[fieldKey] = cfg;
+    setDS({ formatters: next });
+  };
+
   // ─── Array bindings (Phase 3.1) ───────────────────────────────────
   const arrayBindings = ds.array_bindings || [];
 
@@ -152,11 +162,10 @@ export default function ApiSourceTab({ form, setForm }) {
         params: ds.params || {},
         response_map: ds.response_map || {},
         array_bindings: ds.array_bindings || [],
+        formatters: ds.formatters || {},
         bypass_cache: true,
       });
       setTestResp(data);
-      // Mirror mapped values + arrays into editor_config.data so the
-      // live preview renders fresh data immediately.
       if (data?.mapped || data?.mapped_arrays) {
         setForm((f) => ({
           ...f,
@@ -171,7 +180,7 @@ export default function ApiSourceTab({ form, setForm }) {
         }));
       }
     } catch (e) {
-      setError(e?.response?.data?.detail || "Test failed");
+      setError(e?.response?.data?.detail?.message || e?.response?.data?.detail || "Test failed");
       setTestResp(null);
     } finally { setTesting(false); }
   };
@@ -210,10 +219,12 @@ export default function ApiSourceTab({ form, setForm }) {
                   endpoint={endpoint}
                   params={ds.params || {}}
                   responseMap={ds.response_map || {}}
+                  formatters={formatters}
                   fields={form.editor_config.fields || []}
                   onParamChange={setParam}
                   onBind={bindField}
                   onUnbind={clearBinding}
+                  onFormatterChange={setFormatter}
                   onTest={runTest}
                   testing={testing}
                   error={error}
@@ -356,7 +367,7 @@ function EndpointPicker({ provider, selected, onPick }) {
   );
 }
 
-function ParamsAndBindings({ provider, endpoint, params, responseMap, fields, onParamChange, onBind, onUnbind, onTest, testing, error, testResp }) {
+function ParamsAndBindings({ provider, endpoint, params, responseMap, formatters, fields, onParamChange, onBind, onUnbind, onFormatterChange, onTest, testing, error, testResp }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       {/* LEFT: params + test button */}
@@ -416,14 +427,17 @@ function ParamsAndBindings({ provider, endpoint, params, responseMap, fields, on
         {/* Bindings list per field */}
         {fields.length > 0 && (
           <div className="mb-3">
-            <div className="text-[10px] mb-1" style={{ color: "var(--text-muted)" }}>Field Bindings</div>
+            <div className="text-[10px] mb-1" style={{ color: "var(--text-muted)" }}>Field Bindings & Formatters</div>
             <div className="space-y-1.5" data-testid="api-bindings">
               {fields.map((f) => (
                 <FieldBinding
                   key={f.key}
                   field={f}
                   bound={responseMap[f.key] || ""}
+                  formatter={formatters?.[f.key]}
+                  sampleValue={(testResp?.mapped || {})[f.key]}
                   onChange={(v) => v ? onBind(f.key, v) : onUnbind(f.key)}
+                  onFormatterChange={(cfg) => onFormatterChange(f.key, cfg)}
                 />
               ))}
             </div>
@@ -491,23 +505,33 @@ function PathChip({ path, label, fields, responseMap, onBind }) {
   );
 }
 
-function FieldBinding({ field, bound, onChange }) {
+function FieldBinding({ field, bound, formatter, sampleValue, onChange, onFormatterChange }) {
   return (
-    <div className="flex items-center gap-2">
-      <code className="text-[10px] px-1.5 py-0.5 rounded shrink-0" style={{ background: "var(--surface-1)", color: "var(--text-muted)" }}>
-        {field.key}
-      </code>
-      <input
-        className="or-input flex-1 text-[10px]"
-        value={bound}
-        placeholder="jsonpath e.g. main.temp"
-        onChange={(e) => onChange(e.target.value)}
-        data-testid={`api-binding-${field.key}`}
-      />
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <code className="text-[10px] px-1.5 py-0.5 rounded shrink-0" style={{ background: "var(--surface-1)", color: "var(--text-muted)" }}>
+          {field.key}
+        </code>
+        <input
+          className="or-input flex-1 text-[10px]"
+          value={bound}
+          placeholder="jsonpath e.g. main.temp"
+          onChange={(e) => onChange(e.target.value)}
+          data-testid={`api-binding-${field.key}`}
+        />
+        {bound && (
+          <button className="starbar-icon" style={{ width: 22, height: 22, color: "#FF5A6B" }} onClick={() => onChange("")} title="Clear">
+            <Icons.X size={10} />
+          </button>
+        )}
+      </div>
       {bound && (
-        <button className="starbar-icon" style={{ width: 22, height: 22, color: "#FF5A6B" }} onClick={() => onChange("")} title="Clear">
-          <Icons.X size={10} />
-        </button>
+        <FormatterPicker
+          value={formatter}
+          onChange={onFormatterChange}
+          sampleValue={sampleValue}
+          testid={`api-formatter-${field.key}`}
+        />
       )}
     </div>
   );
@@ -666,6 +690,18 @@ function ArrayBindingRow({ binding, fields, testResp, onUpdate, onRemove }) {
     const next = { ...(binding.item_map || {}) };
     delete next[k];
     onUpdate({ item_map: next });
+    // also remove any formatter for that key
+    if (binding.item_formatters && binding.item_formatters[k]) {
+      const nf = { ...binding.item_formatters };
+      delete nf[k];
+      onUpdate({ item_formatters: nf });
+    }
+  };
+  const updateItemFormatter = (k, cfg) => {
+    const next = { ...(binding.item_formatters || {}) };
+    if (!cfg || (cfg.type || "none") === "none") delete next[k];
+    else next[k] = cfg;
+    onUpdate({ item_formatters: next });
   };
   const addMapEntry = () => {
     const key = window.prompt("Item field key (e.g. label, body, value, image, url):");
@@ -674,6 +710,8 @@ function ArrayBindingRow({ binding, fields, testResp, onUpdate, onRemove }) {
   };
 
   const itemMapKeys = Object.keys(binding.item_map || {});
+  // Sample of the first preview row for per-item formatter previews.
+  const sampleRow = preview && preview[0] ? preview[0] : null;
 
   return (
     <div className="or-surface p-2.5" style={{ background: "var(--surface-1)" }} data-testid={`array-binding-row-${binding.field_key}`}>
@@ -739,23 +777,35 @@ function ArrayBindingRow({ binding, fields, testResp, onUpdate, onRemove }) {
         {itemMapKeys.length === 0 ? (
           <div className="text-[10px] italic" style={{ color: "var(--text-muted)" }}>No item fields mapped. Use "Quick presets" above or click + Add.</div>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-2">
             {itemMapKeys.map((k) => (
-              <div key={k} className="flex items-center gap-1">
-                <code className="text-[10px] px-1.5 py-0.5 rounded shrink-0 min-w-[60px] text-center" style={{ background: "var(--surface-2)", color: "var(--primary)" }}>
-                  {k}
-                </code>
-                <Icons.ArrowRight size={9} style={{ color: "var(--text-muted)" }} />
-                <input
-                  className="or-input flex-1 text-[10px]"
-                  placeholder="path relative to each item (e.g. title, source.name)"
-                  value={binding.item_map[k] || ""}
-                  onChange={(e) => updateMap(k, e.target.value)}
-                  data-testid={`array-binding-map-${k}`}
-                />
-                <button className="starbar-icon" style={{ width: 20, height: 20, color: "#FF5A6B" }} onClick={() => removeMapEntry(k)}>
-                  <Icons.X size={9} />
-                </button>
+              <div key={k} className="space-y-1">
+                <div className="flex items-center gap-1">
+                  <code className="text-[10px] px-1.5 py-0.5 rounded shrink-0 min-w-[60px] text-center" style={{ background: "var(--surface-2)", color: "var(--primary)" }}>
+                    {k}
+                  </code>
+                  <Icons.ArrowRight size={9} style={{ color: "var(--text-muted)" }} />
+                  <input
+                    className="or-input flex-1 text-[10px]"
+                    placeholder="path relative to each item (e.g. title, source.name)"
+                    value={binding.item_map[k] || ""}
+                    onChange={(e) => updateMap(k, e.target.value)}
+                    data-testid={`array-binding-map-${k}`}
+                  />
+                  <button className="starbar-icon" style={{ width: 20, height: 20, color: "#FF5A6B" }} onClick={() => removeMapEntry(k)}>
+                    <Icons.X size={9} />
+                  </button>
+                </div>
+                {binding.item_map[k] && (
+                  <div className="pl-[68px]">
+                    <FormatterPicker
+                      value={(binding.item_formatters || {})[k]}
+                      onChange={(cfg) => updateItemFormatter(k, cfg)}
+                      sampleValue={sampleRow ? sampleRow[k] : undefined}
+                      testid={`array-item-formatter-${k}`}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -281,6 +281,10 @@ def _validate_editor_config(cfg: Any) -> Optional[dict]:
                 im = b.get("item_map", {})
                 if im and not isinstance(im, dict):
                     raise HTTPException(status_code=400, detail=f"array_bindings[{i}].item_map must be an object")
+                if "item_formatters" in b and not isinstance(b["item_formatters"], dict):
+                    raise HTTPException(status_code=400, detail=f"array_bindings[{i}].item_formatters must be an object")
+        if "formatters" in data_source and not isinstance(data_source["formatters"], dict):
+            raise HTTPException(status_code=400, detail="data_source.formatters must be an object (field_key → formatter_config)")
     theme = cfg.get("theme") or {}
     limits = cfg.get("limits") or {}
     return {
