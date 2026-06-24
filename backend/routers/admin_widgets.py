@@ -267,6 +267,20 @@ def _validate_editor_config(cfg: Any) -> Optional[dict]:
             raise HTTPException(status_code=400, detail="data_source.params must be an object")
         if "response_map" in data_source and not isinstance(data_source["response_map"], dict):
             raise HTTPException(status_code=400, detail="data_source.response_map must be an object (field_key → jsonpath)")
+        if "array_bindings" in data_source:
+            ab = data_source["array_bindings"]
+            if not isinstance(ab, list):
+                raise HTTPException(status_code=400, detail="data_source.array_bindings must be a list")
+            for i, b in enumerate(ab):
+                if not isinstance(b, dict):
+                    raise HTTPException(status_code=400, detail=f"array_bindings[{i}] must be an object")
+                if not b.get("field_key"):
+                    raise HTTPException(status_code=400, detail=f"array_bindings[{i}].field_key is required")
+                if not isinstance(b.get("array_path", ""), str):
+                    raise HTTPException(status_code=400, detail=f"array_bindings[{i}].array_path must be a string")
+                im = b.get("item_map", {})
+                if im and not isinstance(im, dict):
+                    raise HTTPException(status_code=400, detail=f"array_bindings[{i}].item_map must be an object")
     theme = cfg.get("theme") or {}
     limits = cfg.get("limits") or {}
     return {

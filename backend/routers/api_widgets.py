@@ -46,6 +46,7 @@ class ApiTestPayload(BaseModel):
     endpoint: str
     params: Dict[str, Any] = Field(default_factory=dict)
     response_map: Optional[Dict[str, str]] = None
+    array_bindings: Optional[List[Dict[str, Any]]] = None
     bypass_cache: bool = True   # builder test always bypasses cache.
 
 
@@ -57,6 +58,7 @@ class ApiCallPayload(BaseModel):
     endpoint: Optional[str] = None
     params: Optional[Dict[str, Any]] = None
     response_map: Optional[Dict[str, str]] = None
+    array_bindings: Optional[List[Dict[str, Any]]] = None
     cache_seconds: Optional[int] = None
 
 
@@ -86,6 +88,7 @@ async def test_api(payload: ApiTestPayload, current: CurrentUser):
             cache_seconds=0,          # don't pollute cache from the test surface
             bypass_cache=payload.bypass_cache,
             response_map=payload.response_map,
+            array_bindings=payload.array_bindings,
         )
         return result
     except HTTPException:
@@ -131,6 +134,7 @@ async def widget_api_call(payload: ApiCallPayload, current: CurrentUser):
         endpoint_key = ds.get("endpoint_key")
         params = {**(ds.get("params") or {}), **(payload.params or {})}
         response_map = payload.response_map or ds.get("response_map") or {}
+        array_bindings = payload.array_bindings or ds.get("array_bindings") or []
         cache_seconds = payload.cache_seconds if payload.cache_seconds is not None else ds.get("cache_seconds")
         widget_id = widget["id"]
     else:
@@ -142,6 +146,7 @@ async def widget_api_call(payload: ApiCallPayload, current: CurrentUser):
         endpoint_key = payload.endpoint
         params = payload.params or {}
         response_map = payload.response_map
+        array_bindings = payload.array_bindings
         cache_seconds = payload.cache_seconds
         widget_id = None
 
@@ -154,6 +159,7 @@ async def widget_api_call(payload: ApiCallPayload, current: CurrentUser):
         cache_seconds=cache_seconds,
         bypass_cache=False,
         response_map=response_map,
+        array_bindings=array_bindings,
     )
     return result
 

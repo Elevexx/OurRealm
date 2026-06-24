@@ -1,0 +1,51 @@
+{
+  "summary": "Phase 3.1 — Array Bindings backend tested end-to-end. 13/13 functional tests pass once CoinGecko rate-limit cooldown is honoured (10 passed in a single run + the remaining 3 array-test-api CoinGecko cases pass in isolation after a 70s sleep). Reddit nested-array case is upstream Cloudflare-blocked from this server IP (502) — documented in spec as expected → test soft-skips. Frontend smoke skipped after login automation hit the same landing-page SIGN-IN gate noted in iter48 (loop-prevention triggered after 2 attempts). All Phase 3.1 data-testids confirmed present in ApiSourceTab.jsx source. Main agent already smoke-tested live.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/admin/widgets and /api/admin/widgets/from-template/{tk}",
+        "issue": "Return status 200 (default) instead of 201 for resource creation. Spec/PRD describes 201. Cosmetic — frontend doesn't depend on it."
+      },
+      {
+        "endpoint": "/api/admin/widgets/test-api (CoinGecko)",
+        "issue": "Provider per-minute burst (60/min) is easy to hit when running the full Phase 3.1 suite back-to-back; subsequent CoinGecko tests skip with 429/502. Same fixed-minute window issue from iter48 unchanged."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_widget_api_phase31_array.py",
+    "/app/test_reports/pytest/iter49_widget_api_phase31.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Return 201 from POST /api/admin/widgets and /api/admin/widgets/from-template/{tk} for REST hygiene.",
+    "OPTIONAL: Add data-testid='admin-widget-edit-{key}' on the pencil icons in the widget manager list to enable reliable Playwright opening of the builder. Currently selectors collapse to ambiguous icon buttons.",
+    "FYI: Reddit subreddit_top from this preview egress IP returns Cloudflare 502 — not a code bug, but the proxy correctly forwards it as 502 (per Phase 3 minor note, ideally 429/5xx forwarded verbatim). Phase 3.1 tests soft-skip this case as documented in the spec."
+  ],
+  "critical_code_review_comments": [
+    "services/api_widget_proxy._apply_array_bindings: correctly distinguishes scalar-mode (item_map={'_':'path'}) → list of scalars vs object-mode → list of dicts. max_items clamped 1..100. Non-list array_path resolves to []. Robust.",
+    "services/api_widget_proxy.get_path: correctly handles root-level array (array_path='') by returning the whole obj; works for CoinGecko markets. Also tolerates dotted paths and bracket indices.",
+    "routers/api_widgets: array_bindings flows through both test-api (stealth-only) and widgets/api-call (registry path), preserving Phase 3 single-value response_map alongside (both 'mapped' and 'mapped_arrays' returned).",
+    "routers/admin_widgets._validate_editor_config validates array_bindings shape (list, dict items, field_key required, item_map dict) and returns 400 on violation. Confirmed all 3 invalid shapes return 400.",
+    "core/widget_templates: live_crypto_markets / live_news_headlines / live_reddit_top all carry array_bindings preset in editor_config.data_source — verified end-to-end (from-template → registry → /widgets/api-call returns 10 mapped items for live_crypto_markets, second call returns cached=true).",
+    "Renderer integration (CustomWidgetRenderer.jsx) merges mapped + mapped_arrays into editor_config.data; MediaGridLayout accepts both string-array and object-array shapes (source confirmed)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_widget_api_phase31_array.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 functional tests; Reddit case soft-skip is upstream Cloudflare block, not code bug)",
+    "frontend": "not_tested (login automation gated by landing-page SIGN-IN flow; selectors collapse on widget-list pencil icons — same blocker as iter48)"
+  },
+  "test_credentials": "stealth/Password1$, support/Password1$, tfone/pass1234 — all worked.",
+  "seed_data_creation": "Created and cleaned (via module teardown): TEST_ widgets for editor_config validation (4 attempts; only the valid one persisted then deleted), t_live_crypto_markets_* / t_live_news_headlines_* / t_live_reddit_top_* drafts (deleted), crypto_mk_* draft launched + deleted, crypto_single_* draft + deleted. A handful of widgets from earlier failed runs (e.g. t_live_crypto_markets_4bc054) remain in the registry — not auto-cleaned because they were created before the autouse cleanup fixture saw their ids.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run /app/backend/tests/test_widget_api_phase31_array.py. If CoinGecko cases skip with 429/502, wait 70s and re-run TestArrayBindingsTestApi in isolation. Reddit case will likely always skip from this preview IP (Cloudflare block). For frontend smoke, the @stealth login form needs you to click SIGN IN on the marketing landing first, then fill /login form fields — direct goto('/admin/widgets') redirects through that flow. Pencil-icon selectors on widget list are ambiguous — main agent should add per-widget data-testid for reliable Playwright editing access.",
+  "rca of the issue": "No functional bugs. Two minor design observations carried from iter48 still apply (fixed-minute rate buckets, 502 masking of upstream 429). New cosmetic note: POST creation endpoints return 200, not 201."
+}

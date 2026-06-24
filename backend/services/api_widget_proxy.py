@@ -222,7 +222,10 @@ def _resolve_url_and_request(provider: Dict[str, Any], endpoint: Dict[str, Any],
     path = endpoint.get("path") or ""
     query: Dict[str, Any] = {}
     body: Optional[Dict[str, Any]] = None
-    headers: Dict[str, str] = {"Accept": "application/json", "User-Agent": "OurRealm-Widget-Proxy/1.0"}
+    # Reddit's CDN rejects non-browser UAs with 403; use a desktop-ish UA
+    # for public endpoints that don't require auth.
+    ua = provider.get("user_agent") or "OurRealm-Widget-Proxy/1.0"
+    headers: Dict[str, str] = {"Accept": "application/json", "User-Agent": ua}
     debug: Dict[str, Any] = {"missing": []}
 
     # Distribute params into path/query/body/header.
@@ -317,8 +320,11 @@ async def call_api(
     cache_seconds: Optional[int] = None,
     bypass_cache: bool = False,
     response_map: Optional[Dict[str, str]] = None,
+    array_bindings: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    """Returns {data, mapped, cached, tier, debug}. Raises HTTPException on rate-limit / upstream error / unknown provider/endpoint."""
+    """Returns {data, mapped, mapped_arrays, cached, tier, debug}.
+    `mapped` holds single-value field results; `mapped_arrays` holds
+    repeated-item field results. Renderer merges both into editor_config.data."""
     provider = get_provider(provider_key)
     if not provider:
         raise HTTPException(status_code=404, detail=f"Unknown provider '{provider_key}'")
@@ -340,6 +346,7 @@ async def call_api(
             return {
                 "data": cached["data"],
                 "mapped": _apply_map(cached["data"], response_map),
+                "mapped_arrays": _apply_array_bindings(cached["data"], array_bindings),
                 "cached": True,
                 "cache_tier": cached["tier"],
                 "debug": {"cache_key": ckey},
@@ -361,6 +368,7 @@ async def call_api(
     return {
         "data": data,
         "mapped": _apply_map(data, response_map),
+        "mapped_arrays": _apply_array_bindings(data, array_bindings),
         "cached": False,
         "cache_tier": "MISS",
         "debug": {"cache_key": ckey, "url": url, "method": method},
@@ -374,6 +382,55 @@ def _apply_map(data: Any, response_map: Optional[Dict[str, str]]) -> Dict[str, A
     for k, path in response_map.items():
         if isinstance(path, str):
             out[k] = get_path(data, path)
+    return out
+
+
+def _apply_array_bindings(data: Any, bindings: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+    """Phase 3.1 — map JSON arrays onto repeated-item widget fields.
+
+    Each binding declares:
+      • field_key  — which field on the widget (e.g. 'items', 'media')
+      • array_path — dotted path to the source array
+      • item_map   — {item_field: relative_path} per-item mapping
+      • max_items  — cap (default 20)
+      • empty_text — surfaced via the renderer when array is empty
+
+    If item_map has the single key '_', items are emitted as scalars
+    (used for media_grid where each item is just a URL string).
+    Otherwise each item becomes a dict shaped for rich_item rendering.
+    """
+    out: Dict[str, Any] = {}
+    if not bindings or not isinstance(bindings, list):
+        return out
+    for b in bindings:
+        if not isinstance(b, dict):
+            continue
+        field_key = b.get("field_key")
+        if not field_key:
+            continue
+        arr = get_path(data, b.get("array_path") or "")
+        if not isinstance(arr, list):
+            out[field_key] = []
+            continue
+        max_items = int(b.get("max_items") or 20)
+        max_items = max(1, min(max_items, 100))
+        item_map = b.get("item_map") or {}
+        if not isinstance(item_map, dict):
+            out[field_key] = []
+            continue
+        items: List[Any] = []
+        scalar_mode = (len(item_map) == 1 and "_" in item_map)
+        for idx, raw in enumerate(arr[:max_items]):
+            if scalar_mode:
+                items.append(get_path(raw, item_map["_"]))
+                continue
+            obj: Dict[str, Any] = {}
+            for k, p in item_map.items():
+                if isinstance(p, str):
+                    obj[k] = get_path(raw, p)
+            obj.setdefault("id", f"itm_{idx}")
+            items.append(obj)
+        out[field_key] = items
     return out
 
 

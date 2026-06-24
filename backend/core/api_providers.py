@@ -37,6 +37,7 @@ import os
 def _ep(key: str, name: str, *, method: str = "GET", path: str = "",
         params: Optional[List[Dict[str, Any]]] = None,
         sample_paths: Optional[List[Dict[str, str]]] = None,
+        array_hints: Optional[List[Dict[str, Any]]] = None,
         description: str = "") -> Dict[str, Any]:
     return {
         "key": key,
@@ -45,6 +46,7 @@ def _ep(key: str, name: str, *, method: str = "GET", path: str = "",
         "path": path,
         "params": params or [],
         "sample_paths": sample_paths or [],
+        "array_hints": array_hints or [],
         "description": description,
     }
 
@@ -142,8 +144,20 @@ PROVIDERS: List[Dict[str, Any]] = [
                     {"label": "First Source", "path": "articles[0].source.name"},
                     {"label": "First Image", "path": "articles[0].urlToImage"},
                     {"label": "First URL", "path": "articles[0].url"},
-                    {"label": "All Articles", "path": "articles"},
                     {"label": "Total Results", "path": "totalResults"},
+                ],
+                array_hints=[
+                    {
+                        "label": "Headlines List",
+                        "array_path": "articles",
+                        "item_map": {
+                            "label": "title",
+                            "body": "description",
+                            "image": "urlToImage",
+                            "url": "url",
+                            "value": "source.name",
+                        },
+                    },
                 ],
             ),
         ],
@@ -190,6 +204,34 @@ PROVIDERS: List[Dict[str, Any]] = [
                     {"label": "Image", "path": "image.large"},
                     {"label": "Current Price (USD)", "path": "market_data.current_price.usd"},
                     {"label": "Market Cap (USD)", "path": "market_data.market_cap.usd"},
+                ],
+            ),
+            _ep(
+                "markets", "Top Markets",
+                path="/coins/markets",
+                params=[
+                    _p("vs_currency", "text", label="Quote currency", required=True, default="usd"),
+                    _p("order", "select", label="Order", default="market_cap_desc",
+                       enum=["market_cap_desc", "market_cap_asc", "volume_desc", "id_asc"]),
+                    _p("per_page", "number", label="Count", default=10),
+                    _p("page", "number", label="Page", default=1),
+                ],
+                sample_paths=[
+                    {"label": "Top Coin Name", "path": "[0].name"},
+                    {"label": "Top Coin Price", "path": "[0].current_price"},
+                ],
+                array_hints=[
+                    {
+                        "label": "Markets List",
+                        "array_path": "",  # root is the array
+                        "item_map": {
+                            "label": "name",
+                            "body": "symbol",
+                            "value": "current_price",
+                            "delta": "price_change_percentage_24h",
+                            "image": "image",
+                        },
+                    },
                 ],
             ),
         ],
@@ -316,6 +358,7 @@ PROVIDERS: List[Dict[str, Any]] = [
         "auth_kind": "none",  # Public .json endpoints (no key needed).
         "auth_env_var": None,
         "base_url": "https://www.reddit.com",
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "default_refresh_seconds": 600,
         "default_cache_seconds": 600,
         "provider_quota_per_hour": 600,
@@ -336,7 +379,19 @@ PROVIDERS: List[Dict[str, Any]] = [
                     {"label": "First Author", "path": "data.children[0].data.author"},
                     {"label": "First Score", "path": "data.children[0].data.score"},
                     {"label": "First URL", "path": "data.children[0].data.url"},
-                    {"label": "All Posts", "path": "data.children"},
+                ],
+                array_hints=[
+                    {
+                        "label": "Posts List",
+                        "array_path": "data.children",
+                        "item_map": {
+                            "label": "data.title",
+                            "body": "data.subreddit_name_prefixed",
+                            "value": "data.score",
+                            "url": "data.url",
+                            "image": "data.thumbnail",
+                        },
+                    },
                 ],
             ),
         ],

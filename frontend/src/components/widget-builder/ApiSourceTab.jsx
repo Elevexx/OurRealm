@@ -105,6 +105,44 @@ export default function ApiSourceTab({ form, setForm }) {
     setDS({ response_map: next });
   };
 
+  // ─── Array bindings (Phase 3.1) ───────────────────────────────────
+  const arrayBindings = ds.array_bindings || [];
+
+  const addArrayBinding = (preset) => {
+    const fieldsList = form.editor_config.fields || [];
+    const arrayField = fieldsList.find((f) => ["rich_item", "option_list"].includes(f.type)) ||
+                       fieldsList.find((f) => f.type === "image" && (f.max_count || 0) > 1);
+    const fieldKey = preset?.field_key || arrayField?.key || "items";
+    const next = preset || {
+      field_key: fieldKey,
+      array_path: "",
+      max_items: 10,
+      empty_text: "No items available.",
+      item_map: {},
+    };
+    setDS({ array_bindings: [...arrayBindings, next] });
+  };
+
+  const updateArrayBinding = (idx, patch) => {
+    setDS({ array_bindings: arrayBindings.map((b, i) => (i === idx ? { ...b, ...patch } : b)) });
+  };
+
+  const removeArrayBinding = (idx) => {
+    setDS({ array_bindings: arrayBindings.filter((_, i) => i !== idx) });
+  };
+
+  const applyArrayHint = (hint) => {
+    // One-click preset from endpoint.array_hints. Picks a sensible
+    // target field (first rich_item/option_list field, or 'items').
+    addArrayBinding({
+      field_key: (form.editor_config.fields || []).find((f) => ["rich_item", "option_list"].includes(f.type))?.key || "items",
+      array_path: hint.array_path,
+      max_items: 10,
+      empty_text: "No items available.",
+      item_map: { ...(hint.item_map || {}) },
+    });
+  };
+
   const runTest = async () => {
     setTesting(true); setError(null);
     try {
@@ -113,17 +151,22 @@ export default function ApiSourceTab({ form, setForm }) {
         endpoint: ds.endpoint_key,
         params: ds.params || {},
         response_map: ds.response_map || {},
+        array_bindings: ds.array_bindings || [],
         bypass_cache: true,
       });
       setTestResp(data);
-      // Mirror mapped values into editor_config.data so the live
-      // preview renders the freshly-fetched data immediately.
-      if (data?.mapped && typeof data.mapped === "object") {
+      // Mirror mapped values + arrays into editor_config.data so the
+      // live preview renders fresh data immediately.
+      if (data?.mapped || data?.mapped_arrays) {
         setForm((f) => ({
           ...f,
           editor_config: {
             ...f.editor_config,
-            data: { ...(f.editor_config.data || {}), ...data.mapped },
+            data: {
+              ...(f.editor_config.data || {}),
+              ...(data.mapped || {}),
+              ...(data.mapped_arrays || {}),
+            },
           },
         }));
       }
@@ -175,6 +218,19 @@ export default function ApiSourceTab({ form, setForm }) {
                   testing={testing}
                   error={error}
                   testResp={testResp}
+                />
+              )}
+
+              {endpoint && (
+                <ArrayBindingsPanel
+                  endpoint={endpoint}
+                  fields={form.editor_config.fields || []}
+                  bindings={arrayBindings}
+                  testResp={testResp}
+                  onAdd={() => addArrayBinding(null)}
+                  onApplyHint={applyArrayHint}
+                  onUpdate={updateArrayBinding}
+                  onRemove={removeArrayBinding}
                 />
               )}
 
@@ -518,4 +574,237 @@ function defaultParams(endpoint) {
     if (p.default !== undefined && p.default !== null) out[p.name] = p.default;
   }
   return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 3.1 — Array Bindings panel
+// Lets the founder map an array in the API response (e.g. articles,
+// data.children) onto a repeated-item widget field (e.g. items, media).
+// Includes one-click "Apply hint" for endpoints with array_hints
+// declared in the provider registry (NewsAPI articles, Reddit posts,
+// CoinGecko markets, ...).
+// ─────────────────────────────────────────────────────────────────────
+function ArrayBindingsPanel({ endpoint, fields, bindings, testResp, onAdd, onApplyHint, onUpdate, onRemove }) {
+  const arrayFieldCandidates = (fields || []).filter((f) =>
+    ["rich_item", "option_list", "image", "video", "sound"].includes(f.type),
+  );
+  const hints = endpoint?.array_hints || [];
+  return (
+    <div className="or-surface p-3" style={{ background: "var(--surface-2)" }} data-testid="array-bindings-panel">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[11px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+          Array Bindings <span style={{ color: "var(--primary)" }}>· Phase 3.1</span>
+        </div>
+        <button className="or-btn or-btn-ghost text-xs" onClick={onAdd} data-testid="array-binding-add">
+          <Icons.Plus size={12} /> Add binding
+        </button>
+      </div>
+      <p className="text-[10px] mb-2" style={{ color: "var(--text-muted)" }}>
+        Map a JSON array onto a repeated-item field (List, Grid, Media Grid, …). Use it for headlines, top posts, markets, search results, etc.
+      </p>
+
+      {hints.length > 0 && (
+        <div className="mb-3">
+          <div className="text-[10px] mb-1" style={{ color: "var(--text-muted)" }}>Quick presets</div>
+          <div className="flex flex-wrap gap-1">
+            {hints.map((h) => (
+              <button
+                key={h.array_path + h.label}
+                className="text-[10px] px-2 py-1 rounded-full transition-colors"
+                style={{ background: "color-mix(in srgb, var(--brand-green) 18%, transparent)", color: "var(--brand-green)" }}
+                onClick={() => onApplyHint(h)}
+                data-testid={`array-hint-${h.array_path || "root"}`}
+              >
+                <Icons.Sparkles size={9} className="inline" /> {h.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {bindings.length === 0 ? (
+        <div className="text-[11px] italic" style={{ color: "var(--text-muted)" }}>
+          No array bindings yet. Add one to populate List / Grid / Media Grid fields from a JSON array.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {bindings.map((b, i) => (
+            <ArrayBindingRow
+              key={i}
+              binding={b}
+              fields={arrayFieldCandidates}
+              testResp={testResp}
+              onUpdate={(patch) => onUpdate(i, patch)}
+              onRemove={() => onRemove(i)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ArrayBindingRow({ binding, fields, testResp, onUpdate, onRemove }) {
+  // Preview the first 3 items by resolving array_path against the
+  // test response and applying item_map. Pure-frontend resolution so
+  // it stays snappy without re-calling the proxy on every keystroke.
+  const preview = useMemo(() => {
+    if (!testResp?.data) return null;
+    const arr = resolvePath(testResp.data, binding.array_path);
+    if (!Array.isArray(arr)) return null;
+    return arr.slice(0, 3).map((raw) => {
+      const out = {};
+      for (const [k, p] of Object.entries(binding.item_map || {})) {
+        out[k] = resolvePath(raw, p);
+      }
+      return out;
+    });
+  }, [testResp, binding]);
+
+  const updateMap = (k, p) => onUpdate({ item_map: { ...(binding.item_map || {}), [k]: p } });
+  const removeMapEntry = (k) => {
+    const next = { ...(binding.item_map || {}) };
+    delete next[k];
+    onUpdate({ item_map: next });
+  };
+  const addMapEntry = () => {
+    const key = window.prompt("Item field key (e.g. label, body, value, image, url):");
+    if (!key) return;
+    updateMap(key.trim(), "");
+  };
+
+  const itemMapKeys = Object.keys(binding.item_map || {});
+
+  return (
+    <div className="or-surface p-2.5" style={{ background: "var(--surface-1)" }} data-testid={`array-binding-row-${binding.field_key}`}>
+      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 mb-2">
+        <label className="sm:col-span-4">
+          <div className="text-[10px] uppercase tracking-widest mb-0.5" style={{ color: "var(--text-muted)" }}>Target field</div>
+          <select
+            className="or-input w-full text-xs"
+            value={binding.field_key || ""}
+            onChange={(e) => onUpdate({ field_key: e.target.value })}
+            data-testid="array-binding-field"
+          >
+            {fields.length === 0 && <option value="items">items (add a rich_item field)</option>}
+            {fields.map((f) => <option key={f.key} value={f.key}>{f.label || f.key} ({f.type})</option>)}
+          </select>
+        </label>
+        <label className="sm:col-span-5">
+          <div className="text-[10px] uppercase tracking-widest mb-0.5" style={{ color: "var(--text-muted)" }}>Array Path (empty = root array)</div>
+          <input
+            className="or-input w-full text-xs"
+            placeholder="e.g. articles or data.children"
+            value={binding.array_path || ""}
+            onChange={(e) => onUpdate({ array_path: e.target.value })}
+            data-testid="array-binding-path"
+          />
+        </label>
+        <label className="sm:col-span-2">
+          <div className="text-[10px] uppercase tracking-widest mb-0.5" style={{ color: "var(--text-muted)" }}>Max</div>
+          <input
+            type="number"
+            className="or-input w-full text-xs"
+            value={binding.max_items || 10}
+            min={1}
+            max={100}
+            onChange={(e) => onUpdate({ max_items: parseInt(e.target.value, 10) || 10 })}
+            data-testid="array-binding-max"
+          />
+        </label>
+        <div className="sm:col-span-1 flex items-end justify-end">
+          <button className="starbar-icon" style={{ width: 24, height: 24, color: "#FF5A6B" }} onClick={onRemove} title="Remove binding">
+            <Icons.Trash2 size={11} />
+          </button>
+        </div>
+        <label className="sm:col-span-12">
+          <div className="text-[10px] uppercase tracking-widest mb-0.5" style={{ color: "var(--text-muted)" }}>Empty State Text</div>
+          <input
+            className="or-input w-full text-xs"
+            placeholder="No items available."
+            value={binding.empty_text || ""}
+            onChange={(e) => onUpdate({ empty_text: e.target.value })}
+            data-testid="array-binding-empty-text"
+          />
+        </label>
+      </div>
+
+      <div className="border-t pt-2 mb-2" style={{ borderColor: "var(--border-col)" }}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Item Field Mapping</div>
+          <button className="or-btn or-btn-ghost text-[10px]" onClick={addMapEntry} data-testid="array-binding-add-map">
+            <Icons.Plus size={10} /> Add
+          </button>
+        </div>
+        {itemMapKeys.length === 0 ? (
+          <div className="text-[10px] italic" style={{ color: "var(--text-muted)" }}>No item fields mapped. Use "Quick presets" above or click + Add.</div>
+        ) : (
+          <div className="space-y-1">
+            {itemMapKeys.map((k) => (
+              <div key={k} className="flex items-center gap-1">
+                <code className="text-[10px] px-1.5 py-0.5 rounded shrink-0 min-w-[60px] text-center" style={{ background: "var(--surface-2)", color: "var(--primary)" }}>
+                  {k}
+                </code>
+                <Icons.ArrowRight size={9} style={{ color: "var(--text-muted)" }} />
+                <input
+                  className="or-input flex-1 text-[10px]"
+                  placeholder="path relative to each item (e.g. title, source.name)"
+                  value={binding.item_map[k] || ""}
+                  onChange={(e) => updateMap(k, e.target.value)}
+                  data-testid={`array-binding-map-${k}`}
+                />
+                <button className="starbar-icon" style={{ width: 20, height: 20, color: "#FF5A6B" }} onClick={() => removeMapEntry(k)}>
+                  <Icons.X size={9} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {preview && preview.length > 0 && (
+        <div className="border-t pt-2" style={{ borderColor: "var(--border-col)" }}>
+          <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>Preview (first {preview.length})</div>
+          <pre
+            className="text-[9px] p-2 rounded overflow-auto max-h-32"
+            style={{ background: "var(--surface-2)", color: "var(--text-main)", fontFamily: "ui-monospace, monospace" }}
+            data-testid="array-binding-preview"
+          >
+            {JSON.stringify(preview, null, 2)}
+          </pre>
+        </div>
+      )}
+      {preview && preview.length === 0 && (
+        <div className="text-[10px] italic" style={{ color: "var(--text-muted)" }} data-testid="array-binding-preview-empty">
+          Array resolves to 0 items at "{binding.array_path || "<root>"}". Empty state will show in the widget.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Lightweight client-side path resolver — mirrors backend get_path()
+// so the array-binding preview renders without re-hitting the API.
+function resolvePath(obj, path) {
+  if (!path) return obj;
+  if (obj && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, path)) return obj[path];
+  const norm = String(path).replace(/\[(\d+)\]/g, ".$1");
+  const parts = norm.split(".").filter((p) => p !== "");
+  let cur = obj;
+  for (let i = 0; i < parts.length; i++) {
+    if (cur == null) return undefined;
+    const k = parts[i];
+    if (Array.isArray(cur)) {
+      const idx = parseInt(k, 10);
+      cur = Number.isNaN(idx) ? undefined : cur[idx];
+    } else if (typeof cur === "object") {
+      if (k in cur) cur = cur[k];
+      else {
+        const rest = parts.slice(i).join(".");
+        if (rest in cur) return cur[rest];
+        return undefined;
+      }
+    } else { return undefined; }
+  }
+  return cur;
 }

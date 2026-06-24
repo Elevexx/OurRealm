@@ -140,7 +140,7 @@ function ListLayout({ data }) {
       )}
       <div className="space-y-1.5 overflow-y-auto">
         {items.length === 0 ? (
-          <div className="text-xs italic" style={{ color: "var(--text-muted)" }}>No items yet.</div>
+          <div className="text-xs italic" style={{ color: "var(--text-muted)" }} data-testid="custom-layout-empty">{data._empty_text || "No items yet."}</div>
         ) : items.map((it, i) => (
           <div
             key={it.id || i}
@@ -194,7 +194,7 @@ function GridLayout({ data }) {
       )}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 overflow-y-auto">
         {items.length === 0 ? (
-          <div className="col-span-full text-xs italic" style={{ color: "var(--text-muted)" }}>No items yet.</div>
+          <div className="col-span-full text-xs italic" style={{ color: "var(--text-muted)" }} data-testid="custom-layout-grid-empty">{data._empty_text || "No items yet."}</div>
         ) : items.map((it, i) => (
           <div
             key={it.id || i}
@@ -224,7 +224,9 @@ function GridLayout({ data }) {
 }
 
 function MediaGridLayout({ data }) {
-  const media = Array.isArray(data.media) ? data.media : [];
+  const raw = Array.isArray(data.media) ? data.media : [];
+  // Phase 3.1 — accept either ['url1', 'url2'] OR [{image:'url'}, ...]
+  const media = raw.map((m) => (typeof m === "string" ? m : (m?.image || m?.url || ""))).filter(Boolean);
   return (
     <div className="h-full flex flex-col" data-testid="custom-layout-media_grid">
       {data.title && (
@@ -234,7 +236,7 @@ function MediaGridLayout({ data }) {
       )}
       <div className="grid grid-cols-3 gap-1 overflow-y-auto">
         {media.length === 0 ? (
-          <div className="col-span-full text-xs italic" style={{ color: "var(--text-muted)" }}>No media yet.</div>
+          <div className="col-span-full text-xs italic" style={{ color: "var(--text-muted)" }}>{data._empty_text || "No media yet."}</div>
         ) : media.map((src, i) => (
           <Img key={i} src={src} className="w-full aspect-square rounded" alt="" />
         ))}
@@ -379,7 +381,10 @@ export default function CustomWidgetRenderer({ w }) {
           widget_key: w?.type || w?.key,
         });
         if (!cancelled) {
-          setApiData(data?.mapped || {});
+          // Merge single-value mapped fields with array bindings so
+          // the layout sees a single `data` dict regardless of source.
+          const merged = { ...(data?.mapped || {}), ...(data?.mapped_arrays || {}) };
+          setApiData(merged);
           setApiError(null);
         }
       } catch (e) {
@@ -396,9 +401,23 @@ export default function CustomWidgetRenderer({ w }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isApi, widgetIdent, refreshMs]);
 
+  // Build the merged data dict that the layout will render. For API
+  // widgets we layer (in order): registry baseline → instance overrides
+  // → live API mapping. Empty arrays bubble the array-binding's
+  // empty_text via the special `_empty_text` key so the layout can
+  // show "No headlines available" instead of generic copy.
   const merged = registryCfg ? {
     ...registryCfg,
-    data: { ...(registryCfg.data || {}), ...(w?.data || {}), ...(apiData || {}) },
+    data: (() => {
+      const base = { ...(registryCfg.data || {}), ...(w?.data || {}), ...(apiData || {}) };
+      const bindings = registryCfg?.data_source?.array_bindings || [];
+      const empties = bindings
+        .filter((b) => Array.isArray(base[b.field_key]) && base[b.field_key].length === 0)
+        .map((b) => b.empty_text)
+        .filter(Boolean);
+      if (empties.length > 0) base._empty_text = empties[0];
+      return base;
+    })(),
   } : null;
 
   if (!merged) {
