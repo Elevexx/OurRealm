@@ -222,6 +222,8 @@ def _validate_editor_config(cfg: Any) -> Optional[dict]:
     if not isinstance(cfg, dict):
         raise HTTPException(status_code=400, detail="editor_config must be an object")
     layout = cfg.get("layout")
+    if layout is not None and not isinstance(layout, str):
+        raise HTTPException(status_code=400, detail="editor_config.layout must be a string")
     if layout and layout not in LAYOUT_KEYS:
         raise HTTPException(status_code=400, detail=f"Unknown layout '{layout}'")
     fields = cfg.get("fields") or []

@@ -1,6 +1,58 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Phase 3.2 — Value Formatters + Sliding-Window Rate Limit (Feb 25, 2026, iter 50) ✅ COMPLETE
+
+**Status:** 16/21 backend tests pass on a single run; remaining 5 skipped due to CoinGecko upstream rate limit (spec explicitly allows this — not code defects). Direct-module formatter math 8/8, sliding-window unit test pass, headers + 429 shape verified, frontend zero issues, zero regressions. One optional 2-line hardening applied (`isinstance` guard on `editor_config.layout`).
+
+### Part 1 — Value Formatters
+
+**Backend**
+- `utils/value_formatters.py` — pure functions for currency / percent / number / compact / date / relative_time / uppercase / lowercase / titlecase. Each formatter accepts decimals, prefix/suffix, symbol, positive/negative_color, date pattern. Returns `{raw, formatted, color}` dict; renderer can fall back to raw when formatter doesn't apply.
+- `services/api_widget_proxy.py` `call_api()` extended with `formatters` arg; `_format_arrays()` applies per-item formatters declared on each array_binding. Output includes `mapped_formatted` + `mapped_arrays_formatted` alongside the raw `mapped`/`mapped_arrays`.
+- `routers/admin_widgets.py` validates `data_source.formatters` + `array_bindings[*].item_formatters` as dicts.
+- `core/widget_templates.py` — `live_crypto` now ships with currency + percent formatters (with red/green colors). `live_crypto_markets` ships with `item_formatters` (currency on value, uppercase on body).
+
+**Frontend**
+- `lib/valueFormatters.js` — mirror of the backend catalog + client-side `applyFormatter()` so the picker can show inline previews without an extra round trip.
+- `components/widget-builder/FormatterPicker.jsx` — collapsible inline picker (chevron toggle, green badge when active, inline preview e.g. "Currency · → $62,876.00"). Reveals only the settings relevant to the chosen format type.
+- `components/widget-builder/ApiSourceTab.jsx` — FormatterPicker wired into single-value field bindings AND per-item array bindings (renders beneath each mapped item key).
+- `components/widgets/CustomWidgetRenderer.jsx` — prefers `mapped_formatted.{field}.formatted` over raw `mapped.{field}`; applies color hints via `data._colors` (StatLayout.value/delta) and per-item `it._colors.value` (ListLayout). 429 detail parsing handles the new structured shape.
+
+### Part 2 — Sliding-Window Rate Limit
+
+**Backend**
+- `utils/sliding_window_rate_limit.py` — in-memory deque per key with per-key `asyncio.Lock`, lazy eviction on every check, periodic GC of empty buckets (60s interval). Public API `rate_limit(key, max_requests, window_seconds)` returns `{allowed, limit, remaining, reset_in, retry_after}`. Denied events persist into `db.rate_limit_events` (TTL 24h) for the analytics view.
+- `services/api_widget_proxy.py` `_check_rate()` — replaced the fixed-minute Mongo bucket with sliding-window for the per-provider AND per-widget burst caps; kept the hourly provider quota on the existing Mongo bucket (long-window, fixed-bucket is fine there). Returns header metadata so routes can attach X-RateLimit-* headers.
+- `routers/api_widgets.py` — both test-api and api-call now inject `Response` and call `_set_rate_headers()` to attach `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`. 429 raises with a structured `{error, scope, retry_after, message}` body + `Retry-After` header.
+- New `GET /api/admin/analytics/rate-limits?hours=24` — aggregates the last N hours of denials into `top_keys`, `top_users`, `top_ips`, `top_endpoints`. Admin-tier only.
+
+### Verified end-to-end
+- Currency, percent (with negative-color), compact, date, relative_time, casing formatters all produce expected strings.
+- Sliding window correctly denies 4th request after 3 in 2s window; recovers smoothly after window elapses (no fresh-bucket exploit).
+- `X-RateLimit-Limit: 60`, `Remaining` decreases on subsequent calls.
+- Builder live preview shows formatted `BITCOIN $62,841.00 / -0.77%` (red) end-to-end from CoinGecko → proxy → mapped_formatted → renderer.
+
+### Files touched (Phase 3.2)
+- `backend/utils/value_formatters.py` (new)
+- `backend/utils/sliding_window_rate_limit.py` (new)
+- `backend/services/api_widget_proxy.py` — sliding-window, formatters, mapped_formatted/mapped_arrays_formatted
+- `backend/routers/api_widgets.py` — payloads + headers + analytics endpoint
+- `backend/routers/admin_widgets.py` — validators extended; layout isinstance hardening
+- `backend/core/widget_templates.py` — `live_crypto` + `live_crypto_markets` ship with formatters
+- `backend/server.py` — startup ensure_indexes wires
+- `frontend/src/lib/valueFormatters.js` (new)
+- `frontend/src/components/widget-builder/FormatterPicker.jsx` (new)
+- `frontend/src/components/widget-builder/ApiSourceTab.jsx` — FormatterPicker wired into both binding types
+- `frontend/src/components/widgets/CustomWidgetRenderer.jsx` — formatted-value preference, colors, structured 429 parsing
+
+### Known limitations / backlog
+- Admin Analytics UI page (frontend view of `/admin/analytics/rate-limits`) NOT YET BUILT — the endpoint is live and tested but the page surface is deferred to Phase 3.3 / on-demand.
+- Single-pod deployment only (in-memory deque). Horizontal-scale → swap `_BUCKETS` for Redis ZSET or Mongo TTL collection without changing the public API.
+
+---
+
+
 ## Phase 3.1 — List / Array Bindings for API Widgets (Feb 25, 2026, iter 49) ✅ COMPLETE
 
 **Status:** Backend 13/13 tests pass. Frontend smoke-verified. Zero critical/minor functional issues; only optional REST-hygiene suggestion (return 201 instead of 200 on create).
