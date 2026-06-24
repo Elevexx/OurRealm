@@ -1,6 +1,66 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Phase-15 Widget Lockdown + Editable Notes/Blog/Polls/Music/Podcasts/Videos (Feb 24, 2026, iter 41–42)
+
+**Status: ✅ COMPLETE** — Backend 22/22 pytest pass (13 phase-15 + 9 prior); frontend 100% live-verified.
+
+### Widget allow-list — 15 types only
+- `core/widget_types.py` is the single source of truth: `myfeed, top8, live, videos, music, podcasts, events, weather, calendar, countdown, notes, polls, survey, blog, radar`.
+- Backend `PATCH /api/profile/me` filters disallowed types silently and validates per-type caps.
+- Backend `serialize_user()` runs `_filter_allowed_widgets()` on every read.
+- Frontend `WIDGET_TYPES = [...15...]` mirror in `data/mockData.js`; `ALLOWED_WIDGET_TYPES` Set used to defensively filter render lists in both Profile and FounderProfile.
+- Boot migration `migrate_strip_deprecated_widgets()` removes legacy types from every user (including stealth — merch/custom no longer pass).
+
+### Per-widget caps + char limits
+- Videos `items`: max 4 (combined uploaded + pinned).
+- Music / Podcasts `sound_ids`: max 10 each.
+- Notes `text`: 300 chars standard / 500 VIP / unlimited stealth.
+- Blog `text`: 100 chars standard / 2000 VIP / unlimited stealth.
+- Backend raises HTTP 400 on overflow; frontend textareas use `maxLength` for the dual-layer enforcement.
+
+### Multi-select Widget Library
+- Single Save button adds all selected widgets at once. Modal resets selection on every open. Both Cancel and backdrop click close without mutating state.
+- `data-testid='open-widget-picker'` (header button) + `data-testid='profile-add-widget-tile'` (grid +Add tile) both open the modal. Selected tiles get `data-selected='true'` + check icon.
+
+### Notes / Blog — editable + persistent + char-counted
+- Shared `NotesBody` + `BlogBody` in `components/ProfileWidgetBodies.jsx`. Owner-edit mode renders textarea with live "N chars left" counter; public view renders read-only italic/plain block. Falls back to default text when blank.
+- Same renderer used on `/profile` (owner) and `/profile/:username` (public/founder) — saved content shows identically.
+
+### Polls — inline config + visitor voting
+- Owner sets question + options inline (max 6 options, 200 char question, 100 char per option).
+- Visitor votes via `POST /api/profile-poll/{owner}/{widget_id}/vote` (auth required). Unique `(widget_id, user_id)` index enforces 1 vote per visitor; re-voting is upsert (idempotent).
+- Public read at `GET /api/profile-poll/{owner}/{widget_id}` returns tally + state without auth.
+- Verified end-to-end: tftwo creates "Best pizza topping?" with 2 options → tfone votes → results render with percentage bars; re-vote leaves count at 1.
+
+### Videos — upload + pin existing
+- `VideosBody` renders a 4-cell grid. Owner sees Upload tile (POST `/api/videos/upload`) AND Pin tile (modal lists user's existing video posts via `GET /api/posts?username&media_type=video`).
+- `items[]` entries are `{kind:'upload', url, video_id}` or `{kind:'post', post_id, url, thumbnail}`. Deletion in edit mode just splices the array; existing video record / post is untouched.
+
+### Music / Podcasts — sound library reference (no duplicate storage)
+- `SoundsBody` (used by both `MusicBody` and `PodcastsBody`) calls `GET /api/sounds/by-user/{username}?category=Music|Podcasts`. Owner-edit shows a picker modal; selected sound IDs are stored on the widget as `sound_ids[]`. Visible row count scales with widget size (small=3, medium=5, large=10).
+- No duplicate audio storage — IDs reference the existing `tracks` collection.
+
+### Self-healing + idempotency
+- `seed_founder()` re-appends any missing `FOUNDER_WIDGETS` types on every boot (now: live, music, events, polls, blog).
+- `migrate_reorder_top8_above_myfeed()` + `migrate_strip_deprecated_widgets()` are both idempotent — log lines stay at 0 affected on subsequent boots.
+
+### Files touched
+- `backend/core/widget_types.py` (new) — allow-list + caps + per-role limit helpers.
+- `backend/core/config.py` — FOUNDER_WIDGETS trimmed to allow-list types.
+- `backend/core/seed.py` — `migrate_strip_deprecated_widgets()` + ordering.
+- `backend/models/schemas.py` — `_filter_allowed_widgets()` applied to serializer.
+- `backend/routers/profile.py` — widgets validation pipeline.
+- `backend/routers/profile_polls.py` (new) — public GET + auth vote with unique-vote index.
+- `backend/routers/sounds.py` — `GET /api/sounds/by-user/{username}` public endpoint.
+- `backend/server.py` — wired `profile_polls` router + `ensure_indexes()`.
+- `frontend/src/data/mockData.js` — `WIDGET_TYPES` trimmed to 15 + `ALLOWED_WIDGET_TYPES` Set.
+- `frontend/src/components/ProfileWidgetBodies.jsx` (new) — shared bodies for Notes, Blog, Videos, Music, Podcasts, Polls, Radar.
+- `frontend/src/pages/Profile.jsx` — slim WidgetBody (15 cases), multi-select AddWidgetPicker, addWidgets() with size default, w.size guard.
+- `frontend/src/pages/FounderProfile.jsx` — slim WidgetBody parity, ALLOWED_WIDGET_TYPES render filter, w.size guard.
+- `backend/tests/test_widget_allowlist_phase15.py` (new) — 13 regression tests.
+
+
 ## Profile Widget Order + Editable Notes + Public Animated Widgets (Feb 24, 2026, iter 40)
 
 **Status: ✅ COMPLETE** — Backend 9/9 pytest pass; frontend owner-edit + public-view verified live.
