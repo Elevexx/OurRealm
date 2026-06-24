@@ -119,11 +119,25 @@ class BadgeCreate(BaseModel):
     key: str = Field(min_length=2, max_length=64)
     name: str = Field(min_length=1, max_length=120)
     icon: str = "Award"
+    # Legacy single accent colour — kept for backwards-compat with the
+    # old icon-only pill renderer. Newer surfaces use the visual fields
+    # below to render a rectangular profile pill.
     color: str = "#00FF66"
+    # Phase 3 (Feb 26, 2026) — rectangular badge visual fields. Each
+    # field is optional; the frontend computes safe defaults from
+    # `color` when these are missing.
+    bg_color: Optional[str] = None
+    gradient: Optional[str] = None       # CSS gradient string e.g. "linear-gradient(135deg,#00FF66,#10E670)"
+    text_color: Optional[str] = None
+    border_color: Optional[str] = None
+    glow_color: Optional[str] = None
     description: str = ""
     status: WidgetStatus = "draft"
+    badge_type: Literal["system", "manual", "automatic"] = "manual"
+    locked: bool = False                  # Founder badge etc — cannot be edited/deleted/reassigned.
+    auto_rule: Optional[Literal["first_1000", "founder", "admin"]] = None
     assignment_type: Literal[
-        "manual", "founder", "admin", "vip", "standard", "all", "first_x", "specific"
+        "manual", "founder", "admin", "vip", "standard", "all", "first_x", "specific", "first_1000"
     ] = "manual"
     access_groups: List[AccessGroup] = Field(default_factory=lambda: ["all_users"])
     selected_usernames: List[str] = Field(default_factory=list)
@@ -135,8 +149,15 @@ class BadgePatch(BaseModel):
     name: Optional[str] = None
     icon: Optional[str] = None
     color: Optional[str] = None
+    bg_color: Optional[str] = None
+    gradient: Optional[str] = None
+    text_color: Optional[str] = None
+    border_color: Optional[str] = None
+    glow_color: Optional[str] = None
     description: Optional[str] = None
     status: Optional[WidgetStatus] = None
+    badge_type: Optional[Literal["system", "manual", "automatic"]] = None
+    auto_rule: Optional[Literal["first_1000", "founder", "admin"]] = None
     assignment_type: Optional[str] = None
     access_groups: Optional[List[AccessGroup]] = None
     selected_usernames: Optional[List[str]] = None
@@ -871,6 +892,11 @@ async def update_badge(badge_id: str, payload: BadgePatch, current: CurrentUser)
     doc = await db.badge_registry.find_one({"id": badge_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Badge not found")
+    # Phase 3 — locked badges (FOUNDER) cannot be edited. Only @stealth
+    # can update their own metadata to keep ownership intact, and even
+    # then `key` + `is_system` + `locked` are immutable.
+    if doc.get("locked"):
+        raise HTTPException(status_code=403, detail="This badge is locked and cannot be edited.")
     updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
     if not updates:
         return {"badge": _serialise_badge(doc)}
@@ -886,6 +912,8 @@ async def delete_badge(badge_id: str, current: CurrentUser):
     doc = await db.badge_registry.find_one({"id": badge_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Badge not found")
+    if doc.get("locked") or doc.get("is_system"):
+        raise HTTPException(status_code=403, detail="System / locked badges cannot be deleted.")
     # Remove all assignments before tearing down the badge itself.
     await db.user_badges.delete_many({"badge_key": doc["key"]})
     await db.badge_registry.delete_one({"id": badge_id})
@@ -922,6 +950,10 @@ async def assign_badge(badge_id: str, payload: BadgeAssignPayload, current: Curr
     badge = await db.badge_registry.find_one({"id": badge_id})
     if not badge:
         raise HTTPException(status_code=404, detail="Badge not found")
+    # Founder/locked badges cannot be reassigned via admin UI. They are
+    # auto-assigned to specific users by seed (e.g. FOUNDER → @stealth).
+    if badge.get("locked"):
+        raise HTTPException(status_code=403, detail="This badge cannot be manually assigned.")
     now = _now_iso()
     assigned = 0
     for raw in payload.usernames:
@@ -954,6 +986,8 @@ async def remove_badge(badge_id: str, payload: BadgeAssignPayload, current: Curr
     badge = await db.badge_registry.find_one({"id": badge_id})
     if not badge:
         raise HTTPException(status_code=404, detail="Badge not found")
+    if badge.get("locked"):
+        raise HTTPException(status_code=403, detail="This badge cannot be unassigned.")
     deleted = 0
     for raw in payload.usernames:
         uname = (raw or "").strip().lower().lstrip("@")
@@ -1008,6 +1042,13 @@ async def list_profile_badges(username: str):
             "name": b.get("name"),
             "icon": b.get("icon"),
             "color": b.get("color"),
+            "bg_color": b.get("bg_color"),
+            "gradient": b.get("gradient"),
+            "text_color": b.get("text_color"),
+            "border_color": b.get("border_color"),
+            "glow_color": b.get("glow_color"),
+            "badge_type": b.get("badge_type"),
+            "locked": bool(b.get("locked")),
             "description": b.get("description"),
         })
     return {"badges": badges}

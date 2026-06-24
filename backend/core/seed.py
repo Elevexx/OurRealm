@@ -431,6 +431,8 @@ async def run_startup():
     await migrate_text_posts_to_thoughts()
     await migrate_video_urls_to_relative()
     await migrate_backfill_presence()
+    await seed_default_badges()
+    await backfill_first_1000_vip()
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -749,3 +751,156 @@ async def migrate_inject_top8_widget():
         n += 1
     if n:
         log.info(f"Injected Top 8 widget into {n} existing profiles")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase 3 (Feb 26, 2026) — Default badges + first_1000 VIP backfill.
+# ─────────────────────────────────────────────────────────────────────
+
+DEFAULT_BADGES = [
+    {
+        "key": "founder",
+        "name": "FOUNDER",
+        "icon": "Crown",
+        "color": "#F4C84A",
+        "bg_color": "#1a0e00",
+        "gradient": "linear-gradient(135deg, #F4C84A 0%, #B58B17 100%)",
+        "text_color": "#0a0a0a",
+        "border_color": "#F4C84A",
+        "glow_color": "#F4C84A",
+        "description": "OurRealm founder.",
+        "status": "live",
+        "badge_type": "system",
+        "locked": True,
+        "is_system": True,
+        "auto_rule": "founder",
+        "assignment_type": "founder",
+        "access_groups": ["all_users"],
+    },
+    {
+        "key": "vip",
+        "name": "VIP",
+        "icon": "Star",
+        "color": "#00FF66",
+        "bg_color": "#001f0c",
+        "gradient": "linear-gradient(135deg, #00FF66 0%, #10E670 100%)",
+        "text_color": "#0a0a0a",
+        "border_color": "#00FF66",
+        "glow_color": "#00FF66",
+        "description": "VIP member of OurRealm.",
+        "status": "live",
+        "badge_type": "automatic",
+        "locked": False,
+        "is_system": True,
+        "auto_rule": "first_1000",
+        "assignment_type": "first_1000",
+        "access_groups": ["all_users"],
+        "first_x": 1000,
+    },
+    {
+        "key": "verified",
+        "name": "VERIFIED",
+        "icon": "BadgeCheck",
+        "color": "#2EA0FF",
+        "bg_color": "#001226",
+        "gradient": "linear-gradient(135deg, #2EA0FF 0%, #6CC4FF 100%)",
+        "text_color": "#0a0a0a",
+        "border_color": "#2EA0FF",
+        "glow_color": "#2EA0FF",
+        "description": "Verified identity.",
+        "status": "live",
+        "badge_type": "manual",
+        "locked": False,
+        "is_system": True,
+        "assignment_type": "manual",
+        "access_groups": ["all_users"],
+    },
+]
+
+
+async def seed_default_badges():
+    """Insert FOUNDER / VIP / VERIFIED badges if missing. Updates visual
+    fields on existing rows so the new gradient/glow style propagates
+    without manual intervention."""
+    import uuid as _uuid
+    from datetime import datetime, timezone
+    log = logging.getLogger("ourrealm.seed.badges")
+    now = datetime.now(timezone.utc).isoformat()
+    for spec in DEFAULT_BADGES:
+        existing = await db.badge_registry.find_one({"key": spec["key"]})
+        if existing:
+            visual = {k: v for k, v in spec.items() if k in (
+                "icon", "color", "bg_color", "gradient", "text_color",
+                "border_color", "glow_color", "badge_type", "locked",
+                "is_system", "auto_rule", "assignment_type", "first_x",
+            )}
+            visual["updated_at"] = now
+            await db.badge_registry.update_one({"key": spec["key"]}, {"$set": visual})
+            continue
+        doc = dict(spec)
+        doc.update({
+            "id": str(_uuid.uuid4()),
+            "selected_usernames": [],
+            "created_by": "system",
+            "created_at": now,
+            "updated_at": now,
+        })
+        await db.badge_registry.insert_one(doc)
+        log.info(f"Seeded default badge: {spec['key']}")
+    # FOUNDER is locked to @stealth.
+    stealth = await db.users.find_one({"username": "stealth"}, {"_id": 0, "id": 1, "username": 1})
+    if stealth:
+        await db.user_badges.update_one(
+            {"user_id": stealth["id"], "badge_key": "founder"},
+            {"$set": {
+                "id": f"{stealth['id']}::founder",
+                "user_id": stealth["id"],
+                "username": "stealth",
+                "badge_key": "founder",
+                "assigned_by": "system",
+                "assigned_at": now,
+                "source": "system",
+            }},
+            upsert=True,
+        )
+        # Strip any other founder-badge holders.
+        await db.user_badges.delete_many({
+            "badge_key": "founder",
+            "user_id": {"$ne": stealth["id"]},
+        })
+
+
+async def backfill_first_1000_vip():
+    """Auto-assign VIP to the first N users (sorted by created_at asc)
+    when the VIP badge has auto_rule='first_1000'. Idempotent — already
+    assigned users are not touched. New signups beyond N are not auto-
+    awarded (they can still be assigned manually)."""
+    from datetime import datetime, timezone
+    log = logging.getLogger("ourrealm.seed.badges")
+    vip = await db.badge_registry.find_one({"key": "vip"})
+    if not vip or vip.get("auto_rule") != "first_1000":
+        return
+    n = int(vip.get("first_x") or 1000)
+    cursor = db.users.find({}, {"_id": 0, "id": 1, "username": 1}).sort("created_at", 1).limit(n)
+    now = datetime.now(timezone.utc).isoformat()
+    awarded = 0
+    async for u in cursor:
+        if not u.get("id") or not u.get("username"):
+            continue
+        res = await db.user_badges.update_one(
+            {"user_id": u["id"], "badge_key": "vip"},
+            {"$setOnInsert": {
+                "id": f"{u['id']}::vip",
+                "user_id": u["id"],
+                "username": u["username"],
+                "badge_key": "vip",
+                "assigned_by": "system",
+                "assigned_at": now,
+                "source": "first_1000",
+            }},
+            upsert=True,
+        )
+        if res.upserted_id is not None:
+            awarded += 1
+    if awarded:
+        log.info(f"Auto-awarded VIP badge to first_1000 → {awarded} new users")

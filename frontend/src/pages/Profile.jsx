@@ -167,19 +167,19 @@ function SortableWidget({ w, mode, editing, onCycleSize, onRemove, onUpdate, own
     opacity: isDragging ? 0.6 : 1,
     zIndex: isDragging ? 50 : "auto",
   };
+  // Widgets that should scroll internally need explicit flex-col + min-h-0
+  // + maxHeight to enable overflow. Other widgets keep the original block
+  // flow so they auto-size to content (avoids a regression where the body
+  // collapsed to 0 height inside an auto-row grid, leaving a black card).
+  const scrollInternally = (w.editor_config?.layout === "chat") || ["notes", "blog"].includes(w.type);
   return (
     <div
       ref={setNodeRef}
       style={{
         ...style,
-        // Pin a max-height per size for layouts that scroll internally
-        // (chat, notes, blog). Without this the auto-row grid lets long
-        // conversations stretch the card off-screen.
-        maxHeight: ((w.editor_config?.layout === "chat") || ["notes", "blog"].includes(w.type))
-          ? SIZE_MAX_HEIGHT_PX[w.size] || SIZE_MAX_HEIGHT_PX.medium
-          : undefined,
+        maxHeight: scrollInternally ? (SIZE_MAX_HEIGHT_PX[w.size] || SIZE_MAX_HEIGHT_PX.medium) : undefined,
       }}
-      className={`or-surface p-4 relative overflow-hidden flex flex-col ${SIZE_TO_CLASS[w.size] || SIZE_TO_CLASS.small}`}
+      className={`or-surface p-4 relative overflow-hidden ${scrollInternally ? "flex flex-col" : ""} ${SIZE_TO_CLASS[w.size] || SIZE_TO_CLASS.small}`}
       data-testid={`profile-widget-${w.id}`}
     >
       <div className="flex items-center justify-between mb-3">
@@ -221,7 +221,9 @@ function SortableWidget({ w, mode, editing, onCycleSize, onRemove, onUpdate, own
           </div>
         )}
       </div>
-      <div className="flex-1 min-h-0"><WidgetBody w={w} mode={mode} ownerUsername={ownerUsername} isOwner={isOwner} editing={editing} onUpdate={onUpdate} viewer={viewer} /></div>
+      <div className={scrollInternally ? "flex-1 min-h-0" : "h-[calc(100%-2rem)]"}>
+        <WidgetBody w={w} mode={mode} ownerUsername={ownerUsername} isOwner={isOwner} editing={editing} onUpdate={onUpdate} viewer={viewer} />
+      </div>
     </div>
   );
 }

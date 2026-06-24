@@ -1,6 +1,55 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Three-Phase UI Update (Feb 26, 2026) ✅ COMPLETE
+
+### Phase 1 — Music/Podcasts black-overlay fix
+**Root cause:** My previous height-cap change applied `flex flex-col` + `flex-1 min-h-0` to ALL widget cards. Inside the auto-row grid (`gridAutoRows: "minmax(150px, auto)"`), widgets without an explicit maxHeight had no determinate parent height — `flex-1` collapsed to 0, leaving the dark `.or-surface` background as a black overlay with hidden controls underneath.
+
+**Fix:** Scoped the new flex layout to widgets that actually need internal scroll (chat / notes / blog). Other widgets (music / podcasts / videos / photos / etc.) keep the original block flow with `h-[calc(100%-2rem)]`. Music/podcast cards render normally again.
+
+### Phase 2 — Star bar reduced to 4 icons
+Removed the Profile (👤) entry from `TopStarBar`. Profile remains accessible via the bottom-nav avatar, user avatars across the app, profile links, mentions, friends, realm members, and direct URLs.
+
+### Phase 3 — Badge Creator Upgrade (Founder / VIP / Verified system)
+**Backend:**
+- Extended `BadgeCreate` / `BadgePatch` schemas with rectangular visual fields: `bg_color`, `gradient`, `text_color`, `border_color`, `glow_color`, `badge_type` (system/manual/automatic), `locked`, `auto_rule` (first_1000/founder/admin).
+- New `seed_default_badges()` (idempotent) seeds:
+  - **FOUNDER** — locked, system, auto-assigned to @stealth only, gold gradient.
+  - **VIP** — automatic, `auto_rule=first_1000`, green gradient.
+  - **VERIFIED** — manual, blue gradient.
+- New `backfill_first_1000_vip()` — auto-awards VIP to the first 1000 users by `created_at` ascending. Idempotent (won't re-award already-assigned users).
+- Founder-lock guards on PATCH / DELETE / `/assign` / `/remove` endpoints — locked badges return 403 on any of these attempts.
+- `/api/profile/{username}/badges` now surfaces all visual fields (gradient, glow, etc.) so the frontend can render rectangular pills.
+
+**Frontend:**
+- `ProfileBadges.jsx` rewritten as a `<BadgePill/>` renderer that uses the new visual fields. Falls back to the legacy single-accent style when only `color` is set, so older admin badges still render.
+- Removed duplicate inline `FOUNDER` / `VIP` / `VERIFIED` badges from `FounderProfile.jsx` — the rectangular pills below the username are now the single source of truth.
+
+**Live verification:**
+- /api/admin/badges returns 5 badges (FOUNDER, VIP, VERIFIED + 2 pre-existing) with full visual fields.
+- DELETE / assign on FOUNDER returns 403 "System / locked badges cannot be deleted." / "This badge cannot be manually assigned."
+- VIP backfilled to 133 existing users (first_1000 rule).
+- Public profile shows 3 rectangular badge pills (founder/og/vip) with gradients, no duplicate inline icons above.
+- `/profile/stealth/badges` returns the full visual payload.
+
+### Tests
+- 41/41 pass across admin_widgets_badges_phase1, registry_widget_hydration, and profile_widgets_top8 suites.
+
+### Files touched
+- `frontend/src/pages/Profile.jsx` (scrollInternally flag; only chat/notes/blog use flex-col)
+- `frontend/src/pages/FounderProfile.jsx` (mirror + removed duplicate inline badges)
+- `frontend/src/components/TopStarBar.jsx` (Profile entry removed)
+- `frontend/src/components/ProfileBadges.jsx` (rewritten as rectangular pill renderer)
+- `backend/routers/admin_widgets.py` (extended badge schemas + founder-lock guards + visual fields in public endpoint)
+- `backend/core/seed.py` (seed_default_badges + backfill_first_1000_vip + boot hookup)
+
+### Known minor follow-ups (non-blocking)
+- New user signups don't yet auto-trigger the VIP `first_1000` rule — they're awarded on the next boot. A `/api/auth/register` hook would close that loop. (Backfill covers all existing + restart users.)
+- The admin Badge editor UI (in `AdminWidgets.jsx → BadgesTab`) doesn't yet expose the new visual fields (bg_color/gradient/glow). Endpoints accept them via curl/API; UI extension is a separate task.
+
+
+
 ## Fixes — Chat height / Video thumbnails / Sounds picker (Feb 26, 2026) ✅
 
 ### Issue 1 — Orion AI chat widget grew forever

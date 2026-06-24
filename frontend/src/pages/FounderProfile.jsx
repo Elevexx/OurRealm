@@ -173,17 +173,16 @@ function SortableWidget({ w, editing, onCycleSize, ownerUsername, isOwner, viewe
   const headerLabel = w.title
     || w.name
     || String(w.type || "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 40);
+  const scrollInternally = (w.editor_config?.layout === "chat") || ["notes", "blog"].includes(w.type);
   return (
     <div
       ref={setNodeRef}
       style={{
         transform: CSS.Transform.toString(transform), transition,
         opacity: isDragging ? 0.6 : 1, zIndex: isDragging ? 50 : "auto",
-        maxHeight: ((w.editor_config?.layout === "chat") || ["notes", "blog"].includes(w.type))
-          ? SIZE_MAX_HEIGHT_PX[w.size] || SIZE_MAX_HEIGHT_PX.medium
-          : undefined,
+        maxHeight: scrollInternally ? (SIZE_MAX_HEIGHT_PX[w.size] || SIZE_MAX_HEIGHT_PX.medium) : undefined,
       }}
-      className={`or-surface p-3 sm:p-4 relative overflow-hidden flex flex-col ${SIZE_TO_CLASS[w.size] || SIZE_TO_CLASS.small}`}
+      className={`or-surface p-3 sm:p-4 relative overflow-hidden ${scrollInternally ? "flex flex-col" : ""} ${SIZE_TO_CLASS[w.size] || SIZE_TO_CLASS.small}`}
       data-testid={`founder-widget-${w.id}`}
     >
       <div className="flex items-center justify-between mb-2.5">
@@ -199,7 +198,9 @@ function SortableWidget({ w, editing, onCycleSize, ownerUsername, isOwner, viewe
           </div>
         )}
       </div>
-      <div className="flex-1 min-h-0"><WidgetBody w={w} ownerUsername={ownerUsername} isOwner={isOwner} viewer={viewer} /></div>
+      <div className={scrollInternally ? "flex-1 min-h-0" : "h-[calc(100%-2rem)]"}>
+        <WidgetBody w={w} ownerUsername={ownerUsername} isOwner={isOwner} viewer={viewer} />
+      </div>
     </div>
   );
 }
@@ -327,15 +328,11 @@ export default function FounderProfile() {
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl sm:text-2xl" style={{ fontFamily: "var(--font-display)" }} data-testid="founder-name">{profile.name}</h1>
-              {/* Founder badge ONLY for the actual @stealth account */}
-              {profile.is_founder && (
-                <span className="text-xs font-bold uppercase tracking-widest px-2 py-1 rounded" style={{ background: "linear-gradient(135deg, #00FF66, #2EA0FF)", color: "#0a0a0a" }} data-testid="founder-badge">FOUNDER</span>
-              )}
-              {/* VIP badge for early-adopter accounts */}
-              {profile.is_vip && <VipBadge joinedAt={profile.vip_joined_at} size="lg" testid="public-vip-badge" />}
-              {profile.is_verified && (
-                <span className="text-xs uppercase tracking-widest px-2 py-1 rounded" style={{ background: "color-mix(in srgb, var(--primary) 18%, transparent)", color: "var(--primary)", border: "1px solid var(--primary)" }}>Verified</span>
-              )}
+              {/* FOUNDER / VIP / VERIFIED badges are now rendered as
+                  rectangular pills via <ProfileBadges/> below. Inline
+                  badges removed (Feb 26, 2026) to eliminate duplicate
+                  rows. Featured-creator stays inline because it's a
+                  flag, not a badge in the registry yet. */}
               {profile.featured_creator && (
                 <span className="text-xs uppercase tracking-widest px-2 py-1 rounded" style={{ background: "rgba(244,200,74,0.18)", color: "#F4C84A", border: "1px solid #F4C84A" }}>Featured</span>
               )}

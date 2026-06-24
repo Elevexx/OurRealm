@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Star, Globe, Bell, MessageSquare, User } from "lucide-react";
+import { Star, Globe, Bell, MessageSquare } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import apiClient from "@/api/client";
 
-// Top-right Star Bar — required order:
-// 1. ⭐ Featured · 2. 🌎 Discover · 3. 🔔 Notifications · 4. ✉️ Messages · 5. 👤 Profile (Edit View)
+// Top-right Star Bar — exactly 4 icons (Feb 26, 2026 spec):
+// 1. ⭐ Featured · 2. 🌎 Discover · 3. 🔔 Notifications · 4. ✉️ Messages
+// Profile access remains via: bottom-nav avatar, user avatars across the
+// app, profile links, mentions, friends, realm members, etc.
 const ITEMS = [
   { to: "/featured",      label: "Featured",      Icon: Star,         testid: "star-featured",      color: "#F4C84A" },
   { to: "/discover",      label: "Discover",      Icon: Globe,        testid: "star-discover",      color: "var(--brand-blue)" },
@@ -124,19 +126,6 @@ export default function TopStarBar() {
               </button>
             );
           })}
-
-          {/* Sole profile-access icon on the top bar — opens the Edit
-              profile view. Bottom-nav Profile opens the Public view. */}
-          <button
-            data-testid="star-profile-edit"
-            onClick={() => user ? navigate("/profile") : navigate("/signin")}
-            className="starbar-icon shrink-0"
-            aria-label="Edit my profile"
-            title="Edit my profile"
-            style={{ color: "var(--brand-green)", scrollSnapAlign: "end" }}
-          >
-            <User size={20} />
-          </button>
         </nav>
       </div>
     </header>
