@@ -1,6 +1,48 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Phase-1 Widgets & Badges Admin Panel — /admin/widgets (Feb 24, 2026, iter 44)
+
+**Status: ✅ COMPLETE** — Backend 24/24 phase-1 pytest pass; frontend live-verified including the picker disable + admin banner fix.
+
+### Backend — `db.widget_registry` + `db.badge_registry` + `db.user_badges`
+- Single new router `/app/backend/routers/admin_widgets.py` with:
+  - **Widgets**: GET (filters: status/placement/access_group/q), POST (uniqueness on `key`), PATCH, DELETE (system widgets refuse 400), POST /launch, POST /disable.
+  - **Badges**: same CRUD shape + POST /assign, POST /remove, GET /:id/recipients, DELETE cascades to user_badges.
+  - **Public**: GET /api/widgets/available?placement= (status=live ∧ placement match ∧ access_group ∩ viewer's groups), GET /api/widgets/disabled (admin-only — keys + status), GET /api/profile/{username}/badges (status=live only).
+- Admin gate via `_require_admin` calling existing `is_admin_user`. Stealth + role='admin'/'founder' + `is_admin=True` all qualify.
+- **System seed**: 16 canonical widgets (myfeed, top8, live, videos, music, podcasts, photos, events, weather, calendar, countdown, notes, polls, survey, blog, radar) seeded on first boot with `is_system=true` + status=live. Idempotent — admin edits stick.
+- **Unique indexes**: `widget_registry.key`, `badge_registry.key`, `(user_badges.user_id, user_badges.badge_key)` so dup assignments are impossible at the DB layer.
+
+### Frontend — `/admin/widgets` (`pages/AdminWidgets.jsx`)
+- Two-tab admin console (Widgets | Badges) in the neon admin style.
+- **Widgets tab**: row list with status pill + left accent stripe (live=green / draft=yellow / disabled=red), search + status/placement/access filters, full editor modal (name, key, category, icon dropdown, default size, sort order, placement checkboxes, access group checkboxes, allowed sizes checkboxes, status buttons), launch/disable/edit/delete actions. System widgets show a "System" pill and have no delete button + locked key field.
+- **Badges tab**: same shape, plus the **Assigner** modal (comma/space separated usernames, recipients list with remove buttons, assigned-at timestamps).
+- **Non-admin gate**: anyone hitting /admin/widgets without admin role is redirected to / via `useEffect`.
+
+### Picker enforcement (Profile.jsx `AddWidgetPicker`)
+- Fetches `/api/widgets/available?placement=profile` on open; falls back to the local 16-tile `WIDGET_TYPES` only if the call genuinely fails (AbortController instead of the previous fragile `cancelled` flag — fixed a state-race that was leaving disabled tiles visible).
+- Admins also fetch `/api/widgets/disabled` in a SEPARATE useEffect (re-runs once `viewer` hydrates), then render a banner: "N widget(s) currently disabled by an admin and hidden from this picker. Manage at /admin/widgets."
+- **Disabled widgets** are hard-hidden from non-admins; admins see the banner. Saved widget bodies on profiles are unaffected by status changes (this is intentional — Phase 1 hides them only from the LIBRARY; later phases can hide rendered instances too).
+
+### Profile badge rendering
+- New `components/ProfileBadges.jsx` pulls `/api/profile/{username}/badges` and renders a pill list next to the username on both `/profile` (owner) and `/profile/:username` (public/founder). Empty users render nothing — zero layout shift.
+
+### AdminHub card
+- `pages/AdminHub.jsx` includes a new "Widgets & Badges Manager" card with the `LayoutGrid` icon, purple accent, founder/admin role gate. Links to /admin/widgets.
+
+### Files touched
+- `backend/routers/admin_widgets.py` (new) — full registry + assignment + public read.
+- `backend/server.py` — included the router + ensure_indexes() + seed_system_widgets() on startup.
+- `backend/tests/test_admin_widgets_badges_phase1.py` (new) — 24 regression tests.
+- `frontend/src/pages/AdminWidgets.jsx` (new) — complete admin UI.
+- `frontend/src/pages/AdminHub.jsx` — Widgets & Badges card.
+- `frontend/src/App.js` — `/admin/widgets` route.
+- `frontend/src/components/ProfileBadges.jsx` (new) — profile badge pills.
+- `frontend/src/pages/Profile.jsx` — split picker effects (race fix) + import apiClient + ProfileBadges injection.
+- `frontend/src/pages/FounderProfile.jsx` — ProfileBadges injection.
+
+
 ## Phase-16 Media Widgets Fix + Photos Widget (Feb 24, 2026, iter 43)
 
 **Status: ✅ COMPLETE** — Backend 19/19 pytest (13 phase-15 updated + 6 phase-16 new) + frontend live-verified.

@@ -20,6 +20,7 @@ import Top8Editor from "@/components/Top8Editor";
 import UserAvatar from "@/components/UserAvatar";
 import VipBadge from "@/components/VipBadge";
 import ProfileBadges from "@/components/ProfileBadges";
+import apiClient from "@/api/client";
 import AvatarPicker from "@/components/AvatarPicker";
 import BannerEditor, { BannerView } from "@/components/BannerEditor";
 import {
@@ -200,37 +201,55 @@ function AddWidgetPicker({ open, onClose, onPickMany, viewer }) {
   const [available, setAvailable] = useState(null);   // backend registry; null until loaded
   const [disabledKeys, setDisabledKeys] = useState(new Set());
   useEffect(() => { if (!open) setSelected(new Set()); }, [open]);
-  // When the picker opens, fetch the live registry. Falls back to the
-  // hardcoded WIDGET_TYPES list if the call fails so the picker is
-  // never empty.
+
+  // Effect #1 — fetch the live registry. AbortController instead of a
+  // `cancelled` flag so racing the unmount can't silently swallow the
+  // setState (the prior implementation lost results when `viewer`
+  // hydrated mid-fetch).
   useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
+    if (!open) return undefined;
+    const ctrl = new AbortController();
     (async () => {
       try {
-        const { data } = await apiClient.get("/widgets/available?placement=profile");
-        if (!cancelled) {
-          const reg = (data?.widgets || []).map((w) => ({
-            id: w.key, label: w.name, icon: w.icon, default_size: w.default_size,
-          }));
-          setAvailable(reg.length ? reg : WIDGET_TYPES);
+        const { data } = await apiClient.get(
+          "/widgets/available?placement=profile",
+          { signal: ctrl.signal },
+        );
+        const reg = (data?.widgets || []).map((w) => ({
+          id: w.key, label: w.name, icon: w.icon, default_size: w.default_size,
+        }));
+        setAvailable(reg.length ? reg : WIDGET_TYPES);
+      } catch (e) {
+        if (e?.name !== "CanceledError" && e?.name !== "AbortError") {
+          setAvailable(WIDGET_TYPES);
         }
-      } catch {
-        if (!cancelled) setAvailable(WIDGET_TYPES);
       }
-      // Admin-only: also fetch disabled keys so they can see a banner.
-      const role = viewer?.role || "";
-      const isAdmin = role === "admin" || role === "founder" || viewer?.username === "stealth";
-      if (!isAdmin) return;
+    })();
+    return () => ctrl.abort();
+  }, [open]);
+
+  // Effect #2 — admin-only fetch of disabled keys for the banner.
+  // Runs whenever the viewer hydrates so an initial `null` viewer
+  // doesn't permanently swallow the result.
+  useEffect(() => {
+    if (!open || !viewer) return undefined;
+    const role = viewer?.role || "";
+    const isAdmin = role === "admin" || role === "founder"
+      || viewer?.is_admin || viewer?.username === "stealth";
+    if (!isAdmin) return undefined;
+    const ctrl = new AbortController();
+    (async () => {
       try {
-        const { data } = await apiClient.get("/widgets/disabled");
-        if (!cancelled) {
-          setDisabledKeys(new Set((data?.keys || []).map((k) => k.key)));
-        }
+        const { data } = await apiClient.get(
+          "/widgets/disabled",
+          { signal: ctrl.signal },
+        );
+        setDisabledKeys(new Set((data?.keys || []).map((k) => k.key)));
       } catch { /* */ }
     })();
-    return () => { cancelled = true; };
+    return () => ctrl.abort();
   }, [open, viewer]);
+
   if (!open) return null;
   const types = available || WIDGET_TYPES;
   const toggle = (id) => {
