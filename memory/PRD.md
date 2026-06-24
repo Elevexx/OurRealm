@@ -1,6 +1,57 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Phase 3.1 — List / Array Bindings for API Widgets (Feb 25, 2026, iter 49) ✅ COMPLETE
+
+**Status:** Backend 13/13 tests pass. Frontend smoke-verified. Zero critical/minor functional issues; only optional REST-hygiene suggestion (return 201 instead of 200 on create).
+
+### Goals
+API widgets can now map JSON arrays (NewsAPI articles, Reddit posts, CoinGecko markets) onto repeated-item widget fields (List, Grid, Media Grid, Card collections). Single-value mappings still work; empty/loading/error states handled gracefully.
+
+### Backend
+- `services/api_widget_proxy.py`:
+  - New `_apply_array_bindings(data, bindings)` — resolves each binding's `array_path` against the response, slices to `max_items`, applies per-item `item_map`, and emits an array of objects shaped for rich_item rendering. Special scalar mode (`item_map={"_":"<path>"}`) for media_grid (emits array of URL strings).
+  - `call_api()` extended signature: `array_bindings: List[Dict]` parameter. Returns `mapped_arrays` alongside existing `mapped`.
+- `routers/api_widgets.py` — `ApiTestPayload` + `ApiCallPayload` now accept `array_bindings`. Both endpoints forward it to `call_api()`. Widget-id path also reads `array_bindings` from `editor_config.data_source.array_bindings`.
+- `routers/admin_widgets.py` `_validate_editor_config()` — validates `data_source.array_bindings` as a list of `{field_key, array_path, item_map, max_items, empty_text}` dicts.
+- `core/api_providers.py` — `_ep()` accepts `array_hints`. Declared for NewsAPI (`articles`), Reddit (`data.children`), CoinGecko markets (root array). Reddit provider now sends a desktop-Chrome `user_agent` to dodge Cloudflare bot detection (works in some egress IPs; soft-fails in others — expected behaviour).
+- `core/widget_templates.py` — `live_reddit_top` upgraded to use array_bindings; **2 new templates**: `live_news_headlines` (NewsAPI articles → list), `live_crypto_markets` (CoinGecko top-10 markets → list).
+
+### Frontend
+- `components/widget-builder/ApiSourceTab.jsx`:
+  - New `ArrayBindingsPanel` + `ArrayBindingRow` subcomponents below the existing single-value bindings.
+  - **Quick presets** (green chips from `endpoint.array_hints`) populate a binding with one click.
+  - Per-row UI: target field selector (filtered to rich_item/option_list/image-multi/video/sound), array path input, max items, empty state text, item field mapping table (key → relative path), and a live **preview of the first 3 resolved items** rendered as JSON.
+  - Client-side `resolvePath()` mirrors backend `get_path()` so preview is instant (no extra proxy call per keystroke).
+- `components/widgets/CustomWidgetRenderer.jsx`:
+  - Merges `mapped` (single values) and `mapped_arrays` (repeated items) into the layout's `data` dict.
+  - Bubbles `array_bindings[*].empty_text` into `data._empty_text` so layouts show the configured empty fallback instead of generic "No items yet."
+  - `MediaGridLayout` now accepts either `string[]` or `{image:url}[]` shape — backward compatible AND array-binding compatible.
+
+### Verified end-to-end
+- CoinGecko `markets` → 10 items returned with label/body/value/image populated, cached on 2nd call.
+- Empty `array_path` resolution returns `[]` cleanly (no crash); renderer shows `empty_text`.
+- Scalar mode (`item_map.{_:'image'}`) emits array of URL strings for media_grid.
+- @stealth gate still enforced on test-api/direct-call; widget-id path open to authenticated users.
+- Phase 2A custom widget create + clone + version-rollback unaffected (regression clean).
+
+### Files touched (Phase 3.1)
+- `backend/services/api_widget_proxy.py` — `_apply_array_bindings`, scalar mode, response shape extended
+- `backend/routers/api_widgets.py` — payloads + threading
+- `backend/routers/admin_widgets.py` — validation extended
+- `backend/core/api_providers.py` — `array_hints`, Reddit UA, new CoinGecko `markets` endpoint
+- `backend/core/widget_templates.py` — `live_reddit_top` upgraded; `live_news_headlines` + `live_crypto_markets` added
+- `frontend/src/components/widget-builder/ApiSourceTab.jsx` — ArrayBindingsPanel + ArrayBindingRow + resolvePath
+- `frontend/src/components/widgets/CustomWidgetRenderer.jsx` — mapped_arrays merge + empty_text bubble + MediaGridLayout dual-shape support
+
+### Known limitations / backlog
+- Reddit upstream blocked by Cloudflare from many shared egress IPs (returns 502/403). Code path is correct; this is an external concern.
+- POST endpoints return 200 instead of 201 on create (optional/cosmetic).
+- Per-minute provider burst (60/min) easily hit when blasting tests back-to-back; fixed-minute window deferred as P3.
+
+---
+
+
 ## Phase 3 — API Widget Sources (Feb 25, 2026, iter 48) ✅ COMPLETE
 
 **Status:** Backend 19/19 tests pass. Frontend smoke-verified. Two MINOR/optional improvements suggested by testing agent — one (upstream 429 passthrough) applied; the other (sliding-window rate limit) deferred as P3.
