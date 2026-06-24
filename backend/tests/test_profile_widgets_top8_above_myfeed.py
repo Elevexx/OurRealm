@@ -65,34 +65,53 @@ def test_stealth_widget_order_untouched():
     [myfeed, top8, live, music, events, polls, ...]. We assert the
     surviving ordering of the originally-present subset rather than a
     rigid length match because self-heal may append more types over
-    time (notes, blog) as the founder spec evolves."""
+    time (notes, blog) as the founder spec evolves.
+
+    Phase 3.5+ (Jun 2026): registry-launched widgets (chat, etc.) are
+    also legal. We assert each type is EITHER in the hardcoded allow-
+    list OR a live key in the widget_registry."""
     tok = login(STEALTH)
     u = me(tok)
     t = types_of(u.get("widgets"))
-    # Every type that appears MUST be in the allow-list.
     from core.widget_types import ALLOWED_WIDGET_TYPES
-    bad = [x for x in t if x not in ALLOWED_WIDGET_TYPES]
-    assert not bad, f"stealth has disallowed widget types: {bad}"
+    # Hit the public registry endpoint to learn which registry keys are live.
+    reg_r = requests.get(f"{BASE_URL}/api/widgets/available?placement=profile",
+                         headers={"Authorization": f"Bearer {tok}"}, timeout=15)
+    live_keys = {w.get("key") for w in (reg_r.json().get("widgets") or [])}
+    allowed = ALLOWED_WIDGET_TYPES | live_keys
+    bad = [x for x in t if x not in allowed]
+    assert not bad, f"stealth has truly-unknown widget types (not hardcoded, not in live registry): {bad}"
     # Original surviving order subset.
     surviving = [x for x in t if x in ("myfeed", "top8", "live", "music", "events", "polls")]
     assert surviving == ["myfeed", "top8", "live", "music", "events", "polls"], (
         f"surviving order mismatch: {surviving}"
     )
+    # @stealth never gets `profile_widgets_customized=True` even after
+    # saves — the boot self-heal preserves the order without flipping
+    # the flag (see routers/profile.py:update_profile).
     assert u.get("profile_widgets_customized") in (False, None), (
         f"stealth customized flag should be False but got {u.get('profile_widgets_customized')}"
     )
 
 
 def test_stealth_public_by_username_widgets():
-    """Public /api/profile/by-username/stealth returns only allow-listed widgets."""
+    """Public /api/profile/by-username/stealth returns the FOUNDER_WIDGETS
+    plus any live registry-launched widgets stealth has added. Each type
+    must be a known hardcoded type OR a live registry key."""
     pub = requests.get(f"{BASE_URL}/api/profile/by-username/stealth", timeout=20)
     assert pub.status_code == 200, pub.text
     body = pub.json()
     u = body.get("user", body)
     t = types_of(u.get("widgets"))
     from core.widget_types import ALLOWED_WIDGET_TYPES
-    bad = [x for x in t if x not in ALLOWED_WIDGET_TYPES]
-    assert not bad, f"public stealth has disallowed widget types: {bad}"
+    # Anon viewer — query the public widgets/available with no auth.
+    tok = login(STEALTH)
+    reg_r = requests.get(f"{BASE_URL}/api/widgets/available?placement=profile",
+                         headers={"Authorization": f"Bearer {tok}"}, timeout=15)
+    live_keys = {w.get("key") for w in (reg_r.json().get("widgets") or [])}
+    allowed = ALLOWED_WIDGET_TYPES | live_keys
+    bad = [x for x in t if x not in allowed]
+    assert not bad, f"public stealth has truly-unknown widget types: {bad}"
     surviving = [x for x in t if x in ("myfeed", "top8", "live", "music", "events", "polls")]
     assert surviving == ["myfeed", "top8", "live", "music", "events", "polls"], (
         f"surviving order mismatch: {surviving}"

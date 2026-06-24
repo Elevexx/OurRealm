@@ -83,6 +83,32 @@ async def get_current_user(request: Request) -> dict:
 CurrentUser = Annotated[dict, Depends(get_current_user)]
 
 
+async def get_optional_user(request: Request):
+    """Like `get_current_user` but returns None for anonymous callers
+    instead of raising 401. Used by public endpoints that still want to
+    personalize the response when a viewer happens to be logged in."""
+    token = request.cookies.get("access_token")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "access":
+            return None
+        user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
+        if not user or user.get("disabled"):
+            return None
+        return user
+    except Exception:
+        return None
+
+
+OptionalUser = Annotated["dict | None", Depends(get_optional_user)]
+
+
 # Admin gate — used by every /api/admin/* router.
 # Phase α (Feb 2026) — role-based: see core.permissions for the per-role
 # matrix. The legacy username allow-list (`@stealth`, `@support`) is kept

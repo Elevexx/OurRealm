@@ -44,6 +44,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from core.db import db
 from core.deps import CurrentUser, is_admin_user
+from services.widget_hydration import invalidate_widget_registry_cache
 from core.widget_types import ALLOWED_WIDGET_TYPES
 from core.widget_layouts import (
     LAYOUT_KEYS,
@@ -529,6 +530,7 @@ async def create_widget(payload: WidgetCreate, current: CurrentUser):
         "updated_at": now,
     })
     await db.widget_registry.insert_one(doc)
+    invalidate_widget_registry_cache()
     return {"widget": _serialise_widget(doc)}
 
 
@@ -575,6 +577,7 @@ async def update_widget(widget_id: str, payload: WidgetPatch, current: CurrentUs
 
     updates["updated_at"] = _now_iso()
     await db.widget_registry.update_one({"id": widget_id}, {"$set": updates})
+    invalidate_widget_registry_cache()
     fresh = await db.widget_registry.find_one({"id": widget_id})
     return {"widget": _serialise_widget(fresh)}
 
@@ -588,6 +591,7 @@ async def delete_widget(widget_id: str, current: CurrentUser):
     if doc.get("is_system"):
         raise HTTPException(status_code=400, detail="System widgets cannot be deleted — disable them instead")
     await db.widget_registry.delete_one({"id": widget_id})
+    invalidate_widget_registry_cache()
     return {"ok": True, "deleted": widget_id}
 
 
@@ -600,6 +604,7 @@ async def launch_widget(widget_id: str, current: CurrentUser):
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Widget not found")
+    invalidate_widget_registry_cache()
     return {"ok": True, "status": "live"}
 
 
@@ -612,6 +617,7 @@ async def disable_widget(widget_id: str, current: CurrentUser):
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Widget not found")
+    invalidate_widget_registry_cache()
     return {"ok": True, "status": "disabled"}
 
 
@@ -685,6 +691,7 @@ async def create_from_template(template_key: str, payload: WidgetClonePayload, c
         "updated_at": now,
     }
     await db.widget_registry.insert_one(doc)
+    invalidate_widget_registry_cache()
     return {"widget": _serialise_widget(doc)}
 
 
@@ -720,6 +727,7 @@ async def clone_widget(widget_id: str, payload: WidgetClonePayload, current: Cur
         "updated_at": now,
     })
     await db.widget_registry.insert_one(doc)
+    invalidate_widget_registry_cache()
     return {"widget": _serialise_widget(doc)}
 
 

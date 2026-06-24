@@ -24,6 +24,7 @@ from models.schemas import (
     RegisterPayload, LoginPayload, UsernameCheck, ForgotPayload,
     ResetPayload, OtpRequest, OtpVerify, serialize_user,
 )
+from services.widget_hydration import hydrate_registry_widgets
 
 logger = logging.getLogger("ourrealm.auth")
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -258,7 +259,13 @@ async def logout(request: Request, response: Response):
 
 @router.get("/me")
 async def me(current: CurrentUser):
-    return {"user": serialize_user(current)}
+    out = serialize_user(current)
+    # Phase 3.5+ — hydrate registry widgets so the owner's session
+    # ships with full editor_config for every saved custom widget.
+    out["widgets"] = await hydrate_registry_widgets(
+        current.get("widgets") or [], viewer=current,
+    )
+    return {"user": out}
 
 
 @router.post("/refresh")

@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from core.db import db
-from core.deps import CurrentUser
+from core.deps import CurrentUser, OptionalUser
 from core.security import hash_password, verify_password
 from core.geo import is_valid_zip, resolve_zip
 from core.account_lifecycle import (
@@ -16,6 +16,9 @@ from core.account_lifecycle import (
 from core.widget_types import (
     ALLOWED_WIDGET_TYPES, VIDEOS_MAX, MUSIC_SOUNDS_MAX, PODCASTS_SOUNDS_MAX,
     PHOTOS_MAX, notes_limit_for, blog_limit_for,
+)
+from services.widget_hydration import (
+    valid_widget_types, hydrate_registry_widgets,
 )
 from models.schemas import (
     ProfileUpdate, UsernameChangePayload, PasswordChangePayload, serialize_user,
@@ -28,7 +31,13 @@ USERNAME_COOLDOWN_DAYS = 7
 
 @router.get("/me")
 async def get_my_profile(current: CurrentUser):
-    return {"user": serialize_user(current)}
+    out = serialize_user(current)
+    # Hydrate registry widgets so the owner's profile edit page renders
+    # the same way a saved-then-refreshed visit would.
+    out["widgets"] = await hydrate_registry_widgets(
+        current.get("widgets") or [], viewer=current,
+    )
+    return {"user": out}
 
 
 @router.patch("/me")
@@ -82,12 +91,16 @@ async def update_profile(update: ProfileUpdate, current: CurrentUser):
         # Validation happens BEFORE the customized flag flip so
         # rejected payloads don't accidentally mark the account dirty.
         if "widgets" in set_doc:
+            # Save-time allow-list = hardcoded types ∪ live registry keys.
+            # Registry widgets (e.g. ``stealth_ai_a1b``) round-trip
+            # through the API as ``type == widget.key``.
+            allowed = await valid_widget_types()
             cleaned = []
             for w in (set_doc["widgets"] or []):
                 if not isinstance(w, dict):
                     continue
                 t = w.get("type")
-                if t not in ALLOWED_WIDGET_TYPES:
+                if t not in allowed:
                     continue
                 if t == "notes":
                     limit = notes_limit_for(current)
@@ -155,6 +168,14 @@ async def update_profile(update: ProfileUpdate, current: CurrentUser):
                             detail=f"Photos widget supports max {PHOTOS_MAX} photos",
                         )
                     w["items"] = items[:PHOTOS_MAX]
+                # Strip hydrated registry fields before persistence —
+                # we always re-hydrate on read so newly-launched widget
+                # config updates take effect immediately.
+                if t not in ALLOWED_WIDGET_TYPES:
+                    w = {
+                        k: v for k, v in w.items()
+                        if k not in ("editor_config", "registry_type", "name", "icon", "description")
+                    }
                 cleaned.append(w)
             set_doc["widgets"] = cleaned
 
@@ -168,7 +189,11 @@ async def update_profile(update: ProfileUpdate, current: CurrentUser):
                 set_doc["profile_widgets_customized"] = True
         await db.users.update_one({"id": current["id"]}, {"$set": set_doc})
     user = await db.users.find_one({"id": current["id"]}, {"_id": 0})
-    return {"user": serialize_user(user)}
+    out = serialize_user(user)
+    out["widgets"] = await hydrate_registry_widgets(
+        user.get("widgets") or [], viewer=user,
+    )
+    return {"user": out}
 
 
 @router.patch("/username")
@@ -257,7 +282,7 @@ async def get_profiles_by_ids(payload: dict):
 
 
 @router.get("/by-username/{username}")
-async def get_public_profile_by_username(username: str):
+async def get_public_profile_by_username(username: str, viewer: OptionalUser):
     user = await db.users.find_one(
         {"username": username.lower()}, {"_id": 0, "password_hash": 0}
     )
@@ -268,14 +293,13 @@ async def get_public_profile_by_username(username: str):
     if should_hide_from_public(user):
         raise HTTPException(status_code=404, detail="Profile not found")
     out = serialize_user(user)
-    # Strip any deprecated widget types defensively before returning to
-    # public viewers. The boot migration also wipes them in Mongo, but
-    # this guarantees no legacy entry ever leaks via the public surface
-    # if a future write path bypasses validation.
-    out["widgets"] = [
-        w for w in (user.get("widgets") or [])
-        if isinstance(w, dict) and w.get("type") in ALLOWED_WIDGET_TYPES
-    ]
+    # Hydrate registry widgets (Phase 3.5+). Replaces the strict
+    # ALLOWED_WIDGET_TYPES filter so launched custom widgets render on
+    # public profiles. Registry widgets whose access_groups exclude the
+    # viewer are silently dropped inside the hydrator.
+    out["widgets"] = await hydrate_registry_widgets(
+        user.get("widgets") or [], viewer=viewer,
+    )
     out["social"] = user.get("social", {})
     # ── PRIVACY: ZIP code never leaves the owner's session. ──
     # The serializer adds it for /auth/me; we strip here for the public

@@ -75,7 +75,11 @@ class ChatRegeneratePayload(BaseModel):
 # ─────────────────────────────────────────────────────────────────────
 
 async def _load_widget(widget_id: str) -> Dict[str, Any]:
-    widget = await db.widget_registry.find_one({"id": widget_id})
+    # Phase 3.5+ — widgets are referenced from a user's profile by their
+    # registry KEY (e.g. ``stealth_ai_5a6``), not the registry doc UUID.
+    # We accept either so old test/admin paths that pass the UUID still
+    # work, while the new profile-render path can pass the key cleanly.
+    widget = await db.widget_registry.find_one({"$or": [{"id": widget_id}, {"key": widget_id}]})
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found")
     return widget

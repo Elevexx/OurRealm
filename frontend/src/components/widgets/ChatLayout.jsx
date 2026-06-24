@@ -18,7 +18,11 @@ const MAX_INPUT_CHARS = 8000;
 
 export default function ChatLayout({ data, theme, widget }) {
   const chatCfg = useMemo(() => (widget?.editor_config?.chat) || {}, [widget]);
-  const widgetId = widget?.id || widget?._preview_widget_id;
+  // For registry-launched widgets the user's saved entry id (e.g.
+  // ``w-chat-1``) is NOT the registry id; we must call the chat API
+  // with the registry KEY so the backend can find the widget. Falls
+  // back to the instance id for direct admin-builder previews.
+  const widgetId = widget?.key || widget?.id || widget?._preview_widget_id;
   const memoryMode = (chatCfg.memory_mode || "persistent").toLowerCase();
   const enableStreaming = !!chatCfg.enable_streaming;
 

@@ -159,6 +159,11 @@ function WidgetBody({ w, ownerUsername, isOwner, viewer }) {
 
 function SortableWidget({ w, editing, onCycleSize, ownerUsername, isOwner, viewer }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: w.id });
+  // Header label fallback chain — w.title (legacy), w.name (registry-
+  // hydrated), prettified type key. Never shows a raw `stealth_ai_5a6`.
+  const headerLabel = w.title
+    || w.name
+    || String(w.type || "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 40);
   return (
     <div
       ref={setNodeRef}
@@ -167,7 +172,7 @@ function SortableWidget({ w, editing, onCycleSize, ownerUsername, isOwner, viewe
       data-testid={`founder-widget-${w.id}`}
     >
       <div className="flex items-center justify-between mb-2.5">
-        <div className="text-xs font-bold uppercase tracking-widest" style={{ color: "var(--primary)" }}>{w.title}</div>
+        <div className="text-xs font-bold uppercase tracking-widest" style={{ color: "var(--primary)" }}>{headerLabel}</div>
         {editing && (
           <div className="flex gap-1">
             <button {...attributes} {...listeners} className="or-chip cursor-grab active:cursor-grabbing" style={{ padding: "0.15rem 0.4rem", fontSize: 11, touchAction: "none" }} data-testid={`fw-${w.id}-drag`}>
@@ -376,9 +381,9 @@ export default function FounderProfile() {
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-        <SortableContext items={widgets.filter((w) => ALLOWED_WIDGET_TYPES.has(w.type)).map((w) => w.id)} strategy={rectSortingStrategy}>
+        <SortableContext items={widgets.filter((w) => ALLOWED_WIDGET_TYPES.has(w.type) || !!w.editor_config).map((w) => w.id)} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4" style={{ gridAutoRows: "minmax(160px, auto)" }} data-testid="founder-widget-grid">
-            {widgets.filter((w) => ALLOWED_WIDGET_TYPES.has(w.type)).map((w) => <SortableWidget key={w.id} w={w} editing={editing} onCycleSize={cycleSize} ownerUsername={profile.username} isOwner={isOwner} viewer={user} />)}
+            {widgets.filter((w) => ALLOWED_WIDGET_TYPES.has(w.type) || !!w.editor_config).map((w) => <SortableWidget key={w.id} w={w} editing={editing} onCycleSize={cycleSize} ownerUsername={profile.username} isOwner={isOwner} viewer={user} />)}
           </div>
         </SortableContext>
       </DndContext>

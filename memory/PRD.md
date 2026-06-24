@@ -1,6 +1,74 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Bug fix — Registry widgets now render on profiles (Feb 26, 2026) ✅
+
+**Reported:** Stealth AI (Founder-Only) and other launched registry widgets save to profile layouts but do not render anywhere on the profile.
+
+**Root cause — three independent chokepoints all dropping registry widgets:**
+
+1. **`migrate_strip_deprecated_widgets()` in `core/seed.py`** — runs on every startup and strips any widget whose `type` is not in the hardcoded `ALLOWED_WIDGET_TYPES` set. Was wiping the stealth_ai_5a6 widget right after the user saved it.
+2. **`_filter_allowed_widgets()` in `models/schemas.py`** — same strict allowlist applied at `/auth/me` serialization. Even when the widget survived the DB, it was stripped before reaching the client.
+3. **Profile.jsx + FounderProfile.jsx** — frontend filter `widgets.filter(w => ALLOWED_WIDGET_TYPES.has(w.type))` dropped any registry widget before it could reach `CustomWidgetRenderer`.
+
+**Plus a fourth gap:** /auth/me + /profile/me + /profile/by-username never carried `editor_config` for registry widgets, so even if they had passed the filters there was nothing to render.
+
+### The fix
+- **New service `services/widget_hydration.py`** — caches `db.widget_registry` (TTL 30 s, cross-process Mongo stamp invalidation), exposes:
+  - `valid_widget_types()` — union of hardcoded types + every live registry key.
+  - `hydrate_registry_widgets(widgets, viewer)` — merges `editor_config` + `name` + `icon` from the registry onto each saved widget; drops stale references and access-group-restricted widgets the viewer can't see.
+  - `invalidate_widget_registry_cache()` — bumps a Mongo `widget_registry_stamps` doc so OTHER worker processes pick up new widgets within one request.
+- **`routers/profile.py`** — PATCH /me uses the dynamic `valid_widget_types()` allowlist. /me and /by-username/:u hydrate via `hydrate_registry_widgets()`. Stored docs stay minimal `{id, type, size}` — never bloat user records with hydrated config.
+- **`routers/auth.py`** — `/auth/me` also hydrates so the owner-edit profile sees its custom widgets.
+- **`models/schemas.py`** — `_filter_allowed_widgets()` relaxed to keep any widget with a non-empty `type` string. Stale validation handled downstream by the hydrator.
+- **`core/seed.py`** — `migrate_strip_deprecated_widgets()` now uses the dynamic allowlist (hardcoded ∪ live registry keys) so registry widgets survive boot self-heal. Stealth's @founder cluster is preserved verbatim.
+- **`routers/admin_widgets.py`** — every registry mutation (insert/update/delete/clone/launch/disable/from-template) now calls `invalidate_widget_registry_cache()`.
+- **`Profile.jsx` + `FounderProfile.jsx`** — filter relaxed to `ALLOWED_WIDGET_TYPES.has(w.type) || !!w.editor_config`. SortableWidget header falls back to `w.name` then a prettified type string instead of `w.type` raw key. Picker carries `editor_config` + `widget_type` forward.
+- **`ChatLayout.jsx`** — uses `widget.key` (registry key) when calling `/api/widgets/chat/*` instead of the per-instance saved id. Backend `_load_widget` accepts EITHER `id` or `key` for backward compat.
+- **`core/deps.py`** — new `OptionalUser` dep for `/profile/by-username/:u` so the public endpoint can still personalize access checks for logged-in viewers (founder vs anonymous).
+- **`CustomWidgetRenderer.jsx`** — already has a safe `CardLayout` fallback when `editor_config.layout` is unknown; no change needed.
+
+### Tests
+- **New `/app/backend/tests/test_registry_widget_hydration.py`** — 8 tests:
+  - Save round-trip preserves registry widget.
+  - `/auth/me` hydrates editor_config.
+  - `/profile/me` hydrates.
+  - Public `/profile/by-username/:u` hydrates (anonymous + logged-in).
+  - Access-group restricted widgets hidden from non-members.
+  - Stale registry references silently dropped.
+  - Saved widget stays minimal in storage (no editor_config bloat).
+- **Updated `test_profile_widgets_top8_above_myfeed.py`** — assertions now allow registry keys in addition to hardcoded types.
+- **Test suite total: 61/61 pass** (13 phase35_chat + 6 phase35_extras + 25 phase34_providers + 9 profile_widgets_top8 + 8 registry_widget_hydration).
+
+### How Orion / Stealth AI / any launched widget now works
+1. Founder launches widget via `/admin/widgets` → `widget_registry` insert + cache stamp bump.
+2. User opens the picker → `/api/widgets/available?placement=profile` returns the widget tile.
+3. User selects it → frontend appends `{id: w-…, type: <registry_key>, size}` to local state.
+4. User saves → PATCH `/api/profile/me` accepts the registry key (in dynamic allowlist), strips hydrated fields, persists only `{id, type, size}`.
+5. Subsequent reads hydrate `editor_config` + `name` + `icon` from the registry on every response.
+6. Profile.jsx / FounderProfile.jsx see `editor_config` on the saved widget, pass it through `CustomWidgetRenderer` → dispatched to `LAYOUT_RENDERERS[layout]` (ChatLayout / CardLayout / StatLayout / etc.).
+7. Stale references (widget deleted/disabled) silently drop in the hydrator. Access-group-restricted widgets disappear for unauthorized viewers.
+
+### Files touched
+- `backend/services/widget_hydration.py` (new)
+- `backend/routers/profile.py` (hydrate + dynamic allowlist + strip-on-save)
+- `backend/routers/auth.py` (`/me` hydration)
+- `backend/routers/admin_widgets.py` (cache invalidation on all mutations)
+- `backend/core/seed.py` (strip migration uses dynamic allowlist)
+- `backend/core/deps.py` (new `OptionalUser` dep)
+- `backend/models/schemas.py` (`_filter_allowed_widgets` relaxed)
+- `backend/tests/test_registry_widget_hydration.py` (new, 8 tests)
+- `backend/tests/test_profile_widgets_top8_above_myfeed.py` (allowlist relaxed)
+- `frontend/src/pages/Profile.jsx` (filter relaxed + picker carries editor_config + header label fallback)
+- `frontend/src/pages/FounderProfile.jsx` (filter relaxed + header label fallback)
+- `frontend/src/components/widgets/ChatLayout.jsx` (uses registry key for API calls)
+- `backend/routers/widget_chat.py` (`_load_widget` accepts id OR key)
+
+### Mobile polish (verified)
+- Chat widget renders cleanly on 390 × 844 viewport (iPhone). Input + send button readable + tappable. Conversation bubbles wrap correctly.
+
+
+
 ## Phase 3.5 — Conversational AI Widgets (Feb 26, 2026, iters 53–54) ✅ COMPLETE
 
 **Status:** 26/26 backend pytest pass + Playwright E2E builder pre-population verified. Zero critical/minor issues remaining. Zero OpenAI key leaks. SSE streaming working.

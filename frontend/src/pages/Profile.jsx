@@ -41,6 +41,14 @@ const SIZE_TO_CLASS = {
 // Music, Podcasts, Polls, Radar) to the shared ProfileWidgetBodies
 // module so /profile (owner edit) and /profile/:username (public)
 // render identical DOM and data flow.
+
+// Convert a registry key (e.g. "stealth_ai_5a6") into a human label
+// ("Stealth Ai") for fallback display when no hydrated name is on hand.
+const prettifyKey = (raw) => String(raw || "")
+  .replace(/_/g, " ")
+  .replace(/\b\w/g, (c) => c.toUpperCase())
+  .slice(0, 40);
+
 function WidgetBody({ w, mode, ownerUsername, isOwner, editing, onUpdate, viewer }) {
   switch (w.type) {
     case "myfeed":
@@ -137,7 +145,12 @@ function WidgetBody({ w, mode, ownerUsername, isOwner, editing, onUpdate, viewer
 function SortableWidget({ w, mode, editing, onCycleSize, onRemove, onUpdate, ownerUsername, isOwner, viewer }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: w.id });
   const def = WIDGET_TYPES.find((x) => x.id === w.type);
-  const Icon = Icons[def?.icon || "Sparkles"] || Icons.Sparkles;
+  // For registry-launched widgets, use the hydrated name + icon as
+  // header chrome. Falls back to the prettified type string so we
+  // never show a raw widget key like `stealth_ai_5a6`.
+  const headerLabel = def?.label || w.name || prettifyKey(w.type);
+  const headerIconKey = def?.icon || w.icon || "Sparkles";
+  const Icon = Icons[headerIconKey] || Icons.Sparkles;
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -154,7 +167,7 @@ function SortableWidget({ w, mode, editing, onCycleSize, onRemove, onUpdate, own
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Icon size={16} style={{ color: "var(--primary)" }} />
-          <span className="text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{def?.label || w.type}</span>
+          <span className="text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{headerLabel}</span>
         </div>
         {editing && (
           <div className="flex gap-1 items-center">
@@ -222,7 +235,18 @@ function AddWidgetPicker({ open, onClose, onPickMany, viewer }) {
           { signal: ctrl.signal },
         );
         const reg = (data?.widgets || []).map((w) => ({
-          id: w.key, label: w.name, icon: w.icon, default_size: w.default_size,
+          id: w.key,
+          label: w.name,
+          icon: w.icon,
+          default_size: w.default_size || "medium",
+          // Carry the editor_config + widget_type forward so the picker
+          // can both show a richer preview AND so any future "preview
+          // before save" UX has the data on hand. The save path only
+          // persists {id, type, size} — hydration on read merges the
+          // latest editor_config back in.
+          editor_config: w.editor_config || null,
+          widget_type: w.type || null,
+          is_registry: true,
         }));
         setAvailable(reg.length ? reg : WIDGET_TYPES);
       } catch (e) {
@@ -589,7 +613,11 @@ export default function Profile() {
             data-testid="profile-widget-grid"
           >
             {widgets
-              .filter((w) => ALLOWED_WIDGET_TYPES.has(w.type))
+              // Render widgets that match either a hardcoded type OR have
+              // a hydrated editor_config (registry-launched custom widget).
+              // The server-side hydrator drops stale/unauthorized refs so
+              // anything that reaches us here is safe to render.
+              .filter((w) => ALLOWED_WIDGET_TYPES.has(w.type) || !!w.editor_config)
               .map((w) => (
               <SortableWidget
                 key={w.id}

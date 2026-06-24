@@ -641,13 +641,16 @@ async def migrate_inject_myfeed_widget():
 async def migrate_strip_deprecated_widgets():
     import logging
     from core.widget_types import ALLOWED_WIDGET_TYPES
+    from services.widget_hydration import valid_widget_types
     log = logging.getLogger("ourrealm.seed")
+    # Registry keys are dynamic — refresh from Mongo before stripping.
+    allowed = await valid_widget_types()
     n = 0
     async for u in db.users.find({}, {"_id": 0, "id": 1, "widgets": 1}):
         widgets = u.get("widgets") or []
         cleaned = [
             w for w in widgets
-            if isinstance(w, dict) and w.get("type") in ALLOWED_WIDGET_TYPES
+            if isinstance(w, dict) and w.get("type") in allowed
         ]
         if len(cleaned) != len(widgets):
             await db.users.update_one(

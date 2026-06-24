@@ -7,14 +7,18 @@ from core.widget_types import ALLOWED_WIDGET_TYPES
 
 
 def _filter_allowed_widgets(widgets):
-    """Drop any widget whose type isn't in the 15-widget allow-list.
-    Defense in depth — write paths validate too, but legacy rows from
-    before the lockdown migration must never reach the UI."""
+    """Keep both hardcoded-type widgets and registry-launched widgets.
+    Registry widgets carry an arbitrary string ``type`` (typically the
+    widget key, e.g. ``stealth_ai_a1b``) — the downstream hydrator in
+    ``services/widget_hydration.py`` resolves them against the live
+    registry and drops stale references. We never strip them here so
+    that newly-launched custom widgets show up immediately on /auth/me
+    without needing a profile-edit save."""
     if not widgets:
         return []
     return [
         w for w in widgets
-        if isinstance(w, dict) and w.get("type") in ALLOWED_WIDGET_TYPES
+        if isinstance(w, dict) and (w.get("type") or "").strip()
     ]
 
 
