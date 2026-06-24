@@ -1,0 +1,61 @@
+{
+  "summary": "Phase-1 Widgets & Badges Manager — BACKEND PASS (24/24 pytest in test_admin_widgets_badges_phase1.py), FRONTEND MOSTLY PASS with TWO confirmed bugs in AddWidgetPicker on /profile. Admin gate, system seed (16 widgets), widget CRUD (create/dup/patch/launch/disable/delete + system-delete-blocked), /widgets/available filtering, /widgets/disabled admin-only, badge CRUD/assign/recipients/remove/disable/launch/delete and public profile badges all verified end-to-end via API. Frontend: stealth admin sees the page, 16 system rows render with [data-testid=widget-row-{key}], myfeed has no delete button, admin-widgets-tab-{widgets|badges} tabs work, Badges tab shows the OG badge with [data-testid=badges-create], AdminHub card [data-testid=admin-hub-card-widgets] links to /admin/widgets, tftwo (non-admin) is correctly redirected to / when hitting /admin/widgets. BUGS: (1) AddWidgetPicker still shows the disabled 'radar' tile [data-testid=add-widget-radar] even though /api/widgets/available correctly returns only 15 live widgets (verified by direct fetch from the SAME browser session); the picker is falling back to the hard-coded WIDGET_TYPES list. (2) [data-testid=picker-disabled-banner] never renders for stealth even though /api/widgets/disabled returns radar and the user IS recognised as admin (the GET fires from the picker useEffect).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "AddWidgetPicker (Profile.jsx ~line 198-275)",
+        "issue": "Picker shows 16 tiles INCLUDING the disabled 'radar' widget after admin disables it. Direct in-browser fetch of /api/widgets/available returns 15 widgets (no radar) using the SAME bearer token, but the picker still renders [data-testid=add-widget-radar]. The picker is using the hard-coded WIDGET_TYPES fallback rather than the API response — most likely the apiClient.get('/widgets/available?placement=profile') call inside the open-effect is throwing or its response shape isn't being read, so setAvailable falls through to the catch branch (setAvailable(WIDGET_TYPES)). Note the SECOND fetch (/widgets/disabled) in the same useEffect DOES succeed and is visible in the network log, so it's specifically the /widgets/available call path that's broken in this component.",
+        "selector": "[data-testid='add-widget-radar']",
+        "priority": "HIGH"
+      },
+      {
+        "component": "AddWidgetPicker disabled banner",
+        "issue": "[data-testid='picker-disabled-banner'] never appears for stealth even though /api/widgets/disabled returns [{key:'radar',status:'disabled'}] and the conditional only requires disabledKeys.size > 0. Suspect root causes: (a) the useEffect's `cancelled` flag fires before the second await settles (the cleanup runs when the [open, viewer] deps change because viewer hydrates from null→object after mount, racing the fetch). (b) the admin check `viewer?.role === 'admin' || 'founder' || viewer?.username === 'stealth'` may evaluate before viewer is populated and short-circuit via `if(!isAdmin) return` — but since the /widgets/disabled NETWORK call DOES fire (verified in request log), this isn't it; the data is fetched but setDisabledKeys never makes it to render. Recommend: drop the `cancelled` guard on the disabled-keys setState OR move disabledKeys into a separate useEffect that only depends on viewer/open and re-runs whenever viewer changes.",
+        "selector": "[data-testid='picker-disabled-banner']",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Disable widget → publicly hidden in picker",
+        "issue": "Backend correctly filters /api/widgets/available to 15 entries, but the React picker still shows the disabled tile because the picker uses the WIDGET_TYPES fallback. End-user impact: an admin can disable a widget in /admin/widgets but it remains visible+selectable in /profile picker for everyone (including non-admins on retest needed).",
+        "affected_selectors": ["[data-testid='add-widget-radar']", "[data-testid='picker-disabled-banner']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_admin_widgets_badges_phase1.py",
+    "/app/test_reports/pytest/iter44_widgets_badges_phase1.xml"
+  ],
+  "action_items": [
+    "Fix AddWidgetPicker in /app/frontend/src/pages/Profile.jsx so it actually renders the API result from /api/widgets/available (currently the disabled 'radar' widget still appears in the picker even though the backend correctly omits it).",
+    "Fix picker-disabled-banner — the banner element never renders for admin even though /api/widgets/disabled returns disabled widgets. Likely a state-update race tied to the useEffect cleanup `cancelled` flag firing before the second await resolves; isolating disabledKeys into its own useEffect should resolve it.",
+    "Optional: stale flaky test backend/tests/test_profile_widgets_top8_above_myfeed.py::test_tftwo_baseline_order_and_flag failed (tftwo widgets list is empty after prior test runs reset them). Not blocking Phase 1 widgets, but main agent should re-seed tftwo defaults if the baseline-order test is meant to be stable."
+  ],
+  "critical_code_review_comments": [
+    "admin_widgets.py is clean — proper _require_admin gate on every admin route, system-widget deletion blocked with exact spec message, indexes created on widget_registry.key + badge_registry.key + user_badges (user_id,badge_key) unique. Public surfaces /widgets/available and /profile/{u}/badges correctly filter to status=live only.",
+    "seed_system_widgets is idempotent — only inserts missing keys, never overwrites admin edits. Good.",
+    "Disable→public-hide flow round-trips correctly at the API layer (verified via pytest + curl-equivalent JS fetch in browser).",
+    "PROFILE.jsx AddWidgetPicker useEffect is fragile: it crams two independent fetches into one async block guarded by a single `cancelled` flag and an `open` dependency, AND a `viewer` dependency. When viewer hydrates async, this effect re-runs and the previous run's cleanup sets cancelled=true, so the second-most-recent fetch's `if(!cancelled)` short-circuit silently drops the result. Split into two effects.",
+    "Admin role check in AddWidgetPicker hard-codes username==='stealth' as the admin override. Fine as a belt-and-braces but the real check should be viewer.is_admin from /api/auth/me. Otherwise a renamed founder would lose admin UI affordances.",
+    "Badge `OG` previously created by main agent (assigned to tftwo) survived the test run — public /api/profile/tftwo/badges still returns it. Good seed for future runs."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_admin_widgets_badges_phase1.py (NEW — 24 tests, all pass, full Phase-1 admin coverage)"
+  ],
+  "success_rate": {
+    "backend": "100% (24/24 phase 1 pytest; regression suite: 27/28 — 1 pre-existing flaky test unrelated to this PR)",
+    "frontend": "~80% — admin page renders, all 16 system rows, tabs, AdminHub card, non-admin redirect, badge tab access all PASS; picker disable-hiding + admin disabled banner FAIL"
+  },
+  "test_credentials": "stealth (slopestyle2022@gmail.com / Password1$), tftwo (testfriend2@example.com / pass1234), tfone (testfriend1@example.com / pass1234) — all verified.",
+  "seed_data_creation": "OG badge from earlier still assigned to tftwo. integration_test_widget + integration_badge created/deleted cleanly by the pytest module. Radar widget was disabled then re-launched at the end of every frontend run — final state should be radar=LIVE.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase-1 backend is rock solid. Frontend admin console works. The TWO open issues are both inside AddWidgetPicker in /app/frontend/src/pages/Profile.jsx — once those fetch/state race conditions are fixed, re-run the picker disable + banner script (see iteration_44 script snippet) to confirm. Backend pytest at /app/backend/tests/test_admin_widgets_badges_phase1.py is the regression file for this phase.",
+  "rca of the issue": "BUG 1 (radar still in picker): The picker's async useEffect cleanup sets cancelled=true on any [open, viewer] dep change. viewer is loaded async via /api/auth/me, so the picker mounts with viewer=null, the effect runs, viewer hydrates, the effect re-runs, and the previous run's `cancelled=true` causes its `if(!cancelled) setAvailable(reg)` to be skipped — so the picker is stuck showing the catch-branch fallback WIDGET_TYPES (16 items) instead of the API response (15 items). BUG 2 (banner missing): same race — setDisabledKeys is gated by `if(!cancelled)`, the cleanup races the fetch, the state-set is dropped, banner never renders. Reproduction: log in as stealth, disable any widget via /admin/widgets, navigate to /profile, click [data-testid=open-widget-picker]. Mitigation: split the two fetches into separate useEffects and drop the `cancelled` guard on the state-set of disabledKeys (or use AbortController instead so the in-flight request is aborted rather than its result silently dropped)."
+}

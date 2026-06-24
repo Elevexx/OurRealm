@@ -14,6 +14,7 @@ import MyFeedWidget from "@/components/MyFeedWidget";
 import TopEightWidget from "@/components/TopEightWidget";
 import VipBadge from "@/components/VipBadge";
 import ReportButton from "@/components/ReportButton";
+import ProfileBadges from "@/components/ProfileBadges";
 import {
   NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PhotosBody, PollsBody, RadarBody,
 } from "@/components/ProfileWidgetBodies";
@@ -318,6 +319,7 @@ export default function FounderProfile() {
               )}
             </div>
             <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }} data-testid="founder-username">@{profile.username}</div>
+            <ProfileBadges username={profile.username} />
             <div className="text-sm mt-1.5" data-testid="founder-bio">{profile.bio}</div>
             <div className="mt-2 flex gap-4 text-xs" style={{ color: "var(--text-muted)" }} data-testid="founder-counts">
               <span><b style={{ color: "var(--text-main)" }} data-testid="founder-follower-count">{profile?.follower_count ?? 0}</b> followers</span>

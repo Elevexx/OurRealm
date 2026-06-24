@@ -19,6 +19,7 @@ import TopEightWidget from "@/components/TopEightWidget";
 import Top8Editor from "@/components/Top8Editor";
 import UserAvatar from "@/components/UserAvatar";
 import VipBadge from "@/components/VipBadge";
+import ProfileBadges from "@/components/ProfileBadges";
 import AvatarPicker from "@/components/AvatarPicker";
 import BannerEditor, { BannerView } from "@/components/BannerEditor";
 import {
@@ -194,10 +195,44 @@ function SortableWidget({ w, mode, editing, onCycleSize, onRemove, onUpdate, own
  * selections are appended to the widgets array in one shot. Closes
  * via the X button or by clicking the backdrop.
  */
-function AddWidgetPicker({ open, onClose, onPickMany }) {
+function AddWidgetPicker({ open, onClose, onPickMany, viewer }) {
   const [selected, setSelected] = useState(new Set());
+  const [available, setAvailable] = useState(null);   // backend registry; null until loaded
+  const [disabledKeys, setDisabledKeys] = useState(new Set());
   useEffect(() => { if (!open) setSelected(new Set()); }, [open]);
+  // When the picker opens, fetch the live registry. Falls back to the
+  // hardcoded WIDGET_TYPES list if the call fails so the picker is
+  // never empty.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await apiClient.get("/widgets/available?placement=profile");
+        if (!cancelled) {
+          const reg = (data?.widgets || []).map((w) => ({
+            id: w.key, label: w.name, icon: w.icon, default_size: w.default_size,
+          }));
+          setAvailable(reg.length ? reg : WIDGET_TYPES);
+        }
+      } catch {
+        if (!cancelled) setAvailable(WIDGET_TYPES);
+      }
+      // Admin-only: also fetch disabled keys so they can see a banner.
+      const role = viewer?.role || "";
+      const isAdmin = role === "admin" || role === "founder" || viewer?.username === "stealth";
+      if (!isAdmin) return;
+      try {
+        const { data } = await apiClient.get("/widgets/disabled");
+        if (!cancelled) {
+          setDisabledKeys(new Set((data?.keys || []).map((k) => k.key)));
+        }
+      } catch { /* */ }
+    })();
+    return () => { cancelled = true; };
+  }, [open, viewer]);
   if (!open) return null;
+  const types = available || WIDGET_TYPES;
   const toggle = (id) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -206,7 +241,7 @@ function AddWidgetPicker({ open, onClose, onPickMany }) {
     });
   };
   const save = () => {
-    const items = WIDGET_TYPES.filter((w) => selected.has(w.id));
+    const items = types.filter((w) => selected.has(w.id));
     if (items.length) onPickMany(items);
     onClose();
   };
@@ -229,8 +264,17 @@ function AddWidgetPicker({ open, onClose, onPickMany }) {
             <Icons.X size={16} />
           </button>
         </div>
+        {disabledKeys.size > 0 && (
+          <div
+            className="text-[11px] mb-3 px-3 py-2 rounded"
+            style={{ background: "rgba(255,90,107,0.14)", color: "#FF8080" }}
+            data-testid="picker-disabled-banner"
+          >
+            {disabledKeys.size} widget{disabledKeys.size === 1 ? "" : "s"} currently disabled by an admin and hidden from this picker. Manage at /admin/widgets.
+          </div>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {WIDGET_TYPES.map((w) => {
+          {types.map((w) => {
             const Icon = Icons[w.icon] || Icons.Sparkles;
             const isSelected = selected.has(w.id);
             return (
@@ -461,6 +505,7 @@ export default function Profile() {
                     <span className="text-sm" style={{ color: "var(--text-muted)" }}>@{user.username}</span>
                   </div>
                 )}
+                {user?.username && <ProfileBadges username={user.username} />}
                 <div className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }} data-testid="profile-bio">
                   {user?.bio || (isGuest ? "Browsing as guest." : "Tap edit to add a bio.")}
                 </div>
@@ -566,7 +611,7 @@ export default function Profile() {
         </SortableContext>
       </DndContext>
 
-      <AddWidgetPicker open={addOpen} onClose={() => setAddOpen(false)} onPickMany={addWidgets} />
+      <AddWidgetPicker open={addOpen} onClose={() => setAddOpen(false)} onPickMany={addWidgets} viewer={user} />
       <AvatarPicker
         open={avatarPickerOpen}
         onClose={() => setAvatarPickerOpen(false)}

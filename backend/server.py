@@ -43,6 +43,7 @@ from routers import realm_widgets as realm_widgets_router_mod
 from routers import admin_user_control as admin_user_control_router_mod
 from routers import reactions as reactions_router_mod
 from routers import profile_polls as profile_polls_router_mod
+from routers import admin_widgets as admin_widgets_router_mod
 from routers import media_proxy as media_proxy_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
@@ -90,6 +91,7 @@ app.include_router(realm_widgets_router_mod.router)
 app.include_router(admin_user_control_router_mod.router)
 app.include_router(reactions_router_mod.router)
 app.include_router(profile_polls_router_mod.router)
+app.include_router(admin_widgets_router_mod.router)
 app.include_router(media_proxy_router_mod.router)
 
 app.add_middleware(
@@ -220,6 +222,14 @@ async def on_startup():
         await profile_polls_router_mod.ensure_indexes()
     except Exception as e:
         logger.warning(f"[profile_polls] index init failed: {e}")
+
+    # Widgets & Badges admin registry — seed 16 system widgets +
+    # ensure unique-key indexes for both registries and user_badges.
+    try:
+        await admin_widgets_router_mod.ensure_indexes()
+        await admin_widgets_router_mod.seed_system_widgets()
+    except Exception as e:
+        logger.warning(f"[admin_widgets] startup failed: {e}")
 
     # Communities (Realms + Groups + Chats) — ensure indexes + seed
     # the legacy mock realms into Mongo on the very first startup.

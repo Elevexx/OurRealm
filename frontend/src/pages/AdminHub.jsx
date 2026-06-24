@@ -15,7 +15,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BarChart3, Zap, Hash, Headphones, HelpCircle, LifeBuoy,
-  Crown, ShieldCheck, ChevronRight, Loader2, Sparkles,
+  Crown, ShieldCheck, ChevronRight, Loader2, Sparkles, LayoutGrid,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -93,6 +93,17 @@ const CARDS = [
     Icon: LifeBuoy,
     accent: "#FF8AC2",
     badge: "Public",
+    roles: ["founder", "admin"],
+    statKey: null,
+  },
+  {
+    id: "widgets",
+    to: "/admin/widgets",
+    title: "Widgets & Badges Manager",
+    description: "Create, launch, disable, and assign widgets and badges across profiles, home, and realms.",
+    Icon: LayoutGrid,
+    accent: "#C26BFF",
+    badge: null,
     roles: ["founder", "admin"],
     statKey: null,
   },
