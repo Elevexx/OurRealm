@@ -169,7 +169,7 @@ function SortableWidget({ w, editing, onCycleSize, ownerUsername, isOwner, viewe
               <Icons.GripVertical size={12} />
             </button>
             <button className="or-chip" style={{ padding: "0.15rem 0.4rem", fontSize: 11 }} onClick={() => onCycleSize(w.id)} data-testid={`fw-${w.id}-resize`}>
-              {w.size[0].toUpperCase()}
+              {(w.size || "medium")[0].toUpperCase()}
             </button>
           </div>
         )}

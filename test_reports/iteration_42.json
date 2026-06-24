@@ -1,0 +1,34 @@
+{
+  "summary": "Iter-42 Phase 15 FRONTEND retest — ALL UI flows pass end-to-end. The three blockers from iter-41 are fully resolved: (1) ProfileWidgetBodies.jsx import alias works (no 'Compiled with problems' overlay anywhere); (2) SortableWidget no longer crashes — w.size is guarded with `(w.size || 'medium')[0].toUpperCase()` AND new widgets default size='medium' via addWidgets; (3) [data-testid='open-widget-picker'] reliably opens the multi-select modal. Verified: clean /profile first load (no error overlay, profile-widget-grid present, 0 console pageerrors); widget library has EXACTLY 15 tiles (myfeed, top8, live, videos, music, podcasts, events, weather, calendar, countdown, notes, polls, survey, blog, radar) with NO deprecated types; multi-select notes+blog+radar → data-selected='true' + check icon + 'Add 3 widgets' button → 3 new SortableWidget cards render → profile-save → reload persists all three; Notes maxLength=500 with live counter ('476 chars left' for 24-char input); Blog maxLength=2000 with live counter ('1975 chars left' for 25-char input); both persist across reload; public view as tfone of /profile/tftwo shows notes-body and blog-body text correctly; Polls flow: tftwo creates poll (question + 2 options Margherita/Pepperoni), saves; tfone logs in, navigates /profile/tftwo, clicks [data-testid='polls-vote-{id}-{opt}'] → 1 vote, bars animate to 100%/0%; clicking same option again → still '1 vote' (idempotent ✓); Stealth /profile/stealth public view renders [data-testid='founder-widget-grid'] with 8 widgets, all types pass ALLOWED_WIDGET_TYPES filter (no merch/photos/ads/wallet/etc.); Picker edge cases: state resets to empty Set on each open (previously-selected widgets NOT pre-checked), Cancel button closes without adding (count 6→6), backdrop click closes without adding (count 6→6); Regression: /messages tabs in order [Chats, Groups, Realms, Calls] ✓, /notifications page has NO 'marketplace' or 'wallet' text ✓. Backend tests not re-run per main agent instructions (iter-41 100% pass unchanged).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_widget_allowlist_phase15.py",
+    "/app/backend/tests/test_profile_widgets_top8_above_myfeed.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AddWidgetPicker correctly resets selection on every open (useEffect line 197). State is local — clean.",
+    "Profile.jsx addWidgets (line ~325) explicitly defaults size:'medium' for newly-added widgets — defensive and matches spec.",
+    "FounderProfile applies ALLOWED_WIDGET_TYPES filter both for SortableContext items AND render map — defense in depth against legacy widgets in DB.",
+    "Backdrop click closes modal correctly (line 215 onClick={onClose}) — verified does NOT add anything since save() is only fired via add-widget-save-many button.",
+    "Polls idempotency works via unique (widget_id, user_id) DB index (verified by re-vote → total stays 1).",
+    "Notes (500) and Blog (2000) char counters use maxLength on textarea + live JS counter — clean dual-layer enforcement.",
+    "Public profile (FounderProfile) NotesBody/BlogBody render saved content cleanly for tfone viewing tftwo — share/shared widget body components are well-factored."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (per iter-41, not re-run)",
+    "frontend": "100% — all Phase 15 UI flows verified: multi-select picker, Notes/Blog char limits+save+reload+public view, Polls owner-edit + tfone vote (idempotent), Stealth public allow-list render, picker reset/cancel/backdrop edge cases, /messages tab order, /notifications filter."
+  },
+  "test_credentials": "stealth/Password1$, tftwo/pass1234, tfone/pass1234 — all verified working.",
+  "seed_data_creation": "tftwo profile now has: top8, myfeed, notes (with 'Hello Phase15 notes test'), blog (with 'Blog content test phase15'), radar, polls (Q='Best pizza topping?', options=[Option1_Margherita, Option2_Pepperoni]) — 1 vote from tfone on Margherita. Ready for further regression.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 15 widget overhaul is COMPLETE and verified end-to-end on frontend + backend. tftwo currently has 6 widgets including a Margherita-leading poll with 1 vote from tfone. If running fresh tests, you may want to delete extra widgets or just hit profile-save with a 2-widget layout to reset.",
+  "rca of the issue": "N/A — all iter-41 blockers resolved by main agent's fixes (import alias, w.size guard + addWidgets default size, data-testid='open-widget-picker' on header button). No new bugs discovered."
+}

@@ -58,29 +58,45 @@ def test_tfone_top8_above_myfeed():
 
 
 def test_stealth_widget_order_untouched():
-    """Stealth must remain in Founder default order [myfeed, top8, live,
-    merch, music, events, polls, custom] (length 8). Self-heal in
-    seed_founder() re-appends any missing FOUNDER_WIDGETS types."""
+    """Phase-15 (Feb 24, 2026): widget allow-list strips merch + custom
+    from stealth's cluster. FOUNDER_WIDGETS now is [live, music, events,
+    polls, blog]. Stealth's current row preserves the original ordering
+    of any widget that survived the strip; the cluster ends up roughly
+    [myfeed, top8, live, music, events, polls, ...]. We assert the
+    surviving ordering of the originally-present subset rather than a
+    rigid length match because self-heal may append more types over
+    time (notes, blog) as the founder spec evolves."""
     tok = login(STEALTH)
     u = me(tok)
     t = types_of(u.get("widgets"))
-    expected = ["myfeed", "top8", "live", "merch", "music", "events", "polls", "custom"]
-    assert len(t) == 8, f"stealth widget length != 8: {t}"
-    assert t == expected, f"stealth widget order mismatch: {t} vs {expected}"
+    # Every type that appears MUST be in the allow-list.
+    from core.widget_types import ALLOWED_WIDGET_TYPES
+    bad = [x for x in t if x not in ALLOWED_WIDGET_TYPES]
+    assert not bad, f"stealth has disallowed widget types: {bad}"
+    # Original surviving order subset.
+    surviving = [x for x in t if x in ("myfeed", "top8", "live", "music", "events", "polls")]
+    assert surviving == ["myfeed", "top8", "live", "music", "events", "polls"], (
+        f"surviving order mismatch: {surviving}"
+    )
     assert u.get("profile_widgets_customized") in (False, None), (
         f"stealth customized flag should be False but got {u.get('profile_widgets_customized')}"
     )
 
 
 def test_stealth_public_by_username_widgets():
-    """Public /api/profile/by-username/stealth returns all 8 founder widgets."""
+    """Public /api/profile/by-username/stealth returns only allow-listed widgets."""
     pub = requests.get(f"{BASE_URL}/api/profile/by-username/stealth", timeout=20)
     assert pub.status_code == 200, pub.text
     body = pub.json()
     u = body.get("user", body)
     t = types_of(u.get("widgets"))
-    expected = ["myfeed", "top8", "live", "merch", "music", "events", "polls", "custom"]
-    assert t == expected, f"public stealth widgets mismatch: {t}"
+    from core.widget_types import ALLOWED_WIDGET_TYPES
+    bad = [x for x in t if x not in ALLOWED_WIDGET_TYPES]
+    assert not bad, f"public stealth has disallowed widget types: {bad}"
+    surviving = [x for x in t if x in ("myfeed", "top8", "live", "music", "events", "polls")]
+    assert surviving == ["myfeed", "top8", "live", "music", "events", "polls"], (
+        f"surviving order mismatch: {surviving}"
+    )
 
 
 def test_tftwo_baseline_order_and_flag():

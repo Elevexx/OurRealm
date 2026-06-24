@@ -166,7 +166,7 @@ function SortableWidget({ w, mode, editing, onCycleSize, onRemove, onUpdate, own
               data-testid={`widget-${w.id}-resize`}
               title="Resize"
             >
-              {w.size[0].toUpperCase()}
+              {(w.size || "medium")[0].toUpperCase()}
             </button>
             <button
               className="or-chip"
@@ -322,13 +322,19 @@ export default function Profile() {
   const addWidget = (w) => setWidgets((arr) => [...arr, { id: `w-${Date.now()}`, type: w.id, size: w.default_size }]);
   // Multi-select picker variant — appends an array of selections in one
   // shot, generating unique ids per entry so the React keys never collide.
+  // ALWAYS sets a `size` so the SortableWidget header doesn't crash on
+  // undefined size[0].
   const addWidgets = (items) => {
     setWidgets((arr) => {
       let stamp = Date.now();
       const next = [...arr];
       items.forEach((w) => {
         stamp += 1;
-        next.push({ id: `w-${stamp}`, type: w.id, size: w.default_size });
+        next.push({
+          id: `w-${stamp}`,
+          type: w.id,
+          size: w.default_size || "medium",
+        });
       });
       return next;
     });
@@ -488,7 +494,7 @@ export default function Profile() {
               <button
                 className="or-btn or-btn-ghost"
                 onClick={() => { setEditing(true); setAddOpen(true); }}
-                data-testid="profile-edit-widgets"
+                data-testid="open-widget-picker"
                 title="Manage widgets"
               >
                 <Icons.LayoutGrid size={14} /> Edit Widgets
