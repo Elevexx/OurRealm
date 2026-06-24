@@ -1,0 +1,33 @@
+{
+  "summary": "Iter-38 full validation of (1) Marketplace+Wallet notification filter, (2) Calls tab restoration on /messages, (3) Notifications page mobile layout. BACKEND: 3/3 new pytest pass — seeded 6 hidden-kind unseen rows for tfone via Mongo, confirmed /unread-count excludes them, /list returns 0 hidden of 13 visible, and /mark-seen does NOT flip hidden seen flags (raw Mongo count of hidden unseen unchanged). Cleanup of `hidden_test_*` actors verified. FRONTEND: Messages tab order is exactly ['chats','groups','realms','calls'] with all 4 testids; Calls placeholder renders correct text 'Calls Coming Soon' + 'Voice and video calling will be available in a future update.' and NO /api/calls/* network requests fire; Realms tab still has 4 pin+delete+open-hub testids; Chats tab still has 3 pin+delete testids (P3 regression OK). Notifications filter bar contains only [All, Likes, Comments, Shares, Followers, Messages, Realm-Activity, Events] — NO Marketplace/Wallet testids or text leaks. Server /api/notifications/list confirmed 13 items, 0 hidden kinds. Mobile layout verified at 375x812, 360x640, and 768x1024: title not truncated, Mark-All-Read wraps BELOW title row on phone widths (no overlap), and sits to the right on tablet (no overlap). Star-notifications badge still visible (=5) on TopStarBar after filter applied.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_notifications_hidden_kinds.py",
+    "/app/test_reports/pytest/iter38_notifications.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "backend/routers/notifications.py: _HIDDEN_KINDS list is complete and matches spec verbatim (all 19 kinds). _KIND_NOT_HIDDEN applied to /unread-count, /list, /mark-seen, AND emit_notification — defense in depth (producer side AND read side). Hidden rows are NEVER flipped to seen by mark-seen, so they cannot resurface even if the filter is bypassed later.",
+    "frontend/src/pages/Messages.jsx: TABS array order is correct ['chats','groups','realms','calls']; CallsTab is a pure render with NO useEffect/fetch — guaranteed no /api/calls/* traffic. Empty component (testid='calls-empty') receives both title and body strings exactly per spec.",
+    "frontend/src/pages/Notifications.jsx: HIDDEN_KINDS Set is a defensive client-side filter on both the mock NOTIFICATIONS array AND the merged server list — even if the backend filter ever fails, the UI would still skip hidden kinds. Header uses `flex flex-wrap items-start justify-between gap-3` + `min-w-0` on the title block and `shrink-0 self-start sm:self-auto` on the Mark-All-Read button, which wraps the button below at <480px and keeps it inline at >=640px — no overlap at 360, 375, or 768. Title `<span>` uses no truncation classes, so 'Notifications' always renders in full.",
+    "frontend/src/data/mockData.js: NOTIFICATIONS array and NOTIFICATION_CATEGORIES both fully purged of 'Marketplace' and 'Wallet' — no client-side cleanup pass needed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_notifications_hidden_kinds.py"
+  ],
+  "success_rate": {
+    "backend": "100% (3/3 new pytest, ~1.3s)",
+    "frontend": "100% — Messages tabs/Calls placeholder/Realms/Chats pin+delete + Notifications filter bar + 3 mobile layouts all green; no /api/calls requests observed."
+  },
+  "test_credentials": "tfone (testfriend1@example.com / pass1234) from /app/memory/test_credentials.md.",
+  "seed_data_creation": "Test seeds 6 unseen hidden-kind notifications for tfone (actor_username='hidden_test_<kind>') and DELETES them on module teardown via the Mongo cleanup fixture. No DB pollution.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression: pytest /app/backend/tests/test_notifications_hidden_kinds.py (3 tests, ~1.3s). Uses motor + REACT_APP_BACKEND_URL + MONGO_URL + DB_NAME. Frontend selectors stable: messenger-tab-{chats|groups|realms|calls}; calls-tab + calls-empty; notifications-page + notifications-filter-bar + notifications-cat-{All|Likes|Comments|Shares|Followers|Messages|Realm-Activity|Events} + notifications-mark-all-read + notifications-unread-count. Iter-37 P3/P4 selectors (chat-row-*, realm-row-*-pin/-delete/-open-hub) remain unaffected.",
+  "rca of the issue": "N/A — no defects found in scope. All three deliverables (hidden-kind filter, Calls tab restoration, mobile notifications layout) verified end-to-end at the API, DOM, network, and visual layout level."
+}

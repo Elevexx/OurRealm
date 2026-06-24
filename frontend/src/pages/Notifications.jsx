@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, UserPlus, AtSign, Mail, Share2, Users, Bell, Calendar, Megaphone, Wallet as WalletIcon, Check, CheckCheck, Bookmark } from "lucide-react";
+import { Heart, MessageCircle, UserPlus, AtSign, Mail, Share2, Users, Bell, Calendar, Check, CheckCheck, Bookmark } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { NOTIFICATIONS, NOTIFICATION_CATEGORIES } from "@/data/mockData";
@@ -18,15 +18,27 @@ const ICONS = {
   realm_post: Users,
   realm_join: Users,
   event_reminder: Calendar,
-  ad_payout: Megaphone,
-  tip: WalletIcon,
 };
+
+// Defensive client-side filter — server already strips these kinds in
+// `/api/notifications/list`. Mirrored here so any stale cache or future
+// producer added without re-reading the backend list still gets hidden.
+const HIDDEN_KINDS = new Set([
+  "marketplace", "marketplace_ad", "marketplace_listing",
+  "ads", "ad", "ad_payout", "promoted", "promotion",
+  "wallet", "tip", "tipped", "payment", "purchase", "sale",
+  "transaction", "balance", "transfer", "deposit", "withdrawal",
+]);
 
 export default function Notifications() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [cat, setCat] = useState("All");
-  const [items, setItems] = useState(NOTIFICATIONS);
+  // Hide any stale mock entries that pre-date the marketplace/wallet
+  // cleanup (defense-in-depth — the array itself was scrubbed too).
+  const [items, setItems] = useState(() =>
+    NOTIFICATIONS.filter((n) => !HIDDEN_KINDS.has(n.type))
+  );
   const [serverItems, setServerItems] = useState([]);
 
   // Load real notifications + mark all as seen as soon as the page opens
@@ -37,7 +49,11 @@ export default function Notifications() {
     (async () => {
       try {
         const { data } = await apiClient.get("/notifications/list");
-        if (!cancelled) setServerItems(data?.notifications || []);
+        if (!cancelled) {
+          const rows = (data?.notifications || [])
+            .filter((n) => !HIDDEN_KINDS.has(n.kind));
+          setServerItems(rows);
+        }
         await apiClient.post("/notifications/mark-seen");
       } catch { /* */ }
     })();
@@ -134,25 +150,36 @@ export default function Notifications() {
 
   return (
     <div className="max-w-3xl mx-auto" data-testid="notifications-page">
-      <div className="mb-5 flex items-baseline justify-between">
-        <div>
+      {/* Header — stacks on small screens so Mark-All-Read never
+          collides with the title row. `flex-wrap` keeps the Bell/title
+          and the button on separate visual lines below ~480px. */}
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <div className="text-xs uppercase tracking-[0.25em]" style={{ color: "var(--text-muted)" }}>Recent</div>
-          <h1 className="text-3xl sm:text-4xl flex items-center gap-3" style={{ fontFamily: "var(--font-display)" }}>
-            <Bell size={28} style={{ color: "var(--primary)" }} />
-            Notifications
+          <h1
+            className="text-2xl sm:text-3xl md:text-4xl flex items-center gap-2 sm:gap-3 flex-wrap"
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            <Bell size={24} className="sm:hidden" style={{ color: "var(--primary)" }} />
+            <Bell size={28} className="hidden sm:inline" style={{ color: "var(--primary)" }} />
+            <span>Notifications</span>
             {unreadCount > 0 && (
-              <span className="text-sm font-bold rounded-full px-2 py-0.5" style={{ background: "#FF3344", color: "#fff" }}>{unreadCount}</span>
+              <span
+                className="text-xs sm:text-sm font-bold rounded-full px-2 py-0.5"
+                style={{ background: "#FF3344", color: "#fff" }}
+                data-testid="notifications-unread-count"
+              >{unreadCount}</span>
             )}
           </h1>
         </div>
         <button
-          className="or-chip"
+          className="or-chip shrink-0 self-start sm:self-auto"
           onClick={markAllRead}
           disabled={unreadCount === 0}
           style={{ opacity: unreadCount === 0 ? 0.5 : 1 }}
           data-testid="notifications-mark-all-read"
         >
-          <CheckCheck size={14} /> Mark all read
+          <CheckCheck size={14} /> <span className="hidden xs:inline sm:inline">Mark all read</span><span className="xs:hidden sm:hidden">Mark read</span>
         </button>
       </div>
 
@@ -211,8 +238,6 @@ export default function Notifications() {
                   {n.type === "realm_post" && "posted in"}
                   {n.type === "realm_join" && "—"}
                   {n.type === "event_reminder" && "—"}
-                  {n.type === "ad_payout" && "—"}
-                  {n.type === "tip" && "—"}
                 </span>
                 {n.target && <span> {n.target}</span>}
                 <span className="text-[10px] uppercase tracking-widest ml-2 px-1.5 py-0.5 rounded" style={{ background: "color-mix(in srgb, var(--primary) 16%, transparent)", color: "var(--primary)" }}>{n.category}</span>

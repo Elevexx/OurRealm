@@ -33,6 +33,8 @@ import UserAvatar from "@/components/UserAvatar";
 const TABS = [
   { id: "chats",  label: "Chats",  Icon: MessagesSquare },
   { id: "groups", label: "Groups", Icon: Users },
+  { id: "realms", label: "Realms", Icon: Radio },
+  { id: "calls",  label: "Calls",  Icon: Phone },
 ];
 
 // ─────────────────────────────────────────────────────────────────────
@@ -99,10 +101,8 @@ export default function Messages() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const requested = searchParams.get("tab");
-  // Spec: /messages now only has Chats + Groups. Realms + Calls tabs
-  // have been removed. Coerce any stale deep-links (?tab=realms or
-  // ?tab=calls) back to Chats so old URLs / shared links don't 404.
-  const initialTab = ["chats", "groups"].includes(requested) ? requested : "chats";
+  // Spec (Feb 24, 2026): /messages tab order is Chats → Groups → Realms → Calls.
+  const initialTab = ["chats", "groups", "realms", "calls"].includes(requested) ? requested : "chats";
   const [tab, setTab] = useState(initialTab);
 
   // Phase C — mark user as "In Messenger" while on this page.
@@ -166,6 +166,8 @@ export default function Messages() {
 
       {tab === "chats"  && <ChatsTab  me={user} />}
       {tab === "groups" && <GroupsTab me={user} />}
+      {tab === "realms" && <RealmsTab me={user} />}
+      {tab === "calls"  && <CallsTab />}
     </div>
   );
 }
@@ -726,15 +728,17 @@ function ThreadListTab({
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// CALLS — UI-only placeholder
+// CALLS — UI-only placeholder. Voice + video calling is on the roadmap;
+// this tab restores the entry point with a clean "Coming Soon" screen
+// so users know the surface exists. No WebRTC / backend / history.
 // ─────────────────────────────────────────────────────────────────────
 function CallsTab() {
   return (
     <section className="or-surface p-6" data-testid="calls-tab">
       <Empty
         icon={<Phone size={32} />}
-        title="Voice & video calls — coming soon"
-        body="Direct and group calls are on the OurRealm roadmap. We'll light this tab up when the call stack is ready."
+        title="Calls Coming Soon"
+        body="Voice and video calling will be available in a future update."
         testid="calls-empty"
       />
     </section>

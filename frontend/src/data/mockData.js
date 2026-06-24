@@ -163,6 +163,10 @@ export const DISCOVER_ROWS = [
 ];
 
 // ---- Notifications, Friends, Wallet, Marketplace, Widgets ----
+// NOTE (Feb 24, 2026): Marketplace + Wallet are not active product
+// features yet. Their seed rows + categories have been pulled so they
+// can't reach the UI. Historical DB rows in production stay untouched
+// — the backend filters them in `routers/notifications.py`.
 export const NOTIFICATIONS = [
   { id: 1,  category: "Likes",        type: "like",           actor: "LunaX",   target: "your post 'Phase Shift'",   when: "2m",  unread: true },
   { id: 2,  category: "Comments",     type: "comment",        actor: "Jaxon",   target: "your reel",                 when: "12m", unread: true },
@@ -173,13 +177,11 @@ export const NOTIFICATIONS = [
   { id: 7,  category: "Shares",       type: "share",          actor: "Milo",    target: "your live stream",          when: "1d",  unread: false },
   { id: 8,  category: "Realm Activity", type: "realm_post",   actor: "DJ Realm", target: "posted in your community", when: "1d",  unread: true },
   { id: 9,  category: "Events",       type: "event_reminder", actor: "Realm Festival", target: "starts in 2 hours",  when: "2d",  unread: false },
-  { id: 10, category: "Marketplace",  type: "ad_payout",      actor: "Brand X", target: "ad payout +$86.20",         when: "2d",  unread: false },
-  { id: 11, category: "Wallet",       type: "tip",            actor: "Striker", target: "tipped you $12.00",         when: "3d",  unread: false },
   { id: 12, category: "Realm Activity", type: "realm_join",   actor: "Gaming Realm", target: "you joined a new realm",when: "5d",  unread: false },
 ];
 
 export const NOTIFICATION_CATEGORIES = [
-  "All", "Likes", "Comments", "Shares", "Followers", "Messages", "Realm Activity", "Events", "Marketplace", "Wallet",
+  "All", "Likes", "Comments", "Shares", "Followers", "Messages", "Realm Activity", "Events",
 ];
 
 export const FRIENDS = CHARACTERS.map((c, i) => ({

@@ -8,6 +8,11 @@ Schema (one Mongo collection: `notifications`):
 
 `seen=false` counts toward the unread badge. Opening the notifications
 page calls /mark-seen which flips them all to seen=true.
+
+NOTE (Feb 24, 2026): Marketplace and Wallet are not active product
+features. We never delete historical rows — instead we filter them
+out of every read path so they're invisible to the UI, badge, and
+unread counters. The list lives in `_HIDDEN_KINDS` below.
 """
 from datetime import datetime, timezone
 from typing import Optional
@@ -20,6 +25,22 @@ from core.deps import CurrentUser
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
+# Notification kinds that should never reach the UI. Historical rows
+# stay in Mongo but are filtered out of every read endpoint AND the
+# Mark-All-Seen write so unread counters never include them.
+_HIDDEN_KINDS = [
+    # Marketplace / Ads
+    "marketplace", "marketplace_ad", "marketplace_listing",
+    "ads", "ad", "ad_payout", "promoted", "promotion",
+    # Wallet / Payments
+    "wallet", "tip", "tipped", "payment", "purchase", "sale",
+    "transaction", "balance", "transfer", "deposit", "withdrawal",
+]
+
+# Mongo filter fragment that EXCLUDES hidden kinds. Composes with any
+# other recipient-scoped query via $and at the call site.
+_KIND_NOT_HIDDEN = {"kind": {"$nin": _HIDDEN_KINDS}}
+
 
 async def emit_notification(
     recipient_id: str,
@@ -30,7 +51,10 @@ async def emit_notification(
     """Helper used by other routers (friends, messages, posts) to drop a
     notification into the recipient's inbox. Best-effort; never raises
     because notifications are non-critical to the action that triggered
-    them."""
+    them. Hidden kinds are silently dropped so they can never resurface
+    later if the filter is bypassed."""
+    if kind in _HIDDEN_KINDS:
+        return
     try:
         await db.notifications.insert_one({
             "id": str(uuid.uuid4()),
@@ -48,16 +72,22 @@ async def emit_notification(
 @router.get("/unread-count")
 async def unread_count(current: CurrentUser):
     n = await db.notifications.count_documents({
-        "recipient_id": current["id"], "seen": False,
+        "recipient_id": current["id"],
+        "seen": False,
+        **_KIND_NOT_HIDDEN,
     })
     return {"count": n}
 
 
 @router.get("/list")
 async def list_notifications(current: CurrentUser, limit: int = 50):
-    """Most recent first; client decides when to call /mark-seen."""
+    """Most recent first; client decides when to call /mark-seen.
+    Hidden kinds (marketplace, wallet, etc.) are filtered server-side so
+    every consumer — counts, badges, UI — stays in sync without per-
+    client logic."""
     cursor = db.notifications.find(
-        {"recipient_id": current["id"]}, {"_id": 0},
+        {"recipient_id": current["id"], **_KIND_NOT_HIDDEN},
+        {"_id": 0},
     ).sort("created_at", -1).limit(limit)
     items = []
     async for n in cursor:
@@ -67,9 +97,11 @@ async def list_notifications(current: CurrentUser, limit: int = 50):
 
 @router.post("/mark-seen")
 async def mark_seen(current: CurrentUser):
-    """Mark every notification for the current user as seen."""
+    """Mark every VISIBLE notification for the current user as seen.
+    Hidden-kind rows are left alone — they're already invisible, no
+    point flipping `seen` on them."""
     res = await db.notifications.update_many(
-        {"recipient_id": current["id"], "seen": False},
+        {"recipient_id": current["id"], "seen": False, **_KIND_NOT_HIDDEN},
         {"$set": {"seen": True}},
     )
     return {"updated": res.modified_count}
