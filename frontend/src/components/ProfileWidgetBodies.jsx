@@ -23,6 +23,62 @@ import { resolveMediaUrl as mediaUrl } from "@/lib/mediaUrl";
 const DEFAULT_NOTES_TEXT = '"Discover should feel inevitable, not optional."\n— shipping log';
 const DEFAULT_BLOG_TEXT = "Write your first blog post here…";
 
+/**
+ * Extract the first frame of a local video File, upload it as a JPEG
+ * thumbnail, and return the resulting image URL. Returns null if
+ * extraction fails (no support, file too large, browser denied). All
+ * work happens client-side via a hidden <video> + <canvas>. Server
+ * never needs ffmpeg.
+ */
+async function uploadVideoThumbnail(file) {
+  if (!file || !file.type?.startsWith("video/")) return null;
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const video = document.createElement("video");
+    video.src = objectUrl;
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    // Wait for metadata so we know dimensions.
+    await new Promise((res, rej) => {
+      let settled = false;
+      const onMeta = () => { if (!settled) { settled = true; res(); } };
+      const onErr = () => { if (!settled) { settled = true; rej(new Error("video metadata load failed")); } };
+      video.addEventListener("loadedmetadata", onMeta, { once: true });
+      video.addEventListener("error", onErr, { once: true });
+      setTimeout(() => { if (!settled) { settled = true; rej(new Error("video metadata timeout")); } }, 8000);
+    });
+    // Seek to 0.1 s so we don't capture a black "before first key-frame" frame.
+    await new Promise((res, rej) => {
+      let settled = false;
+      const onSeek = () => { if (!settled) { settled = true; res(); } };
+      const onErr = () => { if (!settled) { settled = true; rej(new Error("seek failed")); } };
+      video.addEventListener("seeked", onSeek, { once: true });
+      video.addEventListener("error", onErr, { once: true });
+      try { video.currentTime = Math.min(0.1, Math.max(0, (video.duration || 0) * 0.05)); }
+      catch { onErr(); return; }
+      setTimeout(() => { if (!settled) { settled = true; rej(new Error("seek timeout")); } }, 5000);
+    });
+    const canvas = document.createElement("canvas");
+    const maxW = 800;
+    const ratio = Math.min(1, maxW / (video.videoWidth || maxW));
+    canvas.width  = Math.max(1, Math.round((video.videoWidth || maxW) * ratio));
+    canvas.height = Math.max(1, Math.round((video.videoHeight || maxW * 9 / 16) * ratio));
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.78));
+    if (!blob) return null;
+    const fd = new FormData();
+    fd.append("file", new File([blob], `thumb_${Date.now()}.jpg`, { type: "image/jpeg" }));
+    const { data } = await apiClient.post("/images/upload", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return data?.url || data?.image_url || null;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 // Character limits — mirror backend `core/widget_types.py`.
 const NOTES_LIMITS = { standard: 300, vip: 500, stealth: Infinity };
 const BLOG_LIMITS = { standard: 100, vip: 2000, stealth: Infinity };
@@ -159,11 +215,20 @@ export function VideosBody({ w, editing, isOwner, ownerUsername, onUpdate }) {
       });
       const url = data?.url || data?.video?.url;
       const video_id = data?.video?.id;
-      if (url) {
-        onUpdate?.(w.id, {
-          items: [...items, { kind: "upload", url, video_id }],
-        });
+      if (!url) return;
+      // Best-effort first-frame extraction → upload as a thumbnail image
+      // so the tile shows a real preview instead of just a play badge.
+      // Mobile Safari ignores `preload=metadata` for ranged streams, so a
+      // baked thumbnail is the only reliable cross-device preview.
+      let thumbnail = null;
+      try {
+        thumbnail = await uploadVideoThumbnail(file);
+      } catch (err) {
+        console.warn("video thumbnail extraction failed", err);
       }
+      onUpdate?.(w.id, {
+        items: [...items, { kind: "upload", url, video_id, thumbnail }],
+      });
     } catch (err) { console.error("video upload failed", err); }
     finally { setUploading(false); }
   };

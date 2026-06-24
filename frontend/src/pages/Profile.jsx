@@ -35,6 +35,16 @@ const SIZE_TO_CLASS = {
   full:   "col-span-2 sm:col-span-4 row-span-1",
 };
 
+// Max-height (in px) per widget size. Caps tall/expandable widgets
+// (chat, notes, blog) so they scroll internally instead of stretching
+// the whole page. Matches the grid's row-span footprint.
+const SIZE_MAX_HEIGHT_PX = {
+  small:  220,
+  medium: 220,
+  large:  460,   // row-span-2 → 2 × ~220 + gap
+  full:   320,
+};
+
 /* -------------------------- widget renderers -------------------------- */
 // Spec (Feb 24, 2026): only 15 widget types exist. The renderer
 // delegates the dynamic/editable bodies (Notes, Blog, Videos,
@@ -160,8 +170,16 @@ function SortableWidget({ w, mode, editing, onCycleSize, onRemove, onUpdate, own
   return (
     <div
       ref={setNodeRef}
-      style={style}
-      className={`or-surface p-4 relative overflow-hidden ${SIZE_TO_CLASS[w.size] || SIZE_TO_CLASS.small}`}
+      style={{
+        ...style,
+        // Pin a max-height per size for layouts that scroll internally
+        // (chat, notes, blog). Without this the auto-row grid lets long
+        // conversations stretch the card off-screen.
+        maxHeight: ((w.editor_config?.layout === "chat") || ["notes", "blog"].includes(w.type))
+          ? SIZE_MAX_HEIGHT_PX[w.size] || SIZE_MAX_HEIGHT_PX.medium
+          : undefined,
+      }}
+      className={`or-surface p-4 relative overflow-hidden flex flex-col ${SIZE_TO_CLASS[w.size] || SIZE_TO_CLASS.small}`}
       data-testid={`profile-widget-${w.id}`}
     >
       <div className="flex items-center justify-between mb-3">
@@ -203,7 +221,7 @@ function SortableWidget({ w, mode, editing, onCycleSize, onRemove, onUpdate, own
           </div>
         )}
       </div>
-      <div className="h-[calc(100%-2rem)]"><WidgetBody w={w} mode={mode} ownerUsername={ownerUsername} isOwner={isOwner} editing={editing} onUpdate={onUpdate} viewer={viewer} /></div>
+      <div className="flex-1 min-h-0"><WidgetBody w={w} mode={mode} ownerUsername={ownerUsername} isOwner={isOwner} editing={editing} onUpdate={onUpdate} viewer={viewer} /></div>
     </div>
   );
 }

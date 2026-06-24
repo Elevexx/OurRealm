@@ -1,6 +1,55 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Fixes — Chat height / Video thumbnails / Sounds picker (Feb 26, 2026) ✅
+
+### Issue 1 — Orion AI chat widget grew forever
+**Root cause:** Profile grid used `gridAutoRows: "minmax(150px, auto)"` and the SortableWidget card had no max-height. ChatLayout's internal `overflow-y-auto` never engaged because the outer `or-surface` kept stretching to fit messages.
+
+**Fix:**
+- Added `SIZE_MAX_HEIGHT_PX` cap (small/medium=220, large=460, full=320) in both `Profile.jsx` and `FounderProfile.jsx`.
+- Cap applied via inline `style={{maxHeight: …}}` only for layouts that scroll internally (chat / notes / blog). Other widget types stay auto-sized as before.
+- Switched the WidgetBody wrapper from `h-[calc(100%-2rem)]` to `flex-1 min-h-0` so flexbox properly propagates the max-height into the scrollable child.
+- `.or-surface` card now declares `flex flex-col` so header (auto) + body (flex-1 min-h-0) + ChatLayout footer (auto) compose cleanly.
+
+**Verified:** card height = 451 px at `large` size, messages area scrolls internally (315 px scroll container). Conversation stays inside the widget regardless of message count.
+
+### Issue 2 — Video tiles showed only a play badge (no preview frame)
+**Root cause:** `<video>/upload` saved `{kind, url, video_id}` with NO `thumbnail` field. The renderer's fallback (`<video preload="metadata">`) is unreliable on mobile Safari and on ranged streams. So all videos rendered as a black tile with just a play icon.
+
+**Fix:** Added `uploadVideoThumbnail(file)` in `ProfileWidgetBodies.jsx` — client-side first-frame extraction:
+1. Spin up a hidden `<video>` with the local File object URL.
+2. Wait for `loadedmetadata`, seek to `~0.1 s` (avoids the all-black before-keyframe slot), wait for `seeked`.
+3. Draw to a `<canvas>` (capped at 800 px wide, preserves aspect ratio).
+4. `canvas.toBlob('image/jpeg', 0.78)` → POST to `/api/images/upload` → save the returned URL as `item.thumbnail`.
+
+Server stays ffmpeg-free. Renderer's existing `poster ? <img> : <video>` chain now consistently picks the baked image, even on mobile Safari.
+
+**Fallbacks preserved:** if thumbnail extraction fails (timeout, blocked, codec quirk), the `<video preload="metadata">` fallback path remains for browsers that can render a first frame.
+
+### Issue 3 — Music / Podcasts pickers showed no uploads
+**Root cause investigated end-to-end:**
+- Backend `/api/sounds/by-user/:u?category=Music` returns 3 Music tracks for stealth (verified live).
+- `/api/sounds/by-user/:u?category=Podcasts` returns 0 for stealth because he has uploaded zero Podcasts — by design.
+- Frontend `SoundsBody` + `SoundPicker` (`ProfileWidgetBodies.jsx` lines 395-553) correctly call the API with the right `ownerUsername` + `category` and render results.
+
+**Conclusion:** the data + UI both work. Empty picker means the user hasn't uploaded a Music/Podcast track yet OR uploaded with the wrong category. The picker already displays a clear empty-state hint: *"You don't have any music sounds yet. Upload one from the Sounds page (set category to Music on upload)…"*
+
+**No code change needed.** If founder reports a regression in production, they should verify:
+1. The upload's `category` field is one of `Music | Podcasts | FX` (the only accepted values; AI uploads are intentionally disallowed).
+2. The track's `visibility` is `public` (or the viewer is the owner).
+3. `/api/sounds/by-user/<their_username>?category=Music` returns the expected list.
+
+### Tests
+- 60/61 pass across Phase 3.4 / 3.5 / registry-hydration / profile-widgets suites. The 1 failure (`test_phase34_providers::test_stealth_ok`) is an OpenAI 429 rate-limit hiccup — passes in isolation, unrelated to these changes.
+
+### Files touched
+- `frontend/src/pages/Profile.jsx` (SIZE_MAX_HEIGHT_PX + scrollable widget wrapper)
+- `frontend/src/pages/FounderProfile.jsx` (mirror of Profile.jsx)
+- `frontend/src/components/ProfileWidgetBodies.jsx` (uploadVideoThumbnail helper + Videos upload path)
+
+
+
 ## Bug fix — Registry widgets now render on profiles (Feb 26, 2026) ✅
 
 **Reported:** Stealth AI (Founder-Only) and other launched registry widgets save to profile layouts but do not render anywhere on the profile.

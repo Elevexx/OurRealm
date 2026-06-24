@@ -28,6 +28,15 @@ const SIZE_TO_CLASS = {
   full:   "col-span-2 sm:col-span-4 row-span-1",
 };
 
+// Mirror of Profile.jsx — caps tall/expandable widgets (chat, notes,
+// blog) so they scroll internally instead of stretching the page.
+const SIZE_MAX_HEIGHT_PX = {
+  small:  220,
+  medium: 220,
+  large:  460,
+  full:   320,
+};
+
 const MERCH = [
   { name: "OurRealm Neon Hat",     price: 29, color: "#10E670", icon: "Crown" },
   { name: "OurRealm Founder Shirt",price: 39, color: "#2EA0FF", icon: "Shirt" },
@@ -167,8 +176,14 @@ function SortableWidget({ w, editing, onCycleSize, ownerUsername, isOwner, viewe
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.6 : 1, zIndex: isDragging ? 50 : "auto" }}
-      className={`or-surface p-3 sm:p-4 relative overflow-hidden ${SIZE_TO_CLASS[w.size] || SIZE_TO_CLASS.small}`}
+      style={{
+        transform: CSS.Transform.toString(transform), transition,
+        opacity: isDragging ? 0.6 : 1, zIndex: isDragging ? 50 : "auto",
+        maxHeight: ((w.editor_config?.layout === "chat") || ["notes", "blog"].includes(w.type))
+          ? SIZE_MAX_HEIGHT_PX[w.size] || SIZE_MAX_HEIGHT_PX.medium
+          : undefined,
+      }}
+      className={`or-surface p-3 sm:p-4 relative overflow-hidden flex flex-col ${SIZE_TO_CLASS[w.size] || SIZE_TO_CLASS.small}`}
       data-testid={`founder-widget-${w.id}`}
     >
       <div className="flex items-center justify-between mb-2.5">
@@ -184,7 +199,7 @@ function SortableWidget({ w, editing, onCycleSize, ownerUsername, isOwner, viewe
           </div>
         )}
       </div>
-      <div className="h-[calc(100%-2rem)]"><WidgetBody w={w} ownerUsername={ownerUsername} isOwner={isOwner} viewer={viewer} /></div>
+      <div className="flex-1 min-h-0"><WidgetBody w={w} ownerUsername={ownerUsername} isOwner={isOwner} viewer={viewer} /></div>
     </div>
   );
 }
