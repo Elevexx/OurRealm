@@ -57,12 +57,16 @@ export default function AdminWidgets() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("widgets");
 
-  // Founder/admin only — bounce anyone else.
+  // Any admin tier may view the page (founder, admin, support_admin,
+  // moderator). Custom-widget authoring is gated separately and
+  // enforced server-side; this guard just blocks non-admin users.
   useEffect(() => {
     if (authLoading) return;
-    const role = user?.role || "";
-    const isAdmin = role === "admin" || role === "founder" || user?.username === "stealth";
-    if (!user || !isAdmin) navigate("/", { replace: true });
+    const role = (user?.role || "").toLowerCase();
+    const isAdminTier =
+      role === "admin" || role === "founder" || role === "support_admin" || role === "moderator" ||
+      user?.is_admin === true || (user?.username || "").toLowerCase() === "stealth";
+    if (!user || !isAdminTier) navigate("/", { replace: true });
   }, [authLoading, user, navigate]);
 
   if (authLoading) {
@@ -250,7 +254,11 @@ function WidgetsTab() {
       </div>
 
       {!isStealth && (
-        <div className="text-[11px] mb-3 px-3 py-2 rounded" style={{ background: "color-mix(in srgb, var(--brand-green) 12%, transparent)", color: "var(--brand-green)" }}>
+        <div
+          className="text-[11px] mb-3 px-3 py-2 rounded"
+          style={{ background: "color-mix(in srgb, var(--brand-green) 12%, transparent)", color: "var(--brand-green)" }}
+          data-testid="widgets-founder-only-note"
+        >
           Founder-only: creating custom widgets is restricted to @stealth. You can still launch / disable / assign access on existing widgets.
         </div>
       )}
