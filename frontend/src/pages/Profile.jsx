@@ -26,6 +26,7 @@ import BannerEditor, { BannerView } from "@/components/BannerEditor";
 import {
   NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PhotosBody, PollsBody, RadarBody,
 } from "@/components/ProfileWidgetBodies";
+import CustomWidgetRenderer from "@/components/widgets/CustomWidgetRenderer";
 
 const SIZE_TO_CLASS = {
   small:  "col-span-2 sm:col-span-1 row-span-1",
@@ -119,6 +120,11 @@ function WidgetBody({ w, mode, ownerUsername, isOwner, editing, onUpdate, viewer
     case "radar":
       return <RadarBody w={w} />;
     default:
+      // Custom widgets (created via the Widget Builder) carry an
+      // `editor_config` payload — render via the universal renderer.
+      if (w.editor_config) {
+        return <CustomWidgetRenderer w={w} />;
+      }
       // Defense in depth — any widget whose type is not in the allow-list
       // never reaches here because the API filters them, but if a stale
       // payload sneaks through we render an empty cell rather than crash.

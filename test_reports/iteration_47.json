@@ -1,0 +1,79 @@
+{
+  "summary": "Phase 2A — Custom Widget Builder end-to-end testing. Backend: 16/16 pytest PASS (all stealth-gate, PATCH-content-gate, versioning+rollback, registry live-only, editor_config validation, /widgets/available regression). Frontend: stealth flow fully verified — 'Create Custom Widget' button visible, TemplatesGallery opens with 10 template tiles + Blank Canvas, clicking Countdown spawns draft + opens WidgetBuilder with live preview showing 'DROP LAUNCHES IN / 07d 14h' (Stat layout, real CustomWidgetRenderer), layout switch to 'list' works, FIELDS tab Add Field works, Save & Launch closes modal + widget appears in list. Version History modal opens with v1 snapshot + Restore button after PATCH. Clone (18 icons) and History (1 icon) only visible to stealth. @support: Create button correctly HIDDEN, clone/history icons HIDDEN. Two frontend deviations found: (a) data-testid='widgets-founder-only-note' (green founder-restriction banner above list for @support) NOT present in DOM; (b) /admin/widgets for @support redirects to / (Home) — admin list page is unreachable for non-founder admins, contradicting the spec which says support should still see the list to manage launch/disable/access on existing widgets.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "AdminWidgets.jsx / route guard",
+        "issue": "/admin/widgets for @support redirects to / (Home). Spec: 'Other admins can still view, launch, disable, assign access on existing widgets.' Support should land on the list with the create button + clone + history hidden — not be redirected out. Backend still authorises GET /api/admin/widgets for support (200), so this is a frontend route-guard bug only.",
+        "selector": "[data-testid='widgets-create-custom'] (page never loads for @support)",
+        "priority": "HIGH"
+      },
+      {
+        "component": "AdminWidgets.jsx founder-only note",
+        "issue": "Review_request item 17 expects 'a green founder-restriction note is shown above the list' for @support. No element with data-testid carrying 'founder' or visible 'founder' copy was found. Since the page redirects entirely (see bug above), the note also never renders. Even if route guard is loosened, the note element + testid (suggest data-testid='widgets-founder-only-note') must be added.",
+        "selector": "[data-testid='widgets-founder-only-note']",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_flows": {
+    "stealth_create_custom_button_visible": "PASS",
+    "templates_gallery_opens_with_10_tiles_plus_blank": "PASS (template-{countdown,poll,link_hub,faq,gallery,leaderboard,donation_goal,event_card,announcement,achievement_showcase} + templates-blank)",
+    "click_countdown_opens_builder_with_live_preview_stat_07d_14h": "PASS",
+    "builder_layout_switch_to_list": "PASS",
+    "builder_fields_add_field": "PASS",
+    "builder_save_and_launch_closes_modal_widget_appears": "PASS",
+    "clone_icons_visible_to_stealth_hidden_to_support": "PASS (stealth=18, support=0)",
+    "history_icon_after_patch_opens_version_history_with_restore": "PASS (v1 · Countdown with Restore btn rendered)",
+    "support_create_custom_button_hidden": "PASS",
+    "support_founder_restriction_note_above_list": "FAIL (page redirects to / for @support; testid not found)"
+  },
+  "backend_test_results": {
+    "TestSchemaAndTemplates::test_schema_payload": "PASS (7 layouts, 14 field_types, 7 category_groups)",
+    "TestSchemaAndTemplates::test_templates_list_10": "PASS",
+    "TestStealthGate::test_from_template_stealth_200": "PASS (editor_config.layout='stat', is_system=false, status='draft')",
+    "TestStealthGate::test_from_template_support_403": "PASS (detail contains 'founder')",
+    "TestStealthGate::test_direct_create_support_403": "PASS",
+    "TestStealthGate::test_clone_support_403": "PASS",
+    "TestPatchGate::test_support_patch_name_403": "PASS (detail contains 'founder')",
+    "TestPatchGate::test_support_patch_sort_order_200": "PASS",
+    "TestPatchGate::test_support_patch_status_200_and_launch_disable": "PASS (PATCH status + /launch + /disable all 200 for support)",
+    "TestVersioning::test_patch_snapshots_version": "PASS (version increments, prior name in versions[0])",
+    "TestVersioning::test_rollback_restores_snapshot": "PASS (rollback restores name + creates new version row)",
+    "TestRegistryRead::test_draft_returns_404": "PASS (draft 404 → launch 200 → disable 404)",
+    "TestEditorConfigValidation::test_bad_layout_400": "PASS",
+    "TestEditorConfigValidation::test_unknown_field_type_400": "PASS",
+    "TestEditorConfigValidation::test_dup_field_keys_400": "PASS",
+    "TestPublicAvailableRegression::test_available_profile_for_tftwo": "PASS (myfeed/top8/videos/music/notes/blog/polls all visible)"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_widget_phase2a.py",
+    "/app/test_reports/pytest/phase2a_widgets.xml"
+  ],
+  "action_items": [
+    "FRONTEND: Loosen /admin/widgets route guard in AdminWidgets.jsx (or App.js) so any admin (is_admin OR role in admin/support_admin/founder) can land on the page — currently it redirects @support to /, hiding the entire widget management surface from non-founder admins. Spec explicitly requires support to view + launch/disable/assign existing widgets.",
+    "FRONTEND: Render the green founder-restriction note above the widget list for non-stealth admins with data-testid='widgets-founder-only-note' (e.g. 'Custom widget authoring is restricted to the founder account.'). Required by review_request item 17.",
+    "OPTIONAL HARDENING (non-blocking): Backend KEY_RE allows underscores at minimum 2-char keys. WidgetCreate `key` Field(min_length=2) + KEY_RE both validated — works fine, no change needed."
+  ],
+  "critical_code_review_comments": [
+    "admin_widgets.py PATCH gating (line 466-472) correctly checks intersection with content_keys set and 403s before the snapshot block. Pattern: even partial content+non-content body returns 403 — correct per review_request 'if any content field present, 403'.",
+    "_snapshot_version (line 268) correctly caps versions[] at MAX_VERSION_HISTORY=20 with FIFO insert at index 0. Rollback (line 651) re-snapshots BEFORE applying so rollback is reversible — verified end-to-end in TestVersioning.",
+    "/api/widgets/registry/{key} (line 701) filters status='live' inline — correct. Draft and disabled both return 404 keeping public surfaces hard-hidden.",
+    "_validate_editor_config (line 215) rejects bad layout, unknown field type, and duplicate keys (verified). Snake_case regex KEY_RE enforces start-with-letter — good.",
+    "PHASE 2A scope clean: widget_layouts.py (LAYOUTS=7, FIELD_TYPES=14, CATEGORY_GROUPS=7) and widget_templates.py (TEMPLATES=10) match spec exactly. No drift.",
+    "Frontend AdminWidgets.jsx founder-only note + support route access — not implemented. The backend gate works (403 on any unauthorised mutation) so security is intact, but UX for support admins on /admin/widgets is broken (page not reachable)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_widget_phase2a.py (new — 16 tests, 16/16 pass)"
+  ],
+  "success_rate": { "backend": "100% (16/16)", "frontend": "80% — stealth path + support deny on clone/history confirmed; support admin/widgets accessibility + founder note missing" },
+  "test_credentials": "stealth/Password1$, support/Password1$ (email field accepts username), testfriend2@example.com/pass1234. Note: support email in /app/memory/test_credentials.md is 'support@ourrealm.local' but actual DB email is 'ourrealmapp@gmail.com'. Username 'support' works.",
+  "seed_data_creation": "Test widgets created during the run: phase2a_countdown_<runtag>, phase2a_draft_<runtag>, plus one stealth-created 'countdown_6br' (cleaned up post-run). Final state: cleaned. Notes widget toggled draft→live during TestRegistryRead.test_draft_returns_404 — left in 'disabled' (then re-flipped to live in last test in same class? No — fresh widget; system 'notes' not touched).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend Phase 2A is 100% green and rock-solid — re-run /app/backend/tests/test_widget_phase2a.py for any regression. The TWO frontend deltas are: (1) /admin/widgets currently redirects @support to / (route guard too strict — should allow any admin and just hide the create/clone/history affordances on the page), and (2) the green founder-restriction note (data-testid='widgets-founder-only-note') doesn't exist yet. Once main agent fixes (1) the note check (2) becomes trivially testable. Templates gallery, builder modal, live preview (CustomWidgetRenderer), layout switching, Add Field, Save & Launch, Clone gating, and Version History/Rollback are ALL verified working for @stealth.",
+  "rca of the issue": "Two frontend gaps both in AdminWidgets.jsx (or its parent route component). The page-level admin guard is checking for is_founder/stealth rather than is_admin, redirecting any non-founder admin to /. Fix: check is_admin OR role in (admin, support_admin, founder) for page mount; gate ONLY the Create button + clone + history + builder modal on _is_stealth(). Then add a <div data-testid='widgets-founder-only-note' className='note-green'>Custom widget authoring is restricted to the founder account.</div> above the list when !isStealth."
+}

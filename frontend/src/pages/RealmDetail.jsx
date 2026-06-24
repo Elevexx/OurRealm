@@ -35,6 +35,7 @@ import MemberActionSheet from "@/components/MemberActionSheet";
 import { useMessagingPopups } from "@/contexts/MessagingPopupContext";
 import RealmPollWidget from "@/components/RealmPollWidget";
 import CommunityHubWidget from "@/components/CommunityHubWidget";
+import CustomWidgetRenderer from "@/components/widgets/CustomWidgetRenderer";
 import RealmWidgetGrid from "@/components/RealmWidgetGrid";
 import EditRealmModal from "@/components/EditRealmModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -400,9 +401,7 @@ export default function RealmDetail() {
                 return (
                   <section className="or-surface p-4 h-full" data-testid={`realm-widget-${w.type}-${w.id}`}>
                     <div className="text-[10px] uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>{w.type}</div>
-                    <div className="text-sm" style={{ color: "var(--text-main)" }}>
-                      {w.config?.announcement || w.config?.title || JSON.stringify(w.config || {}).slice(0, 120)}
-                    </div>
+                    <CustomWidgetRenderer w={w} />
                   </section>
                 );
               }}

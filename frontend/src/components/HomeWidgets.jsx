@@ -19,6 +19,7 @@ import TopEightWidget from "@/components/TopEightWidget";
 import {
   NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PhotosBody, PollsBody, RadarBody,
 } from "@/components/ProfileWidgetBodies";
+import CustomWidgetRenderer from "@/components/widgets/CustomWidgetRenderer";
 
 function HomeWidgetBody({ w, viewer, ownerUsername, editing, onUpdate }) {
   switch (w.type) {
@@ -33,11 +34,10 @@ function HomeWidgetBody({ w, viewer, ownerUsername, editing, onUpdate }) {
     case "polls":    return <PollsBody    w={w} editing={editing} isOwner ownerUsername={ownerUsername} viewer={viewer} onUpdate={onUpdate} />;
     case "radar":    return <RadarBody w={w} />;
     default:
-      return (
-        <div className="text-xs italic" style={{ color: "var(--text-muted)" }}>
-          {w.type} (preview)
-        </div>
-      );
+      // Custom widgets (created via the founder Widget Builder) hit
+      // this branch — CustomWidgetRenderer fetches the registry
+      // editor_config by w.type and renders the dynamic layout.
+      return <CustomWidgetRenderer w={w} />;
   }
 }
 

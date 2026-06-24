@@ -18,6 +18,7 @@ import ProfileBadges from "@/components/ProfileBadges";
 import {
   NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PhotosBody, PollsBody, RadarBody,
 } from "@/components/ProfileWidgetBodies";
+import CustomWidgetRenderer from "@/components/widgets/CustomWidgetRenderer";
 import { ALLOWED_WIDGET_TYPES } from "@/data/mockData";
 
 const SIZE_TO_CLASS = {
@@ -149,9 +150,10 @@ function WidgetBody({ w, ownerUsername, isOwner, viewer }) {
         <div className="text-xs" style={{ color: "var(--text-main)" }}>Survey · Open in app.</div>
       );
     default:
-      // Any deprecated type that survived the strip migration falls
-      // through here and renders nothing.
-      return null;
+      // Custom widgets — universal renderer pulls editor_config from
+      // the registry by w.type and renders the layout. Any system
+      // widget key that fell through above silently renders nothing.
+      return <CustomWidgetRenderer w={w} />;
   }
 }
 

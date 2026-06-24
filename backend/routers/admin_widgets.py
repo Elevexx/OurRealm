@@ -1,9 +1,9 @@
-"""Widgets & Badges admin registry (Phase 1 — Feb 24, 2026).
+"""Widgets & Badges admin registry.
 
 Two Mongo-backed registries that power the `/admin/widgets` console:
   • db.widget_registry — every widget the app knows about, including
     the 16 system widgets (seeded on first boot, `is_system=True`) and
-    any custom widgets an admin defines later.
+    any custom widgets the founder defines via the builder.
   • db.badge_registry — admin-managed badges with assignment metadata.
   • db.user_badges — per-user badge assignments (badge_key → username).
 
@@ -17,7 +17,16 @@ Admin surfaces (founder/admin only):
   • POST /api/admin/widgets/:id/disable → status=disabled
   • Mirror set for /api/admin/badges + assign/remove.
 
-Disabled widget behaviour (per user spec, option C):
+Phase 2A — Custom Widget Builder (Feb 2026):
+  • Custom widget create/clone/rollback is GATED to @stealth only.
+    Backend enforces this; the UI mirrors it but is not the source
+    of truth. Other admins still see + manage existing widgets.
+  • editor_config follows a versioned schema (see core/widget_layouts).
+  • Every write snapshots the previous (layout, fields, data) into
+    `versions[]` (capped at 20) so rollback is one click.
+  • Templates live in core/widget_templates and are cloned on creation.
+
+Disabled widget behaviour (option C):
   • status=disabled widgets DO NOT appear in /api/widgets/available.
   • The profile public-read endpoint hard-hides any saved widget
     whose key references a disabled registry entry.
@@ -25,8 +34,9 @@ Disabled widget behaviour (per user spec, option C):
     this — backend just returns a `disabled` flag on the widget body).
 """
 from datetime import datetime, timezone
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Any
 import logging
+import re
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query
@@ -35,6 +45,13 @@ from pydantic import BaseModel, Field, ConfigDict
 from core.db import db
 from core.deps import CurrentUser, is_admin_user
 from core.widget_types import ALLOWED_WIDGET_TYPES
+from core.widget_layouts import (
+    LAYOUT_KEYS,
+    FIELD_TYPE_KEYS,
+    CATEGORY_GROUP_KEYS,
+    schema_payload,
+)
+from core.widget_templates import TEMPLATES, get_template
 
 logger = logging.getLogger("ourrealm.admin_widgets")
 
@@ -51,6 +68,8 @@ WidgetStatus = Literal["draft", "live", "disabled"]
 AccessGroup = Literal["founder", "admin", "vip", "standard", "all_users"]
 
 DEFAULT_ALLOWED_SIZES = ["small", "medium", "large", "xl"]
+MAX_VERSION_HISTORY = 20  # cap so a runaway editor doesn't bloat the doc.
+KEY_RE = re.compile(r"^[a-z][a-z0-9_]{1,62}$")
 
 
 class WidgetCreate(BaseModel):
@@ -59,6 +78,7 @@ class WidgetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     widget_type: WidgetType = "profile"
     category: str = "custom"
+    category_group: str = "custom"
     icon: str = "Sparkles"
     description: str = ""
     status: WidgetStatus = "draft"
@@ -75,6 +95,7 @@ class WidgetPatch(BaseModel):
     name: Optional[str] = None
     widget_type: Optional[WidgetType] = None
     category: Optional[str] = None
+    category_group: Optional[str] = None
     icon: Optional[str] = None
     description: Optional[str] = None
     status: Optional[WidgetStatus] = None
@@ -84,6 +105,12 @@ class WidgetPatch(BaseModel):
     allowed_sizes: Optional[List[str]] = None
     editor_config: Optional[dict] = None
     sort_order: Optional[int] = None
+
+
+class WidgetClonePayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    key: str = Field(min_length=2, max_length=64)
+    name: Optional[str] = None
 
 
 class BadgeCreate(BaseModel):
@@ -128,6 +155,25 @@ def _require_admin(current: dict):
         raise HTTPException(status_code=403, detail="Admin or founder access required")
 
 
+def _is_stealth(current: Optional[dict]) -> bool:
+    """Phase 2A guard: custom widget create/edit/clone/rollback is
+    restricted to the founder account (@stealth) only. Other admins
+    can still launch/disable/delete existing widgets, just not author
+    new ones."""
+    if not current:
+        return False
+    return (current.get("username") or "").lower() == "stealth"
+
+
+def _require_stealth(current: dict):
+    _require_admin(current)
+    if not _is_stealth(current):
+        raise HTTPException(
+            status_code=403,
+            detail="Custom widget authoring is restricted to the founder account.",
+        )
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -160,6 +206,81 @@ def _serialise_badge(doc: dict) -> dict:
     out = dict(doc)
     out.pop("_id", None)
     return out
+
+
+# ─────────────────────────────────────────────────────────────────────
+# editor_config validation
+# ─────────────────────────────────────────────────────────────────────
+
+def _validate_editor_config(cfg: Any) -> Optional[dict]:
+    """Lightweight schema validation. Custom widgets MUST provide an
+    editor_config with a known layout and a list of fields each typed
+    against FIELD_TYPE_KEYS. System widgets are allowed to keep
+    editor_config=None (legacy behaviour)."""
+    if cfg is None:
+        return None
+    if not isinstance(cfg, dict):
+        raise HTTPException(status_code=400, detail="editor_config must be an object")
+    layout = cfg.get("layout")
+    if layout and layout not in LAYOUT_KEYS:
+        raise HTTPException(status_code=400, detail=f"Unknown layout '{layout}'")
+    fields = cfg.get("fields") or []
+    if not isinstance(fields, list):
+        raise HTTPException(status_code=400, detail="editor_config.fields must be a list")
+    seen_keys: set[str] = set()
+    cleaned_fields: list[dict] = []
+    for raw in fields:
+        if not isinstance(raw, dict):
+            raise HTTPException(status_code=400, detail="Each field must be an object")
+        fkey = (raw.get("key") or "").strip()
+        ftype = (raw.get("type") or "").strip()
+        if not fkey:
+            raise HTTPException(status_code=400, detail="Field is missing 'key'")
+        if not KEY_RE.match(fkey):
+            raise HTTPException(status_code=400, detail=f"Invalid field key '{fkey}' (snake_case, ≤64 chars)")
+        if fkey in seen_keys:
+            raise HTTPException(status_code=400, detail=f"Duplicate field key '{fkey}'")
+        seen_keys.add(fkey)
+        if ftype not in FIELD_TYPE_KEYS:
+            raise HTTPException(status_code=400, detail=f"Unknown field type '{ftype}'")
+        cleaned_fields.append(raw)
+    data = cfg.get("data") or {}
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="editor_config.data must be an object")
+    data_source = cfg.get("data_source") or {"kind": "static", "api": None, "refresh_seconds": 0}
+    if not isinstance(data_source, dict):
+        raise HTTPException(status_code=400, detail="editor_config.data_source must be an object")
+    if data_source.get("kind") not in (None, "static", "api"):
+        raise HTTPException(status_code=400, detail="data_source.kind must be 'static' or 'api'")
+    theme = cfg.get("theme") or {}
+    limits = cfg.get("limits") or {}
+    return {
+        "schema_version": int(cfg.get("schema_version") or 1),
+        "layout": layout,
+        "fields": cleaned_fields,
+        "data": data,
+        "data_source": data_source,
+        "theme": theme if isinstance(theme, dict) else {},
+        "limits": limits if isinstance(limits, dict) else {},
+    }
+
+
+def _snapshot_version(existing: dict, current_user: dict) -> List[dict]:
+    """Push the current editor_config + name into versions[] before
+    overwriting. Returns the new versions array (capped)."""
+    versions = list(existing.get("versions") or [])
+    snap = {
+        "version": int(existing.get("version") or 1),
+        "name": existing.get("name"),
+        "editor_config": existing.get("editor_config"),
+        "category_group": existing.get("category_group"),
+        "icon": existing.get("icon"),
+        "default_size": existing.get("default_size"),
+        "snapshotted_at": _now_iso(),
+        "snapshotted_by": current_user.get("username"),
+    }
+    versions.insert(0, snap)
+    return versions[:MAX_VERSION_HISTORY]
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -227,6 +348,7 @@ async def seed_system_widgets():
             "name": w["name"],
             "widget_type": "profile",
             "category": w["category"],
+            "category_group": "social",
             "icon": w["icon"],
             "description": "",
             "status": "live",
@@ -237,6 +359,10 @@ async def seed_system_widgets():
             "editor_config": None,
             "sort_order": w["sort_order"],
             "is_system": True,
+            "owner_scope": "system",
+            "owner_id": None,
+            "version": 1,
+            "versions": [],
             "created_by": "system",
             "created_at": now,
             "updated_at": now,
@@ -265,6 +391,7 @@ async def list_widgets_admin(
     status: Optional[WidgetStatus] = None,
     placement: Optional[WidgetType] = None,
     access_group: Optional[AccessGroup] = None,
+    category_group: Optional[str] = None,
     q: Optional[str] = None,
 ):
     _require_admin(current)
@@ -275,6 +402,8 @@ async def list_widgets_admin(
         query["placements"] = placement
     if access_group:
         query["access_groups"] = access_group
+    if category_group:
+        query["category_group"] = category_group
     if q:
         query["$or"] = [
             {"name": {"$regex": q, "$options": "i"}},
@@ -288,15 +417,26 @@ async def list_widgets_admin(
 
 @router.post("/admin/widgets")
 async def create_widget(payload: WidgetCreate, current: CurrentUser):
-    _require_admin(current)
+    """Create a custom widget. Phase 2A: restricted to @stealth."""
+    _require_stealth(current)
+    if not KEY_RE.match(payload.key):
+        raise HTTPException(status_code=400, detail="Key must be snake_case (a-z, 0-9, _; start with a letter)")
     existing = await db.widget_registry.find_one({"key": payload.key})
     if existing:
         raise HTTPException(status_code=400, detail=f"Widget key '{payload.key}' already exists")
+    if payload.category_group and payload.category_group not in CATEGORY_GROUP_KEYS:
+        raise HTTPException(status_code=400, detail=f"Unknown category_group '{payload.category_group}'")
     now = _now_iso()
+    editor_cfg = _validate_editor_config(payload.editor_config)
     doc = payload.model_dump()
+    doc["editor_config"] = editor_cfg
     doc.update({
         "id": str(uuid.uuid4()),
         "is_system": False,
+        "owner_scope": "admin",
+        "owner_id": current.get("id") or current.get("username"),
+        "version": 1,
+        "versions": [],
         "created_by": current.get("username"),
         "created_at": now,
         "updated_at": now,
@@ -307,6 +447,11 @@ async def create_widget(payload: WidgetCreate, current: CurrentUser):
 
 @router.patch("/admin/widgets/{widget_id}")
 async def update_widget(widget_id: str, payload: WidgetPatch, current: CurrentUser):
+    """Update widget metadata. Custom-widget content edits (name,
+    editor_config, icon, category_group, default_size) require
+    @stealth — other admins can still toggle access/placements/status
+    on EXISTING widgets so VIP/disabled flips don't require the
+    founder."""
     _require_admin(current)
     doc = await db.widget_registry.find_one({"id": widget_id})
     if not doc:
@@ -314,6 +459,33 @@ async def update_widget(widget_id: str, payload: WidgetPatch, current: CurrentUs
     updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
     if not updates:
         return {"widget": _serialise_widget(doc)}
+
+    # Stealth-only fields — anything that changes the *content* of a
+    # widget. Non-stealth admins are allowed to flip status/access/
+    # placements/allowed_sizes/sort_order only.
+    content_keys = {"name", "editor_config", "icon", "category_group",
+                    "default_size", "description", "category", "widget_type"}
+    if not _is_stealth(current) and (set(updates.keys()) & content_keys):
+        raise HTTPException(
+            status_code=403,
+            detail="Editing widget content (name, layout, fields) is restricted to the founder.",
+        )
+
+    if "category_group" in updates and updates["category_group"] not in CATEGORY_GROUP_KEYS:
+        raise HTTPException(status_code=400, detail=f"Unknown category_group '{updates['category_group']}'")
+
+    # Snapshot version BEFORE applying content changes (so rollback
+    # has the prior state). Skip snapshot for trivial flips like
+    # status/access_groups/placements/sort_order.
+    snapshot_triggers = {"name", "editor_config", "icon", "default_size", "category_group"}
+    if set(updates.keys()) & snapshot_triggers:
+        new_versions = _snapshot_version(doc, current)
+        updates["versions"] = new_versions
+        updates["version"] = int(doc.get("version") or 1) + 1
+
+    if "editor_config" in updates:
+        updates["editor_config"] = _validate_editor_config(updates["editor_config"])
+
     updates["updated_at"] = _now_iso()
     await db.widget_registry.update_one({"id": widget_id}, {"$set": updates})
     fresh = await db.widget_registry.find_one({"id": widget_id})
@@ -357,6 +529,154 @@ async def disable_widget(widget_id: str, current: CurrentUser):
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Phase 2A — Builder schema, templates, clone, versions
+# ─────────────────────────────────────────────────────────────────────
+
+@router.get("/admin/widgets/schema")
+async def get_builder_schema(current: CurrentUser):
+    """Returns the layout + field-type + category catalog the builder
+    UI hydrates from. Admins only — viewable by anyone with admin role
+    so they can preview, but only @stealth can act on it."""
+    _require_admin(current)
+    return schema_payload()
+
+
+@router.get("/admin/widgets/templates")
+async def list_widget_templates(current: CurrentUser):
+    _require_admin(current)
+    out = []
+    for t in TEMPLATES:
+        out.append({
+            "key": t["key"],
+            "name": t["name"],
+            "icon": t["icon"],
+            "category_group": t["category_group"],
+            "description": t["description"],
+            "default_size": t["default_size"],
+            "layout": t["editor_config"]["layout"],
+        })
+    return {"templates": out}
+
+
+@router.post("/admin/widgets/from-template/{template_key}")
+async def create_from_template(template_key: str, payload: WidgetClonePayload, current: CurrentUser):
+    """Spawns a draft widget pre-filled with the template's editor_config.
+    @stealth-only — same gate as create_widget."""
+    _require_stealth(current)
+    tpl = get_template(template_key)
+    if not tpl:
+        raise HTTPException(status_code=404, detail=f"Template '{template_key}' not found")
+    if not KEY_RE.match(payload.key):
+        raise HTTPException(status_code=400, detail="Key must be snake_case (a-z, 0-9, _; start with a letter)")
+    if await db.widget_registry.find_one({"key": payload.key}):
+        raise HTTPException(status_code=400, detail=f"Widget key '{payload.key}' already exists")
+    now = _now_iso()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "key": payload.key,
+        "name": payload.name or tpl["name"],
+        "widget_type": "profile",
+        "category": tpl["category_group"],
+        "category_group": tpl["category_group"],
+        "icon": tpl["icon"],
+        "description": tpl["description"],
+        "status": "draft",
+        "access_groups": ["all_users"],
+        "placements": ["profile"],
+        "default_size": tpl["default_size"],
+        "allowed_sizes": DEFAULT_ALLOWED_SIZES,
+        "editor_config": _validate_editor_config(tpl["editor_config"]),
+        "sort_order": 200,
+        "is_system": False,
+        "owner_scope": "admin",
+        "owner_id": current.get("id") or current.get("username"),
+        "template_key": template_key,
+        "version": 1,
+        "versions": [],
+        "created_by": current.get("username"),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.widget_registry.insert_one(doc)
+    return {"widget": _serialise_widget(doc)}
+
+
+@router.post("/admin/widgets/{widget_id}/clone")
+async def clone_widget(widget_id: str, payload: WidgetClonePayload, current: CurrentUser):
+    """Duplicate an existing widget (system or custom) into a new
+    DRAFT widget with a different key. @stealth-only."""
+    _require_stealth(current)
+    src = await db.widget_registry.find_one({"id": widget_id})
+    if not src:
+        raise HTTPException(status_code=404, detail="Widget not found")
+    if not KEY_RE.match(payload.key):
+        raise HTTPException(status_code=400, detail="Key must be snake_case (a-z, 0-9, _; start with a letter)")
+    if await db.widget_registry.find_one({"key": payload.key}):
+        raise HTTPException(status_code=400, detail=f"Widget key '{payload.key}' already exists")
+    now = _now_iso()
+    doc = dict(src)
+    doc.pop("_id", None)
+    doc.update({
+        "id": str(uuid.uuid4()),
+        "key": payload.key,
+        "name": payload.name or f"{src.get('name')} (Copy)",
+        "status": "draft",
+        "is_system": False,
+        "owner_scope": "admin",
+        "owner_id": current.get("id") or current.get("username"),
+        "cloned_from": src["id"],
+        "cloned_from_key": src.get("key"),
+        "version": 1,
+        "versions": [],
+        "created_by": current.get("username"),
+        "created_at": now,
+        "updated_at": now,
+    })
+    await db.widget_registry.insert_one(doc)
+    return {"widget": _serialise_widget(doc)}
+
+
+@router.get("/admin/widgets/{widget_id}/versions")
+async def list_widget_versions(widget_id: str, current: CurrentUser):
+    _require_admin(current)
+    doc = await db.widget_registry.find_one({"id": widget_id}, {"_id": 0, "versions": 1, "version": 1, "key": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Widget not found")
+    return {
+        "current_version": int(doc.get("version") or 1),
+        "versions": doc.get("versions") or [],
+    }
+
+
+@router.post("/admin/widgets/{widget_id}/rollback/{version}")
+async def rollback_widget(widget_id: str, version: int, current: CurrentUser):
+    """Restore a snapshot from versions[]. Snapshots the current state
+    first so rollback itself is reversible. @stealth-only."""
+    _require_stealth(current)
+    doc = await db.widget_registry.find_one({"id": widget_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Widget not found")
+    versions = doc.get("versions") or []
+    target = next((v for v in versions if int(v.get("version") or 0) == int(version)), None)
+    if not target:
+        raise HTTPException(status_code=404, detail=f"Version {version} not found")
+    new_versions = _snapshot_version(doc, current)
+    updates = {
+        "name": target.get("name") or doc.get("name"),
+        "editor_config": _validate_editor_config(target.get("editor_config")),
+        "category_group": target.get("category_group") or doc.get("category_group"),
+        "icon": target.get("icon") or doc.get("icon"),
+        "default_size": target.get("default_size") or doc.get("default_size"),
+        "version": int(doc.get("version") or 1) + 1,
+        "versions": new_versions,
+        "updated_at": _now_iso(),
+    }
+    await db.widget_registry.update_one({"id": widget_id}, {"$set": updates})
+    fresh = await db.widget_registry.find_one({"id": widget_id})
+    return {"widget": _serialise_widget(fresh)}
+
+
+# ─────────────────────────────────────────────────────────────────────
 # /api/widgets/available — public (filtered to live + viewer's groups)
 # ─────────────────────────────────────────────────────────────────────
 
@@ -376,6 +696,18 @@ async def widgets_available(
     }).sort([("sort_order", 1), ("name", 1)])
     items = [_serialise_widget(d) async for d in cursor]
     return {"widgets": items}
+
+
+@router.get("/widgets/registry/{key}")
+async def get_widget_by_key(key: str):
+    """Public read of a single registry entry by key. Used by the
+    CustomWidgetRenderer to hydrate editor_config (layout + fields)
+    for any widget instance saved on a profile. Returns 404 for
+    disabled/draft widgets so public surfaces stay hard-hidden."""
+    doc = await db.widget_registry.find_one({"key": key, "status": "live"}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Widget not found or not live")
+    return {"widget": doc}
 
 
 @router.get("/widgets/disabled")

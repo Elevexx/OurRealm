@@ -18,6 +18,10 @@ import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import WidgetBuilder from "@/components/widget-builder/WidgetBuilder";
+import TemplatesGallery from "@/components/widget-builder/TemplatesGallery";
+import VersionHistory from "@/components/widget-builder/VersionHistory";
+import { slugifyKey } from "@/lib/widgetBuilder";
 
 const ACCESS_GROUPS = [
   { id: "founder",    label: "Founder" },
@@ -115,10 +119,29 @@ export default function AdminWidgets() {
 // ─────────────────────────────────────────────────────────────────────
 
 function WidgetsTab() {
+  const { user } = useAuth();
+  const isStealth = (user?.username || "").toLowerCase() === "stealth";
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [editor, setEditor] = useState(null); // null | "new" | widget object
+  const [editor, setEditor] = useState(null);   // legacy editor (system widgets metadata)
+  const [builder, setBuilder] = useState(null); // null | "new" | widget object (custom builder)
+  const [picker, setPicker] = useState(false);  // templates gallery
+  const [history, setHistory] = useState(null); // widget for version history
+  const [cloneTarget, setCloneTarget] = useState(null);
+  const [layouts, setLayouts] = useState([]);
   const [filters, setFilters] = useState({ status: "", placement: "", access_group: "", q: "" });
+
+  // Hydrate the builder schema once (used by the layout picker).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await apiClient.get("/admin/widgets/schema");
+        if (!cancelled) setLayouts(data?.layouts || []);
+      } catch { /* */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -142,6 +165,51 @@ function WidgetsTab() {
       await reload();
     } catch (e) {
       alert(e?.response?.data?.detail || "Delete failed");
+    }
+  };
+
+  // Editing: system widgets and non-stealth admins use the simple
+  // metadata editor (status/access/placement/sort only); custom
+  // widgets edited BY @stealth open the full builder.
+  const openEditor = (w) => {
+    if (isStealth && !w.is_system) {
+      setBuilder(w);
+    } else {
+      setEditor(w);
+    }
+  };
+
+  const pickTemplate = async (tpl) => {
+    setPicker(false);
+    // Generate a unique-ish key suggestion off the template name.
+    const stamp = Math.random().toString(36).slice(2, 5);
+    const key = `${slugifyKey(tpl.key)}_${stamp}`;
+    try {
+      const { data } = await apiClient.post(`/admin/widgets/from-template/${tpl.key}`, {
+        key, name: tpl.name,
+      });
+      // Drop straight into the builder with the freshly-created draft.
+      setBuilder(data?.widget || null);
+      await reload();
+    } catch (e) {
+      alert(e?.response?.data?.detail || "Create from template failed");
+    }
+  };
+
+  const startFromScratch = () => { setPicker(false); setBuilder("new"); };
+
+  const cloneWidget = async (w) => {
+    const suggested = `${w.key}_copy_${Math.random().toString(36).slice(2, 4)}`;
+    const key = window.prompt(`New widget key (snake_case):`, suggested);
+    if (!key) return;
+    try {
+      const { data } = await apiClient.post(`/admin/widgets/${w.id}/clone`, {
+        key: slugifyKey(key), name: `${w.name} (Copy)`,
+      });
+      setBuilder(data?.widget || null);
+      await reload();
+    } catch (e) {
+      alert(e?.response?.data?.detail || "Clone failed");
     }
   };
 
@@ -170,14 +238,22 @@ function WidgetsTab() {
           options={[["", "All access"], ...ACCESS_GROUPS.map(g => [g.id, g.label])]}
           testid="widgets-filter-access"
         />
-        <button
-          className="or-btn or-btn-primary"
-          onClick={() => setEditor("new")}
-          data-testid="widgets-create"
-        >
-          <Icons.Plus size={14} /> Create Widget
-        </button>
+        {isStealth && (
+          <button
+            className="or-btn or-btn-primary"
+            onClick={() => setPicker(true)}
+            data-testid="widgets-create-custom"
+          >
+            <Icons.Sparkles size={14} /> Create Custom Widget
+          </button>
+        )}
       </div>
+
+      {!isStealth && (
+        <div className="text-[11px] mb-3 px-3 py-2 rounded" style={{ background: "color-mix(in srgb, var(--brand-green) 12%, transparent)", color: "var(--brand-green)" }}>
+          Founder-only: creating custom widgets is restricted to @stealth. You can still launch / disable / assign access on existing widgets.
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center p-8"><Icons.Loader2 className="animate-spin inline" /></div>
@@ -187,17 +263,61 @@ function WidgetsTab() {
         </div>
       ) : (
         <div className="space-y-2" data-testid="widgets-list">
-          {items.map((w) => <WidgetRow key={w.id} w={w} onEdit={() => setEditor(w)} onLaunch={() => launch(w.id)} onDisable={() => disable(w.id)} onDelete={() => remove(w.id, w.name)} />)}
+          {items.map((w) => (
+            <WidgetRow
+              key={w.id}
+              w={w}
+              isStealth={isStealth}
+              onEdit={() => openEditor(w)}
+              onClone={() => cloneWidget(w)}
+              onHistory={() => setHistory(w)}
+              onLaunch={() => launch(w.id)}
+              onDisable={() => disable(w.id)}
+              onDelete={() => remove(w.id, w.name)}
+            />
+          ))}
         </div>
       )}
 
-      {editor && <WidgetEditor initial={editor === "new" ? null : editor} onClose={() => setEditor(null)} onSaved={() => { setEditor(null); reload(); }} />}
+      {editor && (
+        <WidgetEditor
+          initial={editor === "new" ? null : editor}
+          isStealth={isStealth}
+          onClose={() => setEditor(null)}
+          onSaved={() => { setEditor(null); reload(); }}
+        />
+      )}
+      {picker && (
+        <TemplatesGallery
+          open
+          onClose={() => setPicker(false)}
+          onPick={pickTemplate}
+          onScratch={startFromScratch}
+        />
+      )}
+      {builder && (
+        <WidgetBuilder
+          open
+          initial={builder === "new" ? null : builder}
+          layouts={layouts}
+          onClose={() => setBuilder(null)}
+          onSaved={() => { setBuilder(null); reload(); }}
+        />
+      )}
+      {history && (
+        <VersionHistory
+          widget={history}
+          onClose={() => setHistory(null)}
+          onRolledBack={() => { setHistory(null); reload(); }}
+        />
+      )}
     </>
   );
 }
 
-function WidgetRow({ w, onEdit, onLaunch, onDisable, onDelete }) {
+function WidgetRow({ w, isStealth, onEdit, onClone, onHistory, onLaunch, onDisable, onDelete }) {
   const Icon = Icons[w.icon] || Icons.Sparkles;
+  const hasVersions = (w.versions?.length || 0) > 0;
   return (
     <div
       className="or-surface p-3 flex items-center gap-3"
@@ -221,6 +341,16 @@ function WidgetRow({ w, onEdit, onLaunch, onDisable, onDelete }) {
               System
             </span>
           )}
+          {!w.is_system && w.editor_config?.layout && (
+            <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded" style={{ background: "color-mix(in srgb, var(--primary) 16%, transparent)", color: "var(--primary)" }}>
+              {w.editor_config.layout}
+            </span>
+          )}
+          {(w.version || 1) > 1 && (
+            <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded" style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+              v{w.version}
+            </span>
+          )}
           <StatusPill status={w.status} />
         </div>
         <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
@@ -231,6 +361,16 @@ function WidgetRow({ w, onEdit, onLaunch, onDisable, onDelete }) {
         <button className="starbar-icon" style={{ width: 32, height: 32 }} onClick={onEdit} title="Edit" data-testid={`widget-edit-${w.key}`}>
           <Icons.Pencil size={14} />
         </button>
+        {isStealth && hasVersions && (
+          <button className="starbar-icon" style={{ width: 32, height: 32 }} onClick={onHistory} title="Version History" data-testid={`widget-history-${w.key}`}>
+            <Icons.History size={14} />
+          </button>
+        )}
+        {isStealth && (
+          <button className="starbar-icon" style={{ width: 32, height: 32 }} onClick={onClone} title="Clone" data-testid={`widget-clone-${w.key}`}>
+            <Icons.Copy size={14} />
+          </button>
+        )}
         {w.status !== "live" && (
           <button className="starbar-icon" style={{ width: 32, height: 32, color: STATUS_COLORS.live }} onClick={onLaunch} title="Launch" data-testid={`widget-launch-${w.key}`}>
             <Icons.Rocket size={14} />
@@ -251,8 +391,11 @@ function WidgetRow({ w, onEdit, onLaunch, onDisable, onDelete }) {
   );
 }
 
-function WidgetEditor({ initial, onClose, onSaved }) {
+function WidgetEditor({ initial, isStealth, onClose, onSaved }) {
   const isNew = !initial;
+  // System widgets and non-stealth admins use this lightweight editor.
+  // Stealth-only fields are disabled for non-stealth viewers.
+  const contentLocked = !isStealth;
   const [form, setForm] = useState(() => ({
     key: initial?.key || "",
     name: initial?.name || "",
@@ -278,10 +421,18 @@ function WidgetEditor({ initial, onClose, onSaved }) {
   const save = async () => {
     setBusy(true); setError(null);
     try {
+      // Non-stealth admins can only flip placement/access/status/
+      // sort/allowed_sizes — strip content fields so the backend
+      // gate doesn't 403 on an accidental include.
+      let payload = form;
+      if (contentLocked && !isNew) {
+        const { placements, access_groups, allowed_sizes, status, sort_order } = form;
+        payload = { placements, access_groups, allowed_sizes, status, sort_order };
+      }
       if (isNew) {
         await apiClient.post("/admin/widgets", form);
       } else {
-        await apiClient.patch(`/admin/widgets/${initial.id}`, form);
+        await apiClient.patch(`/admin/widgets/${initial.id}`, payload);
       }
       onSaved();
     } catch (e) {
@@ -308,23 +459,28 @@ function WidgetEditor({ initial, onClose, onSaved }) {
             System widget — key is locked. You can edit display + access + placement freely.
           </div>
         )}
+        {contentLocked && !initial?.is_system && (
+          <div className="text-[11px] mb-3 px-3 py-2 rounded" style={{ background: "color-mix(in srgb, var(--brand-green) 12%, transparent)", color: "var(--brand-green)" }}>
+            Founder-only fields locked. You can still adjust placement, access, sizes, status, and sort order.
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Widget Name">
-            <input className="or-input w-full" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="widget-form-name" />
+            <input className="or-input w-full" value={form.name} disabled={contentLocked} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="widget-form-name" />
           </Field>
           <Field label="Unique Key">
             <input className="or-input w-full" value={form.key} disabled={!isNew} onChange={(e) => setForm({ ...form, key: e.target.value })} data-testid="widget-form-key" placeholder="snake_case" />
           </Field>
           <Field label="Category">
-            <input className="or-input w-full" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} data-testid="widget-form-category" />
+            <input className="or-input w-full" value={form.category} disabled={contentLocked} onChange={(e) => setForm({ ...form, category: e.target.value })} data-testid="widget-form-category" />
           </Field>
           <Field label="Icon">
-            <select className="or-input w-full" value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} data-testid="widget-form-icon">
+            <select className="or-input w-full" value={form.icon} disabled={contentLocked} onChange={(e) => setForm({ ...form, icon: e.target.value })} data-testid="widget-form-icon">
               {ICON_CHOICES.map((i) => <option key={i} value={i}>{i}</option>)}
             </select>
           </Field>
           <Field label="Default Size">
-            <select className="or-input w-full" value={form.default_size} onChange={(e) => setForm({ ...form, default_size: e.target.value })} data-testid="widget-form-default-size">
+            <select className="or-input w-full" value={form.default_size} disabled={contentLocked} onChange={(e) => setForm({ ...form, default_size: e.target.value })} data-testid="widget-form-default-size">
               {SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </Field>
@@ -332,7 +488,7 @@ function WidgetEditor({ initial, onClose, onSaved }) {
             <input type="number" className="or-input w-full" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: parseInt(e.target.value, 10) || 0 })} data-testid="widget-form-sort" />
           </Field>
           <Field label="Description" full>
-            <textarea className="or-input w-full" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} data-testid="widget-form-description" />
+            <textarea className="or-input w-full" rows={2} value={form.description} disabled={contentLocked} onChange={(e) => setForm({ ...form, description: e.target.value })} data-testid="widget-form-description" />
           </Field>
           <Field label="Placements" full>
             <CheckboxGroup options={PLACEMENTS} selected={form.placements} onToggle={(v) => toggle("placements", v)} testidPrefix="widget-form-placement" />
