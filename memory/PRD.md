@@ -1,6 +1,55 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Badge Assignment Auto-Apply + Music/Podcasts Black Overlay Fix (Feb 26, 2026) ✅
+
+### Issue 1 — Save + Launch didn't auto-apply group assignments
+**Root cause:** `POST /api/admin/badges/{id}/launch` only flipped `status → live`. It did NOT iterate users to apply the chosen `assignment_type` rule. Admins clicking "all_users / founder / admin / vip / standard" + Save+Launch saw no user_badges rows created until they manually opened the assign modal and typed usernames.
+
+**Fix:** New `_apply_badge_assignment_rule(badge)` helper in `routers/admin_widgets.py` that translates each `assignment_type` value into a Mongo `users` filter:
+- `all` / `all_users` → every active (non-disabled, non-purged) user
+- `founder` → users with `role|admin_role = founder` OR `username = stealth`
+- `admin` → `role|admin_role ∈ {founder, admin, support_admin, moderator}` OR `is_admin = True`
+- `vip` → users with `is_vip = True`
+- `standard` → non-VIP, non-admin, non-stealth users
+- `first_1000` / `first_x` → first N users by `created_at` ascending
+- `specific` / `manual` → explicit `selected_usernames` list only
+
+Hooked into:
+- `POST /api/admin/badges` — applies immediately if created with `status=live`.
+- `POST /api/admin/badges/{id}/launch` — applies on every launch.
+- `PATCH /api/admin/badges/{id}` — applies when `assignment_type`, `selected_usernames`, `first_x`, or `status` changes on a live badge.
+
+All paths use `$setOnInsert` upserts → re-launching is idempotent, no duplicate `user_badges` rows. Returns `newly_assigned` count in the response. Founder badge `locked` guard still 403s on PATCH/DELETE/assign/remove.
+
+### Issue 2 — Music / Podcasts black overlay on widget cards
+**Root cause:** `SoundPicker` modal used `fixed inset-0 z-[80]` with a `rgba(0,0,0,0.7)` backdrop. When opened, `position: fixed` should escape to the viewport — but the parent `SortableWidget` has an inline `transform` (applied by dnd-kit for drag preview). CSS spec: when an ancestor has a non-identity `transform`, descendants with `position: fixed` are positioned relative to that ancestor's containing block instead of the viewport. Result: the modal backdrop covered ONLY the Music/Podcasts widget card, creating the "black rectangle on top of the widget" bug.
+
+**Fix:** Rendered the picker modal via `createPortal(<modal/>, document.body)` so it bypasses any transformed ancestor. Applied the same fix to PinVideoPicker and PinPhotoPicker which had the same issue. Music/Podcasts widget cards now stay clean at every size (S/M/L) and on resize/scroll/drag.
+
+### Frontend visual fix — custom badge filled style
+- `BadgePill` renderer: when only `color` is set on a custom badge, that color is now used as the FILLED pill background (was previously rendered as an outline-style with 18% transparency). Matches the seeded FOUNDER / VIP / VERIFIED visual style.
+- `text_color` defaults to `#0a0a0a` (dark) for max contrast on filled bright accent backgrounds.
+- Gradient / bg_color / border_color / glow_color still take precedence when provided.
+
+### Tests
+- **NEW `/app/backend/tests/test_phase31_badge_assignment.py`** — 6 tests:
+  - Create-live with `all_users` immediately assigns to every active user.
+  - Launching a draft `admin` badge assigns to admin tier (stealth + support).
+  - Re-launching is idempotent (newly_assigned=0, no duplicates).
+  - PATCH `assignment_type` on a live badge expands recipients.
+  - Custom badge color round-trips through `/api/profile/{u}/badges`.
+  - Founder badge still locked (PATCH/DELETE/assign all 403; launch is no-op).
+- 60/60 pass across all related suites (Phase 3.1 badges, badge phase1, registry hydration, profile widgets, chat).
+
+### Files touched
+- `backend/routers/admin_widgets.py` — `_apply_badge_assignment_rule()` + hooks in create/launch/patch + `all_users` literal.
+- `frontend/src/components/ProfileBadges.jsx` — filled-style fallback for custom badges with only `color`.
+- `frontend/src/components/ProfileWidgetBodies.jsx` — 3 modals (SoundPicker / PinVideoPicker / PinPhotoPicker) wrapped in `createPortal(document.body)`.
+- `backend/tests/test_phase31_badge_assignment.py` (new, 6 tests).
+
+
+
 ## Three-Phase UI Update (Feb 26, 2026) ✅ COMPLETE
 
 ### Phase 1 — Music/Podcasts black-overlay fix

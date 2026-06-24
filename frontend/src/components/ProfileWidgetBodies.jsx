@@ -16,6 +16,7 @@
  * live in `db.profile_poll_votes` and go through /api/profile-poll.
  */
 import React, { useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
 import apiClient from "@/api/client";
 import { resolveMediaUrl as mediaUrl } from "@/lib/mediaUrl";
@@ -410,7 +411,7 @@ function PinVideoPicker({ ownerUsername, existingIds, onPick, onClose }) {
     return () => { cancelled = true; };
   }, [ownerUsername]);
   const existing = new Set(existingIds);
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center px-4"
       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
@@ -448,7 +449,8 @@ function PinVideoPicker({ ownerUsername, existingIds, onPick, onClose }) {
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -567,7 +569,12 @@ function SoundPicker({ category, ownerUsername, existing, onPick, onClose }) {
     return () => { cancelled = true; };
   }, [category, ownerUsername]);
   const have = new Set(existing);
-  return (
+  // Render via portal at document.body so the `position: fixed`
+  // backdrop escapes the transformed SortableWidget ancestor. Without
+  // this, dnd-kit's `transform` on the parent forces `fixed` to be
+  // relative to the widget — the backdrop then covers only the widget
+  // card and looks like a "black overlay" bug.
+  return createPortal(
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center px-4"
       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
@@ -613,7 +620,8 @@ function SoundPicker({ category, ownerUsername, existing, onPick, onClose }) {
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -808,7 +816,7 @@ function PinPhotoPicker({ ownerUsername, existingPostIds, onPick, onClose }) {
     return () => { cancelled = true; };
   }, [ownerUsername]);
   const existing = new Set(existingPostIds);
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center px-4"
       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
@@ -845,7 +853,8 @@ function PinPhotoPicker({ ownerUsername, existingPostIds, onPick, onClose }) {
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

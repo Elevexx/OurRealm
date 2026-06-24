@@ -38,21 +38,23 @@ export default function ProfileBadges({ username }) {
 }
 
 /**
- * Rectangular pill renderer. Supports:
- *   • icon          — lucide icon name (defaults to Award)
- *   • gradient      — CSS gradient string (takes precedence over bg_color)
- *   • bg_color      — solid background color
- *   • text_color    — text + icon color
- *   • border_color  — pill border
- *   • glow_color    — outer drop-shadow / box-shadow
- *   • color         — legacy single-accent fallback
+ * Rectangular pill renderer. Filled style (Feb 26, 2026 spec):
+ * the chosen color/gradient is ALWAYS the pill background, not just a
+ * border color. Custom badges with only a `color` field render with
+ * that color as the filled background, matching the seeded
+ * FOUNDER / VIP / VERIFIED look.
  */
 export function BadgePill({ badge }) {
   const b = badge || {};
   const Icon = Icons[b.icon] || Icons.Award;
   const accent = b.color || "#00FF66";
-  const bg = b.gradient || b.bg_color || `color-mix(in srgb, ${accent} 18%, transparent)`;
-  const fg = b.text_color || (b.gradient || b.bg_color ? "#0a0a0a" : accent);
+  // FILLED background priority: gradient → bg_color → solid accent color.
+  // Custom admin-created badges almost always supply only `color`; we
+  // treat that as the filled background so they look identical to the
+  // seeded badges instead of rendering as hollow outlines.
+  const bg = b.gradient || b.bg_color || accent;
+  // Dark text + icon on bright filled backgrounds for max contrast.
+  const fg = b.text_color || "#0a0a0a";
   const border = b.border_color || accent;
   const glow = b.glow_color || accent;
   return (

@@ -137,7 +137,7 @@ class BadgeCreate(BaseModel):
     locked: bool = False                  # Founder badge etc — cannot be edited/deleted/reassigned.
     auto_rule: Optional[Literal["first_1000", "founder", "admin"]] = None
     assignment_type: Literal[
-        "manual", "founder", "admin", "vip", "standard", "all", "first_x", "specific", "first_1000"
+        "manual", "founder", "admin", "vip", "standard", "all", "all_users", "first_x", "specific", "first_1000"
     ] = "manual"
     access_groups: List[AccessGroup] = Field(default_factory=lambda: ["all_users"])
     selected_usernames: List[str] = Field(default_factory=list)
@@ -883,6 +883,10 @@ async def create_badge(payload: BadgeCreate, current: CurrentUser):
         "updated_at": now,
     })
     await db.badge_registry.insert_one(doc)
+    # Phase 3.1 — if the admin created the badge already-live, immediately
+    # apply the assignment rule so users see it instantly.
+    if doc.get("status") == "live":
+        await _apply_badge_assignment_rule(doc, assigned_by=current.get("username") or "admin")
     return {"badge": _serialise_badge(doc)}
 
 
@@ -903,6 +907,13 @@ async def update_badge(badge_id: str, payload: BadgePatch, current: CurrentUser)
     updates["updated_at"] = _now_iso()
     await db.badge_registry.update_one({"id": badge_id}, {"$set": updates})
     fresh = await db.badge_registry.find_one({"id": badge_id})
+    # Phase 3.1 — reconcile assignments when the badge is (or becomes)
+    # live AND the rule / selected_usernames / first_x changed.
+    rule_changed = any(k in updates for k in (
+        "assignment_type", "selected_usernames", "first_x", "access_groups", "status",
+    ))
+    if fresh.get("status") == "live" and rule_changed:
+        await _apply_badge_assignment_rule(fresh, assigned_by=current.get("username") or "admin")
     return {"badge": _serialise_badge(fresh)}
 
 
@@ -920,16 +931,121 @@ async def delete_badge(badge_id: str, current: CurrentUser):
     return {"ok": True, "deleted": badge_id}
 
 
+async def _apply_badge_assignment_rule(badge: dict, *, assigned_by: str = "system") -> int:
+    """Reconcile `user_badges` to match the badge's current
+    `assignment_type` + `selected_usernames`. Called on Save+Launch and
+    whenever the assignment rule changes.
+
+    Rules:
+      • all / all_users → every active (non-deleted) user gets the badge.
+      • founder         → users with admin_role/role == 'founder'.
+      • admin           → users with admin_role in {founder, admin}.
+      • vip             → users with is_vip True OR first_1000 source.
+      • standard        → users without any of the above flags.
+      • first_1000      → first 1000 by created_at asc.
+      • specific        → explicit selected_usernames list only.
+      • manual / first_x → no-op; relies on explicit /assign calls.
+
+    Already-assigned recipients are NOT touched. Returns the number of
+    NEW assignments created."""
+    from datetime import datetime, timezone
+    a_type = (badge.get("assignment_type") or "manual").lower()
+    auto_rule = (badge.get("auto_rule") or "").lower()
+    key = badge["key"]
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Build the user filter.
+    user_filter: dict | None = None
+    cursor_limit: int | None = None
+    cursor_sort: list | None = None
+
+    if a_type in ("all", "all_users"):
+        user_filter = {"$and": [{"disabled": {"$ne": True}}, {"deletion_state": {"$nin": ["pending", "purged"]}}]}
+    elif a_type == "founder" or auto_rule == "founder":
+        user_filter = {"$or": [{"role": "founder"}, {"admin_role": "founder"}, {"username": "stealth"}]}
+    elif a_type == "admin" or auto_rule == "admin":
+        # Includes support_admin, moderator and the legacy `is_admin` flag.
+        user_filter = {"$or": [
+            {"role": {"$in": ["founder", "admin", "support_admin", "moderator"]}},
+            {"admin_role": {"$in": ["founder", "admin", "support_admin", "moderator"]}},
+            {"is_admin": True},
+        ]}
+    elif a_type == "vip":
+        user_filter = {"$or": [{"is_vip": True}]}
+    elif a_type == "standard":
+        user_filter = {
+            "is_vip": {"$ne": True}, "is_admin": {"$ne": True},
+            "admin_role": {"$nin": ["founder", "admin"]},
+            "role": {"$nin": ["founder", "admin"]},
+            "username": {"$ne": "stealth"},
+            "disabled": {"$ne": True},
+        }
+    elif a_type in ("first_1000", "first_x"):
+        user_filter = {}
+        cursor_limit = int(badge.get("first_x") or 1000)
+        cursor_sort = [("created_at", 1)]
+    elif a_type == "specific":
+        # Apply explicit list only.
+        unames = [(u or "").strip().lower().lstrip("@") for u in (badge.get("selected_usernames") or [])]
+        unames = [u for u in unames if u]
+        if not unames:
+            return 0
+        user_filter = {"username": {"$in": unames}}
+    else:
+        # manual — explicit selected_usernames list only (UI-driven).
+        unames = [(u or "").strip().lower().lstrip("@") for u in (badge.get("selected_usernames") or [])]
+        unames = [u for u in unames if u]
+        if not unames:
+            return 0
+        user_filter = {"username": {"$in": unames}}
+
+    if user_filter is None:
+        return 0
+
+    awarded = 0
+    cursor = db.users.find(user_filter, {"_id": 0, "id": 1, "username": 1})
+    if cursor_sort:
+        cursor = cursor.sort(cursor_sort)
+    if cursor_limit:
+        cursor = cursor.limit(cursor_limit)
+    async for u in cursor:
+        if not u.get("id") or not u.get("username"):
+            continue
+        res = await db.user_badges.update_one(
+            {"user_id": u["id"], "badge_key": key},
+            {"$setOnInsert": {
+                "id": f"{u['id']}::{key}",
+                "user_id": u["id"],
+                "username": u["username"],
+                "badge_key": key,
+                "assigned_by": assigned_by,
+                "assigned_at": now,
+                "source": a_type if a_type != "manual" else "admin",
+            }},
+            upsert=True,
+        )
+        if res.upserted_id is not None:
+            awarded += 1
+    return awarded
+
+
 @router.post("/admin/badges/{badge_id}/launch")
 async def launch_badge(badge_id: str, current: CurrentUser):
     _require_admin(current)
-    res = await db.badge_registry.update_one(
+    badge = await db.badge_registry.find_one({"id": badge_id})
+    if not badge:
+        raise HTTPException(status_code=404, detail="Badge not found")
+    await db.badge_registry.update_one(
         {"id": badge_id},
         {"$set": {"status": "live", "updated_at": _now_iso()}},
     )
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Badge not found")
-    return {"ok": True, "status": "live"}
+    fresh = await db.badge_registry.find_one({"id": badge_id})
+    # Phase 3.1 — Save + Launch must immediately apply the assignment
+    # rule. Without this, switching a badge to `assignment_type=all`
+    # and clicking Launch did nothing visible until an admin manually
+    # invoked /assign with a list of usernames.
+    new_assigned = await _apply_badge_assignment_rule(fresh, assigned_by=current.get("username") or "admin")
+    return {"ok": True, "status": "live", "newly_assigned": new_assigned}
 
 
 @router.post("/admin/badges/{badge_id}/disable")
