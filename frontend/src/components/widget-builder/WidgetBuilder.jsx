@@ -36,6 +36,7 @@ const SECTIONS = [
   { id: "fields",     label: "Fields" },
   { id: "data",       label: "Data" },
   { id: "api",        label: "API Source" },
+  { id: "chat",       label: "Chat AI" },
   { id: "placement",  label: "Placement & Access" },
 ];
 
@@ -110,6 +111,9 @@ export default function WidgetBuilder({ open, initial, onClose, onSaved, layouts
             )}
             {section === "api" && (
               <ApiSourceTab form={form} setForm={setForm} />
+            )}
+            {section === "chat" && (
+              <ChatSection form={form} setForm={setForm} />
             )}
             {section === "placement" && (
               <PlacementSection form={form} setForm={setForm} />
@@ -779,6 +783,10 @@ function PreviewPane({ form }) {
     type: form.key || "preview",
     key: form.key || "preview",
     name: form.name,
+    // Preview widget needs an id to allow ChatLayout to call /chat/* endpoints
+    // when previewing a SAVED chat widget. New widgets without an id show
+    // the "Save first" hint via ChatLayout.
+    id: form._initial_id || undefined,
     editor_config: form.editor_config,
   }), [form]);
   const size = form.default_size || "medium";
@@ -798,6 +806,140 @@ function PreviewPane({ form }) {
         This is rendered with the same CustomWidgetRenderer that profiles, home, and realms use. WYSIWYG.
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ChatSection — Phase 3.5 conversational AI configuration tab.
+// ─────────────────────────────────────────────────────────────────────
+
+function ChatSection({ form, setForm }) {
+  const isChat = form.editor_config.layout === "chat";
+  const cfg = form.editor_config.chat || {};
+  const update = (patch) => setForm((f) => ({
+    ...f,
+    editor_config: { ...f.editor_config, chat: { ...(f.editor_config.chat || {}), ...patch } },
+  }));
+
+  return (
+    <div className="space-y-5" data-testid="widget-builder-chat-section">
+      {!isChat && (
+        <div className="text-[11px] px-3 py-2 rounded" style={{ background: "rgba(244,200,74,0.12)", color: "#F4C84A" }}>
+          <Icons.Info size={11} className="inline mr-1" />
+          Set layout to <b>Chat</b> on the Layout tab for these options to take effect at runtime. (You can still configure them here.)
+        </div>
+      )}
+
+      <FieldFull label="System Prompt">
+        <textarea
+          rows={5}
+          value={cfg.system_prompt || ""}
+          onChange={(e) => update({ system_prompt: e.target.value })}
+          placeholder={"You are Stealth AI, the private assistant for the founder of OurRealm.\n\nReply concisely and helpfully."}
+          className="w-full text-xs px-2 py-1.5 rounded outline-none"
+          style={{ background: "var(--surface-2)", color: "var(--text-main)" }}
+          data-testid="chat-cfg-system-prompt"
+        />
+        <div className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+          Supports variables: <code>{"{{user_message}}"}</code> <code>{"{{username}}"}</code> <code>{"{{display_name}}"}</code> <code>{"{{profile_id}}"}</code> <code>{"{{widget_id}}"}</code> <code>{"{{realm_id}}"}</code>
+        </div>
+      </FieldFull>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Model">
+          <select
+            value={cfg.model || "gpt-4o-mini"}
+            onChange={(e) => update({ model: e.target.value })}
+            className="w-full text-xs px-2 py-1.5 rounded outline-none"
+            style={{ background: "var(--surface-2)", color: "var(--text-main)" }}
+            data-testid="chat-cfg-model"
+          >
+            <option value="gpt-4o-mini">gpt-4o-mini (fast, cheap)</option>
+            <option value="gpt-4o">gpt-4o (smart)</option>
+            <option value="gpt-4-turbo">gpt-4-turbo</option>
+          </select>
+        </Field>
+        <Field label="Temperature">
+          <input
+            type="number" min="0" max="2" step="0.1"
+            value={cfg.temperature ?? 0.7}
+            onChange={(e) => update({ temperature: parseFloat(e.target.value) })}
+            className="w-full text-xs px-2 py-1.5 rounded outline-none"
+            style={{ background: "var(--surface-2)", color: "var(--text-main)" }}
+            data-testid="chat-cfg-temperature"
+          />
+        </Field>
+        <Field label="Max Tokens">
+          <input
+            type="number" min="16" max="4000" step="16"
+            value={cfg.max_tokens ?? 600}
+            onChange={(e) => update({ max_tokens: parseInt(e.target.value || "0", 10) })}
+            className="w-full text-xs px-2 py-1.5 rounded outline-none"
+            style={{ background: "var(--surface-2)", color: "var(--text-main)" }}
+            data-testid="chat-cfg-max-tokens"
+          />
+        </Field>
+        <Field label="Memory">
+          <select
+            value={cfg.memory_mode || "persistent"}
+            onChange={(e) => update({ memory_mode: e.target.value })}
+            className="w-full text-xs px-2 py-1.5 rounded outline-none"
+            style={{ background: "var(--surface-2)", color: "var(--text-main)" }}
+            data-testid="chat-cfg-memory-mode"
+          >
+            <option value="off">Off (stateless)</option>
+            <option value="session">Session Only</option>
+            <option value="persistent">Persistent (per user)</option>
+          </select>
+        </Field>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <ToggleChip
+          on={!!cfg.founder_only}
+          onChange={(v) => update({ founder_only: v })}
+          label="Founder Only"
+          testid="chat-cfg-founder-only"
+        />
+        <ToggleChip
+          on={!!cfg.enable_streaming}
+          onChange={(v) => update({ enable_streaming: v })}
+          label="Enable Streaming"
+          testid="chat-cfg-streaming"
+        />
+      </div>
+
+      <FieldFull label="Quick Actions (one per line)">
+        <textarea
+          rows={4}
+          value={(cfg.quick_actions || []).join("\n")}
+          onChange={(e) => update({ quick_actions: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
+          placeholder={"Summarize\nBrainstorm ideas\nGenerate a post"}
+          className="w-full text-xs px-2 py-1.5 rounded outline-none"
+          style={{ background: "var(--surface-2)", color: "var(--text-main)" }}
+          data-testid="chat-cfg-quick-actions"
+        />
+      </FieldFull>
+    </div>
+  );
+}
+
+function ToggleChip({ on, onChange, label, testid }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!on)}
+      className="px-3 py-1.5 text-xs rounded-full transition-colors flex items-center gap-1.5"
+      style={{
+        background: on ? "var(--primary)" : "var(--surface-2)",
+        color: on ? "#000" : "var(--text-muted)",
+        fontWeight: on ? 700 : 500,
+      }}
+      data-testid={testid}
+    >
+      {on ? <Icons.Check size={11} /> : <Icons.Circle size={11} />}
+      {label}
+    </button>
   );
 }
 
@@ -862,16 +1004,29 @@ function seedForm(initial) {
       fields: ec.fields || [],
       data: ec.data || {},
       data_source: ec.data_source || { kind: "static", api: null, refresh_seconds: 0 },
+      chat: ec.chat || {
+        mode: "conversational",
+        system_prompt: "",
+        model: "gpt-4o-mini",
+        temperature: 0.7,
+        max_tokens: 600,
+        memory_mode: "persistent",
+        founder_only: false,
+        enable_streaming: false,
+        quick_actions: [],
+      },
       theme: ec.theme || {},
       limits: ec.limits || {},
     },
     _keyDirty: !!base.key,
+    _initial_id: base.id || null,
   };
 }
 
 function serialise(form) {
   const out = { ...form };
   delete out._keyDirty;
+  delete out._initial_id;
   return out;
 }
 

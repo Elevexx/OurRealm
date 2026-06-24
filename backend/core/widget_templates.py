@@ -611,6 +611,78 @@ TEMPLATES: List[Dict[str, Any]] = [
             },
         ),
     },
+    # ── Phase 3.5 — Conversational AI templates ───────────────────────
+    {
+        "key": "stealth_ai",
+        "name": "Stealth AI (Founder-Only)",
+        "icon": "Sparkles",
+        "category_group": "utility",
+        "description": "Private ChatGPT-style assistant gated to @stealth. Persistent memory.",
+        "default_size": "large",
+        "editor_config": {
+            "schema_version": 1,
+            "layout": "chat",
+            "fields": [
+                {"key": "title", "type": "text", "label": "Header", "default": "Stealth AI", "max_length": 80},
+                {"key": "input", "type": "chat_input", "label": "Message", "placeholder": "Ask Stealth AI anything…"},
+                {"key": "response", "type": "ai_response", "label": "Reply", "markdown": True, "copy_button": True},
+            ],
+            "data": {"title": "Stealth AI"},
+            "data_source": {"kind": "static", "api": None, "refresh_seconds": 0},
+            "chat": {
+                "mode": "conversational",
+                "system_prompt": (
+                    "You are Stealth AI, the private AI assistant for the founder of OurRealm "
+                    "(username: {{username}}). Be concise, smart, and helpful. Keep replies under "
+                    "150 words unless the user explicitly asks for more. Markdown is allowed."
+                ),
+                "model": "gpt-4o-mini",
+                "temperature": 0.6,
+                "max_tokens": 600,
+                "memory_mode": "persistent",
+                "founder_only": True,
+                "enable_streaming": True,
+                "quick_actions": ["Summarize my day", "Brainstorm post ideas", "Draft an announcement"],
+            },
+            "theme": {},
+            "limits": {},
+        },
+    },
+    {
+        "key": "realm_assistant",
+        "name": "Realm Assistant",
+        "icon": "MessageSquare",
+        "category_group": "community",
+        "description": "Friendly chat helper for community realms. Persistent per-user memory.",
+        "default_size": "medium",
+        "editor_config": {
+            "schema_version": 1,
+            "layout": "chat",
+            "fields": [
+                {"key": "title", "type": "text", "label": "Header", "default": "Realm Assistant", "max_length": 80},
+                {"key": "input", "type": "chat_input", "label": "Message", "placeholder": "Ask me anything…"},
+                {"key": "response", "type": "ai_response", "label": "Reply", "markdown": True, "copy_button": True},
+            ],
+            "data": {"title": "Realm Assistant"},
+            "data_source": {"kind": "static", "api": None, "refresh_seconds": 0},
+            "chat": {
+                "mode": "conversational",
+                "system_prompt": (
+                    "You are the friendly assistant for {{username}}. Be warm, concise, and helpful. "
+                    "If a question is off-topic for a community space, politely steer back to the topic."
+                ),
+                "model": "gpt-4o-mini",
+                "temperature": 0.7,
+                "max_tokens": 500,
+                "memory_mode": "persistent",
+                "founder_only": False,
+                "enable_streaming": False,
+                "quick_actions": ["What's new today?", "Help me find a friend"],
+            },
+            "theme": {},
+            "limits": {},
+        },
+    },
 ]
 
 TEMPLATE_KEYS = {t["key"] for t in TEMPLATES}

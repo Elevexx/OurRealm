@@ -19,6 +19,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as Icons from "lucide-react";
 import apiClient from "@/api/client";
 import { resolveMediaUrl as mediaUrl } from "@/lib/mediaUrl";
+import ChatLayout from "@/components/widgets/ChatLayout";
 
 // Module-level cache so multiple instances of the same custom widget
 // only fetch the registry entry once per page load.
@@ -333,6 +334,7 @@ const LAYOUT_RENDERERS = {
   poll: PollLayout,
   stat: StatLayout,
   embed: EmbedLayout,
+  chat: ChatLayout,
 };
 
 // ─────────────────────────────────────────────────────────────────────
@@ -539,7 +541,7 @@ export default function CustomWidgetRenderer({ w }) {
 
   return (
     <div data-testid={`custom-widget-${w?.type || w?.key || "unknown"}`} className="h-full relative">
-      <Renderer data={data} theme={theme} />
+      <Renderer data={data} theme={theme} widget={w} />
       {soundFieldKeys.length > 0 && (
         <NativeSoundList
           fieldKeys={soundFieldKeys}

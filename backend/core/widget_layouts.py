@@ -45,6 +45,9 @@ FIELD_TYPES: List[Dict[str, Any]] = [
     {"key": "option_list","label": "Options",     "icon": "List",          "supports": ["label", "max_count", "min_count"]},
     {"key": "rich_item", "label": "Rich Item",    "icon": "LayoutGrid",    "supports": ["label", "max_count"]},
     {"key": "embed",     "label": "Embed URL",    "icon": "Code",          "supports": ["label", "placeholder", "required"]},
+    # Phase 3.5 — Conversational AI primitives.
+    {"key": "chat_input",  "label": "Chat Input",  "icon": "MessageSquare", "supports": ["label", "placeholder", "max_length", "required", "multiline"]},
+    {"key": "ai_response", "label": "AI Response", "icon": "Sparkles",      "supports": ["label", "markdown", "code_blocks", "copy_button", "show_timestamp"]},
 ]
 
 # Quick lookup
@@ -144,6 +147,19 @@ LAYOUTS: List[Dict[str, Any]] = [
             _f("title", "text", "Title", max_length=80),
             _f("embed_url", "embed", "Embed URL", required=True),
             _f("aspect", "text", "Aspect Ratio", default="16/9", max_length=10),
+        ],
+    },
+    # Phase 3.5 — Conversational AI layout.
+    {
+        "key": "chat",
+        "name": "Chat",
+        "icon": "MessageSquare",
+        "description": "Conversational AI widget — chat input, AI response, persistent history.",
+        "category_hint": "utility",
+        "fields": [
+            _f("title", "text", "Header Title", max_length=80, default="AI Assistant"),
+            _f("input", "chat_input", "Message Input", placeholder="Ask anything…"),
+            _f("response", "ai_response", "AI Response", markdown=True, copy_button=True),
         ],
     },
 ]

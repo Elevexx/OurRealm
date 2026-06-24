@@ -24,6 +24,9 @@ export const FIELD_TYPES = [
   { key: "option_list",label: "Options",       icon: "List",        supports: ["label", "max_count", "min_count"] },
   { key: "rich_item",  label: "Rich Item",     icon: "LayoutGrid",  supports: ["label", "max_count"] },
   { key: "embed",      label: "Embed URL",     icon: "Code",        supports: ["label", "placeholder", "required"] },
+  // Phase 3.5 — Conversational AI primitives.
+  { key: "chat_input", label: "Chat Input",    icon: "MessageSquare", supports: ["label", "placeholder", "max_length", "required", "multiline"] },
+  { key: "ai_response",label: "AI Response",   icon: "Sparkles",    supports: ["label", "markdown", "code_blocks", "copy_button", "show_timestamp"] },
 ];
 
 export const CATEGORY_GROUPS = [

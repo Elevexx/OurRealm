@@ -1,0 +1,59 @@
+{
+  "summary": "Phase 3.5 Conversational AI Widgets — backend mostly green (18/19 pytest), but ONE CRITICAL BACKEND BUG blocks the entire chat-widget UX: _validate_editor_config() in /app/backend/routers/admin_widgets.py silently strips the `chat` config block when cloning a template (or saving any custom chat widget). Re-ran the 13 phase35_chat tests (all PASS — because they seed widgets DIRECTLY into Mongo, bypassing the admin endpoints). Added 6 new tests covering schema/templates/clone/rate-limit/provider-disable/streaming-disabled (5/6 pass — the clone test surfaces the bug). Verified frontend has ZERO references to OPENAI_API_KEY or sk- secrets. Template gallery in the WidgetBuilder correctly lists Stealth AI + Realm Assistant tiles. Cloning via the UI is downstream of the same bug — even if the click succeeds, the cloned widget has NO editor_config.chat, so the Chat AI tab and the runtime chat will not work as configured.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/admin/widgets/from-template/{template_key}  (and POST /api/admin/widgets, PATCH /api/admin/widgets/{id}, POST /api/admin/widgets/{id}/clone)",
+        "issue": "_validate_editor_config() at /app/backend/routers/admin_widgets.py:215-300 returns a dict containing ONLY {schema_version, layout, fields, data, data_source, theme, limits}. The `chat` key from the template (system_prompt, model, temperature, max_tokens, memory_mode, founder_only, enable_streaming, quick_actions) is silently dropped. Reproduced via POST /api/admin/widgets/from-template/stealth_ai → response widget.editor_config has NO `chat` field. Effect: cloned Stealth AI / Realm Assistant chat widgets fall back to defaults (no system prompt, no founder_only enforcement at the config layer, no streaming, no quick actions). The 13 existing chat tests pass only because they insert documents directly into Mongo, bypassing this validator.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Clone Stealth AI template → WidgetBuilder → Chat AI tab",
+        "issue": "Downstream of the backend critical bug above. Template gallery does display 'Stealth AI (Founder-Only)' and 'Realm Assistant' tiles (verified in the gallery DOM). However once cloned, the saved widget's editor_config has no chat block, so the Chat AI tab fields will be empty/defaulted and runtime founder_only / streaming will not match the template intent. Cannot finish end-to-end send-message flow until backend persists chat cfg.",
+        "affected_selectors": ["[data-testid='widget-builder-chat-section']", "[data-testid='chat-cfg-system-prompt']", "[data-testid='chat-cfg-founder-only']", "[data-testid='chat-cfg-streaming']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase35_chat.py",
+    "/app/backend/tests/test_phase35_chat_extras.py",
+    "/app/test_reports/pytest/iter53_phase35_chat.xml",
+    "/app/test_reports/pytest/iter53_phase35_extras.xml"
+  ],
+  "action_items": [
+    "FIX (CRITICAL): In /app/backend/routers/admin_widgets.py:215-300 _validate_editor_config(), add `chat` to the returned dict, e.g.: `chat = cfg.get('chat'); if chat is not None and not isinstance(chat, dict): raise HTTPException(400, 'editor_config.chat must be an object'); ...` and include `'chat': chat` in the return statement. Also consider validating chat sub-keys (system_prompt str, model str, temperature 0..2, max_tokens 1..2048, memory_mode in {off,session,persistent}, founder_only bool, enable_streaming bool, quick_actions list[str]).",
+    "After the fix, re-run /app/backend/tests/test_phase35_chat_extras.py — the test_clone_stealth_ai_template_produces_chat_widget test will go green and confirm the fix.",
+    "Then re-do FE E2E: clone Stealth AI in UI → open Chat AI tab → verify pre-populated config → Save Draft → Save & Launch → add widget to /profile/stealth → send a 'Say hi in 3 words' message (max_tokens already capped low by template) → verify both non-streaming and SSE-streaming work.",
+    "Re-test founder_only enforcement as tfone (regular user) — should see 403/blocked state in the chat bubble."
+  ],
+  "critical_code_review_comments": [
+    "BUG: _validate_editor_config strips fields that are not in its known list — the function uses an 'allowlist by construction' return dict but doesn't preserve layout-specific config blocks (today: `chat`; tomorrow any future layout config). Suggest either (a) explicitly handle each layout's config block or (b) pass through any unknown top-level keys with validation, but never silently drop them.",
+    "GOOD: OPENAI_API_KEY is never referenced in /app/frontend/src (grep -rn returned 0 matches). SSE and non-streaming chat both flow through /api/widgets/chat/* — no provider hostnames or sk- keys leak from the browser.",
+    "GOOD: Rate limiter is correctly applied per (user, widget) and emits Retry-After on 429.",
+    "GOOD: Provider toggle (POST /api/admin/providers/toggle id=openai enabled=false) correctly cascades to chat — POST /api/widgets/chat/message returns 403 with 'disabled by admin' message.",
+    "GOOD: enable_streaming=false on a widget correctly causes POST /api/widgets/chat/stream to return 400.",
+    "GOOD: /api/admin/widgets/schema correctly exposes 'chat' layout + chat_input + ai_response field types.",
+    "GOOD: /api/admin/widgets/templates exposes both stealth_ai and realm_assistant template summaries (full chat config is intentionally hidden — only surfaces after clone, which is where the bug bites).",
+    "NIT: list_widget_templates() returns only summary fields. Consider adding `chat_preview: bool` or surfacing founder_only on the card so the UI can render a lock badge on the Stealth AI tile before clone."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase35_chat_extras.py (new — 6 tests, 5 pass, 1 fail documenting the bug above)"
+  ],
+  "success_rate": {
+    "backend": "94.7% (18/19 — 13/13 phase35_chat + 5/6 phase35_chat_extras)",
+    "frontend": "partial — template-gallery shows Stealth AI + Realm Assistant tiles and no secret-leak; full clone-to-send E2E blocked by the backend critical bug"
+  },
+  "test_credentials": "stealth/Password1$, support/Password1$, tfone/pass1234 — all validated against https://realm-deploy.preview.emergentagent.com.",
+  "seed_data_creation": "Test widgets pytest-rl-*, pytest-disabled-*, pytest-nostream-*, pytest-chat-* are inserted/cleaned by their respective tests. Two transient stealth_ai clones (key=pytest_*) were created and deleted during the clone test. OpenAI provider toggle was flipped off and back on within test_disabled_openai_blocks_chat — verified restored to enabled at test exit.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The 13 phase35_chat tests SEED WIDGETS DIRECTLY INTO MONGO and so do NOT exercise the admin save/clone code path. They will keep passing even while the admin save path is broken. The real bug is uncovered by /app/backend/tests/test_phase35_chat_extras.py::test_clone_stealth_ai_template_produces_chat_widget. After main agent patches _validate_editor_config to preserve `chat`, re-run that file with: `pytest /app/backend/tests/test_phase35_chat_extras.py -v`. Then do an FE E2E: login as stealth, /admin/widgets, click Create Custom Widget, scroll the gallery (Stealth AI tile is below the fold on 1920x1080) and click it, fill the key prompt, verify Chat AI tab is pre-populated (system_prompt non-empty, model=gpt-4o-mini, memory=persistent, founder_only=ON, streaming=ON, 3 quick-action lines). Then add to /profile/stealth, send 'Say hi in 3 words' (max_tokens stays ≤30 per template), verify SSE streaming + user-right / AI-left bubbles + Regenerate + Clear. Then login as tfone and verify the widget shows a 403/founder-only blocked state on /profile/stealth.",
+  "rca of the issue": "ROOT CAUSE: /app/backend/routers/admin_widgets.py line 292-300, the return statement of _validate_editor_config() constructs a new dict with only the keys {schema_version, layout, fields, data, data_source, theme, limits}. Any other top-level key in the incoming editor_config — including the `chat` block populated by /app/backend/core/widget_templates.py for stealth_ai and realm_assistant — is silently dropped. This validator is called from create_from_template (line 623), create_widget (line 465), update_widget (line 522), and clone_widget (line 701). REPRODUCTION: `curl -X POST $BASE/api/admin/widgets/from-template/stealth_ai -H 'Authorization: Bearer <stealth>' -d '{\"key\":\"qa_test_001\"}'` → response.widget.editor_config has no `chat` key. EXPECTED: editor_config.chat = {system_prompt, model: 'gpt-4o-mini', memory_mode: 'persistent', founder_only: true, enable_streaming: true, quick_actions: [...]}. MITIGATION: Add chat passthrough + validation in _validate_editor_config and include 'chat': chat_cfg in the return dict. Existing chat router (/app/backend/routers/widget_chat.py) already reads editor_config.chat correctly — only the admin-save path needs the patch."
+}
