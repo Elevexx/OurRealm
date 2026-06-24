@@ -735,6 +735,46 @@ async def tracks_by_username(
     return {"tracks": [_public(t, viewer_id=None) for t in items]}
 
 
+@router.get("/resolve")
+async def resolve_sound_ids(request: Request, ids: str = ""):
+    """Phase 3.3 — bulk resolve sound IDs to playable track payloads.
+
+    Used by the Custom Widget Builder so widgets that pin native
+    OurRealm sounds (saved by sound_id) can hydrate cover / title /
+    artist / file_url at render time without exposing the raw
+    track collection.
+
+    Optional auth: anonymous viewers see public tracks; authenticated
+    viewers also see private tracks they're authorized for via
+    _can_view_track. IDs that no longer exist or fail the gate are
+    silently dropped — frontend shows a "sound unavailable" fallback.
+
+    Pass `ids` as a comma-separated list. Cap 50 per call.
+    """
+    # Optional auth — mirrors the public /by-user/{username} endpoint.
+    current = None
+    try:
+        from core.deps import get_current_user
+        current = await get_current_user(request)
+    except Exception:  # noqa: BLE001
+        current = None
+
+    raw_ids = [x.strip() for x in (ids or "").split(",") if x.strip()]
+    raw_ids = raw_ids[:50]
+    if not raw_ids:
+        return {"tracks": []}
+    cursor = db.tracks.find({"id": {"$in": raw_ids}})
+    items = [t async for t in cursor]
+    viewer_id = current.get("id") if current else None
+    visible = [t for t in items if _can_view_track(t, current)]
+    by_id = {t["id"]: _public(t, viewer_id=viewer_id) for t in visible}
+    # Preserve the caller-supplied order so the renderer's array
+    # indices line up with the saved field value.
+    ordered = [by_id[i] for i in raw_ids if i in by_id]
+    return {"tracks": ordered}
+
+
+
 @router.get("/me/personalized")
 async def my_personalization_status(current: CurrentUser):
     """Phase 4B follow-up — drives the 'Made for You' rail visibility.

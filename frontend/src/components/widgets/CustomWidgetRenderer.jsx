@@ -15,7 +15,7 @@
  * The renderer is intentionally read-only on public surfaces. The
  * builder passes `editing=true` to allow inline data edits.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as Icons from "lucide-react";
 import apiClient from "@/api/client";
 import { resolveMediaUrl as mediaUrl } from "@/lib/mediaUrl";
@@ -348,6 +348,8 @@ export default function CustomWidgetRenderer({ w }) {
   const [apiData, setApiData] = useState(null);   // mapped fields from live API
   const [apiError, setApiError] = useState(null);
   const [apiLoading, setApiLoading] = useState(false);
+  // Phase 3.3 — resolved native OurRealm sound tracks by ID.
+  const [resolvedSounds, setResolvedSounds] = useState({}); // { sound_id: track | null }
 
   useEffect(() => {
     if (w?.editor_config) {
@@ -444,6 +446,55 @@ export default function CustomWidgetRenderer({ w }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isApi, widgetIdent, refreshMs]);
 
+  // Phase 3.3 — collect any sound-field values that look like native
+  // OurRealm sound IDs, hit /api/sounds/resolve to hydrate them, and
+  // render the inline players below the layout content.
+  const soundFieldKeys = useMemo(() => {
+    const fields = registryCfg?.fields || [];
+    return fields.filter((f) => f.type === "sound").map((f) => f.key);
+  }, [registryCfg]);
+
+  const pinnedSoundIds = useMemo(() => {
+    if (!registryCfg || soundFieldKeys.length === 0) return [];
+    const out = new Set();
+    const baseData = { ...(registryCfg.data || {}), ...(w?.data || {}) };
+    for (const k of soundFieldKeys) {
+      const v = baseData[k];
+      if (!v) continue;
+      const arr = Array.isArray(v) ? v : [v];
+      for (const entry of arr) {
+        if (looksLikeSoundId(entry)) out.add(entry);
+      }
+    }
+    return Array.from(out);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registryCfg, w?.data, soundFieldKeys.join(",")]);
+
+  useEffect(() => {
+    if (pinnedSoundIds.length === 0) {
+      setResolvedSounds({});
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await apiClient.get(`/sounds/resolve?ids=${encodeURIComponent(pinnedSoundIds.join(","))}`);
+        if (cancelled) return;
+        const map = {};
+        for (const id of pinnedSoundIds) map[id] = null; // pre-seed for fallback rendering
+        for (const t of (data?.tracks || [])) map[t.id] = t;
+        setResolvedSounds(map);
+      } catch {
+        if (!cancelled) {
+          const map = {};
+          for (const id of pinnedSoundIds) map[id] = null;
+          setResolvedSounds(map);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pinnedSoundIds.join(",")]);  // eslint-disable-line react-hooks/exhaustive-deps
+
   // Build the merged data dict that the layout will render. For API
   // widgets we layer (in order): registry baseline → instance overrides
   // → live API mapping. Empty arrays bubble the array-binding's
@@ -489,6 +540,13 @@ export default function CustomWidgetRenderer({ w }) {
   return (
     <div data-testid={`custom-widget-${w?.type || w?.key || "unknown"}`} className="h-full relative">
       <Renderer data={data} theme={theme} />
+      {soundFieldKeys.length > 0 && (
+        <NativeSoundList
+          fieldKeys={soundFieldKeys}
+          data={data}
+          resolved={resolvedSounds}
+        />
+      )}
       {isApi && apiError && (
         <div
           className="absolute top-1 right-1 text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded"
@@ -499,6 +557,153 @@ export default function CustomWidgetRenderer({ w }) {
           <Icons.AlertTriangle size={9} className="inline" /> API
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 3.3 — Native sound rendering
+// ─────────────────────────────────────────────────────────────────────
+
+function looksLikeSoundId(v) {
+  if (!v || typeof v !== "string") return false;
+  if (v.includes("/")) return false;
+  const s = v.replace(/-/g, "").toLowerCase();
+  return s.length === 32 && /^[0-9a-f]+$/.test(s);
+}
+
+function NativeSoundList({ fieldKeys, data, resolved }) {
+  // Flatten every sound-field value into a single ordered list of
+  // {id?, url?} entries. IDs resolve to native players; plain URLs
+  // fall back to a lightweight legacy player (no metadata).
+  const entries = [];
+  for (const k of fieldKeys) {
+    const v = data?.[k];
+    if (!v) continue;
+    const arr = Array.isArray(v) ? v : [v];
+    for (const item of arr) {
+      if (!item) continue;
+      if (looksLikeSoundId(item)) entries.push({ id: item });
+      else entries.push({ url: item });
+    }
+  }
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="mt-2 space-y-1.5" data-testid="custom-widget-sounds">
+      {entries.map((e, i) => {
+        if (e.id) {
+          const track = resolved[e.id];
+          if (track === undefined) {
+            // still loading
+            return (
+              <div key={i} className="or-surface p-2 flex items-center gap-2" style={{ background: "var(--surface-2)" }}>
+                <Icons.Loader2 size={14} className="animate-spin" style={{ color: "var(--text-muted)" }} />
+                <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>Resolving sound…</span>
+              </div>
+            );
+          }
+          if (track === null) {
+            return (
+              <div key={i} className="or-surface p-2 flex items-center gap-2"
+                style={{ background: "var(--surface-2)" }}
+                data-testid={`custom-widget-sound-missing-${e.id}`}>
+                <Icons.AlertTriangle size={14} style={{ color: "#FF8080" }} />
+                <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                  Sound unavailable (deleted or private).
+                </span>
+              </div>
+            );
+          }
+          return <NativeSoundRow key={i} track={track} />;
+        }
+        return <LegacyUrlRow key={i} url={e.url} />;
+      })}
+    </div>
+  );
+}
+
+function NativeSoundRow({ track }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const cover = track.cover_url ? mediaUrl(track.cover_url) : null;
+  const fileUrl = mediaUrl(track.file_url);
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) { a.play().catch(() => setPlaying(false)); }
+    else { a.pause(); }
+  };
+  return (
+    <div className="or-surface p-2 flex items-center gap-2" style={{ background: "var(--surface-2)" }}
+      data-testid={`custom-widget-sound-${track.id}`}>
+      <button
+        onClick={toggle}
+        className="rounded shrink-0 relative overflow-hidden"
+        style={{ width: 38, height: 38, background: "var(--surface-1)" }}
+        title={playing ? "Pause" : "Play"}
+      >
+        {cover ? (
+          <img src={cover} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center" style={{ color: "var(--text-muted)" }}>
+            <Icons.Music size={16} />
+          </div>
+        )}
+        <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.42)" }}>
+          {playing ? <Icons.Pause size={12} style={{ color: "#fff" }} /> : <Icons.Play size={12} style={{ color: "#fff" }} />}
+        </div>
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-semibold truncate" style={{ color: "var(--text-main)" }}>
+          {track.title || "Untitled"}
+        </div>
+        <div className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>
+          {track.category || ""}{track.genre ? ` · ${track.genre}` : ""}
+        </div>
+      </div>
+      <audio
+        ref={audioRef}
+        src={fileUrl}
+        preload="metadata"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+        style={{ display: "none" }}
+      />
+    </div>
+  );
+}
+
+function LegacyUrlRow({ url }) {
+  const resolved = mediaUrl(url);
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) a.play().catch(() => setPlaying(false));
+    else a.pause();
+  };
+  return (
+    <div className="or-surface p-2 flex items-center gap-2" style={{ background: "var(--surface-2)" }}
+      data-testid="custom-widget-sound-legacy">
+      <button onClick={toggle} className="rounded shrink-0 flex items-center justify-center"
+        style={{ width: 38, height: 38, background: "var(--surface-1)" }}>
+        {playing ? <Icons.Pause size={14} /> : <Icons.Play size={14} />}
+      </button>
+      <div className="flex-1 min-w-0 text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
+        {url || "(no audio url)"}
+      </div>
+      <audio
+        ref={audioRef}
+        src={resolved}
+        preload="metadata"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+        style={{ display: "none" }}
+      />
     </div>
   );
 }

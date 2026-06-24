@@ -22,6 +22,7 @@ import * as Icons from "lucide-react";
 import apiClient from "@/api/client";
 import CustomWidgetRenderer from "@/components/widgets/CustomWidgetRenderer";
 import ApiSourceTab from "@/components/widget-builder/ApiSourceTab";
+import SoundsLibraryPicker from "@/components/SoundsLibraryPicker";
 import {
   FIELD_TYPES, CATEGORY_GROUPS, PLACEMENTS, ACCESS_GROUPS, SIZES,
   ICON_CHOICES, blankEditorConfig, slugifyKey,
@@ -578,9 +579,36 @@ function MediaListInput({ field, value, onChange }) {
   const list = Array.isArray(value) ? value : (value ? [value] : []);
   const max = field.max_count || 12;
   const single = max === 1;
+  const isSound = field.type === "sound";
+  const [pickerOpen, setPickerOpen] = useState(false);
   const updateRow = (i, v) => onChange(single ? v : list.map((x, idx) => (idx === i ? v : x)));
   const addRow = () => onChange(single ? "" : [...list, ""]);
   const removeRow = (i) => onChange(single ? "" : list.filter((_, idx) => idx !== i));
+
+  // Phase 3.3 — when the picker returns sound IDs replace the entire
+  // list (multi) or the single value, deduping with any existing
+  // entries (legacy URLs are preserved unless explicitly replaced).
+  const onPicked = (picked) => {
+    setPickerOpen(false);
+    if (picked === null || picked === undefined) return;
+    if (single) {
+      onChange(picked || "");
+      return;
+    }
+    if (!Array.isArray(picked)) return;
+    // Multi-mode — keep existing legacy URLs (non-UUID-shaped entries)
+    // and append the new sound IDs (deduped).
+    const keepLegacy = list.filter((v) => v && !looksLikeId(v));
+    const next = [...keepLegacy];
+    for (const id of picked) {
+      if (id && !next.includes(id)) next.push(id);
+    }
+    onChange(next.slice(0, max));
+  };
+
+  const initialSelected = single
+    ? (looksLikeId(list[0]) ? [list[0]] : [])
+    : list.filter(looksLikeId);
 
   return (
     <FieldFull label={`${field.label || field.key} · ${field.type}`}>
@@ -590,9 +618,17 @@ function MediaListInput({ field, value, onChange }) {
             <input
               className="or-input flex-1 text-xs"
               value={row || ""}
-              placeholder={`Paste ${field.type} URL or /api/media/...`}
+              placeholder={isSound
+                ? `Paste sound URL OR pick from library`
+                : `Paste ${field.type} URL or /api/media/...`}
               onChange={(e) => updateRow(i, e.target.value)}
             />
+            {looksLikeId(row) && (
+              <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded shrink-0 self-center"
+                style={{ background: "color-mix(in srgb, var(--primary) 18%, transparent)", color: "var(--primary)" }}>
+                Native ID
+              </span>
+            )}
             {!single && (
               <button className="starbar-icon" style={{ width: 28, height: 28, color: "#FF5A6B" }} onClick={() => removeRow(i)}>
                 <Icons.X size={12} />
@@ -600,17 +636,55 @@ function MediaListInput({ field, value, onChange }) {
             )}
           </div>
         ))}
-        {!single && list.length < max && (
-          <button className="or-btn or-btn-ghost text-xs" onClick={addRow}>
-            <Icons.Plus size={11} /> Add {field.type}
-          </button>
-        )}
+        <div className="flex gap-1 flex-wrap">
+          {!single && list.length < max && (
+            <button className="or-btn or-btn-ghost text-xs" onClick={addRow}>
+              <Icons.Plus size={11} /> Add {field.type}
+            </button>
+          )}
+          {isSound && (
+            <button
+              className="or-btn or-btn-primary text-xs"
+              onClick={() => setPickerOpen(true)}
+              data-testid={`media-list-select-library-${field.key}`}
+            >
+              <Icons.Music size={11} /> Select from Sounds Library
+            </button>
+          )}
+        </div>
       </div>
-      <div className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-        Note: media upload UI ships next. For now paste an existing media URL or proxy path.
-      </div>
+      {isSound && (
+        <div className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+          Pick from your /sounds library to save by ID (renames + cover updates auto-propagate). Pasted URLs still work for legacy widgets.
+        </div>
+      )}
+      {!isSound && (
+        <div className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+          Note: media upload UI ships next. For now paste an existing media URL or proxy path.
+        </div>
+      )}
+      {pickerOpen && (
+        <SoundsLibraryPicker
+          open
+          onClose={() => setPickerOpen(false)}
+          onPick={onPicked}
+          multi={!single}
+          initialSelected={initialSelected}
+        />
+      )}
     </FieldFull>
   );
+}
+
+// Quick heuristic — UUIDs (with or without dashes, 32 hex chars) are
+// our sound IDs. URLs always contain a slash; legacy values that
+// happen to be 32-hex-char strings without dashes are unlikely in
+// practice, and the resolver will gracefully drop unresolvable IDs.
+function looksLikeId(v) {
+  if (!v || typeof v !== "string") return false;
+  if (v.includes("/")) return false;
+  const stripped = v.replace(/-/g, "").toLowerCase();
+  return stripped.length === 32 && /^[0-9a-f]+$/.test(stripped);
 }
 
 function RepeaterInput({ field, value, onChange, shape, cols }) {
