@@ -1,0 +1,48 @@
+{
+  "summary": "Phase 3.4 Provider Management validated. 25/25 backend tests pass (auth gating, toggle, health probe, analytics, widget proxy, secret-leak checks). Frontend /admin/providers renders 11 cards correctly for stealth on desktop AND mobile (single-column reflow confirmed), toggle and Test work, no provider secrets leak through the browser network. Found ONE frontend regression: support admin is redirected away from /admin/providers even though backend allows it — root cause is the route guard checks user.role/admin_role/is_admin but /api/auth/login does not return any of those flags for support_admin accounts.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "AdminProviders route guard",
+        "issue": "Support admin (admin tier) is redirected to '/' instead of seeing /admin/providers. The guard at /app/frontend/src/pages/AdminProviders.jsx:45 checks role==='support_admin'/'admin'/'founder' or user.is_admin, but POST /api/auth/login returns user.role='user' with NO admin_role/is_admin fields for support. Backend GET /api/admin/providers correctly returns 200 for support; only the FE gate fails. Spec requires support to see /admin/providers with Test buttons but not Toggle buttons.",
+        "selector": "[data-testid='admin-providers-page']",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase34_providers.py",
+    "/app/test_reports/pytest/iter52_phase34_providers.xml"
+  ],
+  "action_items": [
+    "Expose admin status to the frontend so support admins can access /admin/providers. Either (a) include admin_role / is_admin in the user payload returned by /api/auth/login and /api/auth/me, OR (b) change AdminProviders guard to call /api/me/admin (or similar) to confirm admin tier before redirecting.",
+    "Optional polish: ApiSourceTab currently RENDERS disabled/unconfigured tiles in greyed-out state. Spec line 16 says 'provider tiles must show only providers where configured=true AND enabled=true'. Current behavior is informative but slightly off-spec — confirm with founder whether the greyed-tile approach is acceptable or whether tiles should be hidden entirely.",
+    "Note: openweather/newsapi/alphavantage are correctly reported as unconfigured (their env keys are absent). No action needed unless founder wants them configured."
+  ],
+  "critical_code_review_comments": [
+    "Frontend route gate (AdminProviders.jsx:45) trusts role string but backend does not surface admin_role in /auth/login response — keep role determination server-driven to avoid drift.",
+    "provider_registry.has_credential() returns True for nasa even when NASA_API_KEY is unset (uses DEMO_KEY fallback). Documented in code, just be aware status will report 'healthy' without an explicit key.",
+    "All provider responses correctly strip auth_env_var/auth_param_prefix via public_provider_view(). /admin/widgets/api-providers passes this test (auth_env_var key NOT present in payload). /admin/providers DOES expose auth_env_var name (not value) — by design per spec line 'must contain only auth_env_var name + configured boolean'. Verified no raw secret values leak.",
+    "Backend toggle persists in MongoDB provider_settings and invalidates provider_health cache — clean.",
+    "Widget proxy correctly enforces provider_is_enabled() before call_api() — disabled provider returns 403 'disabled by admin'. Confirmed for both /api/widgets/api-call and /api/admin/widgets/test-api."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase34_providers.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (25/25 pytest)",
+    "frontend": "~90% (10/11 specs — support-admin access blocked)"
+  },
+  "test_credentials": "stealth/Password1$, support/Password1$, tfone/pass1234 — all validated against live preview URL.",
+  "seed_data_creation": "None. Toggles for coingecko/github were applied and restored within the test run.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend Phase 3.4 endpoints are fully verified by /app/backend/tests/test_phase34_providers.py (25 tests, all green). Frontend secret-leak check is clean — no provider hosts called from browser, no Bearer sk- headers. The one outstanding issue is the AdminProviders FE route guard rejecting support admins; once /auth/login (or /auth/me) returns admin_role/is_admin, re-test by setting localStorage.ourrealm.access with a support token and confirming /admin/providers loads, shows test buttons but NOT toggle buttons. OpenAI key in /app/backend/.env is real — please limit test calls to max_tokens=1 (already enforced by HEALTH_PROBES).",
+  "rca of the issue": "AdminProviders.jsx:42-46 builds isAdminTier from user.role, user.admin_role, and user.is_admin. POST /api/auth/login response for support contains role='user' and omits admin_role/is_admin entirely (verified via curl). The FE therefore concludes the user is non-admin and navigates to '/'. Backend correctly identifies admin tier via core.deps.is_admin_user(current), which presumably looks up an admins collection or special username list — but that data never reaches the client. Fix on backend side: include admin_role (or is_admin) in the user payload returned by /api/auth/login and /api/auth/me."
+}

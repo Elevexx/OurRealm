@@ -289,7 +289,8 @@ def _resolve_url_and_request(provider: Dict[str, Any], endpoint: Dict[str, Any],
     auth_kind = provider.get("auth_kind") or "none"
     if auth_kind == "api_key":
         env_var = provider.get("auth_env_var")
-        token = os.environ.get(env_var) if env_var else None
+        fallback_var = provider.get("auth_env_var_fallback")
+        token = (env_var and os.environ.get(env_var)) or (fallback_var and os.environ.get(fallback_var))
         if provider["key"] == "nasa" and not token:
             token = "DEMO_KEY"  # NASA's public demo key works for low volume.
         if not token:
@@ -304,7 +305,8 @@ def _resolve_url_and_request(provider: Dict[str, Any], endpoint: Dict[str, Any],
                 headers[name] = f"{prefix}{token}"
     elif auth_kind == "bearer":
         env_var = provider.get("auth_env_var")
-        token = os.environ.get(env_var) if env_var else None
+        fallback_var = provider.get("auth_env_var_fallback")
+        token = (env_var and os.environ.get(env_var)) or (fallback_var and os.environ.get(fallback_var))
         if not token:
             debug["missing"].append(f"env:{env_var}")
         else:

@@ -89,6 +89,7 @@ PROVIDERS: List[Dict[str, Any]] = [
         "default_cache_seconds": 600,
         "provider_quota_per_hour": 1000,
         "coming_soon": False,
+        "capabilities": ["Weather Widgets", "Forecast Widgets", "Current Conditions"],
         "description": "Current weather + forecasts. Free tier 60 calls/min.",
         "docs_url": "https://openweathermap.org/api",
         "endpoints": [
@@ -110,6 +111,30 @@ PROVIDERS: List[Dict[str, Any]] = [
                 ],
                 description="Current conditions at a city.",
             ),
+            _ep(
+                "forecast", "5-Day Forecast",
+                path="/forecast",
+                params=[
+                    _p("q", "text", label="City", required=True, default="London,uk"),
+                    _p("units", "select", label="Units", default="metric", enum=["metric", "imperial", "standard"]),
+                    _p("cnt", "number", label="Count (3h windows)", default=8),
+                ],
+                sample_paths=[
+                    {"label": "City Name", "path": "city.name"},
+                    {"label": "First Temp", "path": "list[0].main.temp"},
+                ],
+                array_hints=[
+                    {
+                        "label": "Forecast List",
+                        "array_path": "list",
+                        "item_map": {
+                            "label": "dt_txt",
+                            "value": "main.temp",
+                            "body": "weather[0].main",
+                        },
+                    },
+                ],
+            ),
         ],
     },
 
@@ -127,6 +152,7 @@ PROVIDERS: List[Dict[str, Any]] = [
         "default_cache_seconds": 900,
         "provider_quota_per_hour": 100,
         "coming_soon": False,
+        "capabilities": ["Headlines", "Trending News", "Breaking News", "News Widgets"],
         "description": "Top headlines + search. Free tier 100/day.",
         "docs_url": "https://newsapi.org/docs",
         "endpoints": [
@@ -243,7 +269,11 @@ PROVIDERS: List[Dict[str, Any]] = [
         "icon": "TrendingUp",
         "category": "stocks",
         "auth_kind": "api_key",
-        "auth_env_var": "ALPHA_VANTAGE_KEY",
+        # Phase 3.4 — accept BOTH the legacy ALPHA_VANTAGE_KEY name
+        # and the spec-aligned ALPHAVANTAGE_API_KEY. The has_credential()
+        # check below falls back to either.
+        "auth_env_var": "ALPHAVANTAGE_API_KEY",
+        "auth_env_var_fallback": "ALPHA_VANTAGE_KEY",
         "auth_param_name": "apikey",
         "auth_param_location": "query",
         "base_url": "https://www.alphavantage.co",
@@ -251,6 +281,7 @@ PROVIDERS: List[Dict[str, Any]] = [
         "default_cache_seconds": 900,
         "provider_quota_per_hour": 25,  # 25/day free tier — be conservative.
         "coming_soon": False,
+        "capabilities": ["Stock Widgets", "Crypto Widgets", "Market Data", "Forex Quotes"],
         "description": "Stock & forex quotes. Free tier 25/day.",
         "docs_url": "https://www.alphavantage.co/documentation/",
         "endpoints": [
@@ -266,6 +297,21 @@ PROVIDERS: List[Dict[str, Any]] = [
                     {"label": "Price", "path": "Global Quote.05. price"},
                     {"label": "Change", "path": "Global Quote.09. change"},
                     {"label": "Change %", "path": "Global Quote.10. change percent"},
+                ],
+            ),
+            _ep(
+                "crypto_quote", "Crypto Exchange Rate",
+                path="/query",
+                params=[
+                    _p("function", "text", label="Function", required=True, default="CURRENCY_EXCHANGE_RATE"),
+                    _p("from_currency", "text", label="From (e.g. BTC)", required=True, default="BTC"),
+                    _p("to_currency", "text", label="To (e.g. USD)", required=True, default="USD"),
+                ],
+                sample_paths=[
+                    {"label": "From", "path": "Realtime Currency Exchange Rate.01. From_Currency Code"},
+                    {"label": "To",   "path": "Realtime Currency Exchange Rate.03. To_Currency Code"},
+                    {"label": "Rate", "path": "Realtime Currency Exchange Rate.05. Exchange Rate"},
+                    {"label": "Time", "path": "Realtime Currency Exchange Rate.06. Last Refreshed"},
                 ],
             ),
         ],
@@ -409,6 +455,7 @@ PROVIDERS: List[Dict[str, Any]] = [
         "default_cache_seconds": 3600,
         "provider_quota_per_hour": 60,
         "coming_soon": False,
+        "capabilities": ["AI Widgets", "Chat Widgets", "Summaries", "Content Generation"],
         "description": "Chat completions. Requires your own OPENAI_API_KEY.",
         "docs_url": "https://platform.openai.com/docs/api-reference",
         "endpoints": [
@@ -521,16 +568,18 @@ def get_endpoint(provider_key: str, endpoint_key: str) -> Optional[Dict[str, Any
 
 
 def has_credential(provider: Dict[str, Any]) -> bool:
-    """True iff the provider either needs no auth, or its env var is set."""
+    """True iff the provider either needs no auth, or its env var is set.
+    Phase 3.4 — supports `auth_env_var_fallback` so we can rename env
+    vars without breaking existing deployments."""
     if provider.get("auth_kind") == "none":
         return True
     var = provider.get("auth_env_var")
-    if not var:
+    fb = provider.get("auth_env_var_fallback")
+    if not var and not fb:
         return False
-    # NASA DEMO_KEY is fine — treat it as always-set for the NASA provider.
     if provider["key"] == "nasa":
         return True
-    return bool(os.environ.get(var))
+    return bool((var and os.environ.get(var)) or (fb and os.environ.get(fb)))
 
 
 def public_provider_view(provider: Dict[str, Any]) -> Dict[str, Any]:

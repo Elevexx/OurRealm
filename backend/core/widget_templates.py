@@ -440,6 +440,177 @@ TEMPLATES: List[Dict[str, Any]] = [
             },
         ),
     },
+
+    # ─── Phase 3.4 — Provider-specific starter templates.
+    {
+        "key": "ai_quote",
+        "name": "AI Quote",
+        "icon": "Bot",
+        "category_group": "social",
+        "description": "An AI-generated inspirational quote (OpenAI).",
+        "default_size": "medium",
+        "editor_config": _ec(
+            "card",
+            [{"key": "body", "type": "long_text", "label": "Quote", "max_length": 500}],
+            {"body": "—"},
+            data_source={
+                "kind": "api", "provider": "openai", "endpoint_key": "chat",
+                "params": {"model": "gpt-4o-mini", "prompt": "Give me one short, original inspirational quote — one sentence, no attribution.", "max_tokens": 80},
+                "response_map": {"body": "choices[0].message.content"},
+                "refresh_seconds": 3600, "cache_seconds": 3600,
+            },
+        ),
+    },
+    {
+        "key": "ai_fact",
+        "name": "AI Daily Fact",
+        "icon": "Sparkles",
+        "category_group": "social",
+        "description": "A new fun fact each refresh (OpenAI).",
+        "default_size": "medium",
+        "editor_config": _ec(
+            "card",
+            [
+                {"key": "title", "type": "text", "label": "Header", "max_length": 80},
+                {"key": "body", "type": "long_text", "label": "Fact", "max_length": 400},
+            ],
+            {"title": "Did you know?", "body": "—"},
+            data_source={
+                "kind": "api", "provider": "openai", "endpoint_key": "chat",
+                "params": {"model": "gpt-4o-mini", "prompt": "One short fun fact about science or history. Single sentence.", "max_tokens": 80},
+                "response_map": {"body": "choices[0].message.content"},
+                "refresh_seconds": 86400, "cache_seconds": 86400,
+            },
+        ),
+    },
+    {
+        "key": "ai_icebreaker",
+        "name": "AI Icebreaker",
+        "icon": "MessageSquare",
+        "category_group": "social",
+        "description": "A spicy conversation starter (OpenAI).",
+        "default_size": "medium",
+        "editor_config": _ec(
+            "card",
+            [{"key": "body", "type": "long_text", "label": "Question", "max_length": 300}],
+            {"body": "—"},
+            data_source={
+                "kind": "api", "provider": "openai", "endpoint_key": "chat",
+                "params": {"model": "gpt-4o-mini", "prompt": "One creative, fun icebreaker question for a social platform. Just the question.", "max_tokens": 60},
+                "response_map": {"body": "choices[0].message.content"},
+                "refresh_seconds": 3600, "cache_seconds": 3600,
+            },
+        ),
+    },
+    {
+        "key": "breaking_news",
+        "name": "Breaking News",
+        "icon": "Newspaper",
+        "category_group": "social",
+        "description": "Top headlines (NewsAPI).",
+        "default_size": "large",
+        "editor_config": _ec(
+            "list",
+            [
+                {"key": "title", "type": "text", "label": "Title", "max_length": 80},
+                {"key": "items", "type": "rich_item", "label": "Articles", "max_count": 5},
+            ],
+            {"title": "Breaking News", "items": []},
+            data_source={
+                "kind": "api", "provider": "newsapi", "endpoint_key": "top_headlines",
+                "params": {"country": "us", "category": "general", "pageSize": 5},
+                "response_map": {},
+                "array_bindings": [{
+                    "field_key": "items", "array_path": "articles", "max_items": 5,
+                    "empty_text": "No headlines available.",
+                    "item_map": {"label": "title", "body": "description", "image": "urlToImage", "url": "url", "value": "source.name"},
+                }],
+                "refresh_seconds": 900, "cache_seconds": 900,
+            },
+        ),
+    },
+    {
+        "key": "tech_news",
+        "name": "Tech News",
+        "icon": "Newspaper",
+        "category_group": "utility",
+        "description": "Tech headlines (NewsAPI).",
+        "default_size": "large",
+        "editor_config": _ec(
+            "list",
+            [
+                {"key": "title", "type": "text", "label": "Title", "max_length": 80},
+                {"key": "items", "type": "rich_item", "label": "Articles", "max_count": 5},
+            ],
+            {"title": "Tech News", "items": []},
+            data_source={
+                "kind": "api", "provider": "newsapi", "endpoint_key": "top_headlines",
+                "params": {"country": "us", "category": "technology", "pageSize": 5},
+                "response_map": {},
+                "array_bindings": [{
+                    "field_key": "items", "array_path": "articles", "max_items": 5,
+                    "empty_text": "No tech news available.",
+                    "item_map": {"label": "title", "body": "description", "image": "urlToImage", "url": "url", "value": "source.name"},
+                }],
+                "refresh_seconds": 1800, "cache_seconds": 1800,
+            },
+        ),
+    },
+    {
+        "key": "current_weather",
+        "name": "Current Weather",
+        "icon": "CloudSun",
+        "category_group": "utility",
+        "description": "Live weather for a city (OpenWeather).",
+        "default_size": "small",
+        "editor_config": _ec(
+            "stat",
+            [
+                {"key": "label", "type": "text", "label": "City", "required": True, "max_length": 60},
+                {"key": "value", "type": "text", "label": "Temperature", "required": True, "max_length": 24},
+                {"key": "delta", "type": "text", "label": "Conditions", "max_length": 32},
+            ],
+            {"label": "London", "value": "—", "delta": "—"},
+            data_source={
+                "kind": "api", "provider": "openweather", "endpoint_key": "current",
+                "params": {"q": "London,uk", "units": "metric"},
+                "response_map": {"label": "name", "value": "main.temp", "delta": "weather[0].main"},
+                "formatters": {"value": {"type": "number", "decimals": 1, "suffix": "°C"}},
+                "refresh_seconds": 600, "cache_seconds": 600,
+            },
+        ),
+    },
+    {
+        "key": "stock_ticker",
+        "name": "Stock Ticker",
+        "icon": "TrendingUp",
+        "category_group": "business",
+        "description": "Live stock quote (Alpha Vantage).",
+        "default_size": "small",
+        "editor_config": _ec(
+            "stat",
+            [
+                {"key": "label", "type": "text", "label": "Symbol", "required": True, "max_length": 24},
+                {"key": "value", "type": "text", "label": "Price", "required": True, "max_length": 24},
+                {"key": "delta", "type": "text", "label": "Change %", "max_length": 24},
+            ],
+            {"label": "AAPL", "value": "—", "delta": "—"},
+            data_source={
+                "kind": "api", "provider": "alphavantage", "endpoint_key": "global_quote",
+                "params": {"function": "GLOBAL_QUOTE", "symbol": "AAPL"},
+                "response_map": {
+                    "label": "Global Quote.01. symbol",
+                    "value": "Global Quote.05. price",
+                    "delta": "Global Quote.10. change percent",
+                },
+                "formatters": {
+                    "value": {"type": "currency", "symbol": "$", "decimals": 2},
+                    "delta": {"type": "uppercase", "positive_color": "#10E670", "negative_color": "#FF5A6B"},
+                },
+                "refresh_seconds": 900, "cache_seconds": 900,
+            },
+        ),
+    },
 ]
 
 TEMPLATE_KEYS = {t["key"] for t in TEMPLATES}

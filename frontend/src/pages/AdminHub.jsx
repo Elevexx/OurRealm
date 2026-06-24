@@ -107,6 +107,17 @@ const CARDS = [
     roles: ["founder", "admin"],
     statKey: null,
   },
+  {
+    id: "providers",
+    to: "/admin/providers",
+    title: "Provider Integrations",
+    description: "Manage external APIs (OpenAI, NewsAPI, OpenWeather, Alpha Vantage, …). Enable / disable / health-check.",
+    Icon: LayoutGrid,
+    accent: "#00C2FF",
+    badge: null,
+    roles: ["founder", "admin"],
+    statKey: null,
+  },
 ];
 
 export default function AdminHub() {

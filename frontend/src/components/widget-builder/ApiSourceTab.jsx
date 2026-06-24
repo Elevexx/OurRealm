@@ -300,7 +300,8 @@ function ProviderPicker({ providers, selected, onPick }) {
         {providers.map((p) => {
           const Icon = Icons[p.icon] || Icons.Plug;
           const isSelected = p.key === selected;
-          const disabled = p.coming_soon || !p.has_credential;
+          const adminDisabled = p.enabled === false && !p.coming_soon;
+          const disabled = p.coming_soon || !p.has_credential || adminDisabled;
           return (
             <button
               key={p.key}
@@ -323,12 +324,17 @@ function ProviderPicker({ providers, selected, onPick }) {
                     Soon
                   </span>
                 )}
-                {!p.coming_soon && !p.has_credential && (
+                {!p.coming_soon && adminDisabled && (
+                  <span className="ml-auto text-[8px] uppercase tracking-widest px-1 rounded" style={{ background: "rgba(156,156,156,0.22)", color: "#9C9C9C" }}>
+                    Off
+                  </span>
+                )}
+                {!p.coming_soon && !adminDisabled && !p.has_credential && (
                   <span className="ml-auto text-[8px] uppercase tracking-widest px-1 rounded" style={{ background: "rgba(244,200,74,0.16)", color: "#F4C84A" }}>
                     Add Key
                   </span>
                 )}
-                {p.has_credential && !p.coming_soon && (
+                {!p.coming_soon && !adminDisabled && p.has_credential && (
                   <span className="ml-auto text-[8px] uppercase tracking-widest px-1 rounded" style={{ background: "color-mix(in srgb, var(--brand-green) 18%, transparent)", color: "var(--brand-green)" }}>
                     Ready
                   </span>

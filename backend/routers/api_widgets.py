@@ -21,7 +21,17 @@ from core.api_providers import (
     PROVIDERS, get_provider, get_endpoint, public_provider_view,
 )
 from services.api_widget_proxy import call_api
+from services.provider_registry import (
+    full_provider_view, set_enabled, get_health, analytics_snapshot,
+    is_enabled as provider_is_enabled,
+)
 from utils.sliding_window_rate_limit import aggregate_recent_denials
+
+
+class ProviderTogglePayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    enabled: bool
 
 logger = logging.getLogger("ourrealm.api_widgets")
 router = APIRouter(prefix="/api", tags=["api-widgets"])
@@ -83,8 +93,69 @@ def _set_rate_headers(response: Response, rl: Optional[Dict[str, Any]]) -> None:
 
 @router.get("/admin/widgets/api-providers")
 async def list_api_providers(current: CurrentUser):
+    """Phase 3.4 — merges enabled-flag state so the builder can grey
+    out admin-disabled providers."""
     _require_admin(current)
-    return {"providers": [public_provider_view(p) for p in PROVIDERS]}
+    from services.provider_registry import all_enabled_map
+    enabled = await all_enabled_map()
+    out = []
+    for p in PROVIDERS:
+        view = public_provider_view(p)
+        if p["key"] in enabled:
+            view["enabled"] = enabled[p["key"]]
+        else:
+            view["enabled"] = not bool(p.get("coming_soon"))
+        out.append(view)
+    return {"providers": out}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase 3.4 — Provider management (admin/providers/*)
+# ─────────────────────────────────────────────────────────────────────
+
+@router.get("/admin/providers")
+async def admin_providers_list(current: CurrentUser):
+    """Returns the FULL provider view including configured/enabled/
+    coming_soon/status flags. Used by the /admin/providers page."""
+    _require_admin(current)
+    return await full_provider_view()
+
+
+@router.get("/admin/providers/status")
+async def admin_providers_status(current: CurrentUser):
+    _require_admin(current)
+    view = await full_provider_view()
+    return {"providers": [
+        {k: p[k] for k in ("id", "configured", "enabled", "status", "coming_soon")}
+        for p in view["providers"]
+    ]}
+
+
+@router.post("/admin/providers/toggle")
+async def admin_provider_toggle(payload: ProviderTogglePayload, current: CurrentUser):
+    """Enable/disable a provider. @stealth-only — toggling has
+    cross-cutting effects on every widget using the provider."""
+    _require_stealth(current)
+    if not get_provider(payload.id):
+        raise HTTPException(status_code=404, detail=f"Unknown provider '{payload.id}'")
+    return await set_enabled(payload.id, payload.enabled, actor=current.get("username"))
+
+
+@router.post("/admin/providers/test")
+async def admin_provider_test(payload: ProviderTogglePayload, current: CurrentUser):
+    """Run a fresh health probe (bypasses the 5-minute cache).
+    Admin-tier (not @stealth-only) — any admin can verify status."""
+    _require_admin(current)
+    if not get_provider(payload.id):
+        raise HTTPException(status_code=404, detail=f"Unknown provider '{payload.id}'")
+    return await get_health(payload.id, force=True)
+
+
+@router.get("/admin/analytics/providers")
+async def admin_provider_analytics(current: CurrentUser):
+    """Per-provider calls / errors / avg latency snapshot."""
+    _require_admin(current)
+    return await analytics_snapshot()
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -94,6 +165,8 @@ async def list_api_providers(current: CurrentUser):
 @router.post("/admin/widgets/test-api")
 async def test_api(payload: ApiTestPayload, current: CurrentUser, response: Response):
     _require_stealth(current)
+    if not await provider_is_enabled(payload.provider):
+        raise HTTPException(status_code=403, detail=f"Provider '{payload.provider}' is disabled by admin.")
     try:
         result = await call_api(
             payload.provider,
@@ -168,6 +241,8 @@ async def widget_api_call(payload: ApiCallPayload, current: CurrentUser, respons
 
     if not provider or not endpoint_key:
         raise HTTPException(status_code=400, detail="provider + endpoint are required")
+    if not await provider_is_enabled(provider):
+        raise HTTPException(status_code=403, detail=f"Provider '{provider}' is disabled by admin.")
 
     result = await call_api(
         provider, endpoint_key, params,
