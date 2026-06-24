@@ -126,17 +126,24 @@ export function BlogBody({ w, editing, isOwner, viewer, onUpdate }) {
 //   { kind: "upload", url, video_id, thumbnail? }   from /api/videos/upload
 //   { kind: "post",   post_id, url, thumbnail? }    pinned existing video post
 // Owner sees an Upload tile + a "Pin existing" picker until items.length===4.
+// Public viewers see a click-to-play grid (full controls once a tile is
+// activated). The PREVIOUS implementation overlaid a non-clickable
+// PlayCircle icon on a poster-less <video preload="metadata"> which made
+// playback unreachable on mobile Safari — fixed by lazily mounting a
+// <video controls autoPlay> only after the user taps the tile.
 // ─────────────────────────────────────────────────────────────────────
 export function VideosBody({ w, editing, isOwner, ownerUsername, onUpdate }) {
   const items = Array.isArray(w.items) ? w.items.slice(0, 4) : [];
   const [pickerOpen, setPickerOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(null);   // which tile is playing
   const fileInputRef = React.useRef(null);
 
   const removeAt = (idx) => {
     const next = items.slice();
     next.splice(idx, 1);
     onUpdate?.(w.id, { items: next });
+    if (activeIdx === idx) setActiveIdx(null);
   };
 
   const handleUpload = async (e) => {
@@ -161,41 +168,33 @@ export function VideosBody({ w, editing, isOwner, ownerUsername, onUpdate }) {
     finally { setUploading(false); }
   };
 
+  // Empty + read-only → friendly empty state.
+  if (items.length === 0 && !(editing && isOwner)) {
+    return (
+      <div
+        className="h-full flex items-center justify-center text-xs italic"
+        style={{ color: "var(--text-muted)" }}
+        data-testid={`videos-empty-${w.id}`}
+      >
+        No videos yet
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-2 gap-2 h-full" data-testid={`videos-body-${w.id}`}>
       {items.map((it, idx) => (
-        <div
+        <VideoTile
           key={`${it.video_id || it.post_id || idx}`}
-          className="relative overflow-hidden"
-          style={{ borderRadius: 8, background: "var(--surface-2)", minHeight: 80 }}
-          data-testid={`videos-item-${w.id}-${idx}`}
-        >
-          <video
-            src={mediaUrl(it.url)}
-            className="w-full h-full object-cover"
-            muted
-            playsInline
-            preload="metadata"
-          />
-          {!editing && (
-            <Icons.PlayCircle
-              size={26}
-              className="absolute inset-0 m-auto pointer-events-none"
-              style={{ color: "#fff", opacity: 0.9 }}
-            />
-          )}
-          {editing && isOwner && (
-            <button
-              className="absolute top-1 right-1 rounded-full p-1"
-              style={{ background: "rgba(0,0,0,0.7)" }}
-              onClick={(e) => { e.stopPropagation(); removeAt(idx); }}
-              data-testid={`videos-delete-${w.id}-${idx}`}
-              aria-label="Remove video"
-            >
-              <Icons.X size={12} style={{ color: "#fff" }} />
-            </button>
-          )}
-        </div>
+          item={it}
+          idx={idx}
+          widgetId={w.id}
+          active={activeIdx === idx}
+          onActivate={() => setActiveIdx(idx)}
+          editing={editing}
+          isOwner={isOwner}
+          onRemove={() => removeAt(idx)}
+        />
       ))}
       {editing && isOwner && items.length < 4 && (
         <>
@@ -259,6 +258,73 @@ export function VideosBody({ w, editing, isOwner, ownerUsername, onUpdate }) {
           }}
           onClose={() => setPickerOpen(false)}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * One video cell. While inactive we render either the pinned-post
+ * thumbnail OR a <video preload="metadata"> for a first-frame preview.
+ * On tap/click we swap to <video src controls autoPlay playsInline>
+ * so the browser owns playback (including mobile Safari).
+ */
+function VideoTile({ item, idx, widgetId, active, onActivate, editing, isOwner, onRemove }) {
+  const src = mediaUrl(item.url);
+  const poster = item.thumbnail ? mediaUrl(item.thumbnail) : undefined;
+  return (
+    <div
+      className="relative overflow-hidden"
+      style={{ borderRadius: 8, background: "var(--surface-2)", minHeight: 80 }}
+      data-testid={`videos-item-${widgetId}-${idx}`}
+    >
+      {active ? (
+        <video
+          src={src}
+          poster={poster}
+          className="w-full h-full object-cover"
+          controls
+          autoPlay
+          playsInline
+          data-testid={`videos-player-${widgetId}-${idx}`}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onActivate(); }}
+          className="block w-full h-full text-left"
+          data-testid={`videos-thumb-${widgetId}-${idx}`}
+          aria-label="Play video"
+        >
+          {poster ? (
+            <img src={poster} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <video
+              src={src}
+              className="w-full h-full object-cover pointer-events-none"
+              muted
+              playsInline
+              preload="metadata"
+            />
+          )}
+          <span
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.45))" }}
+          >
+            <Icons.PlayCircle size={32} style={{ color: "#fff", opacity: 0.95 }} />
+          </span>
+        </button>
+      )}
+      {editing && isOwner && (
+        <button
+          className="absolute top-1 right-1 rounded-full p-1 z-10"
+          style={{ background: "rgba(0,0,0,0.7)" }}
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          data-testid={`videos-delete-${widgetId}-${idx}`}
+          aria-label="Remove video"
+        >
+          <Icons.X size={12} style={{ color: "#fff" }} />
+        </button>
       )}
     </div>
   );
@@ -357,6 +423,15 @@ function SoundsBody({ w, category, editing, isOwner, ownerUsername, onUpdate, te
 
   return (
     <div className="h-full overflow-y-auto" data-testid={`${testidPrefix}-body-${w.id}`}>
+      {tracks.length === 0 && !(editing && isOwner) && (
+        <div
+          className="h-full flex items-center justify-center text-xs italic"
+          style={{ color: "var(--text-muted)" }}
+          data-testid={`${testidPrefix}-empty-${w.id}`}
+        >
+          {category === "Music" ? "No music yet" : "No podcast episodes yet"}
+        </div>
+      )}
       {tracks.slice(0, visibleN).map((t) => (
         <div key={t.id} className="flex items-center gap-2 py-1.5">
           <div className="w-9 h-9 shrink-0 rounded-md overflow-hidden" style={{ background: "var(--surface-2)" }}>
@@ -445,8 +520,10 @@ function SoundPicker({ category, ownerUsername, existing, onPick, onClose }) {
         </div>
         {loading && <div className="text-xs" style={{ color: "var(--text-muted)" }}>Loading…</div>}
         {!loading && items.length === 0 && (
-          <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-            You don't have any {category.toLowerCase()} sounds yet. Upload one from /sounds first.
+          <div className="text-xs p-3 rounded" style={{ color: "var(--text-muted)", background: "var(--surface-2)" }}>
+            You don't have any {category.toLowerCase()} sounds yet.
+            {" "}Upload one from the <a href="/sounds" className="underline" style={{ color: "var(--primary)" }}>Sounds page</a>{" "}
+            (set category to <b>{category}</b> on upload) and it'll appear here.
           </div>
         )}
         <div className="space-y-1">
@@ -467,6 +544,238 @@ function SoundPicker({ category, ownerUsername, existing, onPick, onClose }) {
                 <div className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{category}</div>
               </div>
               {have.has(t.id) && <Icons.Check size={14} style={{ color: "var(--primary)" }} />}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PHOTOS — up to 12 entries. Each entry is `{kind:'upload', url}` from
+// /api/images/upload OR `{kind:'post', post_id, url}` pinned from an
+// existing image post. Owner can upload, pin, remove, and drag-reorder.
+// Grid responds to widget size — small=2 cols, otherwise 3.
+// ─────────────────────────────────────────────────────────────────────
+export function PhotosBody({ w, editing, isOwner, ownerUsername, onUpdate }) {
+  const items = Array.isArray(w.items) ? w.items.slice(0, 12) : [];
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = React.useRef(null);
+  const cols = w.size === "small" ? 2 : 3;
+
+  const removeAt = (idx) => {
+    const next = items.slice();
+    next.splice(idx, 1);
+    onUpdate?.(w.id, { items: next });
+  };
+  // Simple "move left" reorder — better UX than nothing for now.
+  // (Full drag reorder would clash with the widget-level dnd-kit Sortable.)
+  const moveLeft = (idx) => {
+    if (idx === 0) return;
+    const next = items.slice();
+    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+    onUpdate?.(w.id, { items: next });
+  };
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || items.length >= 12) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await apiClient.post("/images/upload", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const url = data?.url || data?.image?.original_url;
+      if (url) {
+        onUpdate?.(w.id, {
+          items: [...items, {
+            kind: "upload", url,
+            thumbnail_url: data?.thumbnail_url || null,
+          }],
+        });
+      }
+    } catch (err) { console.error("image upload failed", err); }
+    finally { setUploading(false); }
+  };
+
+  if (items.length === 0 && !(editing && isOwner)) {
+    return (
+      <div
+        className="h-full flex items-center justify-center text-xs italic"
+        style={{ color: "var(--text-muted)" }}
+        data-testid={`photos-empty-${w.id}`}
+      >
+        No photos yet
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="grid gap-1.5 h-full"
+      style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+      data-testid={`photos-body-${w.id}`}
+    >
+      {items.map((it, idx) => {
+        const src = mediaUrl(it.thumbnail_url || it.url);
+        return (
+          <div
+            key={`${it.post_id || it.url}-${idx}`}
+            className="relative overflow-hidden"
+            style={{ borderRadius: 6, background: "var(--surface-2)", aspectRatio: "1/1" }}
+            data-testid={`photos-item-${w.id}-${idx}`}
+          >
+            {src ? (
+              <img src={src} alt="" className="w-full h-full object-cover" loading="lazy" />
+            ) : (
+              <Icons.Image size={20} className="absolute inset-0 m-auto" style={{ color: "var(--text-muted)" }} />
+            )}
+            {editing && isOwner && (
+              <>
+                <button
+                  className="absolute top-1 right-1 rounded-full p-0.5 z-10"
+                  style={{ background: "rgba(0,0,0,0.7)" }}
+                  onClick={(e) => { e.stopPropagation(); removeAt(idx); }}
+                  data-testid={`photos-delete-${w.id}-${idx}`}
+                  aria-label="Remove photo"
+                >
+                  <Icons.X size={10} style={{ color: "#fff" }} />
+                </button>
+                {idx > 0 && (
+                  <button
+                    className="absolute bottom-1 left-1 rounded-full p-0.5 z-10"
+                    style={{ background: "rgba(0,0,0,0.7)" }}
+                    onClick={(e) => { e.stopPropagation(); moveLeft(idx); }}
+                    data-testid={`photos-move-left-${w.id}-${idx}`}
+                    aria-label="Move left"
+                  >
+                    <Icons.ChevronLeft size={10} style={{ color: "#fff" }} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })}
+      {editing && isOwner && items.length < 12 && (
+        <>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex flex-col items-center justify-center border-2 border-dashed"
+            style={{
+              borderColor: "var(--border-col)", borderRadius: 6,
+              aspectRatio: "1/1", background: "var(--surface-2)",
+              color: "var(--text-muted)",
+            }}
+            disabled={uploading}
+            data-testid={`photos-upload-${w.id}`}
+          >
+            {uploading ? (
+              <Icons.Loader2 size={16} className="animate-spin" />
+            ) : (
+              <>
+                <Icons.Upload size={14} />
+                <span className="text-[9px] font-semibold mt-0.5">Upload</span>
+              </>
+            )}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleUpload}
+          />
+          <button
+            onClick={() => setPickerOpen(true)}
+            className="flex flex-col items-center justify-center border-2 border-dashed"
+            style={{
+              borderColor: "var(--border-col)", borderRadius: 6,
+              aspectRatio: "1/1", background: "var(--surface-2)",
+              color: "var(--text-muted)",
+            }}
+            data-testid={`photos-pin-${w.id}`}
+          >
+            <Icons.Pin size={14} />
+            <span className="text-[9px] font-semibold mt-0.5">Pin</span>
+          </button>
+        </>
+      )}
+      {pickerOpen && (
+        <PinPhotoPicker
+          ownerUsername={ownerUsername}
+          existingPostIds={items.map((it) => it.post_id).filter(Boolean)}
+          onPick={(post) => {
+            const next = [...items, {
+              kind: "post", post_id: post.id,
+              url: post.image_url || post.media_url,
+            }];
+            onUpdate?.(w.id, { items: next });
+            setPickerOpen(false);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PinPhotoPicker({ ownerUsername, existingPostIds, onPick, onClose }) {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await apiClient.get(
+          `/posts?username=${ownerUsername}&media_type=image&limit=60`
+        );
+        if (!cancelled) {
+          setPosts((data?.posts || []).filter((p) => p.image_url || p.media_url));
+        }
+      } finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [ownerUsername]);
+  const existing = new Set(existingPostIds);
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center px-4"
+      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+      onClick={onClose}
+      data-testid="pin-photo-picker"
+    >
+      <div className="or-surface w-full max-w-xl p-5 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>Pin a photo</h3>
+          <button className="starbar-icon" style={{ width: 32, height: 32 }} onClick={onClose}>
+            <Icons.X size={14} />
+          </button>
+        </div>
+        {loading && <div className="text-xs" style={{ color: "var(--text-muted)" }}>Loading your photos…</div>}
+        {!loading && posts.length === 0 && (
+          <div className="text-xs" style={{ color: "var(--text-muted)" }}>You haven't posted any photos yet.</div>
+        )}
+        <div className="grid grid-cols-4 gap-2">
+          {posts.map((p) => (
+            <button
+              key={p.id}
+              disabled={existing.has(p.id)}
+              onClick={() => onPick(p)}
+              className="relative overflow-hidden disabled:opacity-40"
+              style={{ borderRadius: 8, background: "var(--surface-2)", aspectRatio: "1/1" }}
+              data-testid={`pin-photo-pick-${p.id}`}
+            >
+              <img
+                src={mediaUrl(p.image_url || p.media_url)}
+                alt="" className="w-full h-full object-cover"
+                loading="lazy"
+              />
             </button>
           ))}
         </div>

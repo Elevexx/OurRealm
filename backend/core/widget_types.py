@@ -15,6 +15,7 @@ ALLOWED_WIDGET_TYPES: set[str] = {
     "videos",
     "music",
     "podcasts",
+    "photos",
     "events",
     "weather",
     "calendar",
@@ -26,10 +27,11 @@ ALLOWED_WIDGET_TYPES: set[str] = {
     "radar",
 }
 
-# Per-widget array-size caps (videos, music, podcasts).
+# Per-widget array-size caps (videos, music, podcasts, photos).
 VIDEOS_MAX = 4
 MUSIC_SOUNDS_MAX = 10
 PODCASTS_SOUNDS_MAX = 10
+PHOTOS_MAX = 12
 
 # Character limits per role. Stealth bypasses (None = unlimited).
 NOTES_LIMIT_STANDARD = 300

@@ -15,7 +15,7 @@ import TopEightWidget from "@/components/TopEightWidget";
 import VipBadge from "@/components/VipBadge";
 import ReportButton from "@/components/ReportButton";
 import {
-  NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PollsBody, RadarBody,
+  NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PhotosBody, PollsBody, RadarBody,
 } from "@/components/ProfileWidgetBodies";
 import { ALLOWED_WIDGET_TYPES } from "@/data/mockData";
 
@@ -83,6 +83,8 @@ function WidgetBody({ w, ownerUsername, isOwner, viewer }) {
       return <MusicBody w={w} editing={false} isOwner={false} ownerUsername={ownerUsername} />;
     case "podcasts":
       return <PodcastsBody w={w} editing={false} isOwner={false} ownerUsername={ownerUsername} />;
+    case "photos":
+      return <PhotosBody w={w} editing={false} isOwner={false} ownerUsername={ownerUsername} />;
     case "polls":
       return <PollsBody w={w} editing={false} isOwner={false} ownerUsername={ownerUsername} viewer={viewer} />;
     case "radar":

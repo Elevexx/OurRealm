@@ -15,7 +15,7 @@ from core.account_lifecycle import (
 )
 from core.widget_types import (
     ALLOWED_WIDGET_TYPES, VIDEOS_MAX, MUSIC_SOUNDS_MAX, PODCASTS_SOUNDS_MAX,
-    notes_limit_for, blog_limit_for,
+    PHOTOS_MAX, notes_limit_for, blog_limit_for,
 )
 from models.schemas import (
     ProfileUpdate, UsernameChangePayload, PasswordChangePayload, serialize_user,
@@ -140,6 +140,21 @@ async def update_profile(update: ProfileUpdate, current: CurrentUser):
                             detail=f"Videos widget supports max {VIDEOS_MAX} videos",
                         )
                     w["items"] = items[:VIDEOS_MAX]
+                if t == "photos":
+                    # Photos `items` mirror the videos shape — each is
+                    # either `{kind:'upload', url, thumbnail_url?}` from
+                    # /api/images/upload or `{kind:'post', post_id, url}`
+                    # pinned from an existing image post. Cap is 12 so
+                    # the grid stays responsive on phones.
+                    items = w.get("items") or []
+                    if not isinstance(items, list):
+                        items = []
+                    if len(items) > PHOTOS_MAX:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Photos widget supports max {PHOTOS_MAX} photos",
+                        )
+                    w["items"] = items[:PHOTOS_MAX]
                 cleaned.append(w)
             set_doc["widgets"] = cleaned
 

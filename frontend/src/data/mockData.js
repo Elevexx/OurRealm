@@ -272,6 +272,7 @@ export const WIDGET_TYPES = [
   { id: "videos",    label: "Videos",          icon: "PlayCircle",  default_size: "medium", cat: "content" },
   { id: "music",     label: "Music",           icon: "Music",       default_size: "medium", cat: "content" },
   { id: "podcasts",  label: "Podcasts",        icon: "Mic",         default_size: "medium", cat: "content" },
+  { id: "photos",    label: "Photos",          icon: "Image",       default_size: "medium", cat: "content" },
   { id: "events",    label: "Events",          icon: "Calendar",    default_size: "small",  cat: "schedule" },
   { id: "weather",   label: "Weather",         icon: "CloudSun",    default_size: "small",  cat: "utility" },
   { id: "calendar",  label: "Calendar",        icon: "CalendarDays",default_size: "small",  cat: "utility" },

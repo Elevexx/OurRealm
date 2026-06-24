@@ -22,7 +22,7 @@ import VipBadge from "@/components/VipBadge";
 import AvatarPicker from "@/components/AvatarPicker";
 import BannerEditor, { BannerView } from "@/components/BannerEditor";
 import {
-  NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PollsBody, RadarBody,
+  NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PhotosBody, PollsBody, RadarBody,
 } from "@/components/ProfileWidgetBodies";
 
 const SIZE_TO_CLASS = {
@@ -64,6 +64,8 @@ function WidgetBody({ w, mode, ownerUsername, isOwner, editing, onUpdate, viewer
       return <MusicBody w={w} editing={editing} isOwner={isOwner} ownerUsername={ownerUsername} onUpdate={onUpdate} />;
     case "podcasts":
       return <PodcastsBody w={w} editing={editing} isOwner={isOwner} ownerUsername={ownerUsername} onUpdate={onUpdate} />;
+    case "photos":
+      return <PhotosBody w={w} editing={editing} isOwner={isOwner} ownerUsername={ownerUsername} onUpdate={onUpdate} />;
     case "events":
       return (
         <div>

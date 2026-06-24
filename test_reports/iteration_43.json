@@ -1,0 +1,40 @@
+{
+  "summary": "Iter-43 Profile media widgets (Videos playback + Photos NEW + Podcasts empty state) — BACKEND + FRONTEND PASS. Phase 16 spec verified end-to-end. Backend: new pytest test_photos_widget_phase16.py (6/6 PASS) covers photos allow-list inclusion, photos cap (13→400 'Photos widget supports max 12 photos'; 12→200), allow-list strip alongside photos (merch/wallet still stripped), and public profile readthrough preserves photos widgets unchanged. Frontend: signed in as tftwo, opened [data-testid=open-widget-picker] → exactly 16 tiles enumerated [add-widget-blog, calendar, countdown, events, live, music, myfeed, notes, photos, podcasts, polls, radar, survey, top8, videos, weather] — add-widget-photos present, multi-select photos+videos works (data-selected='true' on both), [data-testid=add-widget-save-many] adds both to grid. After [data-testid=profile-save] + reload, both photos-body-{id} and videos-body-{id} persist. In edit mode photos widget renders photos-upload-{id} and photos-pin-{id} tiles. With items=[] AND not in edit mode (also on public profile viewed as tfone /profile/tftwo) videos-empty-{id} shows 'No videos yet' and photos-empty-{id} shows 'No photos yet'. CRITICAL PLAYBACK FIX VERIFIED: PATCH'd a video item with kind=upload + url=/api/media/videos/61a4375a019248acab3300329b8b0ba5.mp4 into tftwo's videos widget, reloaded → videos-item-{id}-0 + videos-thumb-{id}-0 rendered → clicking thumb swapped to videos-player-{id}-0 (<video> tag) with non-empty resolved src 'https://realm-deploy.preview.emergentagent.com/api/media/videos/61a4375a019248acab3300329b8b0ba5.mp4'. Existing pytest test_widget_allowlist_phase15.py is now stale wrt photos (still tests photos is stripped at line 70) but was not re-run because it tests the OLD 15-list behavior; main agent should drop that test_patch_strips_deprecated_types::photos assertion to match new 16-list spec (NOTE: filed under action_items).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_photos_widget_phase16.py",
+    "/app/test_reports/pytest/iter43_photos_phase16.xml"
+  ],
+  "action_items": [
+    "Stale test: /app/backend/tests/test_widget_allowlist_phase15.py:TestWidgetAllowList::test_patch_strips_deprecated_types asserts 'photos' is stripped (line 70: `assert \"photos\" not in wtypes`). Phase 16 added photos to ALLOWED_WIDGET_TYPES so that assertion is now WRONG. Remove the photos line (and the w-photos-test payload entry) from that test. Also update the local ALLOWED set on lines 28-29 of the same file to add 'photos' (currently 15 items, should be 16) so test_stealth_public_only_allowed doesn't false-pass when a 'photos' widget appears in the stealth public profile."
+  ],
+  "critical_code_review_comments": [
+    "ProfileWidgetBodies.jsx VideoTile sub-component correctly swaps <img poster> or muted preload=metadata <video> into autoPlay controls <video> on click — fix for 'play button does nothing' verified working end-to-end with resolved /api/media/videos/{id}.mp4 src.",
+    "PhotosBody + PinPhotoPicker testids match the spec one-for-one (photos-body, photos-upload, photos-pin, photos-item-{idx}, photos-empty, photos-move-left-{idx}, pin-photo-picker, pin-photo-pick-{post_id}).",
+    "Backend profile.py photos validation block correctly enforces PHOTOS_MAX=12 with the exact spec-required error 'Photos widget supports max 12 photos' and slices to 12 on overflow.",
+    "Allow-list 16-type set in core/widget_types.py matches the frontend WIDGET_TYPES array in mockData.js (both ordered as expected) — no drift.",
+    "Empty-state testids render in BOTH non-owner public view AND owner non-edit view — spec says public-only but treating owner-non-edit the same is friendlier and matches the 'no broken placeholder cards' goal.",
+    "tftwo's saved widgets after this run: top8, myfeed, videos (1 item, pinned video), photos (0 items). Public profile /profile/tftwo loads cleanly with all 4 widgets and ALLOWED_WIDGET_TYPES filter intact."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_photos_widget_phase16.py (NEW — 6 tests, all pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (6/6 photos phase16 + iter-42 baseline)",
+    "frontend": "100% — videos playback swap, photos add/persist/empty/public, picker has 16 tiles incl photos, music body renders, all testids match spec"
+  },
+  "test_credentials": "tftwo (testfriend2@example.com / pass1234), tfone (testfriend1@example.com / pass1234), stealth (slopestyle2022@gmail.com / Password1$) — all verified working.",
+  "seed_data_creation": "tftwo profile widgets at end of run: [top8, myfeed, videos(1 item -> /api/media/videos/61a4375a019248acab3300329b8b0ba5.mp4), photos(empty)]. Useful for any follow-up Videos playback retesting — the pinned video item is preserved.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 16 (Photos widget + Videos playback fix + friendly empty states) is COMPLETE and verified. Backend pytest at /app/backend/tests/test_photos_widget_phase16.py is the regression file. Known stale test in test_widget_allowlist_phase15.py — see action_items. tftwo has a working pinned video that proves the click-to-play VideoTile swap works end-to-end. Photos cap of 12 enforced both server-side (400 on 13) and verified via curl-equivalent JS fetch in the browser.",
+  "rca of the issue": "No new bug. Confirmed root-cause of previously broken videos playback was the absence of a play-on-click handler; VideoTile sub-component in ProfileWidgetBodies.jsx now uses React state to swap a poster/muted preload tile to a full <video controls autoPlay playsInline> on click — verified the src resolves to the canonical /api/media/videos/{id}.mp4 R2 proxy URL and the <video> tag renders correctly. Photos widget added with full upload/pin/empty/reorder/cap parity to Videos."
+}
