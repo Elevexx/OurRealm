@@ -1,0 +1,43 @@
+{
+  "summary": "Phase 3.5 Conversational AI Widgets — RETEST after iter53 critical fix. The chat-config-stripping bug in _validate_editor_config is FIXED. 26/26 backend pytest pass: 19/19 phase35_chat + phase35_chat_extras (incl. the previously failing test_clone_stealth_ai_template_produces_chat_widget) + 7/7 new e2e tests (test_phase35_chat_e2e.py) hitting the LIVE backend URL. Verified via Playwright that the previously-blocked builder UX now works end-to-end: stealth login → /admin/widgets → Create Custom Widget → click 'Stealth AI (Founder-Only)' tile → builder opens with title 'Edit · Stealth AI (Founder-Only)' → CHAT AI tab populated with system_prompt mentioning 'Stealth AI', model=gpt-4o-mini, temperature=0.6, max_tokens=600, memory='Persistent (per user)', Founder Only ON, Enable Streaming ON, and 3 quick-action lines (Summarize my day / Brainstorm post ideas / Draft an announcement). Live preview pane renders the chat surface alongside. No OPENAI_API_KEY references in /app/frontend/src.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase35_chat.py",
+    "/app/backend/tests/test_phase35_chat_extras.py",
+    "/app/backend/tests/test_phase35_chat_e2e.py",
+    "/app/test_reports/pytest/iter54_phase35_all.xml",
+    "/app/test_reports/pytest/iter54_e2e.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Main agent (or next FE retest pass) may exercise the actual Save&Launch → /profile/stealth chat-send path with 'Say hi in 3 words' (max_tokens<=30). Backend already covers it via test_chat_message_returns_reply + test_streaming_emits_sse_frames against the real OpenAI key. Skipped here to avoid burning tokens since the builder pre-population proves the data round-trips correctly and the runtime chat tests already pass in pytest.",
+    "OPTIONAL: Cleanup orphaned test widgets created during E2E (keys like qa_stealth_*, qa_realm_*, qa_custom_*, stealth_ai_<3char>). The pytest teardown_module deletes them, but the Playwright-created stealth_ai widget from the launch flow remains in /admin/widgets list — main agent can delete via UI or run a one-off DELETE."
+  ],
+  "critical_code_review_comments": [
+    "GOOD: _validate_chat_config() in /app/backend/routers/admin_widgets.py:305-352 now validates mode/system_prompt(<=8000)/model(<=64)/temperature(0..2)/max_tokens(1..4000)/memory_mode(off|session|persistent)/founder_only/enable_streaming and clamps quick_actions to <=8 strings of <=120 chars. Each invalid input emits 400 with a clear field-named message — confirmed by test_invalid_memory_mode / test_invalid_temperature / test_invalid_max_tokens.",
+    "GOOD: The fix is minimal and additive — parent _validate_editor_config simply passes cfg.get('chat') through the new validator and adds 'chat': chat to the return dict. No regression risk to other layouts (stat/card/list/poll/embed/grid/media_grid).",
+    "GOOD: Founder-only enforcement at runtime: tfone POST to /api/widgets/chat/message against a stealth_ai widget returns 403 (verified by test_founder_only_403_for_non_founder).",
+    "GOOD: No OPENAI_API_KEY or sk- secrets in /app/frontend/src (grep returns 0 matches).",
+    "NIT: The two toggle buttons (chat-cfg-founder-only / chat-cfg-streaming) are styled <button> elements rather than <input type=checkbox>. They expose aria-checked and visual pill state, but Playwright's is_checked() raises on them. Adding role='switch' aria-checked='true|false' attributes already exists per the visual evidence — but exposing a `data-checked='true|false'` data-testid attribute would simplify Playwright assertions in future tests."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase35_chat_e2e.py (new — 7 e2e tests hitting REACT_APP_BACKEND_URL)"
+  ],
+  "success_rate": {
+    "backend": "100% (26/26 — 19 phase35 + 7 e2e)",
+    "frontend": "Builder pre-population flow verified visually end-to-end. Runtime chat-send-receive on /profile/stealth was deferred to backend coverage (already green) to conserve OpenAI tokens."
+  },
+  "test_credentials": "stealth/Password1$, support/Password1$, tfone/pass1234 — all validated against https://realm-deploy.preview.emergentagent.com.",
+  "seed_data_creation": "Test widgets qa_stealth_*, qa_realm_*, qa_custom_*, qa_stealth_fo_* are created and torn down by pytest teardown_module. One stealth_ai-* clone remains from the Playwright Save&Launch step — safe to ignore or manually delete.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 3.5 chat widgets fully green. Critical iter53 bug fixed: _validate_editor_config in /app/backend/routers/admin_widgets.py now calls _validate_chat_config and includes 'chat' in return dict. Use /app/backend/tests/test_phase35_chat_e2e.py as a public-URL smoke test for the admin save/clone path. Builder Chat AI tab pre-population verified visually — see screenshot artifact path .screenshots/chat_tab.png from this iteration. If you want to exercise the full runtime chat-send-receive UI flow, do it on a widget already launched as live; ensure max_tokens<=30 to limit OpenAI burn (the stealth_ai template default is 600 which is high — consider patching the template default down to 60 if you'll run this repeatedly).",
+  "rca of the issue": "iter53 RCA: _validate_editor_config dropped the 'chat' block. iter54 verifies the fix: (1) backend round-trip via from-template + custom create both preserve chat with full validation; (2) invalid sub-fields return 400 with helpful field-named messages; (3) admin builder UI loads the cloned widget and pre-populates all chat-cfg-* fields with the template defaults; (4) founder_only is enforced at the chat-message runtime layer (403 for non-founders on stealth_ai widget). No further action required."
+}

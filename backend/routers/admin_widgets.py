@@ -289,14 +289,66 @@ def _validate_editor_config(cfg: Any) -> Optional[dict]:
             raise HTTPException(status_code=400, detail="data_source.formatters must be an object (field_key → formatter_config)")
     theme = cfg.get("theme") or {}
     limits = cfg.get("limits") or {}
+    chat = _validate_chat_config(cfg.get("chat"))
     return {
         "schema_version": int(cfg.get("schema_version") or 1),
         "layout": layout,
         "fields": cleaned_fields,
         "data": data,
         "data_source": data_source,
+        "chat": chat,
         "theme": theme if isinstance(theme, dict) else {},
         "limits": limits if isinstance(limits, dict) else {},
+    }
+
+
+def _validate_chat_config(chat: Any) -> Optional[dict]:
+    """Validate `editor_config.chat` for Phase 3.5 conversational widgets.
+    Returns the cleaned dict, or None when the field is omitted."""
+    if chat is None:
+        return None
+    if not isinstance(chat, dict):
+        raise HTTPException(status_code=400, detail="editor_config.chat must be an object")
+    mode = chat.get("mode") or "conversational"
+    if mode not in ("single", "conversational"):
+        raise HTTPException(status_code=400, detail="chat.mode must be 'single' or 'conversational'")
+    memory_mode = chat.get("memory_mode") or "persistent"
+    if memory_mode not in ("off", "session", "persistent"):
+        raise HTTPException(status_code=400, detail="chat.memory_mode must be 'off' | 'session' | 'persistent'")
+    system_prompt = chat.get("system_prompt") or ""
+    if not isinstance(system_prompt, str):
+        raise HTTPException(status_code=400, detail="chat.system_prompt must be a string")
+    if len(system_prompt) > 8000:
+        raise HTTPException(status_code=400, detail="chat.system_prompt exceeds 8000 chars")
+    model = chat.get("model") or "gpt-4o-mini"
+    if not isinstance(model, str) or len(model) > 64:
+        raise HTTPException(status_code=400, detail="chat.model must be a string ≤64 chars")
+    try:
+        temperature = float(chat.get("temperature", 0.7))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="chat.temperature must be a number")
+    if temperature < 0 or temperature > 2:
+        raise HTTPException(status_code=400, detail="chat.temperature must be between 0 and 2")
+    try:
+        max_tokens = int(chat.get("max_tokens", 600))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="chat.max_tokens must be an integer")
+    if max_tokens < 1 or max_tokens > 4000:
+        raise HTTPException(status_code=400, detail="chat.max_tokens must be 1..4000")
+    qa_raw = chat.get("quick_actions") or []
+    if not isinstance(qa_raw, list):
+        raise HTTPException(status_code=400, detail="chat.quick_actions must be a list")
+    quick_actions = [str(x)[:120] for x in qa_raw if isinstance(x, (str, int, float)) and str(x).strip()][:8]
+    return {
+        "mode": mode,
+        "system_prompt": system_prompt,
+        "model": model,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "memory_mode": memory_mode,
+        "founder_only": bool(chat.get("founder_only")),
+        "enable_streaming": bool(chat.get("enable_streaming")),
+        "quick_actions": quick_actions,
     }
 
 
