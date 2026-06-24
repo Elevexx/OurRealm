@@ -19,6 +19,7 @@ import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { isAdmin } from "@/lib/isAdmin";
 
 const STATUS_COLORS = {
   healthy:      "#10E670",
@@ -41,10 +42,8 @@ export default function AdminProviders() {
 
   useEffect(() => {
     if (authLoading) return;
-    const role = (user?.role || "").toLowerCase();
-    const isAdminTier = role === "admin" || role === "founder" || role === "support_admin" || role === "moderator" || user?.is_admin === true || isStealth;
-    if (!user || !isAdminTier) navigate("/", { replace: true });
-  }, [authLoading, user, navigate, isStealth]);
+    if (!user || !isAdmin(user)) navigate("/", { replace: true });
+  }, [authLoading, user, navigate]);
 
   const reload = useCallback(async () => {
     setLoading(true);

@@ -1,6 +1,69 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Phase 3.4 — Provider Integrations + API Key Management (Feb 26, 2026, iter 52) ✅ COMPLETE
+
+**Status:** Backend 25/25 pytest pass, frontend verified for founder + support admin on desktop & mobile, zero secret leaks, zero regressions.
+
+### Goals
+Build a single source-of-truth admin surface for every external API the Widget Builder can call. Keys live ONLY in `/app/backend/.env`. Founder (`@stealth`) can enable/disable providers without touching env vars. Any admin tier can re-test health and view analytics. Providers feed into the Widget Builder so only configured + enabled providers are selectable.
+
+### Backend
+- `services/provider_registry.py` (new):
+  - `is_enabled` / `set_enabled` / `all_enabled_map` — operational enabled flag persisted in `provider_settings`.
+  - `get_health(provider_key, force=False)` — sliding 5-min cache (`provider_health`) with per-provider `HEALTH_PROBES` mapping to cheap, low-cost endpoints (e.g. OpenAI `chat` with `max_tokens=1`).
+  - `analytics_snapshot()` — per-provider calls/errors/avg latency from `provider_metrics`.
+  - `full_provider_view()` — merges static catalog + configured + enabled + status for the admin page.
+- `routers/api_widgets.py` — Phase 3.4 endpoints:
+  - `GET /api/admin/providers` (admin) — full provider view.
+  - `GET /api/admin/providers/status` (admin) — compact view.
+  - `POST /api/admin/providers/toggle` (**@stealth-only**) — persists enabled flag + invalidates health cache. 404 for unknown id.
+  - `POST /api/admin/providers/test` (admin) — forces fresh health probe.
+  - `GET /api/admin/analytics/providers` (admin) — analytics snapshot.
+  - `GET /api/admin/widgets/api-providers` now merges per-provider `enabled` so the builder can grey out admin-disabled providers.
+  - `POST /api/widgets/api-call` and `POST /api/admin/widgets/test-api` refuse `provider_is_enabled = false` with 403 "disabled by admin".
+
+### Frontend
+- `pages/AdminProviders.jsx` (new) — `/admin/providers` route:
+  - Grid of provider cards with status pill (healthy / untested / error / disabled / unconfigured / coming_soon).
+  - Configured / Enabled / Available badges + capabilities chips.
+  - "Test" button (any admin) — hits `/admin/providers/test`, inlines latency + error.
+  - "Enable" / "Disable" toggle button — **founder-only**, hits `/admin/providers/toggle`.
+  - Inline analytics row (calls / errors / avg latency).
+  - Unconfigured providers show inline `Add OPENWEATHER_API_KEY to /app/backend/.env` hint.
+- Route registered in `App.js`; entry added to `AdminHub.jsx`.
+- Route gate now uses shared `lib/isAdmin.js` (fix iter 52) — was previously rejecting `@support` admins because the auth payload doesn't include `admin_role`.
+
+### Security guarantees (verified)
+- `OPENAI_API_KEY` / `NEWSAPI_KEY` / `OPENWEATHER_API_KEY` / `ALPHAVANTAGE_API_KEY` referenced in **backend-only** files: `/app/backend/.env`, `/app/backend/core/api_providers.py`, `/app/backend/tests/test_phase34_providers.py`. **Zero** frontend references confirmed by grep.
+- All provider HTTP traffic originates from the backend pod; the browser sees only `/api/widgets/api-call` and `/api/admin/providers*`. No `Authorization: Bearer sk-…` headers ever leave the backend.
+- Admin API responses include `auth_env_var` NAME (e.g. `"OPENAI_API_KEY"`) + `configured: bool` — never the value.
+- `has_credential()` strips secrets before `public_provider_view()` is returned to the client.
+
+### Verified end-to-end (iter 52)
+- Backend pytest: 25/25 green (`/app/backend/tests/test_phase34_providers.py`).
+- Frontend: 11 cards render for stealth (8 toggle buttons + 5 test buttons), 11 cards render for support (0 toggle buttons + 5 test buttons), normal users redirected away.
+- Mobile + desktop layouts confirmed.
+- Toggle off/on persists, status flips to `disabled` then back to `untested → healthy` after Test.
+- Disabled providers refused by both `/api/widgets/api-call` and `/api/admin/widgets/test-api` with 403.
+
+### Files touched (Phase 3.4)
+- `backend/services/provider_registry.py` (new)
+- `backend/routers/api_widgets.py` (provider endpoints)
+- `backend/core/api_providers.py` (catalog + has_credential + public_provider_view)
+- `backend/tests/test_phase34_providers.py` (new — 25 pytest cases)
+- `frontend/src/pages/AdminProviders.jsx` (new)
+- `frontend/src/pages/AdminHub.jsx` (link)
+- `frontend/src/App.js` (route)
+- `frontend/src/components/widget-builder/ApiSourceTab.jsx` (greys out disabled/unconfigured tiles)
+
+### Known limitations / future polish
+- `ApiSourceTab` shows disabled/unconfigured tiles in greyed/non-selectable state (with "Add Key" / "Off" / "Soon" pills) instead of hiding them. This is intentional — founders see at a glance what providers exist and what they need to do. Hiding tiles entirely is a one-line change if preferred.
+- `nasa` reports `configured: true` via DEMO_KEY fallback even when no `NASA_API_KEY` env var is set. Documented behavior.
+- OpenAI key in `.env` is a real production key — health probes use `max_tokens=1` to keep cost negligible.
+
+
+
 ## Phase 3.3 — Native OurRealm Sounds Library Picker (Feb 25, 2026, iter 51) ✅ COMPLETE
 
 **Status:** Backend 8/8 pytest pass, frontend zero issues, zero regressions, zero action items.
