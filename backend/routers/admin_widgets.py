@@ -194,12 +194,32 @@ async def seed_system_widgets():
     """Insert any system widgets not yet in db.widget_registry. Existing
     rows (including admin-edited ones) are NEVER overwritten — admins
     can re-style the icon/description/access freely without us stomping
-    on it next boot."""
+    on it next boot.
+
+    Phase-2 (iter 46): system widgets default to ALL THREE placements
+    (profile + home + realm) so the picker has content out-of-the-box
+    on every surface. Admins can prune per-widget afterwards from
+    /admin/widgets without us un-pruning on reboot."""
     now = _now_iso()
     inserted = 0
+    expanded = 0
     for w in SYSTEM_WIDGETS:
         existing = await db.widget_registry.find_one({"key": w["key"]})
         if existing:
+            # One-time backfill: rows seeded BEFORE phase-2 only have
+            # placements=["profile"]. Expand them to all three so the
+            # Home/Realm pickers aren't permanently empty. We treat
+            # the exact-match ["profile"] as "never customized" and
+            # leave anything else alone so admin edits stick.
+            if existing.get("placements") == ["profile"]:
+                await db.widget_registry.update_one(
+                    {"key": w["key"]},
+                    {"$set": {
+                        "placements": ["profile", "home", "realm"],
+                        "updated_at": now,
+                    }},
+                )
+                expanded += 1
             continue
         await db.widget_registry.insert_one({
             "id": str(uuid.uuid4()),
@@ -211,7 +231,7 @@ async def seed_system_widgets():
             "description": "",
             "status": "live",
             "access_groups": ["all_users"],
-            "placements": ["profile"],
+            "placements": ["profile", "home", "realm"],
             "default_size": w["default_size"],
             "allowed_sizes": DEFAULT_ALLOWED_SIZES,
             "editor_config": None,
@@ -224,6 +244,8 @@ async def seed_system_widgets():
         inserted += 1
     if inserted:
         logger.info(f"Seeded {inserted} system widgets into widget_registry")
+    if expanded:
+        logger.info(f"Expanded {expanded} system widgets to all 3 placements (Phase-2 backfill)")
 
 
 async def ensure_indexes():

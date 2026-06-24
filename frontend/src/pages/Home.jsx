@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import MediaTypeBar from "@/components/MediaTypeBar";
 import { Sparkles, Edit3 } from "lucide-react";
 import apiClient from "@/api/client";
+import HomeWidgets from "@/components/HomeWidgets";
 
 const STORAGE_KEY = "ourrealm.interests";
 const MEDIA_STORAGE = "ourrealm.homeMedia";
@@ -243,6 +244,7 @@ function Section({ title, testid, items, selected, toggle, featuredIds }) {
           />
         ))}
       </div>
+      <HomeWidgets />
     </div>
   );
 }

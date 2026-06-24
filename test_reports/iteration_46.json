@@ -1,0 +1,68 @@
+{
+  "summary": "Phase-2B end-to-end testing. Backend (7/7 pytest pass) — placement filtering, home_widgets CRUD with deprecated-type drop + 24 cap, admin disable propagation to home/realm pickers all work correctly. Realm picker rewiring is fully wired and works (toolbar has only Edit + Add-from-Library; picker opens, multi-select 2 widgets → 2 POSTs to /api/communities/realm/{id}/widgets returned 200). HOWEVER a CRITICAL routing bug breaks the entire /home Home-Widgets frontend feature: the actual /home route in App.js (line 84) renders HomeDashboard.jsx, NOT Home.jsx. HomeDashboard.jsx uses a legacy hardcoded WidgetLibrary modal and does NOT mount <HomeWidgets /> or RegistryWidgetPicker. The new HomeWidgets component is only rendered on /home/legacy — and even there it is rendered THREE TIMES because it is placed inside the Section sub-component (Home.jsx line 247) instead of next to the Section loop. None of the testids home-widgets-section, home-widgets-edit, home-widget-add-tile, registry-picker-home, home-widgets-save are reachable from /home as the review_request expects.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Home routing (App.js)",
+        "issue": "/home route is mapped to HomeDashboard.jsx (legacy WidgetLibrary), not Home.jsx. The new <HomeWidgets /> + RegistryWidgetPicker are therefore NEVER rendered on /home. The review_request testids (home-widgets-section, home-widgets-edit, home-widget-add-tile, registry-picker-home, home-widgets-save, home-widget-remove-*) are unreachable from /home for any user.",
+        "selector": "[data-testid='home-widgets-section']",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "Home.jsx (rendered on /home/legacy + /interests)",
+        "issue": "<HomeWidgets /> is placed INSIDE the Section sub-component (line 247) which is invoked once per category section (Featured/Recommended/Explore/Dive deeper). Result: 3 duplicate home-widgets-section nodes on the page (confirmed in test). Should be hoisted out of Section and rendered ONCE below the interest grid as the spec describes.",
+        "selector": "[data-testid='home-widgets-section']",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Home Widgets add/save/persist on /home",
+        "issue": "Clicking 'Add Home Widgets' on the actual /home page opens the legacy WidgetLibrary (For You Feed / Weather / Realms / Group Chats / Top News / Friend Activity / Notifications / Trending Sounds / Trending Posts / Suggested Friends / Recently Viewed / Bookmarks / Events / Top Communities) — these come from CATALOG_BY_TYPE inside HomeDashboard, not from /api/widgets/available?placement=home. The PATCH /api/home/widgets endpoint is therefore never hit from /home (it does work directly via curl, and works on /home/legacy).",
+        "affected_selectors": ["[data-testid='home-add-widget']", "[data-testid='widget-library']", "[data-testid='registry-picker-home']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_results": {
+    "backend_pytest": "7/7 PASS (test_home_widgets_phase2b.py)",
+    "placement_home_count": 16,
+    "placement_realm_count": 16,
+    "placement_profile_count": 16,
+    "home_widgets_initial_empty": "PASS",
+    "home_widgets_drops_merch_persists_top8_weather": "PASS",
+    "home_widgets_25_returns_400_max_24": "PASS",
+    "admin_disable_notes_filters_home_and_realm_pickers": "PASS (notes removed from both placements, then re-enabled via /launch)",
+    "frontend_home_widgets_section_on_/home": "FAIL — 0 sections (route mounts HomeDashboard, not Home)",
+    "frontend_home_widgets_section_on_/home/legacy": "PARTIAL — 3 duplicate sections rendered",
+    "frontend_realm_widgets_toolbar_has_only_edit_and_add_library": "PASS (2 buttons, no hardcoded type buttons)",
+    "frontend_realm_picker_opens_with_16_tiles": "PASS",
+    "frontend_realm_multi_select_save_posts_per_item": "PASS (2 POSTs to /api/communities/realm/dj/widgets, both 200)"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_home_widgets_phase2b.py",
+    "/app/test_reports/pytest/phase2b_results.xml"
+  ],
+  "action_items": [
+    "CRITICAL: Either change App.js to map /home to Home.jsx (and move HomeDashboard to /home/dashboard or replace it), OR mount the new HomeWidgets + RegistryWidgetPicker inside HomeDashboard.jsx and remove the legacy WidgetLibrary import/usage there.",
+    "HIGH: Move `<HomeWidgets />` in Home.jsx out of the Section component — it currently renders 3× because each Section call invokes it. Hoist it to the parent return (alongside Section/MediaBar) so exactly one home-widgets-section node exists.",
+    "After fix, retest: tftwo /home shows empty state, Manage Widgets → Add → picker (placement=home) → select top8+weather+notes → save → reload persists 3 widgets; stealth /home shows admin disabled-banner when any widget is disabled."
+  ],
+  "critical_code_review_comments": [
+    "backend/routers/home_widgets.py is clean and correct: ALLOWED_WIDGET_TYPES allow-list + custom-widget union, silent drop of unknown types, 24-cap enforced as HTTP 400, MongoDB _id excluded from response.",
+    "RegistryWidgetPicker.jsx properly uses two AbortController effects (preserves iter 44 fix), placement-aware testids, admin role check including viewer.is_admin/viewer.username==='stealth' fallback (note: same 'stealth' hard-code recommendation as iter 45 — non-blocking).",
+    "HomeWidgets.jsx local state model is correct (id-stamping with Date.now()+offset, remove by id, save replaces server array atomically). One observation: the component does NOT call load() after save — relying on the user reloading. Spec says 'Page refreshes after save'. Not currently happening; widgets remain in local state until next mount. Low priority.",
+    "RealmDetail.jsx correctly replaces hardcoded buttons with single 'Add from Library' inside realm-widgets-toolbar (verified: only 2 buttons in toolbar after edit toggle). POSTs fire one per selected item — works end-to-end."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_home_widgets_phase2b.py (new test file)"
+  ],
+  "success_rate": { "backend": "100% (7/7)", "frontend": "50% — realm rewiring works, home rewiring unreachable due to /home route mismatch" },
+  "test_credentials": "stealth/Password1$ (admin) and tftwo/pass1234 (non-admin VIP) both used. tftwo home_widgets reset to empty via PATCH during test setup.",
+  "seed_data_creation": "tftwo home_widgets was modified during testing — final state may be empty or contain test widgets. Notes widget was toggled disable→launch during admin propagation test (final state = LIVE). DJ realm had 2 widgets added (myfeed + top8) via realm picker test — main agent may want to clean those up.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend Phase-2B is 100% green and stable. The only failing surface is FRONTEND /home routing/composition. Two-line fix likely: (a) App.js route change OR HomeDashboard integration, AND (b) hoist <HomeWidgets /> out of Section in Home.jsx. After fix, run the original review_request frontend scenarios (testids: home-widgets-section, home-widgets-edit, home-widget-add-tile, registry-picker-home, registry-picker-home-tile-{key}, registry-picker-home-save, home-widget-{id}, home-widgets-save, home-widget-remove-{id}, registry-picker-home-disabled-banner). Realm rewiring is already verified working — no need to retest unless RealmDetail.jsx is touched.",
+  "rca of the issue": "Frontend Home-Widgets integration was implemented in Home.jsx, but Home.jsx is no longer the component mounted at /home in the current App.js — it was demoted to /home/legacy by an earlier change (HomeDashboard became the canonical /home). Additionally, the placement of <HomeWidgets /> on Home.jsx line 247 is inside the recursive Section sub-component, causing N-duplication. Mitigation: either remap /home to Home.jsx (and migrate HomeDashboard-specific UX into Home.jsx) or wire RegistryWidgetPicker+/api/home/widgets into HomeDashboard.jsx's existing widget-library + add/save flow."
+}

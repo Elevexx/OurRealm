@@ -24,6 +24,7 @@ import {
   Crown, Plus, Settings, Pin, ArrowLeft, Shield, Sparkles, Edit3,
 } from "lucide-react";
 import apiClient from "@/api/client";
+import RegistryWidgetPicker from "@/components/RegistryWidgetPicker";
 import { REALMS as MOCK_REALMS, CHARACTERS, makeMockPosts } from "@/data/mockData";
 import BannerEditor, { BannerView } from "@/components/BannerEditor";
 import { resolveMediaUrl } from "@/lib/mediaUrl";
@@ -68,6 +69,7 @@ export default function RealmDetail() {
   const [joined, setJoined] = useState(false);
   const [memberSheet, setMemberSheet] = useState(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const posts = useMemo(() => makeMockPosts(18), []);
 
   // Banner state (localStorage; same as previous pass).
@@ -346,32 +348,13 @@ export default function RealmDetail() {
                 {editMode ? "Done" : "Edit widgets"}
               </button>
               {editMode && (
-                <>
-                  <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Add:</span>
-                  {[
-                    { type: "hub",           label: "Community Hub" },
-                    { type: "poll",          label: "Poll" },
-                    { type: "announcements", label: "Announcement" },
-                    { type: "rules",         label: "Rules" },
-                  ].map((opt) => (
-                    <button
-                      key={opt.type}
-                      className="or-chip"
-                      data-testid={`realm-widget-add-${opt.type}`}
-                      onClick={async () => {
-                        try {
-                          const { data } = await apiClient.post(
-                            `/communities/realm/${realm.id}/widgets`,
-                            { type: opt.type, size: "medium" },
-                          );
-                          setWidgets((prev) => [...prev, data]);
-                        } catch { /* */ }
-                      }}
-                    >
-                      <Plus size={11} /> {opt.label}
-                    </button>
-                  ))}
-                </>
+                <button
+                  className="or-chip"
+                  data-testid="realm-widget-open-picker"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <Plus size={11} /> Add from Library
+                </button>
               )}
             </div>
           )}
@@ -600,6 +583,28 @@ export default function RealmDetail() {
           }}
         />
       )}
+      <RegistryWidgetPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        viewer={user}
+        placement="realm"
+        onPickMany={async (items) => {
+          setPickerOpen(false);
+          // Add each picked widget to the realm sequentially so we
+          // preserve ordering and surface backend errors cleanly.
+          for (const item of items) {
+            try {
+              const { data } = await apiClient.post(
+                `/communities/realm/${realm.id}/widgets`,
+                { type: item.id, size: item.default_size || "medium" },
+              );
+              setWidgets((prev) => [...prev, data]);
+            } catch (e) {
+              console.error("realm widget add failed", item.id, e);
+            }
+          }
+        }}
+      />
     </div>
   );
 }
