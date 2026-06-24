@@ -1,0 +1,50 @@
+{
+  "summary": "Targeted regression for AddWidgetPicker race-condition fix (iter 44 follow-up). All three scenarios PASS end-to-end via Playwright on the public preview URL. The split-useEffect + AbortController refactor in Profile.jsx successfully eliminates the viewer-hydration race that was previously dropping setAvailable/setDisabledKeys results.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "scenario_1_stealth_disabled_radar": {
+      "radar_tile_hidden": true,
+      "picker_disabled_banner_visible": true,
+      "banner_text": "1 widget currently disabled by an admin and hidden from this picker. Manage at /admin/widgets.",
+      "result": "PASS"
+    },
+    "scenario_2_tftwo_non_admin": {
+      "radar_tile_hidden": true,
+      "picker_disabled_banner_hidden": true,
+      "result": "PASS — non-admin correctly sees filtered widget list AND no admin banner"
+    },
+    "scenario_3_stealth_restore_radar": {
+      "radar_tile_visible_again": true,
+      "picker_disabled_banner_hidden": true,
+      "result": "PASS — disable→launch round-trip works and banner clears when disabledKeys.size becomes 0"
+    },
+    "scenario_4_regression_sanity": {
+      "picker_renders_grid": true,
+      "tiles_clickable": true,
+      "comment": "16-tile grid renders cleanly for stealth after restore; Cancel and Add Selected buttons present and enabled. Multi-select UX visually intact (data-testid=add-widget-{key} on every tile)."
+    }
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_44.json (prior report flagging both bugs)",
+    "/app/backend/tests/test_admin_widgets_badges_phase1.py (untouched, still 24/24 per iter 44)"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fix in Profile.jsx (lines 209-251) is clean: two independent useEffects, each with its own AbortController. Effect #1 depends only on [open] so it can't be re-triggered by viewer hydration. Effect #2 is gated on [open, viewer] and the AbortController only aborts the in-flight request — the resolved setDisabledKeys is no longer silently swallowed by a stale `cancelled` flag.",
+    "Admin check at line 237-238 still hard-codes username==='stealth' as a fallback. Belt-and-braces, but for a renamed founder this would lose the banner. Recommend prefer viewer.is_admin / viewer.role over the username override (non-blocking; iter 44 already noted).",
+    "Picker correctly falls through to WIDGET_TYPES only when /widgets/available returns empty or errors non-abort; this preserves the offline-friendly UX without re-introducing the disabled-widget leak."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (4/4 picker scenarios pass)"},
+  "test_credentials": "stealth (slopestyle2022@gmail.com / Password1$) — admin; tftwo (testfriend2@example.com / pass1234) — non-admin VIP. Both verified.",
+  "seed_data_creation": "None added. Radar widget was toggled disabled→live during the test; final state = LIVE (restored).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The two race-condition bugs from iter 44 are CLOSED. AddWidgetPicker in Profile.jsx now uses two AbortController-guarded useEffects and the disabled-widget filtering + admin disabled-banner both work for stealth and correctly stay hidden for non-admins. Final radar state after this run is LIVE. Phase-1 backend (24/24 pytest) was not re-run per the agent's instruction.",
+  "rca of the issue": "Already documented in iter 44. Verified mitigation here: separating /widgets/available and /widgets/disabled into independent effects + replacing the boolean `cancelled` flag with AbortController eliminates the dropped-setState race when viewer hydrates asynchronously after the picker mounts."
+}
