@@ -1,6 +1,43 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Phase 3.3 — Signup-time VIP first_1000 + Playable Music/Podcasts (Feb 26, 2026) ✅ COMPLETE
+
+**Tested via `testing_agent_v3_fork` — 21/21 pass (iter 55 report).**
+
+### Fix 1 — VIP first_1000 auto-grant at /register
+`POST /api/auth/register` now grants the VIP badge inline when the live `vip` badge has `auto_rule=first_1000` AND current_holders < `first_x`. Closes the gap where signup #998/999/1000 had to wait for the next backend boot or admin /reconcile click. Wrapped in try/except so a badge hiccup never blocks signup. Mirrors `is_vip = True` + `vip_joined_at` on the user doc for backwards-compat. Idempotent ($setOnInsert + upsert).
+
+### Fix 2 — Music/Podcasts widgets now play actual audio
+- New `<PlayableSoundRow>` adapter wraps the existing `<SoundPlayerCard>` (the same component used by the Sounds page & For You feed). Selected sounds render as real playable cards with play/pause/progress, not text.
+- Track → post adapter: `{id, file_url, cover_url, title}` → `{id, sound_url, sound_cover_url, sound_title}`.
+- Owner-only X remove button overlay (top-right, z-10, semitransparent black). Public viewers never see it.
+- Subtitle row: `@username · category · duration` for context.
+- All audio playback uses the existing `mediaUrl()` resolver → goes through `/api/media/audio/{filename}` proxy → R2 signed URLs work on Safari/iPhone.
+
+### Fix 3 — Podcasts category case-insensitive
+`/api/sounds/by-user/:u?category=podcast|Podcast|PODCASTS|podcasts|Podcasts` all return 200 now. Normalizes to canonical "Podcasts" before querying. Music + FX casing also normalized.
+
+### Tests (testing_agent_v3_fork iter 55)
+- VIP grant under cap → new signup gets VIP with `source='first_1000'`.
+- VIP cap gate → when first_x=1, the 2nd signup doesn't get VIP.
+- Draft safety → registration succeeds even when VIP badge is draft/deleted.
+- Podcasts case-insensitive (×5 casings) → all 200.
+- Music widget renders SoundPlayerCard, picker portals to body (`parentTag='BODY'`), X removes correctly, public viewer never sees X.
+- Backend regression: 12/12 Phase 3.1 + 3.2 still pass.
+- **21/21 total pass.**
+
+### Files touched
+- `backend/routers/auth.py` (VIP first_1000 inline grant at /register, lines 133-162)
+- `backend/routers/sounds.py` (case-insensitive category normalization)
+- `frontend/src/components/ProfileWidgetBodies.jsx` (PlayableSoundRow + SoundsBody update; SoundPlayerCard import)
+- `backend/tests/test_iter55_register_vip_and_podcasts.py` (new, 9 tests by testing agent)
+
+### Minor optional follow-up
+Legacy `is_vip = current_count < VIP_CUTOFF` in /register (auth.py L60) duplicates the new badge-derived VIP source. Consolidating onto badge_registry-only would simplify the logic but isn't blocking — same behavior as before.
+
+
+
 ## Phase 3.2 — Live Badge Reconciliation (Feb 26, 2026) ✅ COMPLETE
 
 ### Endpoint
