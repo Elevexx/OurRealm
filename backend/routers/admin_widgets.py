@@ -931,7 +931,8 @@ async def delete_badge(badge_id: str, current: CurrentUser):
     return {"ok": True, "deleted": badge_id}
 
 
-async def _apply_badge_assignment_rule(badge: dict, *, assigned_by: str = "system") -> int:
+async def _apply_badge_assignment_rule(badge: dict, *, assigned_by: str = "system",
+                                       prune: bool = False) -> dict:
     """Reconcile `user_badges` to match the badge's current
     `assignment_type` + `selected_usernames`. Called on Save+Launch and
     whenever the assignment rule changes.
@@ -946,8 +947,10 @@ async def _apply_badge_assignment_rule(badge: dict, *, assigned_by: str = "syste
       • specific        → explicit selected_usernames list only.
       • manual / first_x → no-op; relies on explicit /assign calls.
 
-    Already-assigned recipients are NOT touched. Returns the number of
-    NEW assignments created."""
+    Already-assigned recipients are NOT touched. When `prune=True`,
+    user_badges that no longer qualify under the current rule are
+    deleted (Founder/locked badges are never pruned).
+    Returns {assigned, pruned}."""
     from datetime import datetime, timezone
     a_type = (badge.get("assignment_type") or "manual").lower()
     auto_rule = (badge.get("auto_rule") or "").lower()
@@ -985,24 +988,24 @@ async def _apply_badge_assignment_rule(badge: dict, *, assigned_by: str = "syste
         cursor_limit = int(badge.get("first_x") or 1000)
         cursor_sort = [("created_at", 1)]
     elif a_type == "specific":
-        # Apply explicit list only.
         unames = [(u or "").strip().lower().lstrip("@") for u in (badge.get("selected_usernames") or [])]
         unames = [u for u in unames if u]
         if not unames:
-            return 0
+            return {"assigned": 0, "pruned": 0}
         user_filter = {"username": {"$in": unames}}
     else:
         # manual — explicit selected_usernames list only (UI-driven).
         unames = [(u or "").strip().lower().lstrip("@") for u in (badge.get("selected_usernames") or [])]
         unames = [u for u in unames if u]
         if not unames:
-            return 0
+            return {"assigned": 0, "pruned": 0}
         user_filter = {"username": {"$in": unames}}
 
     if user_filter is None:
-        return 0
+        return {"assigned": 0, "pruned": 0}
 
     awarded = 0
+    eligible_ids: list[str] = []
     cursor = db.users.find(user_filter, {"_id": 0, "id": 1, "username": 1})
     if cursor_sort:
         cursor = cursor.sort(cursor_sort)
@@ -1011,6 +1014,7 @@ async def _apply_badge_assignment_rule(badge: dict, *, assigned_by: str = "syste
     async for u in cursor:
         if not u.get("id") or not u.get("username"):
             continue
+        eligible_ids.append(u["id"])
         res = await db.user_badges.update_one(
             {"user_id": u["id"], "badge_key": key},
             {"$setOnInsert": {
@@ -1026,7 +1030,19 @@ async def _apply_badge_assignment_rule(badge: dict, *, assigned_by: str = "syste
         )
         if res.upserted_id is not None:
             awarded += 1
-    return awarded
+
+    pruned = 0
+    # Prune: remove user_badges that no longer qualify. Skip locked /
+    # founder badges and skip manual-only badges where the admin
+    # explicitly curated the list.
+    if prune and not badge.get("locked") and a_type not in ("manual",):
+        del_res = await db.user_badges.delete_many({
+            "badge_key": key,
+            "user_id": {"$nin": eligible_ids},
+        })
+        pruned = del_res.deleted_count or 0
+
+    return {"assigned": awarded, "pruned": pruned}
 
 
 @router.post("/admin/badges/{badge_id}/launch")
@@ -1044,8 +1060,8 @@ async def launch_badge(badge_id: str, current: CurrentUser):
     # rule. Without this, switching a badge to `assignment_type=all`
     # and clicking Launch did nothing visible until an admin manually
     # invoked /assign with a list of usernames.
-    new_assigned = await _apply_badge_assignment_rule(fresh, assigned_by=current.get("username") or "admin")
-    return {"ok": True, "status": "live", "newly_assigned": new_assigned}
+    summary = await _apply_badge_assignment_rule(fresh, assigned_by=current.get("username") or "admin")
+    return {"ok": True, "status": "live", "newly_assigned": summary["assigned"]}
 
 
 @router.post("/admin/badges/{badge_id}/disable")
@@ -1058,6 +1074,61 @@ async def disable_badge(badge_id: str, current: CurrentUser):
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Badge not found")
     return {"ok": True, "status": "disabled"}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase 3.2 — Live reconciliation for ALL live badges in one call.
+# ─────────────────────────────────────────────────────────────────────
+
+@router.post("/admin/badges/reconcile")
+async def reconcile_live_badges(current: CurrentUser, prune: bool = False):
+    """Re-run the assignment rule for every live badge in the registry.
+    Useful when new users sign up after a launch — running this picks
+    them up without having to re-launch each badge individually.
+
+    Query params:
+      • prune (bool, default False) — when True, deletes user_badges
+        whose recipient no longer qualifies under the current rule.
+        Locked / founder / pure-manual badges are never pruned.
+
+    Returns a summary `{success, badges_processed, new_assignments,
+    pruned, badges: [{badge, key, assigned, pruned}]}`."""
+    _require_admin(current)
+    cursor = db.badge_registry.find({"status": "live"}, {"_id": 0})
+    results: list[dict] = []
+    total_assigned = 0
+    total_pruned = 0
+    badges_processed = 0
+    async for b in cursor:
+        # Founder / locked badges: refresh but never prune.
+        do_prune = bool(prune) and not b.get("locked")
+        try:
+            summary = await _apply_badge_assignment_rule(
+                b, assigned_by=current.get("username") or "admin",
+                prune=do_prune,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("reconcile failed for badge %s", b.get("key"))
+            results.append({"badge": b.get("name"), "key": b.get("key"),
+                            "assigned": 0, "pruned": 0, "error": str(e)[:200]})
+            badges_processed += 1
+            continue
+        results.append({
+            "badge": b.get("name"),
+            "key": b.get("key"),
+            "assigned": summary["assigned"],
+            "pruned": summary["pruned"],
+        })
+        total_assigned += summary["assigned"]
+        total_pruned += summary["pruned"]
+        badges_processed += 1
+    return {
+        "success": True,
+        "badges_processed": badges_processed,
+        "new_assignments": total_assigned,
+        "pruned": total_pruned,
+        "badges": results,
+    }
 
 
 @router.post("/admin/badges/{badge_id}/assign")

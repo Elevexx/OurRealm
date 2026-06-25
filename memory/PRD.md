@@ -1,6 +1,36 @@
 # OurRealm — Product Requirements Document (PRD)
 
 
+## Phase 3.2 — Live Badge Reconciliation (Feb 26, 2026) ✅ COMPLETE
+
+### Endpoint
+- **POST /api/admin/badges/reconcile** — re-runs the assignment rule for every live badge in the registry. Admin/founder only. Optional `?prune=true` query param removes recipients that no longer qualify (locked/founder badges and manual-only badges are skipped from pruning).
+- Returns `{success, badges_processed, new_assignments, pruned, badges: [{badge, key, assigned, pruned, error?}]}`.
+
+### Engine
+Refactored `_apply_badge_assignment_rule(badge, *, prune=False)` to return `{assigned, pruned}` instead of an int. Prune mode tracks the set of qualifying user IDs during reconciliation and `delete_many` user_badges where `user_id $nin eligible_ids`. Existing /launch + /create + /patch paths updated to read `summary["assigned"]`.
+
+### Admin UI
+- New "Reconcile Live Badges" button in `AdminWidgets.jsx → BadgesTab`, placed next to "Create Badge" (data-testid=`badges-reconcile`).
+- Confirmation dialog before firing, loading state during, results modal (`badge-reconcile-result`) after.
+- Per-badge result rows show `+assigned` (green) and `−pruned` (when applicable). Failures show `ERR · …` in red.
+
+### Tests (Phase 3.2 — 6 new pytests)
+- Endpoint requires admin (403 for tfone).
+- Basic run returns a summary covering FOUNDER + VIP + VERIFIED + any custom live badges.
+- New user signup → reconcile picks them up immediately (no manual re-launch needed).
+- Idempotent — re-running returns `new_assignments=0`.
+- prune=true removes invalid recipients on `specific`-type badges.
+- prune mode never touches FOUNDER badge (locked guard).
+- **12/12 pass** across Phase 3.1 + 3.2 badge suites.
+
+### Files touched
+- `backend/routers/admin_widgets.py` — `_apply_badge_assignment_rule()` refactor + reconcile endpoint.
+- `frontend/src/pages/AdminWidgets.jsx` — Reconcile button + `ReconcileResultModal` component.
+- `backend/tests/test_phase32_badge_reconcile.py` (new, 6 tests).
+
+
+
 ## Badge Assignment Auto-Apply + Music/Podcasts Black Overlay Fix (Feb 26, 2026) ✅
 
 ### Issue 1 — Save + Launch didn't auto-apply group assignments

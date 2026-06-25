@@ -545,6 +545,8 @@ function BadgesTab() {
   const [editor, setEditor] = useState(null);
   const [assigner, setAssigner] = useState(null);
   const [filters, setFilters] = useState({ status: "", access_group: "", q: "" });
+  const [reconcileResult, setReconcileResult] = useState(null);
+  const [reconciling, setReconciling] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -566,6 +568,29 @@ function BadgesTab() {
     await reload();
   };
 
+  // Phase 3.2 — Run the full reconciliation engine across every live
+  // badge. Optionally prune recipients that no longer qualify.
+  const reconcile = async ({ prune } = {}) => {
+    const verb = prune ? "Reconcile + prune" : "Reconcile";
+    if (!window.confirm(
+      `${verb} live badges?\n\n` +
+      (prune
+        ? "This will ADD missing assignments AND REMOVE assignments whose recipient no longer qualifies (locked badges like FOUNDER are skipped)."
+        : "This will ADD missing assignments under each live badge's current rule. No recipients are removed.")
+    )) return;
+    setReconciling(true);
+    try {
+      const { data } = await apiClient.post(
+        `/admin/badges/reconcile${prune ? "?prune=true" : ""}`
+      );
+      setReconcileResult(data);
+    } catch (e) {
+      window.alert(`Reconcile failed: ${e?.response?.data?.detail || e?.message || "unknown"}`);
+    } finally {
+      setReconciling(false);
+    }
+  };
+
   return (
     <>
       <div className="flex flex-wrap gap-2 mb-4 items-center" data-testid="badges-filter-bar">
@@ -581,6 +606,9 @@ function BadgesTab() {
           options={[["", "All status"], ["live", "Live"], ["draft", "Draft"], ["disabled", "Disabled"]]}
           testid="badges-filter-status"
         />
+        <button className="or-btn or-btn-secondary" onClick={() => reconcile({ prune: false })} disabled={reconciling} data-testid="badges-reconcile">
+          {reconciling ? <Icons.Loader2 size={14} className="animate-spin" /> : <Icons.RefreshCw size={14} />} Reconcile Live Badges
+        </button>
         <button className="or-btn or-btn-primary" onClick={() => setEditor("new")} data-testid="badges-create">
           <Icons.Plus size={14} /> Create Badge
         </button>
@@ -596,7 +624,64 @@ function BadgesTab() {
       )}
       {editor && <BadgeEditor initial={editor === "new" ? null : editor} onClose={() => setEditor(null)} onSaved={() => { setEditor(null); reload(); }} />}
       {assigner && <BadgeAssigner badge={assigner} onClose={() => setAssigner(null)} />}
+      {reconcileResult && (
+        <ReconcileResultModal
+          result={reconcileResult}
+          onClose={() => { setReconcileResult(null); reload(); }}
+        />
+      )}
     </>
+  );
+}
+
+function ReconcileResultModal({ result, onClose }) {
+  // Sort badges by `assigned` desc so the most-impactful changes
+  // surface first. Show every badge even if 0 — it's reassuring to
+  // confirm the engine ran across the whole catalog.
+  const rows = [...(result?.badges || [])].sort((a, b) => (b.assigned || 0) - (a.assigned || 0));
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center px-4"
+      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+      onClick={onClose}
+      data-testid="badge-reconcile-result"
+    >
+      <div className="or-surface p-5 w-full max-w-md max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="rounded-full p-2" style={{ background: "color-mix(in srgb, var(--brand-green) 18%, transparent)", color: "var(--brand-green)" }}>
+            <Icons.CheckCircle size={20} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-base">Live Badges Reconciled</div>
+            <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {result.badges_processed} badges processed · {result.new_assignments} new assignments
+              {result.pruned ? ` · ${result.pruned} pruned` : ""}
+            </div>
+          </div>
+        </div>
+        <div className="space-y-1 mt-3" data-testid="badge-reconcile-rows">
+          {rows.map((r) => (
+            <div
+              key={r.key}
+              className="flex items-center justify-between py-1.5 px-2 rounded text-xs"
+              style={{ background: r.error ? "rgba(255,90,107,0.12)" : (r.assigned > 0 ? "color-mix(in srgb, var(--brand-green) 10%, transparent)" : "var(--surface-2)") }}
+            >
+              <span className="font-bold uppercase tracking-wider truncate">{r.badge || r.key}</span>
+              <span style={{ color: r.error ? "#FF5A6B" : (r.assigned > 0 ? "var(--brand-green)" : "var(--text-muted)") }}>
+                {r.error
+                  ? `ERR · ${r.error}`
+                  : (r.pruned > 0
+                    ? `+${r.assigned} · −${r.pruned}`
+                    : `+${r.assigned}`)}
+              </span>
+            </div>
+          ))}
+        </div>
+        <button onClick={onClose} className="or-btn or-btn-primary mt-4 w-full justify-center" data-testid="badge-reconcile-close">
+          Close
+        </button>
+      </div>
+    </div>
   );
 }
 
