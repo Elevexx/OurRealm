@@ -125,6 +125,42 @@ async def register(payload: RegisterPayload, response: Response):
         await db.users.update_one({"id": support["id"]}, {"$addToSet": {"friends": user_id}})
         doc["friends"] = list(set(doc["friends"] + [support["id"]]))
 
+    # Phase 3.3 — VIP first_1000 auto-grant. If the live VIP badge has
+    # auto_rule='first_1000' AND we haven't yet reached the cap, award
+    # the badge to this signup immediately. Closes the gap where
+    # signup #998/999/1000 had to wait for the next backend boot or an
+    # admin /reconcile click.
+    try:
+        vip_badge = await db.badge_registry.find_one({"key": "vip", "status": "live"})
+        if vip_badge and (vip_badge.get("auto_rule") == "first_1000"):
+            cap = int(vip_badge.get("first_x") or 1000)
+            current_holders = await db.user_badges.count_documents({"badge_key": "vip"})
+            if current_holders < cap:
+                await db.user_badges.update_one(
+                    {"user_id": user_id, "badge_key": "vip"},
+                    {"$setOnInsert": {
+                        "id": f"{user_id}::vip",
+                        "user_id": user_id,
+                        "username": payload.username.lower(),
+                        "badge_key": "vip",
+                        "assigned_by": "system",
+                        "assigned_at": now_iso,
+                        "source": "first_1000",
+                    }},
+                    upsert=True,
+                )
+                # Mirror onto the user doc for backwards-compat with the
+                # existing `is_vip` checks scattered through the codebase.
+                await db.users.update_one(
+                    {"id": user_id},
+                    {"$set": {"is_vip": True, "vip_joined_at": now_iso}},
+                )
+                doc["is_vip"] = True
+                doc["vip_joined_at"] = now_iso
+    except Exception:
+        # Never block signup on a badge hiccup.
+        logger.exception("VIP first_1000 auto-grant failed for user_id=%s", user_id)
+
     access = create_access_token(user_id, email)
     refresh = create_refresh_token(user_id)
     set_auth_cookies(response, access, refresh)

@@ -720,9 +720,16 @@ async def tracks_by_username(
         raise HTTPException(status_code=404, detail="User not found")
     query: dict = {"user_id": user["id"], "is_ai_generated": False}
     if category and category != "All":
-        if category not in CATEGORIES:
+        # Case-insensitive match — admin/users may upload with
+        # "podcast"/"podcasts"/"PODCASTS" casing. Normalize before
+        # validating + querying.
+        normalized = (category or "").strip().lower()
+        canonical_map = {"music": "Music", "podcast": "Podcasts",
+                         "podcasts": "Podcasts", "fx": "FX"}
+        canonical = canonical_map.get(normalized) or category
+        if canonical not in CATEGORIES:
             raise HTTPException(status_code=400, detail="Invalid category")
-        query["category"] = category
+        query["category"] = canonical
     cursor = (
         db.tracks.find(query)
         .sort("created_at", -1)

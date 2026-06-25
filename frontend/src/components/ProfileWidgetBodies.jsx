@@ -15,11 +15,12 @@
  * the standard `PATCH /api/profile/me` flow. Vote tallies for polls
  * live in `db.profile_poll_votes` and go through /api/profile-poll.
  */
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
 import apiClient from "@/api/client";
 import { resolveMediaUrl as mediaUrl } from "@/lib/mediaUrl";
+import SoundPlayerCard from "@/components/SoundPlayerCard";
 
 const DEFAULT_NOTES_TEXT = '"Discover should feel inevitable, not optional."\n— shipping log';
 const DEFAULT_BLOG_TEXT = "Write your first blog post here…";
@@ -459,6 +460,58 @@ function PinVideoPicker({ ownerUsername, existingIds, onPick, onClose }) {
 // rows via /api/sounds/by-ids on first paint, then renders a list whose
 // length depends on the widget's size. Owner gets a picker.
 // ─────────────────────────────────────────────────────────────────────
+/**
+ * PlayableSoundRow — renders a single pinned Music/Podcast track using
+ * the shared `<SoundPlayerCard>` so the audio actually plays. Wraps it
+ * in a position-relative shell so we can overlay the remove (X) button
+ * during edit mode without breaking the player's internal controls.
+ *
+ * `track` shape comes from `/api/sounds/by-user`:
+ *   { id, title, file_url, cover_url, category, duration_seconds, ... }
+ * `SoundPlayerCard` expects a "post"-shaped object:
+ *   { id, sound_url, sound_cover_url, sound_title }
+ * We adapt one to the other so the player handles URL resolution,
+ * Safari/iPhone playback, R2 signed URLs and auto-pause-others.
+ */
+function PlayableSoundRow({ track, editing, isOwner, onRemove, testid, removeTestid }) {
+  const post = useMemo(() => ({
+    id: track.id,
+    sound_url: track.file_url,
+    sound_cover_url: track.cover_url || track.cover || null,
+    sound_title: track.title || "Untitled",
+  }), [track]);
+  return (
+    <div className="relative" data-testid={testid}>
+      <SoundPlayerCard post={post} testid={testid} />
+      <div className="text-[10px] -mt-2 mb-2 px-1 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
+        {track.username || track.artist ? (
+          <span className="truncate">@{track.username || track.artist}</span>
+        ) : null}
+        {track.category ? <span>· {track.category}</span> : null}
+        {track.duration_seconds ? <span>· {formatDuration(track.duration_seconds)}</span> : null}
+      </div>
+      {editing && isOwner && (
+        <button
+          className="absolute top-1 right-1 rounded-full p-1 z-10"
+          style={{ background: "rgba(0,0,0,0.6)", color: "#fff" }}
+          onClick={onRemove}
+          data-testid={removeTestid}
+          aria-label="Remove sound"
+        >
+          <Icons.X size={11} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function formatDuration(seconds) {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
 function SoundsBody({ w, category, editing, isOwner, ownerUsername, onUpdate, testidPrefix }) {
   const ids = Array.isArray(w.sound_ids) ? w.sound_ids.slice(0, 10) : [];
   const visibleN = visibleSoundCount(w.size);
@@ -500,26 +553,15 @@ function SoundsBody({ w, category, editing, isOwner, ownerUsername, onUpdate, te
         </div>
       )}
       {tracks.slice(0, visibleN).map((t) => (
-        <div key={t.id} className="flex items-center gap-2 py-1.5">
-          <div className="w-9 h-9 shrink-0 rounded-md overflow-hidden" style={{ background: "var(--surface-2)" }}>
-            {t.cover ? <img src={mediaUrl(t.cover)} alt="" className="w-full h-full object-cover" /> : null}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-xs font-semibold truncate" style={{ color: "var(--text-main)" }}>{t.title}</div>
-            <div className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>@{t.artist || t.username}</div>
-          </div>
-          {editing && isOwner && (
-            <button
-              className="starbar-icon shrink-0"
-              style={{ width: 26, height: 26 }}
-              onClick={() => remove(t.id)}
-              data-testid={`${testidPrefix}-remove-${w.id}-${t.id}`}
-              aria-label="Remove sound"
-            >
-              <Icons.X size={12} />
-            </button>
-          )}
-        </div>
+        <PlayableSoundRow
+          key={t.id}
+          track={t}
+          editing={editing}
+          isOwner={isOwner}
+          onRemove={() => remove(t.id)}
+          testid={`${testidPrefix}-row-${w.id}-${t.id}`}
+          removeTestid={`${testidPrefix}-remove-${w.id}-${t.id}`}
+        />
       ))}
       {editing && isOwner && ids.length < 10 && (
         <button
