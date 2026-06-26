@@ -11,10 +11,11 @@
  * one consistent chat experience across DMs and community rooms.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Send, Edit3, Loader2, MessageSquare, Pin, MoreVertical, Trash2 } from "lucide-react";
+import { Send, Edit3, Loader2, MessageSquare, Pin } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import ReactionAttachment from "@/components/ReactionAttachment";
+import MessageActionMenu from "@/components/MessageActionMenu";
 
 const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
 
@@ -36,9 +37,17 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [typingUsers, setTypingUsers] = useState({}); // id -> username
+  // Portal-mounted Edit / Delete / Cancel popup for own messages.
+  // Mirrors DMConversationOverlay so the UX matches normal Messages
+  // exactly — including mobile bottom-sheet placement that escapes
+  // the chat scroll container via createPortal(document.body).
+  const [menuFor, setMenuFor] = useState(null);     // message id
+  const [menuAnchor, setMenuAnchor] = useState(null); // DOMRect for desktop popover
   const wsRef = useRef(null);
   const scrollRef = useRef(null);
   const typingClearRef = useRef({});
+  const longPressTimer = useRef(null);
+  const longPressFired = useRef(false);
 
   // Initial load + new-chat reset.
   useEffect(() => {
@@ -159,6 +168,35 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
     }
   };
 
+  // ── Action menu helpers (parity with DMConversationOverlay) ─────
+  const openMenuFor = (id, el) => {
+    const rect = el?.getBoundingClientRect?.() || null;
+    setMenuAnchor(rect);
+    setMenuFor(id);
+  };
+  const closeMenu = () => { setMenuFor(null); setMenuAnchor(null); };
+  const startEditFromMenu = (m) => {
+    closeMenu();
+    setEditingMsgId(m.id);
+  };
+  const deleteFromMenu = (id) => {
+    closeMenu();
+    deleteCommunityMessage(id);
+  };
+
+  // Long-press handlers (mobile) — fire after 450ms hold. The next
+  // click is suppressed by `longPressFired` so the menu doesn't pop
+  // twice on a slow tap-and-release.
+  const onBubbleTouchStart = (m, el) => {
+    longPressFired.current = false;
+    clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      openMenuFor(m.id, el);
+    }, 450);
+  };
+  const onBubbleTouchEnd = () => { clearTimeout(longPressTimer.current); };
+
   const onKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
     if (wsRef.current && wsRef.current.readyState === 1) {
@@ -220,7 +258,26 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
                     background: mine ? "var(--primary)" : "var(--surface-2)",
                     color: mine ? "var(--primary-fg)" : "var(--text-main)",
                     borderRadius: "var(--radius)",
+                    cursor: mine && !isEditing ? "pointer" : "default",
+                    userSelect: "text",
                   }}
+                  onClick={(e) => {
+                    if (!mine || isEditing) return;
+                    if (longPressFired.current) {
+                      longPressFired.current = false;
+                      return;
+                    }
+                    openMenuFor(m.id, e.currentTarget);
+                  }}
+                  onTouchStart={(e) => { if (mine && !isEditing) onBubbleTouchStart(m, e.currentTarget); }}
+                  onTouchEnd={onBubbleTouchEnd}
+                  onTouchMove={onBubbleTouchEnd}
+                  onContextMenu={(e) => {
+                    if (!mine || isEditing) return;
+                    e.preventDefault();
+                    openMenuFor(m.id, e.currentTarget);
+                  }}
+                  data-testid={`community-chat-bubble-${m.id}`}
                 >
                   {!mine && (
                     <div className="text-[11px] font-bold mb-0.5" style={{ color: "var(--primary)" }}>{m.display_name || m.username}</div>
@@ -233,15 +290,20 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
                         className="or-input text-sm flex-1"
                         style={{ padding: "0.25rem 0.5rem" }}
                         data-testid={`community-chat-msg-edit-input-${m.id}`}
+                        onClick={(e) => e.stopPropagation()}
                         onKeyDown={(e) => {
                           if (e.key === "Enter")  saveEdit(m.id, e.currentTarget.value);
                           if (e.key === "Escape") setEditingMsgId(null);
                         }}
                       />
-                      <button onClick={(e) => saveEdit(m.id, e.currentTarget.previousSibling.value)}
-                              data-testid={`community-chat-msg-edit-save-${m.id}`}>✓</button>
-                      <button onClick={() => setEditingMsgId(null)}
-                              data-testid={`community-chat-msg-edit-cancel-${m.id}`}>✕</button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); saveEdit(m.id, e.currentTarget.previousSibling.value); }}
+                        data-testid={`community-chat-msg-edit-save-${m.id}`}
+                      >✓</button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditingMsgId(null); }}
+                        data-testid={`community-chat-msg-edit-cancel-${m.id}`}
+                      >✕</button>
                     </div>
                   ) : (
                     <div className="or-wrap whitespace-pre-wrap">
@@ -249,24 +311,8 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
                       {m.edited_at ? <span className="ml-1 text-[10px] opacity-60">(edited)</span> : null}
                     </div>
                   )}
-                  <div className="text-[10px] mt-1 opacity-70 text-right flex items-center justify-end gap-2">
-                    <span>{formatTime(m.created_at)}</span>
-                    {mine && !isEditing && (
-                      <>
-                        <button
-                          onClick={() => setEditingMsgId(m.id)}
-                          data-testid={`community-chat-msg-edit-${m.id}`}
-                          title="Edit"
-                          style={{ color: "inherit", opacity: 0.7 }}
-                        ><Edit3 size={12} /></button>
-                        <button
-                          onClick={() => deleteCommunityMessage(m.id)}
-                          data-testid={`community-chat-msg-delete-${m.id}`}
-                          title="Delete"
-                          style={{ color: "inherit", opacity: 0.7 }}
-                        ><Trash2 size={12} /></button>
-                      </>
-                    )}
+                  <div className="text-[10px] mt-1 opacity-70 text-right">
+                    {formatTime(m.created_at)}
                   </div>
                 </div>
                 <div className="mt-1">
@@ -318,6 +364,32 @@ export default function CommunityChat({ chat, isAdmin, onRenameRequested }) {
           {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
         </button>
       </form>
+
+      {/* Portal-based action menu — Edit / Delete / Cancel. Identical to
+          the DM overlay so users get one consistent message-action UX
+          across DMs, group chats, and realm chats. Mounted to
+          document.body via createPortal so it can't be clipped by the
+          chat scroll container or a Realm tab's overflow. */}
+      {menuFor && (() => {
+        const m = messages.find((x) => x.id === menuFor);
+        if (!m) return null;
+        const isMine = user && m.user_id === user.id;
+        if (!isMine) return null;
+        return (
+          <MessageActionMenu
+            open
+            anchorRect={menuAnchor}
+            busy={false}
+            onEdit={() => startEditFromMenu(m)}
+            onDelete={() => deleteFromMenu(m.id)}
+            onClose={closeMenu}
+            testid={`community-chat-actions-${m.id}`}
+            editTestid={`community-chat-action-edit-${m.id}`}
+            deleteTestid={`community-chat-action-delete-${m.id}`}
+            cancelTestid={`community-chat-action-cancel-${m.id}`}
+          />
+        );
+      })()}
     </section>
   );
 }

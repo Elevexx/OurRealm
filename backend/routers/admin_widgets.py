@@ -417,6 +417,12 @@ SYSTEM_WIDGETS = [
     {"key": "survey",    "name": "Survey",           "category": "survey",   "icon": "ClipboardList", "default_size": "medium", "sort_order": 140},
     {"key": "blog",      "name": "Blog",             "category": "blog",     "icon": "BookOpen",      "default_size": "medium", "sort_order": 150},
     {"key": "radar",     "name": "Stealth Radar",    "category": "custom",   "icon": "Radar",         "default_size": "medium", "sort_order": 160},
+    # Realm-only social widget — a community feed where members can post
+    # Thoughts / Photos / Videos / Sounds / Events scoped to the realm.
+    # Restricted to placements=["realm"] so it doesn't pollute the
+    # Profile / Home pickers (those surfaces have their own feed types).
+    # Backed by /api/communities/realm/:id/widgets/:wid/hub/posts.
+    {"key": "hub",       "name": "Realm Feed",       "category": "feed",     "icon": "Sparkles",      "default_size": "large",  "sort_order": 170, "placements": ["realm"]},
 ]
 
 
@@ -462,7 +468,8 @@ async def seed_system_widgets():
             "description": "",
             "status": "live",
             "access_groups": ["all_users"],
-            "placements": ["profile", "home", "realm"],
+            # Per-widget placements override; defaults to all three.
+            "placements": w.get("placements") or ["profile", "home", "realm"],
             "default_size": w["default_size"],
             "allowed_sizes": DEFAULT_ALLOWED_SIZES,
             "editor_config": None,
