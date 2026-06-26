@@ -366,6 +366,7 @@ export default function RealmDetail() {
               isAdmin={isAdmin}
               editMode={editMode}
               onChanged={(updated) => setWidgets((prev) => prev.map((x) => x.id === updated.id ? updated : x))}
+              onDeleted={(wid) => setWidgets((prev) => prev.filter((x) => x.id !== wid))}
               renderWidget={(w) => {
                 if (w.type === "poll") {
                   return (
