@@ -738,11 +738,15 @@ function BadgeEditor({ initial, onClose, onSaved }) {
     name: initial?.name || "",
     icon: initial?.icon || "Award",
     color: initial?.color || "#00FF66",
-    // Phase X (Feb 28, 2026) — admin visual fields. Backend accepts
-    // gradient/glow_color (plus bg/text/border) on POST/PATCH; we
-    // expose dedicated pickers in this editor so badges can be styled
-    // visually without hand-writing CSS.
+    // Phase 3.7 (Feb 28, 2026) — full visual surface for founders.
+    // Every styling property is editable for every badge (including
+    // locked system badges like FOUNDER / VIP). Empty strings are
+    // normalised to null on save so the ProfileBadges renderer
+    // fallback chain takes over cleanly.
+    bg_color: initial?.bg_color || "",
     gradient: initial?.gradient || "",
+    text_color: initial?.text_color || "",
+    border_color: initial?.border_color || "",
     glow_color: initial?.glow_color || "",
     description: initial?.description || "",
     status: initial?.status || "draft",
@@ -760,11 +764,15 @@ function BadgeEditor({ initial, onClose, onSaved }) {
   const save = async () => {
     setBusy(true); setError(null);
     try {
-      // Strip empty visual strings so the backend stores `null` rather
-      // than empty fields (cleaner registry + ProfileBadges fallback).
+      // Normalise every visual string field — backend converts "" → null
+      // and we want the network payload to reflect that intent
+      // explicitly. Sending null lets the ProfileBadges fallback chain
+      // (`b.border_color || accent`) restore the legacy single-accent
+      // look when a colour is cleared.
       const payload = { ...form };
-      if (!payload.gradient) payload.gradient = null;
-      if (!payload.glow_color) payload.glow_color = null;
+      for (const k of ["bg_color", "gradient", "text_color", "border_color", "glow_color"]) {
+        if (!payload[k]) payload[k] = null;
+      }
       if (isNew) await apiClient.post("/admin/badges", payload);
       else await apiClient.patch(`/admin/badges/${initial.id}`, payload);
       onSaved();
@@ -804,6 +812,33 @@ function BadgeEditor({ initial, onClose, onSaved }) {
               onChange={(v) => setForm((f) => ({ ...f, color: v }))}
               testid="badge-form-color"
               placeholder="#00FF66"
+            />
+          </Field>
+          <Field label="Background color (optional)">
+            <ColorPicker
+              value={form.bg_color}
+              onChange={(v) => setForm((f) => ({ ...f, bg_color: v }))}
+              testid="badge-form-bg-color"
+              placeholder={form.color || "#00FF66"}
+              clearable
+            />
+          </Field>
+          <Field label="Border color (optional)">
+            <ColorPicker
+              value={form.border_color}
+              onChange={(v) => setForm((f) => ({ ...f, border_color: v }))}
+              testid="badge-form-border-color"
+              placeholder={form.color || "#00FF66"}
+              clearable
+            />
+          </Field>
+          <Field label="Text color (optional)">
+            <ColorPicker
+              value={form.text_color}
+              onChange={(v) => setForm((f) => ({ ...f, text_color: v }))}
+              testid="badge-form-text-color"
+              placeholder="#0a0a0a"
+              clearable
             />
           </Field>
           <Field label="Description" full>
@@ -1200,13 +1235,14 @@ function parseLinearGradient(css) {
 
 function BadgePreview({ form }) {
   // Mirrors ProfileBadges.BadgePill so admins see the exact rendered
-  // pill before saving. Falls back to the legacy single-accent style
-  // when no gradient is set, identical to runtime behaviour.
+  // pill before saving. Background = gradient → bg_color → solid color.
+  // Border / glow / text follow the same fallback chain the runtime
+  // renderer uses, so the preview is always truthful.
   const Icon = Icons[form.icon] || Icons.Award;
   const accent = form.color || "#00FF66";
-  const bg = form.gradient || accent;
-  const fg = "#0a0a0a";
-  const border = accent;
+  const bg = form.gradient || form.bg_color || accent;
+  const fg = form.text_color || "#0a0a0a";
+  const border = form.border_color || accent;
   const glow = form.glow_color || accent;
   return (
     <div className="flex items-center" data-testid="badge-form-preview">

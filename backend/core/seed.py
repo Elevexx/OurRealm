@@ -819,23 +819,33 @@ DEFAULT_BADGES = [
 
 
 async def seed_default_badges():
-    """Insert FOUNDER / VIP / VERIFIED badges if missing. Updates visual
-    fields on existing rows so the new gradient/glow style propagates
-    without manual intervention."""
+    """Insert FOUNDER / VIP / VERIFIED badges if missing. On EXISTING
+    rows we only backfill keys that are missing on the doc — admin
+    edits to visual + assignment fields are preserved across restarts
+    (Phase 3.7 fix, Feb 28, 2026). Previously this function reset
+    color/gradient/glow on every boot, which silently reverted the
+    Admin Badge editor's saves."""
     import uuid as _uuid
     from datetime import datetime, timezone
     log = logging.getLogger("ourrealm.seed.badges")
     now = datetime.now(timezone.utc).isoformat()
+    BACKFILL_KEYS = (
+        "icon", "color", "bg_color", "gradient", "text_color",
+        "border_color", "glow_color", "badge_type", "locked",
+        "is_system", "auto_rule", "assignment_type", "first_x",
+    )
     for spec in DEFAULT_BADGES:
         existing = await db.badge_registry.find_one({"key": spec["key"]})
         if existing:
-            visual = {k: v for k, v in spec.items() if k in (
-                "icon", "color", "bg_color", "gradient", "text_color",
-                "border_color", "glow_color", "badge_type", "locked",
-                "is_system", "auto_rule", "assignment_type", "first_x",
-            )}
-            visual["updated_at"] = now
-            await db.badge_registry.update_one({"key": spec["key"]}, {"$set": visual})
+            # Only set keys that are completely missing on the existing
+            # doc. This preserves any admin-edited values (including
+            # explicit None from "clear styling" edits) — `key not in
+            # existing` is true only when the doc has never had that
+            # field, never when an admin cleared it back to null.
+            missing = {k: spec[k] for k in BACKFILL_KEYS if k in spec and k not in existing}
+            if missing:
+                missing["updated_at"] = now
+                await db.badge_registry.update_one({"key": spec["key"]}, {"$set": missing})
             continue
         doc = dict(spec)
         doc.update({

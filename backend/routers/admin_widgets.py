@@ -903,12 +903,35 @@ async def update_badge(badge_id: str, payload: BadgePatch, current: CurrentUser)
     doc = await db.badge_registry.find_one({"id": badge_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Badge not found")
-    # Phase 3 — locked badges (FOUNDER) cannot be edited. Only @stealth
-    # can update their own metadata to keep ownership intact, and even
-    # then `key` + `is_system` + `locked` are immutable.
-    if doc.get("locked"):
-        raise HTTPException(status_code=403, detail="This badge is locked and cannot be edited.")
-    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    # Phase 3.7 (Feb 28, 2026) — Founder badge editor unlock. Founders
+    # (@stealth) may edit every visual + assignment property on every
+    # badge, including locked system badges (FOUNDER, VIP, etc.).
+    # Non-founder admins keep the existing protection: they cannot
+    # edit locked badges. The DELETE endpoint still rejects locked +
+    # is_system badges regardless of caller — only visuals/assignment
+    # may be edited on locked badges, not their existence.
+    if doc.get("locked") and not _is_stealth(current):
+        raise HTTPException(status_code=403, detail="This badge is locked. Only the founder can edit it.")
+    # Phase 3.7 — color fields can be cleared back to null so admins can
+    # revert custom styling. We accept explicit `None` from the payload
+    # for the visual fields and `is not None` filter only the rule
+    # fields that must always be valid strings/enums.
+    NULLABLE_COLOR_FIELDS = {
+        "bg_color", "gradient", "text_color", "border_color", "glow_color",
+        "description",
+    }
+    raw = payload.model_dump(exclude_unset=True)
+    updates: dict = {}
+    for k, v in raw.items():
+        if k in NULLABLE_COLOR_FIELDS:
+            # Treat empty strings as null so the ProfileBadges fallback
+            # chain (`b.border_color || accent`) takes over cleanly.
+            if isinstance(v, str) and v.strip() == "":
+                updates[k] = None
+            else:
+                updates[k] = v
+        elif v is not None:
+            updates[k] = v
     if not updates:
         return {"badge": _serialise_badge(doc)}
     updates["updated_at"] = _now_iso()

@@ -1,0 +1,42 @@
+{
+  "summary": "Phase 3.7 Badge editor unlock + VIP outline color fix — FULLY VERIFIED. Backend pipeline (PATCH /admin/badges/:id nullable color fields, founder-bypass-lock, empty-string→null normalisation, seed-no-longer-overwrites-admin-edits) and complete UI pipeline (BadgeEditor → 5 color pickers → live preview → save → DB → ProfileBadges render) all working. 19 pytest cases (1 trivial test bug fixed) + Playwright E2E pipeline through the actual UI all passed. All 3 system badges (FOUNDER, VIP, VERIFIED) restored to their seed colors at end of run.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": { "ui_bugs": [], "integration_issues": [], "design_issues": [] },
+  "test_report_links": [
+    "/app/backend/tests/test_badge_editor_phase37.py",
+    "/app/test_reports/pytest/phase37_badges.xml"
+  ],
+  "tests_executed": {
+    "backend_pytest": {
+      "TestVipBorderRoundTrip": "6/6 PASS — patch border to #FF8800, profile reflects orange, persists across `supervisorctl restart backend` (seed bug fixed), empty-string→null, fallback to color when null, restore to #00FF66",
+      "TestFounderLockedEdit": "4/4 PASS — stealth can edit locked FOUNDER glow (200 OK), profile renders magenta, support_admin gets 403 on locked badge, restore",
+      "TestVerifiedBgText": "3/3 PASS — set bg/text, clear both via null, restore",
+      "TestGradient": "3/3 PASS — sunset gradient, clear, restore green",
+      "TestRegressions": "3/3 PASS — auth/me flags intact, /admin/badges/reconcile 200, 3 system keys present"
+    },
+    "frontend_playwright": {
+      "auth": "POST /api/auth/login + localStorage write — OK (token_len=256)",
+      "badges_list": "All 3 system badges (badge-edit-founder/vip/verified) render in /admin/widgets → Badges tab",
+      "editor_pickers": "All 10 expected testids visible: badge-form-{bg,border,text,glow,color}-{[swatch], -clear} + badge-form-preview",
+      "live_preview": "Setting badge-form-border-color to #FF8800 — preview pill computed border-color = rgb(255,136,0) IMMEDIATELY (before save). Confirms BadgePreview mirrors runtime renderer.",
+      "save_round_trip": "Save → reopen → badge-form-border-color input value = '#FF8800' (case-preserved)",
+      "profile_render": "/profile/stealth → profile-badge-vip computed border-color = rgb(255,136,0). VIP green→orange bug FIXED.",
+      "clear_button": "badge-form-border-color-clear empties input; after save, /api/profile/stealth/badges returns border_color=null (NOT empty string). Empty-string→null normalisation working.",
+      "fallback_chain": "With border_color=null, profile pill falls back to color=#00FF66 (renderer fallback chain confirmed)."
+    }
+  },
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Empty-string normalisation correctly limited to NULLABLE_COLOR_FIELDS set in admin_widgets.py:919–922; other string fields (name, key, icon) keep their existing `if v is not None` guard — good design.",
+    "_is_stealth(current) gate at line 913 is the right scope: only founder can edit locked. DELETE endpoint correctly still rejects locked + is_system for everyone (line 956).",
+    "BadgePreview now uses the same fallback chain as ProfileBadges renderer — single source of truth for preview vs runtime parity."
+  ],
+  "updated_files": ["/app/backend/tests/test_badge_editor_phase37.py"],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "test_credentials": "stealth/Password1$ (founder), support/Password1$ (support_admin) — both used",
+  "seed_data_creation": "None — restored all 3 system badges (FOUNDER, VIP, VERIFIED) to their original seed values at end of run. Verified via GET /api/admin/badges: founder/vip/verified all match playbook baselines (border=color, glow=color, bg/text/gradient unchanged).",
+  "retest_needed": false,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "Phase 3.7 badge editor + VIP border fix is fully verified. /app/backend/tests/test_badge_editor_phase37.py is the regression suite — it depends on the 3 system badge IDs being stable (founder=100c6158-..., vip=777f0add-..., verified=f1c0b7a6-...). One test (test_persists_across_backend_restart) issues `sudo supervisorctl restart backend` and sleeps ~5s — be aware if running in parallel.",
+  "rca of the issue": "ORIGINAL BUG: VIP pill border stuck on green despite admin saves. ROOT CAUSE confirmed three-fold and all three fixes verified: (1) PATCH was 403-ing locked badges even for stealth — fixed by `_is_stealth(current)` bypass in update_badge. (2) seed_default_badges() was running on every boot and OVERWRITING border_color/bg_color/etc — fixed to only backfill MISSING keys; verified via `restart backend` + check border_color survives. (3) BadgeEditor UI exposed only Color/Gradient/Glow — now exposes Color/Background/Border/Text/Glow/Gradient with clearable affordances. All confirmed via real UI flow + 19 pytest cases."
+}
