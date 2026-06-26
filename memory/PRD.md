@@ -1,5 +1,36 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Phase X.3 — Realm widgets restoration + CommunityChat actions parity (Feb 28, 2026) ✅ COMPLETE
+
+**Tested via `testing_agent_v3_fork` — iter 59, 100% backend (15/15 pytest), ~95% frontend.**
+
+### PART 1 — Realm widget registry now exposes the full social set
+- Added `hub` to `SYSTEM_WIDGETS` with `placements: ["realm"]` (name="Realm Feed").
+- `seed_system_widgets()` now honors a per-widget `placements` override (`w.get("placements") or ["profile","home","realm"]`).
+- After re-seed, `/api/widgets/available?placement=realm` returns **17** widgets including hub; `?placement=profile` (17) and `?placement=home` (16) BOTH correctly exclude hub.
+- Realm picker on `RealmDetail` (unchanged code) now exposes: myfeed, top8, live, videos, music, podcasts, photos, events, weather, calendar, countdown, notes, polls, survey, blog, radar, **hub**.
+- Hub uses the existing `CommunityHubWidget` + backend `/api/communities/realm/:id/widgets/:wid/hub/posts` (Thoughts / Photos / Videos / Sounds / Events). Poll widget uses existing `RealmPollWidget`. Others fall through to `CustomWidgetRenderer` as labelled placeholders.
+- Zero wallet / ads / marketplace / payments / crypto / banking / monetization widgets in the picker (DOM scan + API key list both verified).
+
+### PART 2 — CommunityChat now uses the shared MessageActionMenu
+- Replaced inline pencil/trash icons with a portal-mounted Edit / Delete / Cancel popup (the same `MessageActionMenu` used by DMConversationOverlay).
+- Bubble interactions: click (own only), long-press 450ms (mobile), right-click (desktop) → opens the menu.
+- Mobile bottom-sheet + desktop popover both rendered cleanly; on 375×812 iPhone viewport the sheet sits at `{16, 359, 522.5, 724}` — fully inside viewport.
+- Mine-only gate: peer bubbles are non-interactive — zero `community-chat-actions-*` testids render.
+- Edit reuses `PATCH /api/community-chats/messages/:id`; Delete reuses `DELETE` (instant, no per-message confirm — matches DM behavior).
+- Removed unused `Trash2`, `MoreVertical` imports; `Edit3` retained for the Rename CTA.
+- Zero `validateDOMNesting` / button-in-button warnings, zero uncaught errors.
+
+### Files touched
+- `/app/backend/routers/admin_widgets.py` — `SYSTEM_WIDGETS` gains `hub`; `seed_system_widgets()` honors per-widget `placements`.
+- `/app/frontend/src/components/CommunityChat.jsx` — refactored bubble actions to use `MessageActionMenu` portal.
+- `/app/backend/tests/test_realm_hub_widget.py` (new, 15 tests).
+
+### Notes
+- 13 admin-disabled widgets are hidden from the realm picker via the existing access-groups filter — admins can re-enable them at `/admin/widgets`.
+- "Customize Community" button on the realm header → opens chat-rename modal (not widget editor). Widget editor is reached via `realm-customize` toolbar → `realm-widgets-edit-toggle`. Labeling is slightly confusing but functionally correct; logged as nit, not a fix in scope.
+
+
 ## Phase X.1 — VIP grant via badge_registry only (Feb 28, 2026) ✅ COMPLETE
 
 **Tested via `testing_agent_v3_fork` — iter 57, 8/8 pytest cases pass.**
