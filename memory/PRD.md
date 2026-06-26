@@ -1,5 +1,35 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Phase X.1 — VIP grant via badge_registry only (Feb 28, 2026) ✅ COMPLETE
+
+**Tested via `testing_agent_v3_fork` — iter 57, 8/8 pytest cases pass.**
+
+### What changed
+`POST /api/auth/register` no longer uses the hardcoded `VIP_CUTOFF` user-count branch. VIP grants are now driven **exclusively** by the live `vip` entry in `badge_registry` (auto_rule='first_1000', cap = first_x). New user docs initialise with `is_vip=False` / `vip_joined_at=None`; the registry-driven block flips both fields when capacity exists.
+
+- Removed `VIP_CUTOFF` import + the `current_count = await db.users.count_documents({})` branch from `/app/backend/routers/auth.py`.
+- Initial doc: `is_vip=False`, `vip_joined_at=None` (was conditional on count < VIP_CUTOFF).
+- Registry block (try/except-wrapped) remains the only path that sets `is_vip=True` + `vip_joined_at=now` + creates the `user_badges` row.
+- Behavior preserved for the common case (live badge, holders < 1000) — same signups get VIP. When badge is draft / disabled / over cap, no VIP grant (the intended admin lever).
+
+### Tests (iter 57, all pass)
+- Static: no `VIP_CUTOFF` import, no `current_count` line in `auth.py`.
+- Happy-path under cap → `is_vip=true`, `vip_joined_at` ISO, user_badges row with `source='first_1000'`.
+- `/api/auth/me` round-trips `is_vip=true`.
+- Cap full (PATCH `first_x=1`, 141 holders) → new signup `is_vip=false`, no badge row.
+- Badge draft → new signup 200 OK with `is_vip=false`, no badge row, no 500.
+- Founder/admin flows + reconcile unaffected; VIP holder count stable across PATCH down/up cycle.
+- Cleanup: per-test `finally` blocks + module-scoped fixture remove all transient users + badge rows.
+
+### Files touched
+- `/app/backend/routers/auth.py` — removed legacy VIP block + import.
+- `/app/backend/tests/test_iter57_vip_badge_registry_source_of_truth.py` (new, 8 tests).
+
+### Non-blocking follow-up
+- `models/schemas.py` `serialize_user` returns `vip_joined_at = doc.get('vip_joined_at') or doc.get('created_at')` — the `or created_at` fallback masks the truth on the wire when `is_vip=false`. Mongo source is correct (None). Consider dropping the fallback so non-VIP users serialize as `vip_joined_at: null`.
+- iter55-leftover test users (`test_vip*` / `test_vipcap*` / `test_vipdraft*`, ~10 rows) remain in `users` + `user_badges` from a prior run that lacked finally-cleanup. Safe to leave; iter57 file is properly self-cleaning.
+
+
 ## Phase X — Profile Nav from Messages + Badge Editor Pickers (Feb 28, 2026) ✅ COMPLETE
 
 **Tested via `testing_agent_v3_fork` — iter 56, 100% pass on exercised paths.**
