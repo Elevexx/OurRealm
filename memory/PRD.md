@@ -1,5 +1,46 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Phase X.4 — Realm widget management parity (Edit · Resize · Delete) (Feb 28, 2026) ✅ COMPLETE
+
+**Backend smoke-tested via curl (PATCH config + PATCH size + DELETE all 200 OK). Frontend verified via `testing_agent_v3_fork` (iter 60) + screenshot — all 7 chips render on every existing realm tile in edit mode.**
+
+### What changed
+Realm founders/admins entering Widget Edit Mode on `/realms/:id` now see a full 7-chip control row on every widget tile:
+- **Size**: S / M / L / XL (existing — `realm-widget-size-{size}-<id>`)
+- **Move**: drag handle (existing — `realm-widget-drag-<id>`)
+- **Edit (NEW)**: Settings icon → opens portal-mounted settings modal (`realm-widget-edit-<id>`)
+- **Delete (NEW)**: Trash icon → opens portal-mounted confirmation modal (`realm-widget-delete-<id>`)
+
+### Settings modal — registry-driven per-type fields
+`RealmWidgetSettingsModal` PATCHes `/api/communities/realm/:id/widgets/:wid` with `{config}`. Field map:
+- **poll**: question + options string-list (preserves `{id, votes}` by index → votes survive renames; new options get fresh `crypto.randomUUID` with `votes=0`)
+- **countdown**: title + `datetime-local` target_date (ISO round-tripped)
+- **notes / blog**: title + textarea body
+- **calendar**: title + default_view select (month/week/day)
+- **weather**: title + location
+- **DEFAULT** (myfeed/top8/photos/videos/music/podcasts/events/etc.): title + subtitle pair → any future registry widget gets a working editor for free.
+
+### Delete modal
+Copy: *"Remove '<title>' from this Realm?"*. Confirm fires `DELETE /api/communities/realm/:id/widgets/:wid` (scoped to `community_widgets` only — `widget_registry` definition is preserved, other realms unaffected). Cancel + backdrop + Escape all close cleanly.
+
+### Portal escape + mobile
+Both modals mounted via `createPortal(document.body)` so they escape the grid's CSS transform/overflow context. Mobile bottom-sheet + desktop popover. Chip min size 28×28 with `touchAction: manipulation` → meets ≥28×28 tap target spec.
+
+### Permissions
+`showControls = isAdmin && editMode` — non-admin members see ZERO edit chips even with edit mode forced on via URL. The `draggable` attribute is also gated, so non-admins cannot start a drag.
+
+### Files touched
+- `/app/frontend/src/components/RealmWidgetSettingsModal.jsx` (NEW)
+- `/app/frontend/src/components/RealmWidgetGrid.jsx` (added imports, props `onDeleted`, modals, Edit + Delete chips)
+- `/app/frontend/src/pages/RealmDetail.jsx` (passes `onDeleted` to grid)
+
+### Test agent notes & follow-ups (NIT, not blocking)
+- `realm-widget-controls-<id>` uses `absolute -top-1 -right-1`; on viewport heights <820px the chip cluster briefly clips behind the realm tab bar. Consider lowering to `-top-3` or moving into tile padding.
+- Per-tile button handlers re-create closures each render. Acceptable for current realm sizes (<30 widgets). Add memoization if a realm grows past ~30 tiles.
+- PATCH (resize) error is silently swallowed in `setSize`'s catch — chip un-highlights without admin feedback. Consider a toast on PATCH error.
+- "Customize Community" header button opens the chat-rename modal, not the widget editor. Same UX nit flagged in iter 59 — recommend renaming to "Rename Chat" so the toolbar Edit Widgets button becomes the obvious widget-management surface.
+
+
 ## Phase X.3 — Realm widgets restoration + CommunityChat actions parity (Feb 28, 2026) ✅ COMPLETE
 
 **Tested via `testing_agent_v3_fork` — iter 59, 100% backend (15/15 pytest), ~95% frontend.**
