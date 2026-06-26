@@ -190,6 +190,7 @@ function Header() {
 // available without a schema change.
 // ─────────────────────────────────────────────────────────────────────
 function ChatsTab({ me }) {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -199,6 +200,16 @@ function ChatsTab({ me }) {
   const [confirmDelete, setConfirmDelete] = useState(null); // thread row pending delete
   const { cache, resolve } = useProfileCache();
   const { statuses } = usePresence();
+
+  // Phase X (Feb 28, 2026) — Profile navigation from Messages. Clicking
+  // a peer avatar or display name routes to /profile/<username>. We skip
+  // navigation when the user clicks themselves to avoid bouncing them to
+  // the edit-profile surface (FounderProfile renders read-only for peers).
+  const openPeerProfile = useCallback((peer) => {
+    if (!peer?.username) return;
+    if (me?.username && peer.username === me.username) return;
+    navigate(`/profile/${peer.username}`);
+  }, [navigate, me?.username]);
 
   // Phase C — sort priority by peer status.
   const STATUS_PRIORITY = useMemo(() => ({
@@ -352,11 +363,21 @@ function ChatsTab({ me }) {
                 data-testid={`chat-row-${peer?.username || t.conv_id}`}
               >
                 <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); openPeerProfile(peer); }}
+                  className="shrink-0 rounded-full"
+                  aria-label={peer?.username ? `View @${peer.username}'s profile` : "Open profile"}
+                  title={peer?.username ? `View @${peer.username}'s profile` : "Open profile"}
+                  data-testid={`chat-row-${peer?.username || t.conv_id}-avatar`}
+                  style={{ background: "transparent", padding: 0, border: 0 }}
+                >
+                  <Avatar user={peer} />
+                </button>
+                <button
                   onClick={() => setActive(t)}
                   className="flex items-center gap-3 flex-1 min-w-0 text-left"
                   data-testid={`chat-row-${peer?.username || t.conv_id}-open`}
                 >
-                  <Avatar user={peer} />
                   {/* Keep a hidden marker for tests; visible dot is now
                       rendered by the shared Avatar/UserAvatar component. */}
                   {peerStatus !== "offline" && (
@@ -371,7 +392,24 @@ function ChatsTab({ me }) {
                           data-testid={`chat-row-${peer?.username}-pinned-badge`}
                         />
                       )}
-                      <span className="truncate">{title}</span>
+                      <span
+                        className="truncate"
+                        role="link"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); openPeerProfile(peer); }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openPeerProfile(peer);
+                          }
+                        }}
+                        title={peer?.username ? `View @${peer.username}'s profile` : ""}
+                        style={{ cursor: peer?.username ? "pointer" : "default" }}
+                        data-testid={`chat-row-${peer?.username || t.conv_id}-name`}
+                      >
+                        {title}
+                      </span>
                     </div>
                     <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
                       {t.last_text || "Tap to open conversation"}
@@ -750,6 +788,7 @@ function CallsTab() {
 // delete, and delivered/read receipts. Mobile-safe layout per spec.
 // ─────────────────────────────────────────────────────────────────────
 function DMConversationOverlay({ me, peer, onClose }) {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
   const [peerInfo, setPeerInfo] = useState(peer || null);
   const [loading, setLoading] = useState(true);
@@ -880,13 +919,44 @@ function DMConversationOverlay({ me, peer, onClose }) {
           className="flex items-center gap-3 p-3 shrink-0"
           style={{ borderBottom: "1px solid var(--border-col)" }}
         >
-          <Avatar user={peerInfo || peer} size={36} />
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold truncate" style={{ color: "var(--text-main)" }} data-testid="dm-title">
-              {peerInfo?.name || `@${username}`}
-            </div>
-            <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>@{username}</div>
-          </div>
+          {(() => {
+            const isSelf = !!(me?.username && username && username === me.username);
+            const openProfile = () => {
+              if (isSelf || !username) return;
+              onClose?.();
+              navigate(`/profile/${username}`);
+            };
+            return (
+              <>
+                <button
+                  type="button"
+                  onClick={openProfile}
+                  className="shrink-0 rounded-full"
+                  aria-label={username ? `View @${username}'s profile` : "Open profile"}
+                  title={username ? `View @${username}'s profile` : "Open profile"}
+                  data-testid="dm-header-avatar"
+                  style={{ background: "transparent", padding: 0, border: 0, cursor: isSelf ? "default" : "pointer" }}
+                  disabled={isSelf}
+                >
+                  <Avatar user={peerInfo || peer} size={36} />
+                </button>
+                <button
+                  type="button"
+                  onClick={openProfile}
+                  className="flex-1 min-w-0 text-left"
+                  aria-label={username ? `View @${username}'s profile` : ""}
+                  data-testid="dm-header-name"
+                  style={{ background: "transparent", padding: 0, border: 0, cursor: isSelf ? "default" : "pointer" }}
+                  disabled={isSelf}
+                >
+                  <div className="font-semibold truncate" style={{ color: "var(--text-main)" }} data-testid="dm-title">
+                    {peerInfo?.name || `@${username}`}
+                  </div>
+                  <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>@{username}</div>
+                </button>
+              </>
+            );
+          })()}
           <button
             className="starbar-icon"
             style={{ width: 36, height: 36 }}
@@ -1068,6 +1138,7 @@ function DMConversationOverlay({ me, peer, onClose }) {
 // CONVERSATION OVERLAY — used by chats, groups, and realms
 // ─────────────────────────────────────────────────────────────────────
 function ConversationOverlay({ me, contextType, contextId, title, subtitle, onClose, onLeave }) {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState("");
@@ -1222,9 +1293,23 @@ function ConversationOverlay({ me, contextType, contextId, title, subtitle, onCl
                   data-testid={`msg-${m.id}`}
                 >
                   {!mine && sender && (
-                    <div className="text-[10px] font-bold mb-0.5" style={{ color: "var(--brand-green)" }}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (sender.username && sender.username !== me?.username) {
+                          onClose?.();
+                          navigate(`/profile/${sender.username}`);
+                        }
+                      }}
+                      className="text-[10px] font-bold mb-0.5 hover:underline"
+                      style={{ color: "var(--brand-green)", background: "transparent", border: 0, padding: 0, cursor: "pointer" }}
+                      aria-label={`View @${sender.username || "user"}'s profile`}
+                      title={`View @${sender.username || "user"}'s profile`}
+                      data-testid={`msg-sender-${sender.username || "unknown"}`}
+                    >
                       @{sender.username || "user"}
-                    </div>
+                    </button>
                   )}
                   {m.text && <div className="or-wrap">{renderText(m.text)}</div>}
                   {m.media_url && (

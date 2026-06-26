@@ -738,6 +738,12 @@ function BadgeEditor({ initial, onClose, onSaved }) {
     name: initial?.name || "",
     icon: initial?.icon || "Award",
     color: initial?.color || "#00FF66",
+    // Phase X (Feb 28, 2026) — admin visual fields. Backend accepts
+    // gradient/glow_color (plus bg/text/border) on POST/PATCH; we
+    // expose dedicated pickers in this editor so badges can be styled
+    // visually without hand-writing CSS.
+    gradient: initial?.gradient || "",
+    glow_color: initial?.glow_color || "",
     description: initial?.description || "",
     status: initial?.status || "draft",
     assignment_type: initial?.assignment_type || "manual",
@@ -754,8 +760,13 @@ function BadgeEditor({ initial, onClose, onSaved }) {
   const save = async () => {
     setBusy(true); setError(null);
     try {
-      if (isNew) await apiClient.post("/admin/badges", form);
-      else await apiClient.patch(`/admin/badges/${initial.id}`, form);
+      // Strip empty visual strings so the backend stores `null` rather
+      // than empty fields (cleaner registry + ProfileBadges fallback).
+      const payload = { ...form };
+      if (!payload.gradient) payload.gradient = null;
+      if (!payload.glow_color) payload.glow_color = null;
+      if (isNew) await apiClient.post("/admin/badges", payload);
+      else await apiClient.patch(`/admin/badges/${initial.id}`, payload);
       onSaved();
     } catch (e) { setError(e?.response?.data?.detail || "Save failed"); }
     finally { setBusy(false); }
@@ -788,10 +799,35 @@ function BadgeEditor({ initial, onClose, onSaved }) {
             </select>
           </Field>
           <Field label="Color (hex)">
-            <input className="or-input w-full" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} data-testid="badge-form-color" placeholder="#00FF66" />
+            <ColorPicker
+              value={form.color}
+              onChange={(v) => setForm((f) => ({ ...f, color: v }))}
+              testid="badge-form-color"
+              placeholder="#00FF66"
+            />
           </Field>
           <Field label="Description" full>
             <textarea className="or-input w-full" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} data-testid="badge-form-description" />
+          </Field>
+          <Field label="Gradient (optional)" full>
+            <GradientPicker
+              value={form.gradient}
+              onChange={(v) => setForm((f) => ({ ...f, gradient: v }))}
+              fallbackColor={form.color}
+              testidPrefix="badge-form-gradient"
+            />
+          </Field>
+          <Field label="Glow (optional)">
+            <ColorPicker
+              value={form.glow_color}
+              onChange={(v) => setForm((f) => ({ ...f, glow_color: v }))}
+              testid="badge-form-glow"
+              placeholder={form.color || "#00FF66"}
+              clearable
+            />
+          </Field>
+          <Field label="Preview">
+            <BadgePreview form={form} />
           </Field>
           <Field label="Assignment Type">
             <select className="or-input w-full" value={form.assignment_type} onChange={(e) => setForm({ ...form, assignment_type: e.target.value })} data-testid="badge-form-assign-type">
@@ -981,5 +1017,210 @@ function StatusPill({ status }) {
     >
       {status}
     </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Badge visual pickers (Phase X, Feb 28, 2026)
+// Pairs an HTML <input type="color"> with a hex text input so admins
+// can either pick from the system colour picker or paste a brand hex.
+// ─────────────────────────────────────────────────────────────────────
+const HEX_RE = /^#?[0-9a-fA-F]{6}$/;
+
+function normaliseHex(v) {
+  if (!v) return "";
+  const t = v.trim();
+  if (!t) return "";
+  return t.startsWith("#") ? t : `#${t}`;
+}
+
+function ColorPicker({ value, onChange, testid, placeholder, clearable }) {
+  // The native <input type=color> requires a valid #rrggbb. We mirror
+  // the text value into a swatch input but fall back to a sensible
+  // default when the typed value isn't a complete hex yet.
+  const safe = HEX_RE.test(value || "") ? normaliseHex(value) : "#00FF66";
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="color"
+        value={safe}
+        onChange={(e) => onChange(e.target.value.toUpperCase())}
+        className="shrink-0 rounded cursor-pointer"
+        style={{
+          width: 38, height: 38, padding: 0, border: "1px solid var(--border-col)",
+          background: "var(--surface-2)",
+        }}
+        aria-label="Pick colour"
+        data-testid={`${testid}-swatch`}
+      />
+      <input
+        type="text"
+        className="or-input flex-1"
+        value={value || ""}
+        placeholder={placeholder || "#RRGGBB"}
+        onChange={(e) => onChange(e.target.value)}
+        data-testid={testid}
+      />
+      {clearable && value ? (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          className="starbar-icon shrink-0"
+          style={{ width: 32, height: 32 }}
+          title="Clear"
+          aria-label="Clear"
+          data-testid={`${testid}-clear`}
+        >
+          <Icons.X size={14} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+const GRADIENT_PRESETS = [
+  { label: "Gold",   css: "linear-gradient(135deg, #F4C84A 0%, #B58B17 100%)" },
+  { label: "Green",  css: "linear-gradient(135deg, #00FF66 0%, #10E670 100%)" },
+  { label: "Blue",   css: "linear-gradient(135deg, #2EA0FF 0%, #6CC4FF 100%)" },
+  { label: "Sunset", css: "linear-gradient(135deg, #FF8A00 0%, #FF3D7F 100%)" },
+  { label: "Violet", css: "linear-gradient(135deg, #7A5CFF 0%, #C04CFF 100%)" },
+  { label: "Ocean",  css: "linear-gradient(135deg, #0EA5E9 0%, #22D3EE 100%)" },
+];
+
+function GradientPicker({ value, onChange, fallbackColor, testidPrefix }) {
+  // Builder state: two colour stops + an angle. Whenever the builder
+  // changes, we emit a canonical `linear-gradient(...)` CSS string up
+  // to the parent form. Admins can also paste a CSS string directly.
+  const parsed = parseLinearGradient(value);
+  const fromInit = parsed.from || fallbackColor || "#00FF66";
+  const toInit   = parsed.to   || fallbackColor || "#10E670";
+  const angleInit = parsed.angle ?? 135;
+
+  const [from, setFrom] = useState(fromInit);
+  const [to, setTo] = useState(toInit);
+  const [angle, setAngle] = useState(angleInit);
+
+  // Keep local builder state in sync with the canonical value.
+  useEffect(() => {
+    const p = parseLinearGradient(value);
+    if (p.from) setFrom(p.from);
+    if (p.to) setTo(p.to);
+    if (typeof p.angle === "number") setAngle(p.angle);
+  }, [value]);
+
+  const emit = (nextFrom, nextTo, nextAngle) => {
+    const css = `linear-gradient(${nextAngle}deg, ${normaliseHex(nextFrom)} 0%, ${normaliseHex(nextTo)} 100%)`;
+    onChange(css);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <label className="block">
+          <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>From</div>
+          <ColorPicker
+            value={from}
+            onChange={(v) => { setFrom(v); emit(v, to, angle); }}
+            testid={`${testidPrefix}-from`}
+          />
+        </label>
+        <label className="block">
+          <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>To</div>
+          <ColorPicker
+            value={to}
+            onChange={(v) => { setTo(v); emit(from, v, angle); }}
+            testid={`${testidPrefix}-to`}
+          />
+        </label>
+        <label className="block">
+          <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>Angle ({angle}°)</div>
+          <input
+            type="range"
+            min={0}
+            max={360}
+            step={5}
+            value={angle}
+            onChange={(e) => { const a = Number(e.target.value); setAngle(a); emit(from, to, a); }}
+            className="w-full"
+            data-testid={`${testidPrefix}-angle`}
+          />
+        </label>
+      </div>
+      <input
+        type="text"
+        className="or-input w-full"
+        placeholder="linear-gradient(135deg, #00FF66 0%, #10E670 100%)"
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        data-testid={`${testidPrefix}-css`}
+      />
+      <div className="flex flex-wrap gap-1.5">
+        {GRADIENT_PRESETS.map((p) => (
+          <button
+            key={p.label}
+            type="button"
+            onClick={() => onChange(p.css)}
+            className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded"
+            style={{
+              background: p.css,
+              color: "#0a0a0a",
+              border: "1px solid var(--border-col)",
+            }}
+            title={`Apply ${p.label} gradient`}
+            data-testid={`${testidPrefix}-preset-${p.label.toLowerCase()}`}
+          >
+            {p.label}
+          </button>
+        ))}
+        {value ? (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded"
+            style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
+            data-testid={`${testidPrefix}-clear`}
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function parseLinearGradient(css) {
+  if (!css || typeof css !== "string") return {};
+  // Match the canonical pattern we emit. Hand-written CSS that doesn't
+  // match still round-trips via the raw textarea — the builder simply
+  // doesn't pre-fill in that case.
+  const m = css.match(/linear-gradient\(\s*(-?\d+(?:\.\d+)?)deg\s*,\s*(#[0-9a-fA-F]{6})[^,]*,\s*(#[0-9a-fA-F]{6})/i);
+  if (!m) return {};
+  return { angle: Number(m[1]), from: m[2].toUpperCase(), to: m[3].toUpperCase() };
+}
+
+function BadgePreview({ form }) {
+  // Mirrors ProfileBadges.BadgePill so admins see the exact rendered
+  // pill before saving. Falls back to the legacy single-accent style
+  // when no gradient is set, identical to runtime behaviour.
+  const Icon = Icons[form.icon] || Icons.Award;
+  const accent = form.color || "#00FF66";
+  const bg = form.gradient || accent;
+  const fg = "#0a0a0a";
+  const border = accent;
+  const glow = form.glow_color || accent;
+  return (
+    <div className="flex items-center" data-testid="badge-form-preview">
+      <span
+        className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-md whitespace-nowrap"
+        style={{
+          background: bg,
+          color: fg,
+          border: `1px solid ${border}`,
+          boxShadow: `0 0 12px color-mix(in srgb, ${glow} 35%, transparent)`,
+        }}
+      >
+        <Icon size={11} strokeWidth={2.5} /> {form.name || "Badge name"}
+      </span>
+    </div>
   );
 }
