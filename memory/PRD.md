@@ -1,5 +1,48 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Phase 3.7 — Badge editor unlock + VIP outline color fix (Feb 28, 2026) ✅ COMPLETE
+
+**Tested via `testing_agent_v3_fork` — iter 61, 100% backend (19/19 pytest) + 100% frontend Playwright pipeline.**
+
+### Bug
+Admin saves of VIP `border_color` (and any other system-badge visual field) silently reverted to the seeded green on the next render — the user reported VIP outline was "permanently stuck on green even after saving a new color."
+
+### Root cause (three-fold)
+1. **PATCH endpoint blocked locked badges entirely** — `/admin/badges/{id}` returned 403 if `doc.locked` was true, regardless of who called it. FOUNDER (and effectively any "locked" badge) was uneditable even by stealth.
+2. **`seed_default_badges()` overwrote visuals on every backend boot** — the seed function ran a blanket `$set` of `border_color/glow_color/gradient/bg_color/text_color/icon` from `DEFAULT_BADGES` over the existing row, reverting any admin save the next time supervisor restarted backend.
+3. **BadgeEditor UI exposed only 3 color pickers** — admins could change `color`, `gradient`, `glow_color` but had NO control over `bg_color`, `border_color`, or `text_color`. The user's edits were happening through some other path or being mis-attributed.
+
+### Fix
+- **Backend `update_badge`** (`/app/backend/routers/admin_widgets.py`): `_is_stealth(current)` now bypasses the lock check — founders can edit every visual + assignment property on every badge, including locked ones. Non-founder admins still hit the 403. DELETE still rejects locked + is_system for all callers (no change). PATCH now treats `bg_color`, `gradient`, `text_color`, `border_color`, `glow_color`, `description` as nullable — explicit `null` AND empty-string `""` both normalise to DB `null` so the runtime fallback chain takes over.
+- **Backend seed** (`/app/backend/core/seed.py`): `seed_default_badges()` now only **backfills keys that are missing** on the existing doc (`k not in existing`). Admin edits are preserved across backend restarts. Verified by curl restart cycle.
+- **Frontend `BadgeEditor`** (`/app/frontend/src/pages/AdminWidgets.jsx`): exposes 5 color pickers — Color (accent), Background, Border, Text, Glow — plus Gradient with presets. All 5 are `clearable`. On save, empty strings normalise to `null`. **`BadgePreview` updated** to mirror the runtime `ProfileBadges.BadgePill` truthfully (now honors `bg_color`, `text_color`, `border_color` fallback chain instead of the previous hardcoded `border=accent`, `fg=#0a0a0a`).
+- **Renderer `/app/frontend/src/components/ProfileBadges.jsx`** — UNCHANGED. Already used `border = b.border_color || accent` where `accent = b.color || '#00FF66'`. The renderer was correct all along; the bug was upstream.
+
+### Audit confirmation
+- Zero hardcoded VIP / system-badge colors found in frontend (grepped for `#00FF66`/`#00ff66`/`VIP_DEFAULT`/`vipColor`/etc. — only matches are in the seed `DEFAULT_BADGES` baseline, the BadgePreview accent fallback, and the BadgeRow icon tint preview, all of which read from the badge doc).
+- Renderer uses **only** database values for `text_color / bg_color / border_color / glow_color / gradient / icon / title / color`.
+
+### Backward compatibility
+- Existing badge assignments untouched — `user_badges` collection not modified.
+- Auto-assignment rules untouched.
+- Missing visual fields fall back through: `gradient → bg_color → color`, `border_color → color`, `text_color → #0a0a0a`, `glow_color → color`. All unchanged from before.
+
+### Files touched
+- `/app/backend/routers/admin_widgets.py` — `update_badge()` founder-bypass + nullable color set.
+- `/app/backend/core/seed.py` — `seed_default_badges()` backfill-only mode.
+- `/app/frontend/src/pages/AdminWidgets.jsx` — 3 new pickers (bg/border/text) + truthful `BadgePreview`.
+- `/app/backend/tests/test_badge_editor_phase37.py` (new, 19 cases written by test agent).
+
+### Test highlights
+- VIP `border_color = #FF8800` → /profile/stealth pill computed border `rgb(255,136,0)` (no longer green).
+- `supervisorctl restart backend` after edit → admin save persists (seed reset bug fixed).
+- Empty-string → null normalisation verified end-to-end.
+- `support_admin` (non-founder) → 403 when PATCHing locked FOUNDER (lock still respected for non-founders).
+- Stealth can edit FOUNDER glow to magenta → /profile/stealth renders magenta glow.
+- Gradient preset → solid color fallback chain confirmed.
+- All 3 system badges restored to seed defaults at end of run.
+
+
 ## Phase X.4 — Realm widget management parity (Edit · Resize · Delete) (Feb 28, 2026) ✅ COMPLETE
 
 **Backend smoke-tested via curl (PATCH config + PATCH size + DELETE all 200 OK). Frontend verified via `testing_agent_v3_fork` (iter 60) + screenshot — all 7 chips render on every existing realm tile in edit mode.**
