@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 
 from core.config import (
     JWT_ALGORITHM, ACCESS_TOKEN_MINUTES, get_jwt_secret, FOUNDER_USERNAME,
-    VIP_CUTOFF, default_myfeed_widget, default_top8_widget,
+    default_myfeed_widget, default_top8_widget,
 )
 from core.db import db
 from core.deps import (
@@ -54,10 +54,12 @@ async def register(payload: RegisterPayload, response: Response):
     now_iso = datetime.now(timezone.utc).isoformat()
 
     # ── VIP / Early-Adopter ──
-    # Anyone registered while total users < VIP_CUTOFF receives a
-    # permanent VIP badge. Once reached, no new VIP grants.
-    current_count = await db.users.count_documents({})
-    is_vip = current_count < VIP_CUTOFF
+    # VIP is now derived exclusively from the live `vip` entry in
+    # `badge_registry` (auto_rule='first_1000', cap = first_x). The user
+    # doc starts with `is_vip=False`; the registry-driven block below
+    # flips it to True and stamps `vip_joined_at` when the new signup
+    # qualifies. This consolidates the previous hardcoded VIP_CUTOFF
+    # branch onto a single, admin-controllable source of truth.
 
     doc = {
         "id": user_id,
@@ -84,8 +86,10 @@ async def register(payload: RegisterPayload, response: Response):
         "friend_requests_out": [],
         "pinned_threads": [],
         # ── VIP ──
-        "is_vip": is_vip,
-        "vip_joined_at": now_iso if is_vip else None,
+        # Defaults to False; the badge-registry block below promotes
+        # the new user when the live VIP badge has capacity.
+        "is_vip": False,
+        "vip_joined_at": None,
         # Phase C — Presence
         "presence_status": "offline",
         "presence_status_choice": "online",
@@ -125,11 +129,13 @@ async def register(payload: RegisterPayload, response: Response):
         await db.users.update_one({"id": support["id"]}, {"$addToSet": {"friends": user_id}})
         doc["friends"] = list(set(doc["friends"] + [support["id"]]))
 
-    # Phase 3.3 — VIP first_1000 auto-grant. If the live VIP badge has
-    # auto_rule='first_1000' AND we haven't yet reached the cap, award
-    # the badge to this signup immediately. Closes the gap where
-    # signup #998/999/1000 had to wait for the next backend boot or an
-    # admin /reconcile click.
+    # ── VIP first_1000 — single source of truth ──
+    # The live `vip` badge in badge_registry controls VIP grants. If it
+    # has auto_rule='first_1000' AND current_holders < first_x, this
+    # signup gets the badge AND `is_vip` flips to True on the user doc.
+    # If the badge is missing/draft/disabled, no VIP is granted — which
+    # is the desired admin lever. Wrapped in try/except so a badge
+    # hiccup never blocks signup.
     try:
         vip_badge = await db.badge_registry.find_one({"key": "vip", "status": "live"})
         if vip_badge and (vip_badge.get("auto_rule") == "first_1000"):

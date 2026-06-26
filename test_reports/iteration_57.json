@@ -1,0 +1,43 @@
+{
+  "summary": "Iter 57 — Verified that /api/auth/register VIP grants are driven EXCLUSIVELY by the badge_registry `vip` entry (auto_rule='first_1000', cap=first_x). The legacy VIP_CUTOFF user-count branch has been fully removed. 8/8 pytest cases pass against the public preview URL https://realm-deploy.preview.emergentagent.com. Covered: (1) static check confirms no VIP_CUTOFF import and no `current_count = await db.users.count_documents({})` line in /app/backend/routers/auth.py (only a comment retains the legacy name for context), (2) happy-path signup under cap returns user.is_vip=true with vip_joined_at ISO timestamp, GET /api/auth/me with the new token returns is_vip=true, and a user_badges row exists with badge_key='vip', source='first_1000', assigned_by='system', (3) when vip badge is PATCHed to first_x=1 (cap full vs 141 holders), new signup gets is_vip=false AND no user_badges row, (4) when vip badge status is PATCHed to draft, new signup still 200s with is_vip=false, no user_badges row, no 500, (5) founder stealth login still works, /api/auth/me still serializes is_vip as a bool from the user doc, (6) vip badge seeded shape (status=live, auto_rule=first_1000, first_x=1000) intact after restore, (7) no leaked iter57 user_badges/user docs post-cleanup.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/auth/me (serialize_user)", "issue": "schemas.py L241 emits `vip_joined_at = doc.get('vip_joined_at') or doc.get('created_at')` — when is_vip=False, the wire still returns a timestamp (created_at) instead of null. Semantically vip_joined_at should be None when is_vip is False. The underlying mongo doc is correctly None for non-VIP users (verified), so this is purely a serializer-layer leak that may confuse downstream consumers. Consider: `'vip_joined_at': doc.get('vip_joined_at')` (drop the created_at fallback), or only emit it when is_vip is True."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter57_vip_badge_registry_source_of_truth.py",
+    "/app/test_reports/pytest/iter57_results.xml"
+  ],
+  "action_items": [
+    "Consider tightening serialize_user (models/schemas.py L240-241) so vip_joined_at is null when is_vip is false (drop the created_at fallback). NON-BLOCKING; mongo truth is correct.",
+    "Clean up legacy iter55-leftover badge rows. `user_badges` currently has 10 rows whose username starts with `test_vip*` / `test_vipcap*` / `test_vipdraft*` (6+2+2). Their user docs still exist. iter55 test file does not clean up created users — the iter57 file does."
+  ],
+  "critical_code_review_comments": [
+    "GOOD: /app/backend/routers/auth.py — the VIP first_1000 block (lines 132-168) is correctly wrapped in try/except so a badge_registry query failure never blocks signup. user_badges insert is upsert + $setOnInsert so re-running register is idempotent.",
+    "GOOD: The vip-grant block uses `count_documents({'badge_key':'vip'})` against user_badges (not users), so the cap is enforced against the authoritative collection — matches what `_apply_badge_assignment_rule` in admin_widgets.py uses to define holders. No drift between auto-grant and admin reconcile paths.",
+    "GOOD: PATCH /api/admin/badges/{id} reconcile is invoked only when `fresh.status == 'live'`, so flipping the badge to draft does NOT trigger a recompute. This is what allows the draft test to cleanly assert no auto-grant.",
+    "GOOD: `_apply_badge_assignment_rule` runs with prune=False on PATCH, so toggling first_x=1 does NOT delete existing 141 VIP holders — verified empirically (count stable across PATCH down/up cycle).",
+    "MINOR: schemas.py serialize_user falls back vip_joined_at to created_at — masks the True-source-of-truth on the wire. See backend_issues.minor.",
+    "MINOR: legacy iter55 test file leaves test_vip*/test_vipcap*/test_vipdraft* users + user_badges rows on disk (no finally-block cleanup). iter57 cleans up properly; recommend back-porting the same pattern to iter55."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter57_vip_badge_registry_source_of_truth.py (new — 8 test cases, all pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8 pytest cases passed in 2.34s)",
+    "frontend": "n/a (backend-only scope per review request)"
+  },
+  "test_credentials": "Founder: stealth / Password1$ — used for /api/admin/badges PATCH on the vip badge. Verified via /app/memory/test_credentials.md.",
+  "seed_data_creation": "Each test run creates 3 transient users (iter57vip_*, iter57cap_*, iter57draft_*) and deletes them + their user_badges rows in per-test finally blocks. Final teardown in module-scoped mongo fixture deletes any tracked user as a safety net. Post-run verification: VIP holders=141 (stable, no iter57 leak), badge_registry vip = {status:live, auto_rule:first_1000, first_x:1000} (restored to original).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "VIP badge in test_database currently has status=live, auto_rule=first_1000, first_x=1000, assignment_type=first_1000 — restored cleanly. Holder count=141. iter55 left ~10 leftover TEST_VIP* rows in user_badges + users (not iter57's mess; iter57 cleans up). To re-run: `MONGO_URL=mongodb://localhost:27017 DB_NAME=test_database pytest backend/tests/test_iter57_vip_badge_registry_source_of_truth.py -v`. Notable serializer quirk: vip_joined_at on the wire falls back to created_at when the user doc has it None — assert against mongo directly (or fix the serializer) if you need is_vip=False ↔ vip_joined_at=null parity.",
+  "rca of the issue": "N/A — feature works as specified."
+}
