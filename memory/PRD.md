@@ -1,5 +1,35 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Phase X — Profile Nav from Messages + Badge Editor Pickers (Feb 28, 2026) ✅ COMPLETE
+
+**Tested via `testing_agent_v3_fork` — iter 56, 100% pass on exercised paths.**
+
+### Feature 1 — Profile navigation from Messages
+- `/messages` Chats row: peer **avatar** (`chat-row-<u>-avatar`) and **name span** (`chat-row-<u>-name`) navigate to `/profile/<u>`. Row body (`chat-row-<u>-open`) still opens the DM overlay (unchanged).
+- DM overlay header: **avatar** (`dm-header-avatar`) and **name** (`dm-header-name`) both close the overlay then `navigate('/profile/<u>')`.
+- Group/Realm ConversationOverlay: peer sender label is now a button (`msg-sender-<u>`) that closes the overlay and navigates to `/profile/<u>`. Self ("mine") bubbles intentionally render no sender label.
+- Self-navigation guard: `openPeerProfile` no-ops when `peer.username === me.username`.
+- HTML compliance: lifted the avatar out of the nested `<button-in-button>` it previously sat in.
+
+### Feature 2 — AdminWidgets BadgesTab editor pickers
+- New form fields in `BadgeEditor`: `gradient`, `glow_color` (backend already accepts both on POST/PATCH).
+- **ColorPicker**: native `<input type=color>` swatch + hex text input, defensive fallback so the swatch never throws on a partial hex.
+- **GradientPicker**: From/To color pickers + angle range slider (0–360°), raw `linear-gradient(...)` CSS textbox, six presets (Gold, Green, Blue, Sunset, Violet, Ocean), and a Clear button.
+- **Glow picker**: ColorPicker with `clearable` for `glow_color`.
+- **BadgePreview** pill mirrors the runtime `ProfileBadges.BadgePill` renderer so admins see exactly the saved look.
+- Empty gradient/glow strings are sent as `null` so the backend stores clean nulls instead of empty strings.
+
+### Files touched
+- `frontend/src/pages/Messages.jsx` — `openPeerProfile`, chat row markup, DM header buttons, group/realm sender button.
+- `frontend/src/pages/AdminWidgets.jsx` — `BadgeEditor` form state + fields, new `ColorPicker` / `GradientPicker` / `BadgePreview` / `parseLinearGradient` helpers.
+
+### Test coverage notes
+- 4/4 Messages nav paths verified (chat row avatar + name, DM header avatar + name).
+- Self-guard verified (no `chat-row-stealth-*` rendered for own user, no `msg-sender-*` on "mine" bubbles).
+- 14/14 AdminWidgets editor checks verified (all pickers present, presets write CSS + reflect in preview, save+roundtrip+delete cleanup all pass).
+- `msg-sender-<u>` path could not be exercised against the live preview dataset (Groups empty for stealth, dj realm has no peer messages). Logic is a direct mirror of `openPeerProfile`.
+
+
 
 ## Phase 3.3 — Signup-time VIP first_1000 + Playable Music/Podcasts (Feb 26, 2026) ✅ COMPLETE
 
