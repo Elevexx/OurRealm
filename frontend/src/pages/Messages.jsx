@@ -190,7 +190,6 @@ function Header() {
 // available without a schema change.
 // ─────────────────────────────────────────────────────────────────────
 function ChatsTab({ me }) {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -200,16 +199,6 @@ function ChatsTab({ me }) {
   const [confirmDelete, setConfirmDelete] = useState(null); // thread row pending delete
   const { cache, resolve } = useProfileCache();
   const { statuses } = usePresence();
-
-  // Phase X (Feb 28, 2026) — Profile navigation from Messages. Clicking
-  // a peer avatar or display name routes to /profile/<username>. We skip
-  // navigation when the user clicks themselves to avoid bouncing them to
-  // the edit-profile surface (FounderProfile renders read-only for peers).
-  const openPeerProfile = useCallback((peer) => {
-    if (!peer?.username) return;
-    if (me?.username && peer.username === me.username) return;
-    navigate(`/profile/${peer.username}`);
-  }, [navigate, me?.username]);
 
   // Phase C — sort priority by peer status.
   const STATUS_PRIORITY = useMemo(() => ({
@@ -363,21 +352,11 @@ function ChatsTab({ me }) {
                 data-testid={`chat-row-${peer?.username || t.conv_id}`}
               >
                 <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); openPeerProfile(peer); }}
-                  className="shrink-0 rounded-full"
-                  aria-label={peer?.username ? `View @${peer.username}'s profile` : "Open profile"}
-                  title={peer?.username ? `View @${peer.username}'s profile` : "Open profile"}
-                  data-testid={`chat-row-${peer?.username || t.conv_id}-avatar`}
-                  style={{ background: "transparent", padding: 0, border: 0 }}
-                >
-                  <Avatar user={peer} />
-                </button>
-                <button
                   onClick={() => setActive(t)}
                   className="flex items-center gap-3 flex-1 min-w-0 text-left"
                   data-testid={`chat-row-${peer?.username || t.conv_id}-open`}
                 >
+                  <Avatar user={peer} />
                   {/* Keep a hidden marker for tests; visible dot is now
                       rendered by the shared Avatar/UserAvatar component. */}
                   {peerStatus !== "offline" && (
@@ -392,24 +371,7 @@ function ChatsTab({ me }) {
                           data-testid={`chat-row-${peer?.username}-pinned-badge`}
                         />
                       )}
-                      <span
-                        className="truncate"
-                        role="link"
-                        tabIndex={0}
-                        onClick={(e) => { e.stopPropagation(); openPeerProfile(peer); }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openPeerProfile(peer);
-                          }
-                        }}
-                        title={peer?.username ? `View @${peer.username}'s profile` : ""}
-                        style={{ cursor: peer?.username ? "pointer" : "default" }}
-                        data-testid={`chat-row-${peer?.username || t.conv_id}-name`}
-                      >
-                        {title}
-                      </span>
+                      <span className="truncate">{title}</span>
                     </div>
                     <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
                       {t.last_text || "Tap to open conversation"}
