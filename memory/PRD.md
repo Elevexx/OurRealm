@@ -30,7 +30,32 @@
 - iter55-leftover test users (`test_vip*` / `test_vipcap*` / `test_vipdraft*`, ~10 rows) remain in `users` + `user_badges` from a prior run that lacked finally-cleanup. Safe to leave; iter57 file is properly self-cleaning.
 
 
-## Phase X — Profile Nav from Messages + Badge Editor Pickers (Feb 28, 2026) ✅ COMPLETE
+## Phase X.2 — Messages row-click regression fix (Feb 28, 2026) ✅ COMPLETE
+
+**Tested via `testing_agent_v3_fork` — iter 58, 100% pass on exercised paths.**
+
+### Bug
+The iter 56 changes added `chat-row-<u>-avatar` and `chat-row-<u>-name` buttons inside the chat row, so clicking on the avatar or the peer's name navigated to `/profile/<u>` instead of opening the DM thread. This made the most-natural click target the wrong action.
+
+### Fix
+ChatsTab row reverted to its pre-regression shape — Avatar lives inside the single `chat-row-<u>-open` button along with the name + subline + timestamp, all sharing one `onClick={() => setActive(t)}` → DM overlay. The `openPeerProfile` helper and the unused `useNavigate` import in `ChatsTab` were removed.
+
+Profile navigation from `/messages` now happens **exclusively** in two places:
+- **DM overlay header**: `dm-header-avatar` + `dm-header-name` → close overlay → navigate.
+- **Group/Realm `msg-sender-<u>` bubble label** → close overlay → navigate.
+
+### Verified
+- 4× click positions (avatar / name / subline / timestamp) on a chat row all open DM overlay, URL stays on `/messages?tab=chats`.
+- `dm-header-avatar` + `dm-header-name` navigate to `/profile/<u>` and close overlay; browser-back returns cleanly.
+- Pin/Unpin/Delete buttons on rows still work (sibling `e.stopPropagation()`).
+- Realm row hub chevron still navigates to `/realms/<slug>`.
+- Zero `validateDOMNesting` / button-in-button warnings, zero console errors.
+- Selectors confirmed stable: `chat-row-<u>`, `-open`, `-pin`, `-delete`, `-pinned-badge`, `dm-overlay`, `dm-header-avatar`, `dm-header-name`, `conversation-overlay`, `msg-sender-<u>`.
+
+### Files touched
+- `/app/frontend/src/pages/Messages.jsx` — reverted ChatsTab row to pre-regression shape; DM header + group/realm sender nav untouched.
+
+
 
 **Tested via `testing_agent_v3_fork` — iter 56, 100% pass on exercised paths.**
 
