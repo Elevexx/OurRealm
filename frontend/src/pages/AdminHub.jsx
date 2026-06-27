@@ -118,6 +118,18 @@ const CARDS = [
     roles: ["founder", "admin"],
     statKey: null,
   },
+  {
+    id: "orion",
+    to: "/admin/orion",
+    title: "Orion Command Center",
+    description: "AI assistant hub for founder operations, analytics, reports, drafts, approvals, and Orion tools.",
+    Icon: Sparkles,
+    accent: "#C26BFF",
+    badge: "Founder Only",
+    roles: ["founder"],
+    statKey: null,
+    footer: "✦ Open Orion Command Center",
+  },
 ];
 
 export default function AdminHub() {
@@ -267,6 +279,15 @@ function HubCard({ card, stats }) {
           {stats.loading && card.statKey && statValue === undefined && (
             <div className="text-[11px] mt-2 inline-flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
               <Loader2 size={10} className="animate-spin" />
+            </div>
+          )}
+          {card.footer && (
+            <div
+              className="text-[11px] mt-2 inline-flex items-center gap-1 font-semibold"
+              style={{ color: accent }}
+              data-testid={`admin-hub-card-${card.id}-footer`}
+            >
+              {card.footer}
             </div>
           )}
         </div>

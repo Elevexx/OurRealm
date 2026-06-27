@@ -89,6 +89,31 @@ const SUGGESTED_CHIPS = [
   "Generate investor snapshot",
 ];
 
+// Phase 3.7.2 — categorized prompt library. Replaces the flat chip
+// row with grouped quick-prompts so founders can scan by surface.
+const PROMPT_LIBRARY = [
+  { group: "Analytics",   prompts: ["Show DAU WAU MAU", "Today's snapshot", "How many users signed up this week?"] },
+  { group: "Investor",    prompts: ["Generate investor snapshot", "Give me a founder briefing"] },
+  { group: "Realms",      prompts: ["Show me the top realms this week", "New realms this week", "Inactive realms"] },
+  { group: "Community",   prompts: ["Top creators this week", "Sounds uploaded today", "Posts created today"] },
+  { group: "Moderation",  prompts: ["Show open moderation reports", "Most reported users this week", "Any risky moderation issues right now?"] },
+  { group: "Support",     prompts: ["Show open support tickets", "Oldest unresolved tickets", "Draft a reply for the oldest support ticket"] },
+  { group: "Widgets",     prompts: ["All launched widgets", "Disabled widgets", "Most used widgets"] },
+  { group: "Badges",      prompts: ["How many VIP holders?", "Show badge stats", "Beta holders"] },
+  { group: "Announcements", prompts: ["Draft an announcement about our growth this month", "Draft a maintenance notice"] },
+];
+
+// Animated "thinking" phrases — rotated while a reply is in flight.
+const THINKING_STATES = [
+  "Reading analytics",
+  "Checking moderation",
+  "Reviewing support tickets",
+  "Comparing trends",
+  "Drafting recommendation",
+  "Cross-referencing realms",
+  "Pulling live counts",
+];
+
 // Maps a Phase 3.7 draft header to a structured card type.
 const DRAFT_HEADERS = [
   { type: "badge",        match: /^\*\*Badge draft\*\*/im },
@@ -109,6 +134,21 @@ export default function AdminOrion() {
   const [sidebarOpen, setSidebarOpen] = useState(false);   // mobile drawer
   const [latestDraft, setLatestDraft] = useState(null);    // for context panel
   const [summary, setSummary] = useState(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);   // Phase 3.7.2
+
+  // Phase 3.7.2 — global Cmd/Ctrl+K opens the command palette.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      } else if (e.key === "Escape" && paletteOpen) {
+        setPaletteOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [paletteOpen]);
 
   // Pull /summary once on mount so the status + recent activity rail
   // has live numbers. Failure is silent — the page works without it.
@@ -322,6 +362,28 @@ function Dashboard({ summary, onSection }) {
 // ─────────────────────────────────────────────────────────────────────
 // Orion Chat — full conversational workspace
 // ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// Phase 3.7.2 — Simulated token reveal. The Orion analytics tools
+// return deterministic replies in one shot (no upstream OpenAI for
+// analytics intents). We progressively reveal the reply so the UX
+// feels like a streaming AI. Speed adapts to length so short
+// snapshots feel snappy and long briefings still finish in <2s.
+// ─────────────────────────────────────────────────────────────────────
+async function streamReveal(text, onChunk) {
+  if (!text) return;
+  const total = text.length;
+  // Aim for ~30 frames (so ~500ms at 60fps for short, ~1.5s for long).
+  const chunkSize = Math.max(6, Math.ceil(total / 30));
+  for (let i = chunkSize; i < total; i += chunkSize) {
+    onChunk(text.slice(0, i));
+    // 16ms ≈ 1 paint frame; longer for paragraph breaks for natural rhythm.
+    const pause = text[i - 1] === "\n" ? 28 : 14;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, pause));
+  }
+  onChunk(text);
+}
+
 function OrionChat({ onDraft }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -369,8 +431,25 @@ function OrionChat({ onDraft }) {
         message: body,
       });
       const reply = data?.reply || "";
-      const ai = { role: "assistant", content: reply, model: data?.model, created_at: new Date().toISOString() };
-      setMessages((p) => [...p, ai]);
+      // Phase 3.7.2 — simulated token streaming. The Orion analytics
+      // interceptor returns deterministic replies (no upstream OpenAI
+      // call for analytics/draft tools), so token-by-token streaming
+      // from the model isn't available. We progressively reveal the
+      // reply so the UX still feels like a live AI assistant.
+      const aiBase = { role: "assistant", content: "", model: data?.model, created_at: new Date().toISOString(), _streaming: true };
+      setMessages((p) => [...p, aiBase]);
+      await streamReveal(reply, (partial) => {
+        setMessages((p) => {
+          const next = [...p];
+          next[next.length - 1] = { ...next[next.length - 1], content: partial };
+          return next;
+        });
+      });
+      setMessages((p) => {
+        const next = [...p];
+        next[next.length - 1] = { ...next[next.length - 1], _streaming: false };
+        return next;
+      });
       // Detect drafts → bubble up to context panel.
       const draftHit = DRAFT_HEADERS.find((d) => d.match.test(reply));
       if (draftHit) onDraft({ type: draftHit.type, content: reply, ts: Date.now() });
@@ -425,7 +504,7 @@ function OrionChat({ onDraft }) {
         {busy && (
           <div className="orion-chat-row orion-chat-row-ai">
             <div className="orion-chat-bubble orion-chat-bubble-ai">
-              <Loader2 size={14} className="animate-spin" /> Thinking…
+              <ThinkingStates />
             </div>
           </div>
         )}
@@ -439,18 +518,7 @@ function OrionChat({ onDraft }) {
       </div>
 
       <div className="orion-suggested" data-testid="orion-cc-suggested">
-        {SUGGESTED_CHIPS.map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => send(c)}
-            className="orion-chip"
-            disabled={busy}
-            data-testid={`orion-cc-chip-${c.slice(0, 12).replace(/\W+/g, "-")}`}
-          >
-            {c}
-          </button>
-        ))}
+        <PromptLibrary onPick={(p) => send(p)} disabled={busy} />
       </div>
 
       <form
@@ -943,6 +1011,146 @@ function OrionLogo({ size = 24 }) {
 // Scoped styles — keeps the Orion aesthetic isolated from the rest of
 // the OurRealm theme. Variables only apply inside `.orion-cc-root`.
 // ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// Phase 3.7.2 — Animated thinking states (rotating). Replaces the
+// single "Thinking…" spinner with phrases that hint at what Orion
+// would be doing if it were a real autonomous agent. The list cycles
+// every 1.6s while the request is in flight.
+// ─────────────────────────────────────────────────────────────────────
+function ThinkingStates() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setI((p) => (p + 1) % THINKING_STATES.length), 1600);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <span className="inline-flex items-center gap-2" data-testid="orion-cc-thinking">
+      <span className="orion-thinking-dots">
+        <span /><span /><span />
+      </span>
+      <span className="text-sm" style={{ color: "var(--orion-muted)" }}>
+        {THINKING_STATES[i]}…
+      </span>
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 3.7.2 — Categorized prompt library. Replaces the flat chip
+// row with collapsible groups. The first group is open by default;
+// clicking a chip dispatches into the parent's `onPick`.
+// ─────────────────────────────────────────────────────────────────────
+function PromptLibrary({ onPick, disabled }) {
+  const [openGroup, setOpenGroup] = useState(PROMPT_LIBRARY[0].group);
+  return (
+    <div className="orion-prompt-library" data-testid="orion-cc-prompt-library">
+      <div className="orion-prompt-tabs" role="tablist">
+        {PROMPT_LIBRARY.map((g) => (
+          <button
+            key={g.group}
+            type="button"
+            onClick={() => setOpenGroup(g.group)}
+            className={`orion-prompt-tab ${openGroup === g.group ? "active" : ""}`}
+            role="tab"
+            aria-selected={openGroup === g.group}
+            data-testid={`orion-cc-prompt-tab-${g.group.toLowerCase()}`}
+          >
+            {g.group}
+          </button>
+        ))}
+      </div>
+      <div className="orion-prompt-chips">
+        {(PROMPT_LIBRARY.find((g) => g.group === openGroup)?.prompts || []).map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onPick(p)}
+            className="orion-chip"
+            disabled={disabled}
+            data-testid={`orion-cc-prompt-chip-${p.slice(0, 12).replace(/\W+/g, "-")}`}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 3.7.2 — Cmd/Ctrl+K Command Palette. Searches across nav
+// sections + the entire PROMPT_LIBRARY. Keyboard navigable (↑ / ↓ /
+// Enter / Escape). Mounted at the page level so it's available from
+// any section.
+// ─────────────────────────────────────────────────────────────────────
+function CommandPalette({ open, onClose, onSection, onPrompt }) {
+  const [q, setQ] = useState("");
+  const [idx, setIdx] = useState(0);
+  const inputRef = useRef(null);
+  const items = useMemo(() => {
+    const navItems = NAV_SECTIONS.map((s) => ({ kind: "nav", id: s.id, label: s.label, icon: s.icon }));
+    const promptItems = PROMPT_LIBRARY.flatMap((g) =>
+      g.prompts.map((p) => ({ kind: "prompt", id: `${g.group}:${p}`, label: p, group: g.group, icon: Sparkles })),
+    );
+    const all = [...navItems, ...promptItems];
+    const needle = q.trim().toLowerCase();
+    if (!needle) return all.slice(0, 12);
+    return all.filter((x) => x.label.toLowerCase().includes(needle) || (x.group || "").toLowerCase().includes(needle)).slice(0, 20);
+  }, [q]);
+  useEffect(() => {
+    if (open) { setQ(""); setIdx(0); setTimeout(() => inputRef.current?.focus(), 30); }
+  }, [open]);
+  useEffect(() => { setIdx(0); }, [q]);
+  const choose = (it) => {
+    onClose();
+    if (it.kind === "nav") onSection(it.id);
+    else onPrompt(it.label);
+  };
+  if (!open) return null;
+  return (
+    <div className="orion-palette-scrim" onClick={onClose} data-testid="orion-cc-palette">
+      <div className="orion-palette" onClick={(e) => e.stopPropagation()}>
+        <input
+          ref={inputRef}
+          className="orion-palette-input"
+          placeholder="Search sections, reports, prompts…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") { e.preventDefault(); setIdx((i) => Math.min(items.length - 1, i + 1)); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setIdx((i) => Math.max(0, i - 1)); }
+            else if (e.key === "Enter") { e.preventDefault(); if (items[idx]) choose(items[idx]); }
+            else if (e.key === "Escape") { onClose(); }
+          }}
+          data-testid="orion-cc-palette-input"
+        />
+        <div className="orion-palette-results">
+          {items.length === 0 && (
+            <div className="orion-palette-empty">No matches.</div>
+          )}
+          {items.map((it, i) => (
+            <button
+              key={`${it.kind}-${it.id}`}
+              type="button"
+              onClick={() => choose(it)}
+              className={`orion-palette-row ${i === idx ? "active" : ""}`}
+              onMouseEnter={() => setIdx(i)}
+              data-testid={`orion-cc-palette-row-${i}`}
+            >
+              <it.icon size={14} />
+              <span className="flex-1 truncate">{it.label}</span>
+              <span className="orion-palette-kind">{it.kind === "nav" ? "Section" : (it.group || "Prompt")}</span>
+            </button>
+          ))}
+        </div>
+        <div className="orion-palette-hint">
+          ↑ ↓ navigate · Enter to open · Esc to close
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrionStyles() {
   return (
     <style>{`
