@@ -51,9 +51,10 @@ SOON_SECTIONS = {"workflows", "tasks", "automations"}
 
 # Dashboard tiles that ship in /admin/orion (Phase 3.7.1 + 3.7.2). Each
 # must resolve to a prompt that will be dispatched into Orion Chat.
+# IDs MUST match `QUICK_TILES` ids in /app/frontend/src/pages/AdminOrion.jsx.
 DASHBOARD_TILES = [
-    "founder-briefing", "investor-snapshot", "draft-badge", "draft-widget",
-    "create-announcement", "support-digest",
+    "founder_briefing", "investor", "draft_badge", "draft_widget",
+    "announcement", "support_digest",
 ]
 
 ORION_WIDGET_KEY = "stealth_ai_5a6"

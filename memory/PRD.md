@@ -1,5 +1,41 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Phase 3.7.3 — Orion P0 Bug Fix: "Widget Not Found" + LLM 403/502 (Feb 28, 2026) ✅ COMPLETE
+
+**Backend + frontend hotfix. Verified via testing_agent_v3_fork iter_66 (100% — 9/9 pytest + frontend smoke).**
+
+### Bugs fixed
+1. **Production "Widget Not Found"**: production `widget_registry` was missing the canonical `stealth_ai_5a6` row → every Orion chat call returned 404. Fix:
+   - `widget_chat._load_widget()` now synthesizes a virtual widget from `widget_templates.stealth_ai` whenever the registry row is missing AND `widget_id ∈ ORION_WIDGET_KEYS = ("stealth_ai_5a6","stealth_ai","orion")`. Non-Orion widget IDs still 404 as before.
+   - `widget_chat._heal_orion_registry()` upserts the canonical row via `$setOnInsert` (idempotent, never overwrites real seeds, marks `auto_healed:true`).
+   - `server.on_startup()` kicks the heal hook on every boot.
+2. **OpenAI 403 → Cloudflare 502 hang**: when OPENAI_API_KEY was rejected, the backend hung until the proxy returned a Cloudflare 502 HTML page. Fix:
+   - `chat_conversations.call_openai_chat()` now chains two attempts: (a) OpenAI direct with our key, (b) Emergent Universal LLM Key via `emergentintegrations.LlmChat` (gpt-4o-mini). Auth failures collapse to a clean **HTTP 503** with detail `"Orion LLM provider is unavailable or misconfigured."` — never a 502, never a hang past the 45s `OPENAI_TIMEOUT_SECONDS`.
+
+### New: `/api/admin/orion/health` (founder-only)
+6-check diagnostic endpoint:
+1. `widget_registry` — canonical Orion widget present (auto-heals if missing).
+2. `chat_config` — editor_config.chat valid.
+3. `llm_provider` — OPENAI_API_KEY and/or EMERGENT_LLM_KEY configured.
+4. `sidebar_ids` — every sidebar id maps to a registered SectionRouter handler or `soon` flag.
+5. `dashboard_tiles` — every QUICK_TILES id is registered (FE/BE id parity).
+6. `palette_entries` — Cmd+K palette mirrors sidebar+tiles cleanly.
+
+### Frontend: AdminOrion startup validation
+`useEffect` on mount logs descriptive console errors for:
+- NAV_SECTIONS ids without a SectionRouter handler (and not soon-flagged).
+- QUICK_TILES missing prompt or id.
+- Empty PROMPT_LIBRARY groups.
+- Probes `/api/admin/orion/health` and logs `[Orion] backend health check ok (N checks)` or the failing checks list.
+
+### Env update
+Added `EMERGENT_LLM_KEY` to `/app/backend/.env` so the fallback path works without a redeploy of secrets.
+
+### Production redeploy
+Preview is verified GREEN. User must redeploy to production for the fix to land on https://ourrealm.social. Once redeployed, the startup heal hook + the auto-heal-on-chat path will repair prod automatically on first chat call.
+
+---
+
 ## Phase 3.7.2 — Orion Command Center Polish + Admin Hub Card (Feb 28, 2026) ✅ COMPLETE
 
 **Frontend-only enhancement. Verified via testing_agent_v3_fork iter_64 (49/52) + iter_65 (6/6 retest, 100%).**
