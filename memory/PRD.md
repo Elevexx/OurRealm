@@ -1,5 +1,79 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Phase 3.7 — Orion Founder Command Center (Feb 28, 2026) ✅ COMPLETE
+
+**Tested via `testing_agent_v3_fork` — iter 63, 32/32 backend pytest + complete frontend e2e (desktop + mobile + founder + non-founder).**
+
+### Architecture
+Orion (the chat-widget AI surface) gains a **draft-only** Founder/Admin operations layer on top of the read-only Phase 3.6 analytics. New intents are inserted at the TOP of `INTENTS` so they win first-match over Phase 3.6. Draft tools emit text-only specs with a "**This is only a draft. Nothing has been created, launched, or executed.**" footer. **Explicit-confirmation phrases** ("Yes, execute" / "Confirm" / "Approve this action" / "Launch it now") are detected; vague replies ("ok", "looks good", "sure") never count. Even an explicit approval just logs `approval_status=approved + result=draft_only` and replies that nothing was executed — Phase 3.7 contains zero execution paths.
+
+### New intents (13)
+**Read-only**: founder_briefing, top_reported_users, top_reported_content, oldest_tickets, widget_launch_list, disabled_widgets, badge_holders, inactive_realms.
+**Draft (logged to orion_action_logs as `pending`)**: moderation_risks, draft_badge, draft_widget, draft_announcement, draft_support_reply.
+
+### Explicit-confirmation system
+- `is_explicit_confirmation()` matches only the 4 strict phrases.
+- Confirmation → row in `orion_action_logs` with `action_type=confirmation_received`, `approval_status=approved`, `result=draft_only`, `short_result_summary='approval_received_but_phase37_is_draft_only'`.
+- Reply: *"Approval recorded in the audit log. No live action has been executed — Phase 3.7 is draft-only…"*
+
+### New DB collections
+- **`orion_action_logs`** (new): user_id, username, role, action_type, requested_action (≤500c), prepared_draft, confirmation_required, approval_status (pending/approved/declined/n/a), tool_called, timestamp, result (always `draft_only` in Phase 3.7), success, short_result_summary (≤200c), execution_time_ms.
+- `orion_admin_query_logs` (Phase 3.6, unchanged) — still records every analytics query.
+
+### New endpoints (founder-only — `stealth` gate)
+- `GET /api/admin/orion-logs/queries` — paginated audit rows with filters: user, tool, intent, success, since/until, limit, offset.
+- `GET /api/admin/orion-logs/actions` — same + `approval_status` filter, `action_type` filter.
+- `GET /api/admin/orion-logs/summary` — 6 counters: query_total, query_today, query_refused, action_total, action_today, action_pending, action_approved.
+
+### Founder-only page `/admin/orion-logs`
+- 6-card summary header (Queries all-time / Today / Refused / Actions all-time / Pending / Approved).
+- Two tabs: **Queries** (default) / **Actions**.
+- Inline filter bar (≥1024px): user search, tool, intent/action-type, success select, approval-status select (Actions tab only), datetime-local since + until, Reset.
+- Non-founder visitors see a polite "Founder-only" refusal card; backend still independently enforces 403.
+
+### Security
+- Founder/Admin gate (`is_admin_user`) for chat-side analytics; **Founder-only** (`username==stealth`) for `/admin/orion-logs/*` endpoints AND the page component.
+- Non-admin chat queries → polite refusal at HTTP 200 (no endpoint leak).
+- Read-only invariant statically verified: only writes in `services/orion_analytics.py` are to `orion_admin_query_logs` + `orion_action_logs`. ZERO writes to users/posts/reports/support_tickets/badges/widgets/realms/community_*.
+- No secrets / JWTs / api_keys / raw rows ever logged.
+
+### Files added / changed
+- `/app/backend/services/orion_analytics.py` — +DRAFT_INTENTS, CONFIRM_PATTERNS, `is_explicit_confirmation()`, 13 new tools, `_log_action()`, extended dispatcher with confirmation branch + draft logging.
+- `/app/backend/routers/orion_logs.py` (NEW)
+- `/app/backend/server.py` — registered new router.
+- `/app/frontend/src/pages/AdminOrionLogs.jsx` (NEW)
+- `/app/frontend/src/App.js` — `/admin/orion-logs` route.
+- `/app/backend/tests/test_phase37_orion_command_center.py` (NEW, 32 tests).
+
+### Sample founder commands that now work
+- *"Give me a founder briefing"* → composite executive summary
+- *"Draft a badge for users who upload 1000 sounds"* → full YAML spec + risks + launch notes
+- *"Draft a widget for …"* / *"Draft an announcement about our growth"* / *"Draft a reply for the oldest support ticket"*
+- *"Most reported users this week"* / *"Most reported content"*
+- *"Oldest unresolved tickets"* / *"Tickets needing urgent attention"*
+- *"All launched widgets"* / *"Disabled widgets"*
+- *"How many beta holders?"* (founder badge holders count)
+- *"Inactive realms"* / *"Stale realms"*
+- *"Any risky moderation issues right now?"* → risk assessment + draft recommendations
+- *"Yes, execute"* / *"Confirm"* → approval logged, no execution
+
+### Test agent NITs (non-blocking)
+- Filter inputs debounce — currently re-issue GET on every keystroke. Consider 250ms debounce on text fields for production traffic.
+- Audit timestamp is an ISO string — works for range queries because ISO sorts lex == chrono, but a BSON `Date` would be more robust.
+- Founder check (`username=='stealth'`) is duplicated in 3 places. Centralising into `is_founder()` helper or a JWT claim would prevent drift if the founder username ever changes.
+- `_build_filter` `$or`-on-intent could collide if future filters need their own `$or` — switch to merged `$and` if that day comes.
+
+### Metrics not currently available (Phase 3.7 gracefully omits)
+- View counts ("most viewed creators") — no view-tracking collection.
+- Live streams — no `live_streams` collection.
+- Mute history — `community_mutes` collection not currently populated.
+- Suspension history — no `user_suspensions` collection yet.
+
+### Future (Phase 3.8+, NOT in 3.7)
+- Execution gating (the `Yes, execute` phrase actually performs an action) — needs strict per-tool whitelist + dry-run preview + reversibility plan.
+- Per-admin RBAC beyond "founder vs non-founder" (e.g. `support_admin` can see support logs only).
+
+
 ## Phase 3.6 — Orion Founder/Admin Analytics Assistant (Feb 28, 2026) ✅ COMPLETE
 
 **Tested via `testing_agent_v3_fork` — iter 62, 30/31 pytest PASS → 31/31 after the regex fix below.**
