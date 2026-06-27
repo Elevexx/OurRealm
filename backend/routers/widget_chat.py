@@ -42,6 +42,7 @@ from services.chat_conversations import (
     append_messages, build_context, call_openai_chat, clear_conversation,
     compose_messages, get_conversation, pop_last_assistant,
 )
+from services.orion_analytics import maybe_handle_admin_query
 from utils.sliding_window_rate_limit import rate_limit as sliding_rate_limit
 
 logger = logging.getLogger("ourrealm.widget_chat")
@@ -162,6 +163,34 @@ async def chat_message(payload: ChatMessagePayload, current: CurrentUser, respon
     if not chat_cfg:
         raise HTTPException(status_code=400, detail="Widget is not configured for chat.")
     _enforce_access(current, widget, chat_cfg)
+
+    # Phase 3.6 — Orion analytics interceptor. When the caller is a
+    # founder/admin AND their message matches an analytics intent
+    # (DAU, signups, investor snapshot, top realms, etc.), we return
+    # a deterministic, live summary built from existing analytics
+    # services and SKIP the OpenAI call. Non-admins who type a
+    # similar query receive a polite refusal — never a permission
+    # error or leaked endpoint name. Non-matching messages fall
+    # through to the normal chat path below.
+    analytics_reply = await maybe_handle_admin_query(current, payload.message)
+    if analytics_reply is not None:
+        memory_mode = (chat_cfg.get("memory_mode") or "persistent").lower()
+        if memory_mode != "off":
+            await append_messages(
+                payload.widget_id, current["id"],
+                [
+                    {"role": "user", "content": payload.message},
+                    {"role": "assistant", "content": analytics_reply},
+                ],
+            )
+        return {
+            "reply": analytics_reply,
+            "model": "orion-analytics",
+            "usage": {},
+            "finish_reason": "analytics_tool",
+            "memory_mode": memory_mode,
+            "rate_limit": None,
+        }
 
     # Provider gate — OpenAI must be enabled.
     if not await provider_is_enabled("openai"):

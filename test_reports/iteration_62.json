@@ -1,0 +1,48 @@
+{
+  "summary": "Phase 3.6 Orion analytics interceptor — 30/31 backend tests PASS. Founder/admin analytics intents bypass OpenAI and return deterministic markdown (3-9ms p95), non-admin refusal works without leaking permission errors (HTTP 200 with polite refusal + model='orion-analytics'), audit log captures every attempt including 'refused: not_admin', non-analytics messages still fall through to gpt-4o-mini, read-only invariant verified by static check (the ONLY write call in orion_analytics.py is to orion_admin_query_logs). 1 ROUTING BUG found: 'How many users signed up this week?' incorrectly routes to total_users intent instead of signups.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/widgets/chat/message (intent router: services/orion_analytics.py INTENTS list)",
+        "issue": "The phrase 'How many users signed up this week?' (explicitly listed in the review request) routes to the `total_users` tool instead of `signups`. Root cause: the `signups` regex `\\b(sign[\\s-]?ups|new\\s+users|registrations|new\\s+sign[\\s-]?ups)\\b` does NOT match the past-tense verb form 'signed up' / 'signed-up'. Since signups misses, the next pattern `total_users` (`how\\s+many\\s+users`) matches and returns just the total user count instead of the today/week/total breakdown. Fix: extend the signups regex to include `signed[\\s-]?up(s)?` (e.g. `\\b(sign[\\s-]?ups?|signed[\\s-]?up|new\\s+users|registrations)\\b`), OR tighten total_users so it doesn't fire when 'signed up' follows. Verified by direct call: `detect_intent('How many users signed up this week?')` -> 'total_users'."
+      }
+    ]
+  },
+  "frontend_issues": { "ui_bugs": [], "integration_issues": [], "design_issues": [] },
+  "test_report_links": [
+    "/app/backend/tests/test_phase36_orion_analytics.py",
+    "/app/test_reports/pytest/iter62_phase36_orion.xml"
+  ],
+  "tests_executed": {
+    "TestAuth": "2/2 PASS (founder + member login)",
+    "TestFounderAnalytics": "8/9 PASS — today_snapshot, investor_snapshot, dau, top_realms, support, moderation, badges, widgets all return model='orion-analytics' with the required markdown headers. FAIL: 'How many users signed up this week?' (see minor issue above).",
+    "TestIntentRouter": "9/9 PASS — DAU?, weekly active users, how many users total?, sounds uploaded today, top creators, new realms this week, moderation queue, open tickets, vip holders all route to model='orion-analytics'.",
+    "TestFallThrough": "2/2 PASS — 'Hello there' (founder) and 320-char garbage non-keyword (founder) both fall through to gpt-4o-mini, NOT orion-analytics.",
+    "TestRefusalPath": "2/2 PASS — tfone on the public iter62_orion_test widget gets exact refusal string + model='orion-analytics' + HTTP 200 (no 4xx); subsequent normal chat falls through to gpt-4o-mini.",
+    "TestEdgeCases": "1/1 PASS — empty message returns 422 from pydantic min_length=1.",
+    "TestPerformance": "1/1 PASS — 5 sequential 'today snapshot' calls all complete in <2s (observed 3-9ms per call).",
+    "TestAuditLog": "1/1 PASS — orion_admin_query_logs row for founder has all required fields (user_id, username, role, question, detected_intent, tool_called, timestamp, success, execution_time_ms, short_result_summary); non-admin refusal row has success=false and short_result_summary='refused: not_admin'; verified no 'Bearer' or 'api_key' substrings in the persisted question.",
+    "TestReadOnly": "1/1 PASS — static scan of orion_analytics.py for {insert,update,delete,replace}_one/many proves every write is on the orion_admin_query_logs collection. Zero writes to users/posts/realms/badges/widgets.",
+    "TestRegressionPhase35": "3/3 PASS — /api/widgets/chat/history (200), /api/widgets/chat/clear (200), /api/admin/realm-pulse/investor-snapshot (200 with dau/wau/mau intact)."
+  },
+  "action_items": [
+    "FIX intent router so 'How many users signed up this week?' resolves to signups. Suggested patch in /app/backend/services/orion_analytics.py line ~40 — change the signups regex to `\\b(sign[\\s-]?ups?|signed[\\s-]?up|new\\s+users|registrations|new\\s+sign[\\s-]?ups)\\b` (adds the past-tense form). Alternatively, put a more specific signups-intent guard ahead of total_users that checks for 'signed' or 'this week' tokens. Add a regression test case in test_phase36_orion_analytics.py once fixed."
+  ],
+  "critical_code_review_comments": [
+    "Intent ordering relies on first-match-wins. The total_users regex `how\\s+many\\s+users` is broad — consider negative lookahead like `(?!.*sign(ed|ups?))` to prevent accidental capture of signup questions. This was the root cause of the only failing test.",
+    "_role_for() hardcodes username 'stealth' -> 'founder'. If/when founder username changes this becomes wrong — consider reading from current.get('admin_role') or current.get('is_founder') first.",
+    "_safe_count() calls db.list_collection_names() on EVERY count — this issues an extra Mongo round-trip per metric. For tools like _tool_today_snapshot() that need 6 counts, this is ~6 list calls. Cache the collection list once per request (e.g. pass it into the tool fns) — would improve the 9ms hot path further.",
+    "_tool_top_realms() label fallback uses `a['_id'] or 'unknown'` — but `_id` is the grouped realm_id field, fine. Just confirm community_messages docs always carry `realm_id` not `community_id` (some legacy collections use the latter).",
+    "Audit-log try/except swallows ALL exceptions silently (line 451). Consider logger.exception() inside so ops can spot Mongo issues — currently audit-log failures are completely invisible.",
+    "maybe_handle_admin_query is correctly placed BEFORE _check_chat_rate in widget_chat.py line 175, so analytics calls don't consume rate-limit budget — confirmed by spec and verified by 5 sequential calls all 200 OK."
+  ],
+  "updated_files": ["/app/backend/tests/test_phase36_orion_analytics.py"],
+  "success_rate": { "backend": "97% (30/31)", "frontend": "skipped" },
+  "test_credentials": "stealth/Password1$ (founder), tfone/pass1234 (non-admin member) — both used",
+  "seed_data_creation": "Created and cleaned up widget_registry doc {key:'iter62_orion_test', founder_only:false} for the refusal path via pymongo (auto-cleanup in module-scoped fixture teardown). No DB pollution. The orion_admin_query_logs collection now has 56 rows (4 pre-existing smoke + 52 from this test run, all under the ~30 budget per test class, distributed across 31 tests with parametrized variants).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 3.6 Orion analytics is functionally working. Only outstanding issue is the signups intent regex missing the 'signed up' verb form — a one-line fix. /app/backend/tests/test_phase36_orion_analytics.py is the regression suite — uses pymongo (sync) for any direct DB checks because motor doesn't survive multiple asyncio.run() calls across tests. Existing iter62_orion_test widget is cleaned up automatically; if a previous run aborted, db.widget_registry.delete_many({key:'iter62_orion_test'}) is safe to run.",
+  "rca of the issue": "RCA for failing intent: INTENTS list in services/orion_analytics.py iterates with first-match-wins. Order is [investor_snapshot, today_snapshot, dau, wau, mau, signups, total_users, ...]. For 'How many users signed up this week?': signups regex `\\b(sign[\\s-]?ups|new\\s+users|registrations|new\\s+sign[\\s-]?ups)\\b` only matches the noun 'signups' or 'sign ups' / 'sign-ups', NOT the past-tense verb 'signed up'. Loop falls through to total_users `\\b(...|how\\s+many\\s+users)\\b` which matches 'How many users'. Reproduction (verified): set -a && . /app/backend/.env && python -c 'from services.orion_analytics import detect_intent; print(detect_intent(\"How many users signed up this week?\"))' -> 'total_users'. Mitigation: extend signups regex to include `signed[\\s-]?up(s)?` so it wins before total_users, OR negative-lookahead in total_users."
+}
