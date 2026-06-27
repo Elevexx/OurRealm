@@ -1,5 +1,23 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Phase 3.7.2 — Orion Command Center Polish + Admin Hub Card (Feb 28, 2026) ✅ COMPLETE
+
+**Frontend-only enhancement. Verified via testing_agent_v3_fork iter_64 (49/52) + iter_65 (6/6 retest, 100%).**
+
+### Added in this phase
+- **Cmd/Ctrl+K Command Palette** (`AdminOrion.jsx`): global keydown listener toggles `paletteOpen`; new `<CommandPalette/>` component renders a full-screen scrim with backdrop blur, focused search input, keyboard nav (↑/↓/Enter/Esc), and a results list sourced from `NAV_SECTIONS` + the `PROMPT_LIBRARY`. Section rows jump section, prompt rows dispatch `orion-prefill` into Orion Chat. All `.orion-palette-*` CSS appended to `OrionStyles`.
+- **Dynamic thinking states + streamReveal** wrapper: AI replies fade in token-by-token for a snappy streaming feel (no backend rewrite needed).
+- **Prompt Library** quick-action tiles that dispatch into Orion Chat via the existing `orion-prefill` CustomEvent.
+- **Admin Hub Orion Command Center card** (`AdminHub.jsx`): new card (`data-testid=admin-hub-card-orion`) sits alongside existing admin tools with purple accent (`#C26BFF`), `FOUNDER ONLY` badge, exact description ("AI assistant hub for founder operations, analytics, reports, drafts, approvals, and Orion tools."), and footer line `✦ Open Orion Command Center`. Founder-only via `roles:['founder']`. Renders the optional `card.footer` line via a new HubCard branch.
+
+### Verified
+- Founder sees the card in /admin (3-col desktop, 1-col mobile); clicking navigates to /admin/orion.
+- Support admin does NOT see the card; existing 7 admin cards still render.
+- Ctrl+K opens palette, filter works, Enter selects, Esc & scrim-click close, mobile (390x844) palette adapts to ~94vw.
+- No regressions to the existing /admin/orion Mission Control UI (Phase 3.7.1).
+
+---
+
 ## Phase 3.7.1 — Orion Full-Screen Founder Command Center (Feb 28, 2026) ✅ COMPLETE
 
 **Frontend-only enhancement. Verified via direct screenshot smoke (desktop 1440×900 + mobile 390×844). Backend unchanged → covered by iter 63's 32/32 Phase 3.7 pytest.**
