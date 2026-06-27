@@ -276,6 +276,17 @@ export default function AdminOrion() {
       {sidebarOpen && (
         <div className="orion-scrim lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
+
+      {/* Phase 3.7.2 — Cmd/Ctrl+K command palette */}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onSection={(id) => { setSection(id); setSidebarOpen(false); }}
+        onPrompt={(p) => {
+          setSection("chat");
+          setTimeout(() => window.dispatchEvent(new CustomEvent("orion-prefill", { detail: p })), 50);
+        }}
+      />
     </div>
   );
 }
@@ -1485,6 +1496,96 @@ function OrionStyles() {
       }
 
       .orion-scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 50; }
+
+      /* Phase 3.7.2 — Cmd/Ctrl+K palette */
+      .orion-palette-scrim {
+        position: fixed; inset: 0; z-index: 200;
+        background: rgba(3,6,18,0.72);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        display: flex; align-items: flex-start; justify-content: center;
+        padding-top: 12vh;
+        animation: orionPaletteFade 0.16s ease-out;
+      }
+      @keyframes orionPaletteFade { from { opacity: 0; } to { opacity: 1; } }
+      .orion-palette {
+        width: min(640px, 92vw);
+        background: linear-gradient(180deg, rgba(15,23,42,0.95), rgba(10,14,31,0.95));
+        border: 1px solid var(--orion-line);
+        border-radius: 14px;
+        box-shadow: 0 25px 70px rgba(0,0,0,0.55), 0 0 0 1px rgba(34,211,238,0.08), 0 0 36px rgba(34,211,238,0.12);
+        overflow: hidden;
+        transform: translateY(0);
+        animation: orionPaletteSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes orionPaletteSlide { from { transform: translateY(-12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      .orion-palette-input {
+        width: 100%;
+        padding: 16px 18px;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--orion-fg);
+        font-size: 15px;
+        border-bottom: 1px solid var(--orion-line);
+        font-family: inherit;
+      }
+      .orion-palette-input::placeholder { color: var(--orion-muted); }
+      .orion-palette-results {
+        max-height: 380px;
+        overflow-y: auto;
+        padding: 6px;
+      }
+      .orion-palette-results::-webkit-scrollbar { width: 6px; }
+      .orion-palette-results::-webkit-scrollbar-thumb { background: rgba(80,140,220,0.25); border-radius: 4px; }
+      .orion-palette-empty {
+        padding: 24px;
+        text-align: center;
+        color: var(--orion-muted);
+        font-size: 13px;
+      }
+      .orion-palette-row {
+        width: 100%;
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        color: var(--orion-fg);
+        background: transparent;
+        border: 1px solid transparent;
+        text-align: left;
+        font-size: 13px;
+        cursor: pointer;
+        transition: background-color 0.12s, border-color 0.12s;
+      }
+      .orion-palette-row:hover,
+      .orion-palette-row.active {
+        background: var(--orion-cyan-soft);
+        border-color: rgba(34,211,238,0.25);
+      }
+      .orion-palette-row svg { color: var(--orion-cyan); flex-shrink: 0; }
+      .orion-palette-kind {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--orion-muted);
+        padding: 2px 8px;
+        background: rgba(80,140,220,0.10);
+        border-radius: 999px;
+        flex-shrink: 0;
+      }
+      .orion-palette-hint {
+        padding: 10px 16px;
+        font-size: 11px;
+        color: var(--orion-muted);
+        border-top: 1px solid var(--orion-line);
+        background: rgba(0,0,0,0.25);
+        letter-spacing: 0.05em;
+      }
+      @media (max-width: 640px) {
+        .orion-palette-scrim { padding-top: 8vh; }
+        .orion-palette { width: 94vw; }
+        .orion-palette-results { max-height: 60vh; }
+      }
 
       .orion-logo { position: relative; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: radial-gradient(circle at 30% 30%, var(--orion-cyan), #1E90FF 70%); color: #050714; box-shadow: 0 0 16px rgba(34,211,238,0.55); }
       .orion-logo-glow { position: absolute; inset: -3px; border-radius: 50%; background: radial-gradient(circle, rgba(34,211,238,0.35), transparent 70%); }
