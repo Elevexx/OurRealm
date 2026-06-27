@@ -14,6 +14,7 @@ import AdminAnalytics from "@/pages/AdminAnalytics";
 import AdminHub from "@/pages/AdminHub";
 import AdminWidgets from "@/pages/AdminWidgets";
 import AdminOrionLogs from "@/pages/AdminOrionLogs";
+import AdminOrion from "@/pages/AdminOrion";
 import AdminProviders from "@/pages/AdminProviders";
 import RealmPulse from "@/pages/RealmPulse";
 import Feed from "@/pages/Feed";
@@ -89,6 +90,7 @@ function App() {
             <Route path="/admin" element={<ShellRoute><AdminHub /></ShellRoute>} />
             <Route path="/admin/widgets" element={<ShellRoute><AdminWidgets /></ShellRoute>} />
             <Route path="/admin/orion-logs" element={<ShellRoute><AdminOrionLogs /></ShellRoute>} />
+            <Route path="/admin/orion" element={<ShellRoute><AdminOrion /></ShellRoute>} />
             <Route path="/admin/providers" element={<ShellRoute><AdminProviders /></ShellRoute>} />
             <Route path="/admin/analytics" element={<ShellRoute><AdminAnalytics /></ShellRoute>} />
             <Route path="/admin/realm-pulse" element={<ShellRoute><RealmPulse /></ShellRoute>} />

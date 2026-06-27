@@ -179,6 +179,22 @@ export default function ChatLayout({ data, theme, widget }) {
             <Icons.Trash2 size={10} className="inline" />
           </button>
         )}
+        {/* Phase 3.7.1 — quick launcher into the full-screen Orion
+            Command Center. Only renders for the founder, otherwise
+            the link 404s and clutters the UI. The check is duplicated
+            from /admin/orion (server-side gate) — that's fine. */}
+        {(typeof window !== "undefined" &&
+          ((JSON.parse(localStorage.getItem("auth_user") || "{}")?.username || "").toLowerCase() === "stealth")) && (
+          <a
+            href="/admin/orion"
+            className="text-[10px] px-1.5 py-0.5 rounded"
+            style={{ background: "color-mix(in srgb, var(--primary) 18%, transparent)", color: "var(--primary)" }}
+            data-testid="chat-open-command-center"
+            title="Open Orion Command Center"
+          >
+            <Icons.ExternalLink size={10} className="inline" />
+          </a>
+        )}
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto py-2 px-1 space-y-1.5" data-testid="chat-messages">

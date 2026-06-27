@@ -1,5 +1,82 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Phase 3.7.1 — Orion Full-Screen Founder Command Center (Feb 28, 2026) ✅ COMPLETE
+
+**Frontend-only enhancement. Verified via direct screenshot smoke (desktop 1440×900 + mobile 390×844). Backend unchanged → covered by iter 63's 32/32 Phase 3.7 pytest.**
+
+### UI architecture
+A new founder-only **mission control** route at `/admin/orion` with a permanent left nav, a flexible main panel, and a right context rail (≥1280px). The existing profile widget remains a quick launcher — its header gains a small "Open in Command Center" icon for the founder. All chat traffic still goes through the same `/api/widgets/chat/{message,history,clear}` endpoints scoped to the `stealth_ai_5a6` founder widget.
+
+### Screens / sections
+Sidebar exposes 16 sections plus a reserved "Phase 4.0" group:
+- **Dashboard** (default) — 6 live stat cards (queries today / all-time / refused / actions today / drafts pending / approvals) + Jump-In tiles + Sections grid.
+- **Orion Chat** — full conversational workspace. Loads persistent history on mount. Renders Phase 3.7 drafts as structured **Draft Cards** (icon, eyebrow, title, body, Status/Impact/Risks/Launch meta rows, collapsible Technical details, Approve/Pin actions). Approval button injects the `Yes, execute` phrase via a `orion-prefill` CustomEvent.
+- **Founder Briefing** — auto-fires the briefing on mount.
+- **Quick Actions** — 12-tile grid (Founder Briefing, Investor Snapshot, Draft Badge, Draft Widget, Create Announcement, Support Digest, Moderation Digest, Growth/Realm/Health Report, Task Plan, Draft Support Reply). Each tile dispatches into Orion Chat with the right prompt.
+- **Reports / Alerts / Support / Moderation / Realms / Widgets / Badges** — one-tap prompt lists.
+- **Approvals** — live `/api/admin/orion-logs/actions?approval_status=pending` table.
+- **Settings** — read-only Orion runtime state.
+- **Phase 4.0 reserved**: Agents, Memory, Integrations (rendered disabled).
+
+### Components added
+- `/app/frontend/src/pages/AdminOrion.jsx` — entire page (~720 lines, scoped CSS in a `<style>` block to keep the Orion aesthetic isolated).
+- Sub-components: `AdminOrion`, `SectionRouter`, `Dashboard`, `OrionChat`, `BriefingPanel`, `QuickActions`, `SimplePromptList`, `ApprovalsPanel`, `SettingsPanel`, `ChatBubble`, `Markdown` / `BasicMarkdown` / `inlineFormat`, `DraftCard` + `extractDraftFields`, `StatusCard`, `ContextDraftCard`, `RecentActivityCard`, `RoadmapCard`, `NavItem`, `SectionHeader`, `Stat`, `OrionLogo`, `OrionStyles`.
+- `extractDraftFields()` + `DRAFT_HEADERS` regex set parses Phase 3.7 draft replies into structured cards.
+
+### Routes
+- `/admin/orion` (NEW) — `<Route path="/admin/orion" element={<ShellRoute><AdminOrion/></ShellRoute>}/>` in `App.js`.
+- Existing `/admin/orion-logs` (Phase 3.7) linked from the sidebar footer + mobile topbar + Recent Activity card.
+
+### Existing systems reused (no duplication)
+- `/api/widgets/chat/{message,history,clear}` (Phase 3.5) — full conversational pipeline.
+- `/api/admin/orion-logs/{summary,actions}` (Phase 3.7) — stats + approvals.
+- Founder gate (`username === "stealth"`) duplicated at the page + backend (Phase 3.7).
+
+### Responsiveness
+- ≥1280px: 3-column grid `260px / 1fr / 320px`.
+- 1024–1279px: 2-column `260px / 1fr` (context rail hidden).
+- <1024px: single column, sidebar becomes a slide-in drawer triggered by `orion-cc-sidebar-toggle`. Mobile topbar with hamburger + ORION wordmark + audit-logs shortcut. Stat grid wraps to 2 cols, tile grid wraps to 2 cols. Verified no horizontal overflow on 390×844 (iPhone 14 size).
+
+### Performance optimisations
+- Single `<style>` block scoped via `.orion-cc-root` — zero global CSS bleed.
+- Stat / activity / draft cards consume the same `/summary` payload (one GET per page mount).
+- Briefing panel pulls live numbers once on tab mount (cancellable via cleanup).
+- Chat composer auto-resizes inline (1–6 rows) without forcing layout thrash.
+- `orion-prefill` CustomEvent pattern keeps Quick Actions / Tiles → Chat decoupled (no prop drilling).
+
+### Accessibility
+- Every interactive element has a `data-testid` for E2E.
+- `aria-label` on icon-only buttons (sidebar toggle, close, audit-logs link).
+- Keyboard: Enter submits chat; Shift+Enter newline; Escape closes mobile drawer (via existing scrim click).
+- Color contrast: `--orion-fg=#E2F1FF` over deep navy passes AA against ≥4.5:1.
+
+### Visual language
+Deep navy gradient + radial cyan / blue / violet glows; sparse white-dot star field with a 12s twinkle keyframe; glassmorphism panels (`backdrop-filter: blur(18px)`); neon-cyan accents on active nav and primary buttons; per-stat hue glows (`--stat-hue`) using `color-mix` for subtle depth; smooth `transform: translateY(-1px)` hover lift on tiles. The OrionLogo component is a radial-gradient circle with a glow halo behind a `Sparkles` icon — used as both wordmark and chat-bubble avatar.
+
+### Test results
+- **Smoke (Playwright)**: page renders, dashboard shows live summary (90/90/9/20/11/9), sidebar nav switches to Orion Chat, suggested chip "Give me today's founder briefing" fires a real backend call and the briefing markdown renders with sections + bullets. Mobile 390×844: hamburger button present, dashboard collapses cleanly with no horizontal overflow.
+- **Backend regression**: Phase 3.7 backend untouched → iter 63's 32/32 pytest covers it. No new backend code paths in this iteration.
+- **Lint**: `mcp_lint_javascript` clean on `AdminOrion.jsx` + `ChatLayout.jsx`.
+
+### Example founder workflows that now feel native
+- **Briefing → Action**: Dashboard → "Founder Briefing" tile → briefing renders inline → chat continues with "Inactive realms" chip → result threads into the same session → "Draft an announcement about our growth this month" → Draft Card appears with Approve button.
+- **Triage**: Sidebar → Moderation → tap "Most reported users this week" → result in chat → tap "Any risky moderation issues" → moderation risk card with draft footer.
+- **Draft editing flow**: Phase 3.7 backend doesn't yet support patch-style edits ("change the icon" still regenerates). The UI is wired for it (DraftCard exposes Approve + Pin) and ready for Phase 3.8.
+- **Conversation continuity**: chat history is persisted server-side (memory_mode='persistent') so returning to /admin/orion later restores the same thread.
+
+### Files added / changed
+- `/app/frontend/src/pages/AdminOrion.jsx` (NEW)
+- `/app/frontend/src/App.js` — import + `/admin/orion` route.
+- `/app/frontend/src/components/widgets/ChatLayout.jsx` — small founder-only "Open Command Center" launcher icon in the chat widget header.
+
+### Limitations (deferred to Phase 4.0)
+- **In-chat draft mutations** ("change the icon", "make it blue") — UI is ready; backend tools still emit fresh full drafts. A diff-style intent layer would land in Phase 3.8 / 4.0.
+- **Charts** — Phase 3.7 returns markdown text; mini-charts (svg sparklines for DAU/WAU/MAU) would be a small additive Phase 4.0 task.
+- **Conversation folders / multi-thread** — Orion is a single persistent thread per widget. Multi-thread UI would need a new backend `conversations` resource.
+- **Streaming** — current `/widgets/chat/message` is buffered. Phase 3.5 SSE `/widgets/chat/stream` exists; wiring it into the AdminOrion chat is a 10-line follow-up.
+- **Voice / agents / image gen / workflow builder** — explicitly Phase 4.0; sidebar slots are reserved with `soon` chips and disabled state.
+
+
 ## Phase 3.7 — Orion Founder Command Center (Feb 28, 2026) ✅ COMPLETE
 
 **Tested via `testing_agent_v3_fork` — iter 63, 32/32 backend pytest + complete frontend e2e (desktop + mobile + founder + non-founder).**
