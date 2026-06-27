@@ -37,7 +37,7 @@ INTENTS: List[Tuple[str, re.Pattern]] = [
     ("dau",                 re.compile(r"\b(dau|daily\s+active\s+users|active\s+users?\s+today)\b", re.I)),
     ("wau",                 re.compile(r"\b(wau|weekly\s+active\s+users|active\s+users?\s+(this|last)\s+week)\b", re.I)),
     ("mau",                 re.compile(r"\b(mau|monthly\s+active\s+users|active\s+users?\s+(this|last)\s+month)\b", re.I)),
-    ("signups",             re.compile(r"\b(sign[\s-]?ups|new\s+users|registrations|new\s+sign[\s-]?ups)\b", re.I)),
+    ("signups",             re.compile(r"\b(sign[\s-]?ups?|signed[\s-]?up|new\s+users|registrations|new\s+sign[\s-]?ups)\b", re.I)),
     ("total_users",         re.compile(r"\b(total\s+users|user\s+count|how\s+many\s+users)\b", re.I)),
     ("content_today",       re.compile(r"\b((thoughts|posts|images|videos|sounds|podcasts)\s+(today|created\s+today|uploaded\s+today))\b", re.I)),
     ("content_week",        re.compile(r"\b((thoughts|posts|images|videos|sounds|podcasts)\s+(this\s+week|in\s+the\s+last\s+week))\b", re.I)),

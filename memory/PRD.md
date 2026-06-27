@@ -1,5 +1,78 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Phase 3.6 — Orion Founder/Admin Analytics Assistant (Feb 28, 2026) ✅ COMPLETE
+
+**Tested via `testing_agent_v3_fork` — iter 62, 30/31 pytest PASS → 31/31 after the regex fix below.**
+
+### Architecture
+- **New service**: `/app/backend/services/orion_analytics.py` — 17 regex intents + 17 read-only tools + `detect_intent()` + `maybe_handle_admin_query()` + `_log_query()` audit writer.
+- **Integration**: `/app/backend/routers/widget_chat.py:chat_message` calls `maybe_handle_admin_query(current, payload.message)` AFTER `_enforce_access()` and BEFORE the OpenAI / rate-limit path. When the intent matches, the OpenAI call is **skipped** and a deterministic markdown reply (`model="orion-analytics"`, `finish_reason="analytics_tool"`) is returned. All other paths (history, clear, regenerate, stream) are unchanged.
+- **Read-only**: every tool only READS via `services/realm_pulse.py` + `db.<coll>.count_documents()` / `aggregate()`. The ONLY write in the entire service is the audit log insert.
+
+### Tools (17 — all reuse existing analytics)
+| Intent | Tool fn | Source |
+|---|---|---|
+| `today_snapshot` | `_tool_today_snapshot` | `realm_pulse.dau()` + counts |
+| `investor_snapshot` | `_tool_investor_snapshot` | `realm_pulse.investor_snapshot()` + `community_totals()` |
+| `dau` / `wau` / `mau` | `_tool_dau` / `_tool_wau` / `_tool_mau` | `realm_pulse.dau/wau/mau()` |
+| `signups` / `total_users` | `_tool_signups` / `_tool_total_users` | `users` count |
+| `content_today` / `content_week` | `_tool_content_today/week` | `posts`/`sounds`/`podcasts` count |
+| `messages` | `_tool_messages` | `messages` + `community_messages` count (gracefully reports "not tracked" if neither coll exists) |
+| `top_realms` / `new_realms` | `_tool_top_realms` / `_tool_new_realms` | `community_messages` aggregate → fallback to `community_hub_posts` → fallback to `community_memberships` |
+| `top_creators` | `_tool_top_creators` | `posts` group-by author |
+| `moderation` | `_tool_moderation` | `reports` count |
+| `support` | `_tool_support` | `support_tickets` count |
+| `badges` | `_tool_badges` | `user_badges` group-by `badge_key` |
+| `widgets` | `_tool_widgets` | `users.widgets` unwind+group |
+
+### Security
+- **Founder/Admin gate**: `is_admin_user(current)` (from `core/deps`). Stealth is detected as `role="founder"` in audit logs.
+- **Non-admin refusal**: returns `model="orion-analytics"`, HTTP 200, body: *"Those administrative analytics are only available to authorized OurRealm administrators."* — no 403, no endpoint name leak.
+- **No secrets logged**: question is truncated to 500 chars; never the auth header / token / api_key body.
+- **Direct DB access from frontend prohibited**: every analytics path is via the existing `/api/widgets/chat/message` endpoint over JWT.
+- **Existing dashboards untouched**: admin/moderation/support/realm-pulse endpoints still return their original schemas.
+
+### Audit log
+New collection: `orion_admin_query_logs`. Fields: `user_id`, `username`, `role`, `question` (≤500c), `detected_intent`, `tool_called`, `timestamp` (ISO UTC), `success` (bool), `execution_time_ms`, `short_result_summary` (≤200c, NO raw rows). Refused non-admin attempts logged with `success=false` + `short_result_summary="refused: not_admin"`.
+
+### Performance
+- p50 / p95 per call: **3–9ms** (5 sequential `today_snapshot` calls all <2s by a 200× margin).
+- Test agent NIT noted: `_safe_count` issues `list_collection_names()` once per tool call. Acceptable at current load; can be cached per request if hot path tightens.
+
+### Fix-up post-iter-62
+- Intent regex for `signups` extended to match past-tense verb: `\b(sign[\s-]?ups?|signed[\s-]?up|new\s+users|registrations|new\s+sign[\s-]?ups)\b`. Now `"How many users signed up this week?"` → `signups` (was → `total_users` due to ordering + missing pattern).
+
+### Files touched
+- `/app/backend/services/orion_analytics.py` (NEW)
+- `/app/backend/routers/widget_chat.py` (analytics interceptor inserted in `chat_message`)
+- `/app/backend/tests/test_phase36_orion_analytics.py` (NEW, 31 tests written by test agent)
+
+### Sample queries that now work
+- "Show today's snapshot" / "How are we doing today?"
+- "Give me an investor snapshot" / "board update"
+- "What's the DAU?" / "weekly active users" / "monthly active users"
+- "How many users signed up this week?" / "How many sign-ups today?" / "new users this week"
+- "How many users total?"
+- "Thoughts created today" / "Sounds uploaded today" / "Videos uploaded today"
+- "Top realms" / "fastest-growing realms" / "most active realms"
+- "New realms this week"
+- "Top creators" / "most active creators"
+- "Open moderation reports" / "Moderation queue" / "Reports this week"
+- "Open support tickets" / "Tickets today"
+- "How many VIP holders?" / "badge counts" / "founder count"
+- "Most used widgets" / "top widgets"
+
+### Metrics deliberately NOT yet covered
+- Stickiness segmentation (cohort retention beyond `realm_pulse.investor_snapshot`'s D30).
+- Real "DAU/MAU" by privacy-preserving heuristic vs. raw active-session count — current implementation uses `realm_pulse.dau()` which is correct for the existing schema.
+- "Most viewed creators" / "view count" — no view-tracking collection exists yet; gracefully omitted.
+- Live streams — no `live_streams` collection; gracefully reported "not currently tracked".
+- Messaging counts when `messages` + `community_messages` are both empty — surfaced as "not tracked" message.
+
+### Future scope (NOT in Phase 3.6 — read-only only)
+- Support AI assistant — Orion may *suggest* responses / *prioritize* / *detect duplicates* / *summarize trends* on tickets, but must NEVER send replies, change status, or modify ticket data. (Phase 3.7+)
+
+
 ## Phase 3.7 — Badge editor unlock + VIP outline color fix (Feb 28, 2026) ✅ COMPLETE
 
 **Tested via `testing_agent_v3_fork` — iter 61, 100% backend (19/19 pytest) + 100% frontend Playwright pipeline.**
