@@ -47,6 +47,7 @@ from routers import admin_widgets as admin_widgets_router_mod
 from routers import home_widgets as home_widgets_router_mod
 from routers import api_widgets as api_widgets_router_mod
 from routers import widget_chat as widget_chat_router_mod
+from routers import orion_logs as orion_logs_router_mod
 from routers import media_proxy as media_proxy_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
@@ -98,6 +99,7 @@ app.include_router(admin_widgets_router_mod.router)
 app.include_router(home_widgets_router_mod.router)
 app.include_router(api_widgets_router_mod.router)
 app.include_router(widget_chat_router_mod.router)
+app.include_router(orion_logs_router_mod.router)
 app.include_router(media_proxy_router_mod.router)
 
 app.add_middleware(

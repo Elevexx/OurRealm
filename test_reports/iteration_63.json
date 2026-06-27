@@ -1,0 +1,48 @@
+{
+  "summary": "Phase 3.7 Orion Founder Command Center — FULL PASS. 32/32 backend tests + complete frontend e2e (desktop 1920, mobile 375, founder + non-founder views). Founder briefing, all 4 draft intents (badge/widget/announcement/support_reply), moderation_risks, and 7 new read tools all route to model='orion-analytics'. Explicit-confirmation phrases ('Yes, execute', 'Confirm', 'Approve this action', 'Launch it now') each write an orion_action_logs row with approval_status=approved + short_result_summary='approval_received_but_phase37_is_draft_only' and return the 'draft-only' acknowledgement. Vague phrases ('ok','looks good','sure') correctly fall through to gpt-4o-mini and write NO action row. /api/admin/orion-logs/{queries,actions,summary} are correctly founder-only gated (tfone gets 403). Filters (user, tool, success, approval_status) all return correctly narrowed rows. Static read-only invariant verified: only writes in services/orion_analytics.py are to orion_admin_query_logs and orion_action_logs. AdminOrionLogs page renders 6 summary cards, two working tabs, inline filter bar on desktop (52px height), wraps to 2-col grid on mobile with zero horizontal overflow, tfone sees the polite refusal card.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": {
+    "TestPhase36Regression": "1/1 PASS — today snapshot via stealth_ai_5a6 still returns model='orion-analytics' with 'Today' bullets.",
+    "TestPhase37Drafts": "5/5 PASS — founder_briefing has all 4 sections; draft_badge writes pending action row with approval_status=pending, confirmation_required=true, prepared_draft=true, result='draft_only'; draft_widget/announcement/support_reply each log their action_type; moderation_risks renders 'Moderation risk assessment'.",
+    "TestConfirmation": "7/7 PASS — 4 explicit phrases all return orion-analytics with 'Approval recorded' + 'No live action' + 'draft-only' and write confirmation_received rows with approval_status=approved; 3 vague phrases ('ok','looks good','sure') correctly fall through to gpt-4o-mini and write NO confirmation row.",
+    "TestReadTools": "7/7 PASS — top_reported_users, top_reported_content, oldest_tickets, widget_launch_list, disabled_widgets, badge_holders (via 'beta holders'), inactive_realms all hit model='orion-analytics'.",
+    "TestOrionLogsEndpoints": "7/7 PASS — /summary returns all 6 required counters; /queries and /actions have correct shape (user_id, username, role, tool_called, timestamp, success, execution_time_ms, short_result_summary); filters (approval_status=approved, user=stealth, tool=_tool_today_snapshot&success=true) all narrow correctly; tfone gets 403 with detail='Founder-only.' on all 3 endpoints.",
+    "TestNonAdmin": "3/3 PASS — tfone on public widget gets polite refusal (model=orion-analytics, HTTP 200) for both 'Show me the moderation queue' and 'Draft a badge'; 'Hello there' falls through to gpt-4o-mini.",
+    "TestReadOnlyInvariant": "1/1 PASS — static regex scan of /app/backend/services/orion_analytics.py confirms only writes are db.orion_admin_query_logs.* and db.orion_action_logs.*. Zero writes to users/posts/reports/support_tickets/badges/widgets/realms/community_*."
+  },
+  "frontend_e2e": {
+    "stealth_desktop_1920": "PASS — orion-logs-page renders, 6 summary cards (Queries 74 / Today 74 / Refused 7 / Actions 11 / Pending 6 / Approved 5), 74 query rows on default queries tab, 11 action rows after switching to actions tab, filter bar single-line height 52px.",
+    "filter_flow": "PASS — applying user='stealth' + success='true' narrows 74→67 rows. Reset button clears all inputs (user field back to '') and reloads 74 rows.",
+    "stealth_mobile_375": "PASS — scrollWidth=innerWidth=375 (no horizontal overflow), summary grid wraps to 2 cols, filter bar wraps vertically.",
+    "tfone_view": "PASS — orion-logs-refused card visible, orion-logs-page NOT rendered. Component short-circuits client-side on isFounder check (does NOT issue API requests — see note below).",
+    "console_errors": "1 unrelated 401 (favicon/preload). Zero React/component errors. Zero pageerrors."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase37_orion_command_center.py",
+    "/app/test_reports/pytest/iter63_phase37.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AdminOrionLogs.jsx short-circuits at the component level when isFounder===false and never calls /api/admin/orion-logs/*. That's safe (server still enforces 403), but the review_request asked to 'verify 403 in network panel' for non-founders. Considering the server gate is independently verified in pytest TestOrionLogsEndpoints.test_founder_only_gate, this is acceptable.",
+    "routers/orion_logs.py _build_filter: passing both `intent` (which expands to {$or:[detected_intent, action_type]}) and `approval_status` works because they don't collide, but if a caller passes `intent` + `success`+`user`, the $or for intent overwrites any prior $or — defensive: merge with $and if multiple $or-needing filters get added later. Non-blocking.",
+    "routers/orion_logs.py /summary uses datetime.utcnow().strftime('%Y-%m-%d') + 'T00:00:00+00:00' for today bucket — this is a STRING compare against timestamp which appears to be stored as ISO string in audit rows; works because ISO strings sort lex == chrono, but consider migrating audit timestamps to BSON Date for robust range queries.",
+    "AdminOrionLogs.jsx re-issues GET on EVERY filter keystroke (filters in useEffect dep array). On a busy production log that could spam the backend — consider a 250ms debounce on the text inputs (user/tool/intent).",
+    "orion_logs router applies sort('timestamp', -1) — same string-sort caveat as above. Today this works only because timestamps are ISO-8601-formatted; document this invariant.",
+    "Founder check is duplicated in 3 places (orion_analytics._is_stealth, orion_logs._is_founder, AdminOrionLogs.jsx isFounder). All hardcode the literal 'stealth'. Centralizing into a single helper (or a `is_founder` claim on the user document / JWT) would prevent drift if the founder username ever changes."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase37_orion_command_center.py (new)"
+  ],
+  "success_rate": { "backend": "100% (32/32)", "frontend": "100% (all flows: desktop stealth, filter+reset, tab swap, mobile no-overflow, tfone refusal)" },
+  "test_credentials": "stealth/Password1$ (founder), tfone/pass1234 (member)",
+  "seed_data_creation": "Created widget_registry doc {key:'iter63_orion_phase37', editor_config.chat.founder_only:false} for the public non-admin refusal tests, auto-cleaned up in fixture teardown. orion_admin_query_logs grew from 58→~135 rows, orion_action_logs grew from 2→24 rows from this test run (mostly draft + confirmation + read-tool rows).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 3.7 is fully working — all 32 backend test cases pass, frontend e2e (stealth + tfone, desktop + mobile) verified. The test suite at /app/backend/tests/test_phase37_orion_command_center.py is idempotent (uses count-deltas, not absolute totals) and self-seeds/cleans the public iter63_orion_phase37 chat widget. If re-running, be aware the founder_only flag for chat widgets lives at editor_config.chat.founder_only (NOT at root level founder_only).",
+  "rca of the issue": "N/A — no failures. One minor seeding gotcha encountered during test authoring: the founder_only gate is enforced via editor_config.chat.founder_only (see widget_chat.py:115), not via a root-level founder_only field. The fixture was corrected to override editor_config.chat.founder_only=False so non-founder tests can hit the public widget."
+}
