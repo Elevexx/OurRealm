@@ -213,13 +213,18 @@ export default function AdminOrion() {
     apiClient
       .get("/admin/orion/health")
       .then((r) => {
-        const failed = (r.data?.checks || []).filter((c) => !c.ok);
-        if (failed.length) {
+        const checks = r.data?.checks || [];
+        const failed = checks.filter((c) => !c.ok);
+        const total = checks.length;
+        if (failed.length === 0) {
           // eslint-disable-next-line no-console
-          console.error("[Orion] backend health check failed:", failed);
+          console.info(`[Orion] backend health check ok (${total} checks).`);
         } else {
           // eslint-disable-next-line no-console
-          console.info("[Orion] backend health check ok (" + (r.data?.checks?.length || 0) + " checks).");
+          console.warn(
+            `[Orion] backend health check: ${total - failed.length}/${total} ok — failing: ` +
+            failed.map((c) => `${c.name} (${c.detail})`).join(" · "),
+          );
         }
       })
       .catch((err) => {

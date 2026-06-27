@@ -1,5 +1,52 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Phase 3.7.4 — Orion Operations Center Polish & Reliability (Mar 1, 2026) ✅ COMPLETE
+
+**Backend + frontend extension. Verified via testing_agent_v3_fork iter_67 → 100% (11/11 pytest + 22/22 frontend smoke).**
+
+### Reliability & audit logging
+- **Provider event audit**: new `services.orion_analytics.log_provider_event()` appends `provider_switch` / `provider_failure` rows to the existing `orion_action_logs` collection (reusing the audit infra — no new collection). `widget_chat` wraps the LLM call in try/except and logs both fallback successes and total failures.
+- **No new provider logic** — Phase 3.7.3's OpenAI → Emergent fallback is preserved untouched.
+
+### Live health endpoint v2 (`/api/admin/orion/health`)
+Now ships 10 checks (was 6): widget_registry, chat_config, llm_provider, sidebar_ids, dashboard_tiles, palette_entries, **mongodb**, **r2_storage**, **supabase**, **backend_api**.
+- 30s in-memory cache (`_CACHE`) + `?fresh=1` bypass.
+- Async checks run concurrently with `asyncio.gather` → cold call ~50ms (well under 500ms budget).
+- Top-level fields: `ok`, `auto_healed`, `active_provider`, `cached`, `age_s`, `founder`.
+
+### Admin Hub Orion live status pill
+- New `OrionStatusPill` on the Orion card (Phase 3.7.2 card). Polls `/api/admin/orion/health` every 30s for founders only.
+- Smart color/label semantics:
+  - 🟢 **Healthy** — all checks ok.
+  - 🟡 **Auto-Healed** — ok but widget_registry was rebuilt this session.
+  - 🟡 **Warning** — non-LLM check failed (e.g. Supabase env missing).
+  - 🔴 **Provider Down** — only when `llm_provider` check fails.
+  - 🔴 **Unreachable** — endpoint refused / timed out.
+- Tooltip surfaces `provider=…`, `failing=…`, `checked Ns ago`.
+
+### Health Dashboard inside Orion Settings
+- `SettingsPanel` rewritten to embed the live 10-row health grid with per-row color borders, refresh button (forces `?fresh=1`), and a meta line (`Overall · auto-healed · checked Ns ago · cached`).
+- Reuses the same `/api/admin/orion/health` endpoint — no duplicate logic.
+
+### Audit logs CSV export
+- `GET /api/admin/orion-logs/queries/export` and `/actions/export` stream filtered rows as CSV with proper `Content-Disposition` headers. Reuses `_build_filter` so filters match the JSON endpoint exactly.
+- Frontend: Export CSV button on `AdminOrionLogs` (per-tab, respects current filters, downloads via blob).
+
+### Quick Actions polish
+- localStorage-backed favorites (`orion-cc-quick-favorites`) + recently used (`orion-cc-quick-recent`).
+- Search input filters tiles by label/prompt.
+- Pin/unpin button per tile; Favorites group renders at top when populated; Clear-favorites action.
+
+### Frontend startup validation tightened
+- Console log on `/admin/orion` mount: `[Orion] backend health check ok (10 checks).` on full green, or a `console.warn` listing failing checks with their detail messages (cleaner than the previous error-only behaviour).
+
+### Out of scope (reserved for Phase 3.8)
+- Badge / widget / moderation **execution** tools.
+- Database write tools.
+- Wallet features.
+
+---
+
 ## Phase 3.7.3 — Orion P0 Bug Fix: "Widget Not Found" + LLM 403/502 (Feb 28, 2026) ✅ COMPLETE
 
 **Backend + frontend hotfix. Verified via testing_agent_v3_fork iter_66 (100% — 9/9 pytest + frontend smoke).**

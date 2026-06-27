@@ -268,12 +268,14 @@ function OrionStatusPill({ health }) {
     );
   }
   let color = "#22C55E"; let label = "Healthy";
+  let failing = [];
   if (health._unreachable) { color = "#EF4444"; label = "Unreachable"; }
   else if (!health.ok) {
     // Distinguish between LLM provider failure (red, critical) and
     // optional-subsystem warnings (amber). The llm_provider check is
     // the only true blocker for Orion Chat.
     const llm = (health.checks || []).find((c) => c.name === "llm_provider");
+    failing = (health.checks || []).filter((c) => !c.ok).map((c) => c.name);
     if (llm && !llm.ok) { color = "#EF4444"; label = "Provider Down"; }
     else                 { color = "#F59E0B"; label = "Warning"; }
   }
@@ -281,6 +283,7 @@ function OrionStatusPill({ health }) {
   const provider = (health.active_provider || "").toUpperCase();
   const tooltip = `Orion: ${label}` +
     (provider ? ` · provider=${provider}` : "") +
+    (failing.length ? ` · failing=${failing.join(",")}` : "") +
     (typeof health.age_s === "number" ? ` · checked ${health.age_s}s ago` : "");
   return (
     <span
