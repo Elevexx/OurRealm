@@ -286,12 +286,40 @@ async def chat_message(payload: ChatMessagePayload, current: CurrentUser, respon
         ctx=ctx,
     )
 
-    reply = await call_openai_chat(
-        messages,
-        model=chat_cfg.get("model"),
-        temperature=chat_cfg.get("temperature"),
-        max_tokens=chat_cfg.get("max_tokens"),
-    )
+    try:
+        reply = await call_openai_chat(
+            messages,
+            model=chat_cfg.get("model"),
+            temperature=chat_cfg.get("temperature"),
+            max_tokens=chat_cfg.get("max_tokens"),
+        )
+    except HTTPException as he:
+        # Phase 3.7.4 — capture provider failure into Orion audit log
+        # before re-raising so the founder Timeline shows what happened.
+        try:
+            from services.orion_analytics import log_provider_event
+            await log_provider_event(
+                user=current, event="provider_failure", provider="openai+emergent",
+                success=False, execution_ms=0,
+                detail=f"HTTP {he.status_code}: {str(he.detail)[:160]}",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        raise
+
+    # Phase 3.7.4 — record provider events in the existing Orion audit
+    # log so the Timeline view surfaces every Emergent fallback / OpenAI
+    # success. Fast path: no-op when the primary provider answered.
+    if reply.get("provider") and reply.get("provider") != "openai":
+        try:
+            from services.orion_analytics import log_provider_event
+            await log_provider_event(
+                user=current, event="provider_switch", provider=reply.get("provider"),
+                success=True, execution_ms=0,
+                detail=f"OpenAI failed → answered via {reply.get('provider')} fallback.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
     # Persist BOTH turns iff memory != off.
     if memory_mode != "off":

@@ -174,6 +174,28 @@ export default function AdminHub() {
     return () => { cancelled = true; };
   }, [user, role]);
 
+  // Phase 3.7.4 — live Orion Command Center health pill on the hub.
+  // Founder only. Polls /api/admin/orion/health every 30s (backend has
+  // its own 30s in-memory cache so this is cheap). Failure is silent —
+  // the card still works as a passive launcher.
+  const [orionHealth, setOrionHealth] = useState(null);
+  useEffect(() => {
+    if (role !== "founder") return;
+    let cancelled = false;
+    let timer = null;
+    const tick = async () => {
+      try {
+        const { data } = await apiClient.get("/admin/orion/health");
+        if (!cancelled) setOrionHealth(data);
+      } catch {
+        if (!cancelled) setOrionHealth({ ok: false, _unreachable: true });
+      }
+    };
+    tick();
+    timer = setInterval(tick, 30_000);
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+  }, [role]);
+
   // Non-admin guard — backend gates each underlying page individually,
   // but the hub itself shows nothing useful for normal users so we
   // redirect-style-render a denied panel.
@@ -221,14 +243,59 @@ export default function AdminHub() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="admin-hub-grid">
         {visibleCards.map((c) => (
-          <HubCard key={c.id} card={c} stats={stats} />
+          <HubCard key={c.id} card={c} stats={stats} orionHealth={c.id === "orion" ? orionHealth : undefined} />
         ))}
       </div>
     </div>
   );
 }
 
-function HubCard({ card, stats }) {
+
+// Phase 3.7.4 — Orion status pill. Color reflects the live /health
+// summary: green when ok+no auto-heal, amber when auto-healed or
+// some warnings, red when overall ok=false or endpoint unreachable.
+function OrionStatusPill({ health }) {
+  if (!health) {
+    return (
+      <span
+        className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded-full inline-flex items-center gap-1"
+        style={{ background: "#3a3a4a44", color: "#9CA3AF" }}
+        data-testid="admin-hub-card-orion-status"
+        title="Checking Orion health…"
+      >
+        <Loader2 size={9} className="animate-spin" /> Checking
+      </span>
+    );
+  }
+  let color = "#22C55E"; let label = "Healthy";
+  if (health._unreachable) { color = "#EF4444"; label = "Unreachable"; }
+  else if (!health.ok) {
+    // Distinguish between LLM provider failure (red, critical) and
+    // optional-subsystem warnings (amber). The llm_provider check is
+    // the only true blocker for Orion Chat.
+    const llm = (health.checks || []).find((c) => c.name === "llm_provider");
+    if (llm && !llm.ok) { color = "#EF4444"; label = "Provider Down"; }
+    else                 { color = "#F59E0B"; label = "Warning"; }
+  }
+  else if (health.auto_healed) { color = "#F59E0B"; label = "Auto-Healed"; }
+  const provider = (health.active_provider || "").toUpperCase();
+  const tooltip = `Orion: ${label}` +
+    (provider ? ` · provider=${provider}` : "") +
+    (typeof health.age_s === "number" ? ` · checked ${health.age_s}s ago` : "");
+  return (
+    <span
+      className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded-full inline-flex items-center gap-1"
+      style={{ background: `${color}22`, color, border: `1px solid ${color}55` }}
+      data-testid="admin-hub-card-orion-status"
+      title={tooltip}
+    >
+      <span style={{ width: 6, height: 6, background: color, borderRadius: 999 }} />
+      {label}
+    </span>
+  );
+}
+
+function HubCard({ card, stats, orionHealth }) {
   const { Icon, accent } = card;
   const statValue = card.statKey ? stats[card.statKey] : undefined;
   return (
@@ -264,6 +331,7 @@ function HubCard({ card, stats }) {
                 data-testid={`admin-hub-card-${card.id}-badge`}
               >{card.badge}</span>
             )}
+            {card.id === "orion" && <OrionStatusPill health={orionHealth} />}
           </div>
           <p className="text-[12px] mt-1 leading-snug" style={{ color: "var(--text-muted)" }}>
             {card.description}

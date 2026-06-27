@@ -942,6 +942,45 @@ async def _log_action(
         pass
 
 
+async def log_provider_event(
+    *,
+    user: Optional[Dict[str, Any]],
+    event: str,
+    provider: Optional[str],
+    success: bool,
+    execution_ms: int,
+    detail: str,
+) -> None:
+    """Phase 3.7.4 — append a provider lifecycle row to
+    `orion_action_logs` (event ∈ provider_switch | provider_failure |
+    provider_success | startup_validation | health_warning).
+
+    Reuses the existing action-log collection so the Timeline view
+    surfaces these alongside drafts/approvals. Never persists secrets
+    or full LLM payloads — only a short detail line. Silent on error
+    so audit logging can never break the request path.
+    """
+    try:
+        await db.orion_action_logs.insert_one({
+            "user_id":   (user or {}).get("id"),
+            "username":  (user or {}).get("username") or "system",
+            "role":      _role_for(user) if user else "system",
+            "action_type": event,
+            "requested_action": (detail or "")[:500],
+            "prepared_draft": False,
+            "confirmation_required": False,
+            "approval_status": "n/a",
+            "tool_called": provider,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "result": "ok" if success else "fail",
+            "success": bool(success),
+            "short_result_summary": (detail or "")[:200],
+            "execution_time_ms": int(execution_ms),
+        })
+    except Exception:
+        pass
+
+
 async def maybe_handle_admin_query(
     current: Dict[str, Any],
     message: str,

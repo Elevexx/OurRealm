@@ -25,10 +25,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router-dom";
 import {
   Activity, AlertTriangle, Award, BarChart3, Bell, Bot, BookOpen, Calendar,
-  ChevronDown, ChevronRight, Cog, Compass, Cpu, FileText, Flame, Hash,
+  CheckCircle, ChevronDown, ChevronRight, Cog, Compass, Cpu, FileText, Flame, Hash,
   Hexagon, Layers, LifeBuoy, ListChecks, Loader2, Menu, MessageSquare,
-  Plug, Plus, RefreshCw, Send, Shield, ShieldCheck, Sparkles, Star, Tag,
-  Target, Users, Workflow, X, Zap,
+  Pin, Plug, Plus, RefreshCw, Search as SearchIcon, Send, Shield, ShieldCheck, Sparkles, Star, Tag,
+  Target, Users, Workflow, X, XCircle, Zap,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -656,25 +656,133 @@ function BriefingPanel({ onDraft }) {
 }
 
 
+// Phase 3.7.4 — localStorage-backed favorites + recently-used registry
+// for Quick Actions. Tiny, no external state lib.
+const ORION_FAVS_KEY = "orion-cc-quick-favorites";
+const ORION_RECENT_KEY = "orion-cc-quick-recent";
+
+function loadStringSet(key) {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch { return []; }
+}
+function saveStringSet(key, arr) {
+  try { localStorage.setItem(key, JSON.stringify(arr.slice(0, 32))); } catch { /* */ }
+}
+
 function QuickActions({ onPick }) {
+  const [favorites, setFavorites] = useState(() => loadStringSet(ORION_FAVS_KEY));
+  const [recent, setRecent] = useState(() => loadStringSet(ORION_RECENT_KEY));
+  const [search, setSearch] = useState("");
+
+  const toggleFav = useCallback((id) => {
+    setFavorites((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev];
+      saveStringSet(ORION_FAVS_KEY, next);
+      return next;
+    });
+  }, []);
+
+  const handlePick = useCallback((tile) => {
+    setRecent((prev) => {
+      const next = [tile.id, ...prev.filter((x) => x !== tile.id)].slice(0, 6);
+      saveStringSet(ORION_RECENT_KEY, next);
+      return next;
+    });
+    onPick(tile.prompt);
+  }, [onPick]);
+
+  // Categories — group tiles by accent-bucket heuristically. The
+  // existing QUICK_TILES list is small enough that the labels below
+  // remain stable and meaningful.
+  const groups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = QUICK_TILES.filter((t) =>
+      !q || t.label.toLowerCase().includes(q) || t.prompt.toLowerCase().includes(q)
+    );
+    const byId = Object.fromEntries(filtered.map((t) => [t.id, t]));
+    const groups = [];
+    if (favorites.length) {
+      const items = favorites.map((id) => byId[id]).filter(Boolean);
+      if (items.length) groups.push({ key: "favorites", label: "Favorites", icon: Star, items });
+    }
+    if (recent.length) {
+      const items = recent.map((id) => byId[id]).filter(Boolean);
+      if (items.length) groups.push({ key: "recent", label: "Recently used", icon: RefreshCw, items });
+    }
+    groups.push({ key: "all", label: "All actions", icon: Zap, items: filtered });
+    return groups;
+  }, [favorites, recent, search]);
+
   return (
     <div className="orion-section" data-testid="orion-cc-actions">
       <SectionHeader title="Quick Action Center" subtitle="Tap a tile to send the matching command to Orion." />
-      <div className="orion-tile-grid">
-        {QUICK_TILES.map((t) => (
+      <div className="orion-quick-toolbar">
+        <div className="orion-quick-search">
+          <SearchIcon size={12} />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search quick actions…"
+            data-testid="orion-cc-quick-search"
+          />
+        </div>
+        {favorites.length > 0 && (
           <button
-            key={t.id}
             type="button"
-            onClick={() => onPick(t.prompt)}
-            className="orion-tile"
-            style={{ ["--tile-accent"]: t.accent }}
-            data-testid={`orion-cc-quick-${t.id}`}
+            className="or-btn-ghost text-xs"
+            onClick={() => { setFavorites([]); saveStringSet(ORION_FAVS_KEY, []); }}
+            data-testid="orion-cc-quick-clear-favs"
           >
-            <t.icon size={20} />
-            <span>{t.label}</span>
+            Clear favorites
           </button>
-        ))}
+        )}
       </div>
+      {groups.map((g) => (
+        <div key={g.key} className="orion-quick-group" data-testid={`orion-cc-quick-group-${g.key}`}>
+          <div className="orion-quick-group-label">
+            <g.icon size={12} /> <span>{g.label}</span>
+            <span className="orion-quick-group-count">{g.items.length}</span>
+          </div>
+          <div className="orion-tile-grid">
+            {g.items.length === 0 && (
+              <div className="orion-quick-empty">No matches.</div>
+            )}
+            {g.items.map((t) => {
+              const fav = favorites.includes(t.id);
+              return (
+                <div
+                  key={`${g.key}-${t.id}`}
+                  className="orion-tile orion-tile-with-pin"
+                  style={{ ["--tile-accent"]: t.accent }}
+                  data-testid={`orion-cc-quick-${t.id}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handlePick(t)}
+                    className="orion-tile-body"
+                    data-testid={`orion-cc-quick-${t.id}-launch`}
+                  >
+                    <t.icon size={20} />
+                    <span>{t.label}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleFav(t.id); }}
+                    className={`orion-tile-pin ${fav ? "orion-tile-pin-on" : ""}`}
+                    title={fav ? "Remove from favorites" : "Pin to favorites"}
+                    data-testid={`orion-cc-quick-${t.id}-pin`}
+                  >
+                    <Pin size={12} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -744,16 +852,84 @@ function ApprovalsPanel() {
 
 
 function SettingsPanel({ summary }) {
+  // Phase 3.7.4 — embed the live Health Dashboard inside Settings so
+  // the founder can scan every Orion subsystem without leaving the
+  // command center. Reuses the existing /api/admin/orion/health
+  // endpoint with the 30s cache (refresh button forces fresh=1).
+  const [health, setHealth] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async (fresh = false) => {
+    setLoading(true);
+    try {
+      const { data } = await apiClient.get("/admin/orion/health", { params: fresh ? { fresh: 1 } : {} });
+      setHealth(data);
+    } catch (e) {
+      setHealth({ ok: false, _err: e?.message || "unreachable", checks: [] });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => { load(false); }, [load]);
+
   return (
     <div className="orion-section" data-testid="orion-cc-settings">
-      <SectionHeader title="Settings" subtitle="Orion runtime state. All settings are read-only in Phase 3.7." />
+      <SectionHeader title="Settings & Health" subtitle="Orion runtime state plus the live subsystem health snapshot." />
       <div className="orion-stat-grid">
         <Stat label="Mode" value="Read-only" hue="#22D3EE" />
         <Stat label="Engine" value="orion-analytics" hue="#60A5FA" />
         <Stat label="Memory" value="Persistent" hue="#A78BFA" />
         <Stat label="Audit logging" value="Active" hue="#34D399" />
-        <Stat label="Avg response" value="~6 ms" hue="#F59E0B" />
-        <Stat label="Phase" value="3.7.1" hue="#FB7185" />
+        <Stat label="Provider" value={(health?.active_provider || "—").toUpperCase()} hue="#F59E0B" />
+        <Stat label="Phase" value="3.7.4" hue="#FB7185" />
+      </div>
+
+      <div className="flex items-center justify-between mt-6 mb-2">
+        <h3 className="text-sm font-bold" style={{ color: "var(--orion-fg)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+          Subsystem Health
+        </h3>
+        <button
+          type="button"
+          onClick={() => load(true)}
+          className="or-btn-ghost text-xs"
+          data-testid="orion-cc-health-refresh"
+          disabled={loading}
+        >
+          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+          <span className="ml-1">Refresh</span>
+        </button>
+      </div>
+
+      {health && (
+        <div className="text-[11px]" style={{ color: "var(--orion-muted)" }} data-testid="orion-cc-health-meta">
+          Overall: {health.ok ? "🟢 Healthy" : "🔴 Issues detected"}
+          {health.auto_healed ? " · 🟡 auto-healed this session" : ""}
+          {typeof health.age_s === "number" ? ` · checked ${health.age_s}s ago` : ""}
+          {health.cached ? " · (cached)" : ""}
+        </div>
+      )}
+
+      <div className="orion-health-grid" data-testid="orion-cc-health-grid">
+        {(health?.checks || []).map((c) => {
+          const accent = c.ok ? (health.auto_healed && c.name === "widget_registry" ? "#F59E0B" : "#22C55E") : "#EF4444";
+          const Pill = c.ok ? CheckCircle : XCircle;
+          return (
+            <div
+              key={c.name}
+              className="orion-health-row"
+              style={{ ["--health-accent"]: accent }}
+              data-testid={`orion-cc-health-${c.name}`}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="orion-health-row-name">{c.name.replace(/_/g, " ")}</div>
+                <div className="orion-health-row-detail">{c.detail}</div>
+              </div>
+              <span className="orion-health-pill"><Pill size={11} /> {c.ok ? "ok" : "fail"}</span>
+            </div>
+          );
+        })}
+        {!loading && (!health || (health.checks || []).length === 0) && (
+          <div className="orion-quick-empty">No health checks returned.</div>
+        )}
       </div>
     </div>
   );
@@ -1409,6 +1585,89 @@ function OrionStyles() {
         box-shadow: 0 0 32px color-mix(in srgb, var(--tile-accent) 20%, transparent);
       }
       .orion-tile svg { color: var(--tile-accent); }
+
+      /* Phase 3.7.4 — Quick Actions polish */
+      .orion-quick-toolbar {
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        margin-bottom: 14px;
+      }
+      .orion-quick-search {
+        flex: 1 1 220px; max-width: 360px;
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 12px;
+        background: var(--orion-glass);
+        border: 1px solid var(--orion-line);
+        border-radius: 999px;
+        color: var(--orion-muted);
+        transition: border 150ms ease;
+      }
+      .orion-quick-search:focus-within { border-color: var(--orion-cyan); }
+      .orion-quick-search input {
+        flex: 1; background: transparent; border: none; outline: none;
+        color: var(--orion-fg); font-size: 13px;
+      }
+      .orion-quick-search input::placeholder { color: var(--orion-muted); }
+      .orion-quick-group { margin-top: 10px; }
+      .orion-quick-group-label {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+        color: var(--orion-muted); margin: 14px 2px 8px;
+      }
+      .orion-quick-group-count {
+        margin-left: 4px;
+        font-size: 9px; padding: 2px 6px;
+        background: rgba(80,140,220,0.10);
+        border-radius: 999px;
+      }
+      .orion-quick-empty {
+        grid-column: 1 / -1;
+        padding: 14px; text-align: center;
+        color: var(--orion-muted); font-size: 12px;
+        background: var(--orion-glass); border: 1px dashed var(--orion-line);
+        border-radius: 12px;
+      }
+      .orion-tile-with-pin { position: relative; padding: 0; overflow: hidden; }
+      .orion-tile-body {
+        flex: 1; display: flex; align-items: center; gap: 10px;
+        padding: 14px; padding-right: 36px;
+        background: transparent; border: none; color: inherit;
+        text-align: left; font-weight: 600; cursor: pointer;
+      }
+      .orion-tile-pin {
+        position: absolute; top: 6px; right: 6px;
+        width: 24px; height: 24px;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(80,140,220,0.08);
+        border: 1px solid var(--orion-line);
+        border-radius: 8px;
+        color: var(--orion-muted);
+        opacity: 0; transition: opacity 150ms ease, color 150ms ease, background-color 150ms ease;
+        cursor: pointer;
+      }
+      .orion-tile:hover .orion-tile-pin { opacity: 1; }
+      .orion-tile-pin-on { opacity: 1; color: var(--tile-accent); background: color-mix(in srgb, var(--tile-accent) 14%, transparent); }
+      .orion-tile-pin:hover { color: var(--orion-cyan); }
+
+      /* Phase 3.7.4 — Health Dashboard rows */
+      .orion-health-grid { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+      @media (min-width: 720px) { .orion-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      .orion-health-row {
+        display: flex; align-items: center; gap: 10px;
+        padding: 12px 14px;
+        background: var(--orion-glass);
+        border: 1px solid var(--orion-line);
+        border-left: 3px solid var(--health-accent, var(--orion-line));
+        border-radius: 12px;
+      }
+      .orion-health-row-name { font-weight: 700; color: var(--orion-fg); text-transform: capitalize; }
+      .orion-health-row-detail { font-size: 12px; color: var(--orion-muted); margin-top: 2px; }
+      .orion-health-pill {
+        margin-left: auto;
+        font-size: 10px; padding: 3px 9px; border-radius: 999px;
+        letter-spacing: 0.12em; text-transform: uppercase; font-weight: 800;
+        background: color-mix(in srgb, var(--health-accent, #888) 18%, transparent);
+        color: var(--health-accent, #888);
+      }
 
       .orion-list-item {
         display: flex; align-items: center; gap: 10px;

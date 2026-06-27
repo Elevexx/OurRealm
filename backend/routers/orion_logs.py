@@ -2,6 +2,7 @@
 
 GET /api/admin/orion-logs/queries   — read orion_admin_query_logs
 GET /api/admin/orion-logs/actions   — read orion_action_logs
+GET /api/admin/orion-logs/{queries,actions}/export?fmt=csv  — CSV download (3.7.4)
 
 Both endpoints are gated to `_is_stealth(current)` (founder-only).
 Other admins do not have access in Phase 3.7 — the user spec
@@ -10,10 +11,13 @@ later". Filters (date range, user, tool, action_type, success,
 approval_status) are accepted as query params.
 """
 from __future__ import annotations
+import csv
+import io
 from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from core.db import db
 from core.deps import CurrentUser
@@ -131,3 +135,77 @@ async def orion_logs_summary(current: CurrentUser):
         "action_pending": a_pending,
         "action_approved": a_approved,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase 3.7.4 — CSV export
+#
+# Founder-only download endpoint that streams the same filtered rows as
+# the JSON endpoints in CSV form. Reuses `_build_filter` so search
+# behaviour is identical to the table view.
+# ─────────────────────────────────────────────────────────────────────
+QUERY_COLS = [
+    "timestamp", "username", "role", "detected_intent", "tool_called",
+    "success", "execution_time_ms", "question", "short_result_summary",
+]
+ACTION_COLS = [
+    "timestamp", "username", "role", "action_type", "tool_called",
+    "approval_status", "success", "execution_time_ms",
+    "prepared_draft", "confirmation_required", "result",
+    "requested_action", "short_result_summary",
+]
+
+
+def _csv_stream(rows, cols, filename):
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    writer.writeheader()
+    for r in rows:
+        writer.writerow({c: r.get(c, "") for c in cols})
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/queries/export")
+async def export_query_logs(
+    current: CurrentUser,
+    user: Optional[str] = None,
+    tool: Optional[str] = None,
+    intent: Optional[str] = None,
+    success: Optional[bool] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    limit: int = Query(5000, ge=1, le=20000),
+):
+    _require_founder(current)
+    q = _build_filter(user=user, tool=tool, success=success, intent=intent,
+                      approval_status=None, since=since, until=until)
+    cursor = db.orion_admin_query_logs.find(q, {"_id": 0}).sort("timestamp", -1).limit(limit)
+    rows = await cursor.to_list(limit)
+    fname = f"orion-queries-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.csv"
+    return _csv_stream(rows, QUERY_COLS, fname)
+
+
+@router.get("/actions/export")
+async def export_action_logs(
+    current: CurrentUser,
+    user: Optional[str] = None,
+    tool: Optional[str] = None,
+    action_type: Optional[str] = None,
+    success: Optional[bool] = None,
+    approval_status: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    limit: int = Query(5000, ge=1, le=20000),
+):
+    _require_founder(current)
+    q = _build_filter(user=user, tool=tool, success=success, intent=action_type,
+                      approval_status=approval_status, since=since, until=until)
+    cursor = db.orion_action_logs.find(q, {"_id": 0}).sort("timestamp", -1).limit(limit)
+    rows = await cursor.to_list(limit)
+    fname = f"orion-actions-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.csv"
+    return _csv_stream(rows, ACTION_COLS, fname)

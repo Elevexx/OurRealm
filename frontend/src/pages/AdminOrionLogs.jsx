@@ -12,7 +12,7 @@
  * We also gate at the component level to render a polite refusal.
  */
 import React, { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, RefreshCw, Search } from "lucide-react";
+import { Activity, AlertTriangle, Download, RefreshCw, Search } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -272,6 +272,45 @@ function FilterBar({ tab, filters, setFilters }) {
         data-testid="orion-logs-filter-reset"
       >
         <RefreshCw size={12} /> <span className="ml-1">Reset</span>
+      </button>
+      <button
+        type="button"
+        onClick={async () => {
+          // Phase 3.7.4 — CSV export. Uses the same filters as the
+          // current view so what you see is what you download.
+          const params = Object.fromEntries(
+            Object.entries(filters).filter(([, v]) => v !== "" && v !== null),
+          );
+          if (params.success === "true") params.success = true;
+          else if (params.success === "false") params.success = false;
+          const qs = new URLSearchParams(params).toString();
+          const path = `/admin/orion-logs/${tab}/export${qs ? `?${qs}` : ""}`;
+          try {
+            // apiClient is configured with the auth header; fetch via it
+            // and trigger a Blob download client-side.
+            const apiClient = (await import("@/api/client")).default;
+            const resp = await apiClient.get(path, { responseType: "blob" });
+            const blob = new Blob([resp.data], { type: "text/csv" });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `orion-${tab}-${new Date().toISOString().slice(0,10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+          } catch (e) {
+            // eslint-disable-next-line no-alert
+            window.alert("CSV export failed. Check console.");
+            // eslint-disable-next-line no-console
+            console.error("[OrionLogs] export failed:", e);
+          }
+        }}
+        className="or-btn-ghost text-sm"
+        data-testid="orion-logs-export-csv"
+        title="Download the filtered rows as CSV"
+      >
+        <Download size={12} /> <span className="ml-1">Export CSV</span>
       </button>
     </div>
   );

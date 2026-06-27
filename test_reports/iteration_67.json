@@ -1,0 +1,54 @@
+{
+  "summary": "Phase 3.7.4 — Orion Operations Center Polish & Reliability verified end-to-end on preview (https://realm-deploy.preview.emergentagent.com). Backend: 11/11 pytest pass (10-check health, 30s cache + ?fresh=1 bypass, founder-only RBAC 200/403/401, CSV export for queries + actions with correct headers and Content-Disposition, user filter, no spurious provider_switch rows). Cold-call health latency measured at ~50ms (well below 500ms budget). Frontend: Admin Hub pill renders 'WARNING' (amber) with title `Orion: Warning · provider=OPENAI · checked 0.1s ago` (correct — llm_provider passes, supabase fails as expected in preview, so amber not red). /admin/orion → Settings shows 10 color-coded health rows (orion-cc-health-{widget_registry,chat_config,llm_provider,sidebar_ids,dashboard_tiles,palette_entries,mongodb,r2_storage,supabase,backend_api}), refresh button issues GET /api/admin/orion/health?fresh=1. Quick Actions search filters tiles ('badge' → only Draft Badge), pin button toggles `orion-tile-pin-on` class, Favorites group renders, localStorage key `orion-cc-quick-favorites=[\"draft_badge\"]` persists across reload (pin-on retained, Favorites group still visible). Tile launch dispatches to Orion Chat (chat view active). CSV export downloads `orion-queries-2026-06-27.csv` from /admin/orion-logs. Cmd+K palette opens. No regressions to Phase 3.7.1-3.7.3.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_orion_phase374.py",
+    "/app/test_reports/pytest/iter67_orion_p374.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AdminOrion.jsx startup validation (line 211-228) logs `[Orion] backend health check failed: [supabase…]` on /admin/orion mount in preview because supabase env vars are intentionally missing — agent context note confirms this is expected. However, the review-request spec item #11 says the expected log line is `[Orion] backend health check ok (10 checks).` — this only fires when EVERY check passes. In preview this never fires; only a console.error with the supabase failure is logged. Functionally correct (graceful fallback, UI not blocked), but the spec wording is misleading. Suggest splitting the log: always log `ok (N checks, M failed=[...])` at info level, and demote the error to a warn so it doesn't pollute Sentry. Minor.",
+    "orion_health.py:_run_all_checks (line 191-208) has a slightly awkward optimization: when widget exists, the registry check is computed synchronously (line 201-204), but when missing it's appended to the coroutine list. This is correct but the `async_results[-1]` indexing depends on coroutine append order — currently safe since only mongo+registry are gather'd, but a future check addition could break it. Suggest using a named dict (gather names → results). Minor maintainability.",
+    "orion_logs.py CSV export uses `iter([buf.getvalue()])` (line 167) — this materializes the full CSV in memory before streaming. For limit=20000 this could be ~5MB. Fine for current scale but a true streaming writer (chunked DictWriter over the cursor) would be more memory-friendly for larger exports. Non-blocking.",
+    "AdminOrion.jsx Quick Actions search input has no clear button visible in the test (data-testid orion-cc-quick-clear-favs exists but not a search-clear). UX nit: typing then deleting works fine, but a (×) inside the search field would be cleaner. Cosmetic.",
+    "OrionStatusPill on AdminHub.jsx polls every 30s — that's aligned with the backend cache TTL, so each poll hits cache=true after the first founder visit. Smart. Recommend also surfacing the failing check name in the tooltip when status='Warning' (currently shows only 'provider=OPENAI · checked 0.1s ago' — adding 'failing=supabase' would let the founder know what's amber-warning without clicking through to Settings).",
+    "orion_health.py DASHBOARD_TILES IDs now match QUICK_TILES IDs (founder_briefing/investor/draft_badge/draft_widget/announcement/support_digest) — the iter66 inconsistency is RESOLVED. ✅"
+  ],
+  "updated_files": ["/app/backend/tests/test_orion_phase374.py"],
+  "success_rate": {"backend": "100% (11/11 pytest)", "frontend": "100% (pill / 10 health rows / refresh fresh=1 / search / pin / favorites / localStorage persistence / chat dispatch / CSV download / cmd+k all pass)"},
+  "test_credentials": "Founder stealth/Password1$ ; Support support/Password1$ (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 3.7.4 confirmed GREEN on preview. Note for future testers: AdminOrion sidebar nav data-testids are `orion-cc-nav-{id}` (NOT `orion-nav-{id}` as the review-request used). Health rows are `orion-cc-health-{check_name}` plus two container elements `orion-cc-health-meta` and `orion-cc-health-grid` (12 total query_selector matches, but only 10 are check rows). localStorage key for favorites is `orion-cc-quick-favorites` (JSON array of tile ids). Supabase failing in preview is expected → pill shows 'Warning' amber, NOT 'Provider Down'. The frontend startup validation's `[Orion] backend health check ok (10 checks).` log will only appear when supabase env vars are wired (i.e. on production); in preview it will instead log a console.error with the supabase failure detail — this is functionally correct.",
+  "checks_performed": {
+    "be_health_10_checks_with_correct_keys": "PASS (widget_registry, chat_config, llm_provider, sidebar_ids, dashboard_tiles, palette_entries, mongodb, r2_storage, supabase, backend_api)",
+    "be_health_top_level_keys_ok_auto_healed_active_provider_cached_age_s_founder": "PASS (active_provider=openai)",
+    "be_health_cold_call_under_500ms": "PASS (~50ms measured)",
+    "be_health_cache_30s_ttl_and_fresh1_bypass": "PASS (1st cached=false → 2nd cached=true → fresh=1 cached=false)",
+    "be_health_support_403_founder_only": "PASS",
+    "be_health_unauth_401": "PASS",
+    "be_csv_queries_export_text_csv_content_disposition_filename": "PASS (orion-queries-YYYYMMDD-HHMMSS.csv, 9-column header)",
+    "be_csv_actions_export_13_columns": "PASS",
+    "be_csv_export_user_filter": "PASS",
+    "be_csv_export_support_403": "PASS",
+    "be_provider_audit_no_provider_switch_on_healthy_path": "PASS (total=0)",
+    "fe_admin_hub_orion_pill_warning_amber_with_tooltip": "PASS (text='WARNING', title contains 'Orion:' + 'Warning' + 'provider=OPENAI')",
+    "fe_admin_orion_settings_10_health_rows_color_coded": "PASS (10 rows + refresh button + meta/grid containers)",
+    "fe_admin_orion_settings_refresh_triggers_fresh1": "PASS (network log shows /api/admin/orion/health?fresh=1)",
+    "fe_quick_actions_search_filters_to_badge_tile": "PASS (only orion-cc-quick-draft_badge-launch visible)",
+    "fe_quick_actions_pin_adds_pin-on_class": "PASS",
+    "fe_quick_actions_favorites_group_visible_after_pin": "PASS (orion-cc-quick-group-favorites)",
+    "fe_quick_actions_localStorage_persists_across_reload": "PASS (orion-cc-quick-favorites=[\"draft_badge\"], pin-on retained, Favorites group present)",
+    "fe_quick_actions_tile_launch_dispatches_to_chat": "PASS (chat view active after click)",
+    "fe_orion_logs_export_csv_button_downloads_file": "PASS (orion-queries-2026-06-27.csv)",
+    "fe_cmdk_palette_regression": "PASS (palette opens on Ctrl+K)",
+    "fe_health_log_line_on_mount": "EXPECTED-VARIANT — preview logs `console.error [Orion] backend health check failed: [{supabase fail}]` instead of the spec's `ok (10 checks)` line, because supabase env vars are intentionally absent. Functionally correct; will become 'ok (10 checks)' on prod where supabase is wired."
+  },
+  "rca of the issue": "No bugs. All Phase 3.7.4 features confirmed working on preview. The single 'failed health check' console error is the documented + expected behaviour for preview (supabase env vars missing) — the agent context note explicitly calls this out, and the pill correctly renders amber 'Warning' rather than red 'Provider Down' because llm_provider still passes. Backend cold-call latency is well within the 500ms budget (~50ms over the public preview URL). CSV export Content-Disposition uses backend filename format (orion-queries-YYYYMMDD-HHMMSS.csv); the browser saved as `orion-queries-2026-06-27.csv` indicating the frontend may also force a date-only filename via the blob save — either way, the spec requirement of `orion-queries-*.csv` is met."
+}
