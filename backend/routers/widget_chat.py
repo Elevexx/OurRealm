@@ -37,6 +37,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from core.db import db
 from core.deps import CurrentUser
+from core.widget_templates import get_template
 from services.provider_registry import is_enabled as provider_is_enabled
 from services.chat_conversations import (
     append_messages, build_context, call_openai_chat, clear_conversation,
@@ -47,6 +48,65 @@ from utils.sliding_window_rate_limit import rate_limit as sliding_rate_limit
 
 logger = logging.getLogger("ourrealm.widget_chat")
 router = APIRouter(prefix="/api/widgets/chat", tags=["widget-chat"])
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase 3.7.3 — Orion built-in widget fallback
+#
+# Production environments occasionally lack the `widget_registry` row
+# for the founder Orion chat widget (key=`stealth_ai_5a6`) because the
+# row was never seeded. Rather than 404 the entire founder chat
+# experience, we synthesize a virtual widget from `widget_templates`
+# whenever the canonical Orion keys are requested AND no DB row exists.
+# We also kick a one-shot idempotent upsert so the next call self-heals.
+# ─────────────────────────────────────────────────────────────────────
+
+ORION_WIDGET_KEYS = ("stealth_ai_5a6", "stealth_ai", "orion")
+
+
+def _synth_orion_widget(widget_id: str) -> Dict[str, Any]:
+    """Build an in-memory widget doc from the `stealth_ai` template so
+    chat works even when the registry row is missing."""
+    tpl = get_template("stealth_ai") or {}
+    return {
+        "id": widget_id,
+        "key": widget_id,
+        "status": "live",
+        "name": tpl.get("name") or "Orion (Founder)",
+        "editor_config": tpl.get("editor_config") or {},
+        "_synthetic": True,
+    }
+
+
+async def _heal_orion_registry(widget_id: str) -> None:
+    """Idempotently insert the canonical Orion widget if it's missing.
+    Safe to call repeatedly — uses $setOnInsert so a real seeded row is
+    never overwritten."""
+    try:
+        tpl = get_template("stealth_ai")
+        if not tpl:
+            return
+        await db.widget_registry.update_one(
+            {"key": widget_id},
+            {
+                "$setOnInsert": {
+                    "id": widget_id,
+                    "key": widget_id,
+                    "status": "live",
+                    "name": tpl.get("name") or "Orion (Founder)",
+                    "category_group": tpl.get("category_group") or "utility",
+                    "icon": tpl.get("icon") or "Sparkles",
+                    "description": tpl.get("description") or "",
+                    "editor_config": tpl.get("editor_config") or {},
+                    "founder_only": True,
+                    "auto_healed": True,
+                }
+            },
+            upsert=True,
+        )
+        logger.info("orion.heal: ensured widget_registry row key=%s", widget_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("orion.heal: failed to upsert Orion widget %s", widget_id)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -81,9 +141,21 @@ async def _load_widget(widget_id: str) -> Dict[str, Any]:
     # We accept either so old test/admin paths that pass the UUID still
     # work, while the new profile-render path can pass the key cleanly.
     widget = await db.widget_registry.find_one({"$or": [{"id": widget_id}, {"key": widget_id}]})
-    if not widget:
-        raise HTTPException(status_code=404, detail="Widget not found")
-    return widget
+    if widget:
+        return widget
+    # Phase 3.7.3 — Orion built-in fallback. If the registry row is
+    # missing for the canonical Orion keys (e.g. unseeded production
+    # DBs), synthesize a virtual widget from `widget_templates` so the
+    # founder can still chat. Kick a non-blocking idempotent heal so
+    # subsequent calls hit the real row.
+    if widget_id in ORION_WIDGET_KEYS:
+        logger.warning("orion.fallback: widget_registry missing for %s — using synthetic", widget_id)
+        try:
+            await _heal_orion_registry(widget_id)
+        except Exception:  # noqa: BLE001
+            pass
+        return _synth_orion_widget(widget_id)
+    raise HTTPException(status_code=404, detail="Widget not found")
 
 
 def _get_chat_config(widget: Dict[str, Any]) -> Dict[str, Any]:

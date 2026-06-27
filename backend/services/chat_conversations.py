@@ -165,50 +165,109 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
                            temperature: Optional[float] = None,
                            max_tokens: Optional[int] = None) -> Dict[str, Any]:
     """Call OpenAI Chat Completions with the full messages array.
-    Returns {content, model, usage, finish_reason}. Raises HTTPException
-    on upstream errors with sanitized detail."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="OpenAI is not configured on the server.")
+    Returns {content, model, usage, finish_reason}.
+
+    Phase 3.7.3 — graceful provider failure handling:
+      • Tries the configured `OPENAI_API_KEY` directly first.
+      • On 401/403/transport failure, falls back to the Emergent
+        Universal LLM Key (`EMERGENT_LLM_KEY`) via `emergentintegrations`
+        so prod stays online even when the OpenAI key is rotated/revoked.
+      • All upstream auth / connectivity failures collapse to a single
+        sanitized 503 with detail:
+            "Orion LLM provider is unavailable or misconfigured."
+        so the founder UI never sees raw OpenAI error shells or stalls
+        long enough for the reverse proxy to Cloudflare-502 the request.
+    """
     if not messages:
         raise HTTPException(status_code=400, detail="No messages to send.")
 
+    primary_key = os.environ.get("OPENAI_API_KEY")
+    fallback_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not primary_key and not fallback_key:
+        logger.error("Orion LLM call: no OPENAI_API_KEY and no EMERGENT_LLM_KEY configured.")
+        raise HTTPException(status_code=503, detail="Orion LLM provider is unavailable or misconfigured.")
+
+    chosen_model = model or DEFAULT_MODEL
     body: Dict[str, Any] = {
-        "model": model or DEFAULT_MODEL,
+        "model": chosen_model,
         "messages": messages,
         "temperature": float(temperature) if temperature is not None else DEFAULT_TEMPERATURE,
         "max_tokens": int(max_tokens) if max_tokens is not None else DEFAULT_MAX_TOKENS,
     }
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     url = "https://api.openai.com/v1/chat/completions"
 
-    try:
-        async with httpx.AsyncClient(timeout=OPENAI_TIMEOUT_SECONDS) as client:
-            resp = await client.post(url, headers=headers, json=body)
-    except httpx.HTTPError as e:
-        logger.exception("OpenAI HTTP transport error")
-        raise HTTPException(status_code=502, detail=f"OpenAI transport error: {e!s}")
+    # ── Attempt 1: direct OpenAI with our own key ─────────────────────
+    last_error: Optional[str] = None
+    if primary_key:
+        try:
+            async with httpx.AsyncClient(timeout=OPENAI_TIMEOUT_SECONDS) as client:
+                resp = await client.post(
+                    url,
+                    headers={"Authorization": f"Bearer {primary_key}", "Content-Type": "application/json"},
+                    json=body,
+                )
+            if resp.status_code == 429:
+                raise HTTPException(status_code=429, detail=f"OpenAI rate-limited: {resp.text[:200]}")
+            if resp.status_code in (401, 403):
+                logger.warning("Orion LLM openai rejected auth (%s) — trying Emergent fallback.",
+                               resp.status_code)
+                last_error = f"openai_{resp.status_code}"
+            elif resp.status_code >= 400:
+                logger.warning("Orion LLM openai returned %s: %s", resp.status_code, resp.text[:200])
+                last_error = f"openai_{resp.status_code}"
+            else:
+                try:
+                    data = resp.json()
+                    choice = (data.get("choices") or [{}])[0]
+                    msg = (choice.get("message") or {}).get("content") or ""
+                    return {
+                        "content": msg,
+                        "model": data.get("model"),
+                        "usage": data.get("usage") or {},
+                        "finish_reason": choice.get("finish_reason"),
+                        "provider": "openai",
+                    }
+                except Exception:  # noqa: BLE001
+                    logger.warning("Orion LLM openai returned non-JSON")
+                    last_error = "openai_non_json"
+        except HTTPException:
+            raise
+        except httpx.HTTPError as e:
+            logger.warning("Orion LLM openai transport error: %s", e)
+            last_error = "openai_transport"
 
-    if resp.status_code >= 400:
-        snippet = resp.text[:400]
-        # Forward 429 verbatim so client can back off; collapse other
-        # 4xx/5xx to 502 to avoid leaking provider error shapes.
-        code = resp.status_code if resp.status_code in (429, 503, 504) else 502
-        raise HTTPException(status_code=code, detail=f"OpenAI {resp.status_code}: {snippet}")
+    # ── Attempt 2: Emergent universal key via emergentintegrations ────
+    if fallback_key:
+        try:
+            from emergentintegrations.llm.chat import LlmChat, UserMessage  # local import — optional dep
+            system_text = ""
+            user_turns: List[str] = []
+            for m in messages:
+                if m.get("role") == "system":
+                    system_text += (m.get("content") or "") + "\n"
+                else:
+                    role = m.get("role") or "user"
+                    user_turns.append(f"[{role}]\n{m.get('content') or ''}")
+            combined = "\n\n".join(user_turns) or (messages[-1].get("content") or "")
+            chat = LlmChat(
+                api_key=fallback_key,
+                session_id=f"orion-fallback-{abs(hash(combined)) % 10_000_000}",
+                system_message=system_text.strip() or "You are Orion, the founder assistant for OurRealm.",
+            ).with_model("openai", "gpt-4o-mini")
+            reply = await chat.send_message(UserMessage(text=combined))
+            return {
+                "content": reply if isinstance(reply, str) else str(reply),
+                "model": "gpt-4o-mini",
+                "usage": {},
+                "finish_reason": "stop",
+                "provider": "emergent",
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Orion LLM emergent fallback failed: %s", e)
+            last_error = f"emergent:{e!s}"[:200]
 
-    try:
-        data = resp.json()
-    except Exception:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail="OpenAI returned non-JSON response.")
-
-    choice = (data.get("choices") or [{}])[0]
-    msg = (choice.get("message") or {}).get("content") or ""
-    return {
-        "content": msg,
-        "model": data.get("model"),
-        "usage": data.get("usage") or {},
-        "finish_reason": choice.get("finish_reason"),
-    }
+    logger.error("Orion LLM: all providers failed (last=%s).", last_error)
+    raise HTTPException(status_code=503, detail="Orion LLM provider is unavailable or misconfigured.")
 
 
 # ─────────────────────────────────────────────────────────────────────

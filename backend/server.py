@@ -48,6 +48,7 @@ from routers import home_widgets as home_widgets_router_mod
 from routers import api_widgets as api_widgets_router_mod
 from routers import widget_chat as widget_chat_router_mod
 from routers import orion_logs as orion_logs_router_mod
+from routers import orion_health as orion_health_router_mod
 from routers import media_proxy as media_proxy_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
@@ -100,6 +101,7 @@ app.include_router(home_widgets_router_mod.router)
 app.include_router(api_widgets_router_mod.router)
 app.include_router(widget_chat_router_mod.router)
 app.include_router(orion_logs_router_mod.router)
+app.include_router(orion_health_router_mod.router)
 app.include_router(media_proxy_router_mod.router)
 
 app.add_middleware(
@@ -238,6 +240,21 @@ async def on_startup():
         await admin_widgets_router_mod.seed_system_widgets()
     except Exception as e:
         logger.warning(f"[admin_widgets] startup failed: {e}")
+
+    # Phase 3.7.3 — Idempotent Orion founder widget heal. Production
+    # environments that never ran the admin "launch" flow lack the
+    # `stealth_ai_5a6` row in widget_registry, which made every Orion
+    # chat call return 404 "Widget not found". This call upserts the
+    # row from the widget_templates blueprint so the founder chat works
+    # immediately on any fresh DB. Uses $setOnInsert so a real seeded
+    # row is never overwritten.
+    try:
+        from routers.widget_chat import _heal_orion_registry, ORION_WIDGET_KEYS
+        for key in ("stealth_ai_5a6",):  # canonical founder key
+            await _heal_orion_registry(key)
+        logger.info("[orion] startup heal ok — canonical founder widget present.")
+    except Exception as e:
+        logger.warning(f"[orion] startup heal failed: {e}")
 
     # Phase 3 — API Widget proxy. Ensures TTL indexes for the
     # api_cache and api_quota collections so cache/rate-limit docs

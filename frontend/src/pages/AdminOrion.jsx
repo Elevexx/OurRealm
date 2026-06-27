@@ -160,6 +160,74 @@ export default function AdminOrion() {
       .catch(() => setSummary(null));
   }, [isFounder]);
 
+  // Phase 3.7.3 — startup validation. Logs descriptive console errors
+  // if any sidebar id / dashboard tile / palette entry references an
+  // unregistered section or has a missing prompt. Catches stale IDs
+  // immediately instead of surfacing as a generic "widget not found".
+  useEffect(() => {
+    if (!isFounder) return;
+    const REGISTERED_HANDLERS = new Set([
+      "dashboard", "chat", "briefing", "actions", "reports", "alerts",
+      "approvals", "support", "moderation", "realms", "widgets", "badges",
+      "settings",
+    ]);
+    const SOON_OK = new Set(["workflows", "tasks", "automations"]);
+    const missingSections = NAV_SECTIONS
+      .filter((s) => !s.soon && !REGISTERED_HANDLERS.has(s.id))
+      .map((s) => s.id);
+    if (missingSections.length) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[Orion] startup validation: NAV_SECTIONS contains unregistered ids → " +
+        JSON.stringify(missingSections) +
+        ". Add a handler in SectionRouter or mark them `soon: true`.",
+      );
+    }
+    const soonsWithoutFlag = NAV_SECTIONS
+      .filter((s) => SOON_OK.has(s.id) && !s.soon)
+      .map((s) => s.id);
+    if (soonsWithoutFlag.length) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[Orion] startup validation: sections " + JSON.stringify(soonsWithoutFlag) +
+        " are coming-soon but not flagged.",
+      );
+    }
+    const tilesMissingPrompt = QUICK_TILES.filter((t) => !t.prompt || !t.id).map((t) => t.id || t.label);
+    if (tilesMissingPrompt.length) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[Orion] startup validation: QUICK_TILES missing prompt or id → " +
+        JSON.stringify(tilesMissingPrompt),
+      );
+    }
+    const emptyGroups = PROMPT_LIBRARY.filter((g) => !g.prompts || g.prompts.length === 0).map((g) => g.group);
+    if (emptyGroups.length) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[Orion] startup validation: empty PROMPT_LIBRARY groups → " + JSON.stringify(emptyGroups),
+      );
+    }
+    // Server-side health probe — surfaces missing widget_registry row,
+    // missing LLM keys, etc. Failure is logged but does not block the UI.
+    apiClient
+      .get("/admin/orion/health")
+      .then((r) => {
+        const failed = (r.data?.checks || []).filter((c) => !c.ok);
+        if (failed.length) {
+          // eslint-disable-next-line no-console
+          console.error("[Orion] backend health check failed:", failed);
+        } else {
+          // eslint-disable-next-line no-console
+          console.info("[Orion] backend health check ok (" + (r.data?.checks?.length || 0) + " checks).");
+        }
+      })
+      .catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn("[Orion] backend health endpoint unreachable:", err?.message || err);
+      });
+  }, [isFounder]);
+
   if (!isFounder) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4" data-testid="orion-cc-refused">
