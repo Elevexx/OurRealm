@@ -22,6 +22,7 @@
  * same `username==='stealth'` check used by Phase 3.7.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import {
   Activity, AlertTriangle, Award, BarChart3, Bell, Bot, BookOpen, Calendar,
@@ -817,40 +818,277 @@ function SimplePromptList({ title, intros, onPrompt }) {
 }
 
 
+// Phase 3.7.5 — Approval UX polish helpers
+//
+// Maps backend action_type strings to a (label, icon, accent) triple
+// so each approval row gets a meaningful badge + colored left rail.
+const APPROVAL_KIND = {
+  draft_badge:        { label: "Badge",        Icon: Award,        accent: "#FBBF24" },
+  draft_widget:       { label: "Widget",       Icon: Layers,       accent: "#22D3EE" },
+  draft_announcement: { label: "Announcement", Icon: Bell,         accent: "#F59E0B" },
+  draft_support:      { label: "Support reply", Icon: LifeBuoy,    accent: "#34D399" },
+  draft_moderation:   { label: "Moderation",   Icon: Shield,       accent: "#FB7185" },
+  provider_switch:    { label: "Provider",     Icon: RefreshCw,    accent: "#A78BFA" },
+  provider_failure:   { label: "Provider",     Icon: AlertTriangle, accent: "#EF4444" },
+};
+function _kindFor(actionType) {
+  return APPROVAL_KIND[actionType] || { label: actionType || "Draft", Icon: FileText, accent: "#94A3B8" };
+}
+function _relativeTime(ts) {
+  if (!ts) return "—";
+  try {
+    const d = new Date(ts);
+    const diff = (Date.now() - d.getTime()) / 1000;
+    if (diff < 60)        return `${Math.round(diff)}s ago`;
+    if (diff < 3600)      return `${Math.round(diff / 60)}m ago`;
+    if (diff < 86_400)    return `${Math.round(diff / 3600)}h ago`;
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  } catch { return "—"; }
+}
+function _draftTitle(row) {
+  const txt = (row.requested_action || row.short_result_summary || "").trim();
+  if (!txt) return `Untitled ${_kindFor(row.action_type).label}`;
+  return txt.length > 64 ? txt.slice(0, 64) + "…" : txt;
+}
+
 function ApprovalsPanel() {
   const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(true);
-  useEffect(() => {
+  const [active, setActive] = useState(null);
+
+  const load = useCallback(() => {
+    setBusy(true);
     apiClient.get("/admin/orion-logs/actions?approval_status=pending&limit=50")
       .then((r) => setRows(r.data?.rows || []))
       .catch(() => {})
       .finally(() => setBusy(false));
   }, []);
+  useEffect(() => { load(); }, [load]);
+
   return (
     <div className="orion-section" data-testid="orion-cc-approvals">
-      <SectionHeader title="Approvals" subtitle="Drafts awaiting explicit confirmation. Phase 3.7 is draft-only — confirmation just logs intent." />
-      {busy && <div className="orion-skel"><Loader2 size={14} className="animate-spin" /></div>}
-      {!busy && rows.length === 0 && (
-        <div className="orion-empty">No pending drafts right now.</div>
-      )}
-      <div className="space-y-2">
-        {rows.map((r, i) => (
-          <div key={i} className="orion-approval-row">
-            <div className="flex-1 min-w-0">
-              <div className="text-[10px] uppercase tracking-widest" style={{ color: "var(--orion-muted)" }}>
-                {r.action_type}
-              </div>
-              <div className="text-sm font-semibold truncate" style={{ color: "var(--orion-fg)" }}>
-                @{r.username} · {(r.requested_action || "").slice(0, 80)}…
-              </div>
-              <div className="text-[11px] font-mono mt-0.5" style={{ color: "var(--orion-muted)" }}>
-                {r.short_result_summary}
-              </div>
-            </div>
-            <span className="orion-pill" style={{ color: "#F59E0B" }}>{r.approval_status}</span>
-          </div>
-        ))}
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader
+          title="Pending Approvals"
+          subtitle="Drafts awaiting explicit confirmation. Phase 3.7 is draft-only — live approval & publishing arrives in Phase 3.8."
+        />
+        <button
+          type="button"
+          onClick={load}
+          className="or-btn-ghost text-xs shrink-0"
+          data-testid="orion-cc-approvals-refresh"
+          disabled={busy}
+        >
+          <RefreshCw size={12} className={busy ? "animate-spin" : ""} />
+          <span className="ml-1">Refresh</span>
+        </button>
       </div>
+
+      {busy && (
+        <div className="orion-skel" data-testid="orion-cc-approvals-loading">
+          <Loader2 size={14} className="animate-spin" />
+          <span className="ml-2">Loading pending drafts…</span>
+        </div>
+      )}
+      {!busy && rows.length === 0 && (
+        <div className="orion-empty" data-testid="orion-cc-approvals-empty">
+          <CheckCircle size={14} style={{ display: "inline-block", marginRight: 6, verticalAlign: "-2px", color: "#34D399" }} />
+          No pending drafts right now. Orion is idle.
+        </div>
+      )}
+
+      <div className="orion-approval-grid">
+        {rows.map((r, i) => {
+          const kind = _kindFor(r.action_type);
+          return (
+            <button
+              type="button"
+              key={`${r.timestamp}-${i}`}
+              onClick={() => setActive(r)}
+              className="orion-approval-card"
+              style={{ ["--ap-accent"]: kind.accent }}
+              data-testid={`orion-cc-approval-row-${i}`}
+            >
+              <div className="orion-approval-icon">
+                <kind.Icon size={18} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="orion-approval-meta">
+                  <span className="orion-approval-kind">{kind.label}</span>
+                  <span className="orion-approval-dot">•</span>
+                  <span className="orion-approval-author">Generated by Orion</span>
+                  <span className="orion-approval-dot">•</span>
+                  <span className="orion-approval-time">{_relativeTime(r.timestamp)}</span>
+                </div>
+                <div className="orion-approval-title" data-testid={`orion-cc-approval-title-${i}`}>
+                  {_draftTitle(r)}
+                </div>
+                {r.short_result_summary && (
+                  <div className="orion-approval-summary">{r.short_result_summary}</div>
+                )}
+              </div>
+              <div className="orion-approval-status">
+                <span className="orion-status-pill orion-status-pending" data-testid={`orion-cc-approval-status-${i}`}>
+                  Pending
+                </span>
+                <span className="orion-status-pill orion-status-draft">Draft Only</span>
+              </div>
+              <ChevronRight size={16} className="orion-approval-chev" />
+            </button>
+          );
+        })}
+      </div>
+
+      {active && (
+        <ApprovalDetailsModal
+          row={active}
+          onClose={() => setActive(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ApprovalDetailsModal({ row, onClose }) {
+  const kind = _kindFor(row.action_type);
+  const created = (() => {
+    try { return new Date(row.timestamp).toLocaleString(); }
+    catch { return row.timestamp || "—"; }
+  })();
+
+  // Esc to close
+  useEffect(() => {
+    const fn = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", fn);
+    return () => document.removeEventListener("keydown", fn);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="orion-modal-scrim"
+      onClick={onClose}
+      data-testid="orion-cc-approval-modal-scrim"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Approval details: ${kind.label}`}
+        className="orion-modal"
+        style={{ ["--ap-accent"]: kind.accent }}
+        onClick={(e) => e.stopPropagation()}
+        data-testid="orion-cc-approval-modal"
+      >
+        <div className="orion-modal-head">
+          <div className="orion-modal-head-icon"><kind.Icon size={18} /></div>
+          <div className="flex-1 min-w-0">
+            <div className="orion-approval-meta">
+              <span className="orion-approval-kind">{kind.label}</span>
+              <span className="orion-approval-dot">•</span>
+              <span className="orion-approval-author">Generated by Orion</span>
+              <span className="orion-approval-dot">•</span>
+              <span className="orion-approval-time">{created}</span>
+            </div>
+            <h3 className="orion-modal-title">{_draftTitle(row)}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="orion-modal-close"
+            aria-label="Close"
+            data-testid="orion-cc-approval-modal-close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="orion-modal-body">
+          {/* Read-only preview */}
+          <SectionLabel>Draft Preview</SectionLabel>
+          <div className="orion-modal-preview" data-testid="orion-cc-approval-modal-preview">
+            {row.requested_action
+              ? <BasicMarkdown text={row.requested_action} />
+              : <span className="orion-empty">No preview content captured for this draft.</span>}
+          </div>
+
+          {/* Configuration / properties */}
+          <SectionLabel className="mt-5">Properties</SectionLabel>
+          <dl className="orion-modal-kv" data-testid="orion-cc-approval-modal-props">
+            <Kv k="Type"     v={kind.label} />
+            <Kv k="Tool"     v={row.tool_called || "—"} />
+            <Kv k="Created"  v={created} />
+            <Kv k="Status"   v={row.approval_status || "pending"} pillColor="#F59E0B" />
+            <Kv k="Confirmation required" v={row.confirmation_required ? "Yes" : "No"} />
+            <Kv k="Prepared draft"        v={row.prepared_draft ? "Yes" : "No"} />
+            <Kv k="Result"   v={row.result || "draft_only"} />
+            <Kv k="Latency"  v={`${row.execution_time_ms ?? 0} ms`} />
+          </dl>
+
+          {/* Orion summary */}
+          {row.short_result_summary && (
+            <>
+              <SectionLabel className="mt-5">Orion summary</SectionLabel>
+              <div className="orion-modal-summary">{row.short_result_summary}</div>
+            </>
+          )}
+
+          {/* Draft-only notice */}
+          <div className="orion-modal-notice" data-testid="orion-cc-approval-modal-notice">
+            <AlertTriangle size={14} />
+            <span>
+              This draft is awaiting execution. Live approval and publishing
+              will be available in Phase 3.8.
+            </span>
+          </div>
+        </div>
+
+        <div className="orion-modal-actions" data-testid="orion-cc-approval-modal-actions">
+          {[
+            { id: "edit",    label: "Edit",    Icon: FileText },
+            { id: "approve", label: "Approve", Icon: CheckCircle },
+            { id: "decline", label: "Decline", Icon: XCircle },
+            { id: "delete",  label: "Delete",  Icon: X },
+          ].map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              disabled
+              aria-disabled="true"
+              className={`orion-modal-action orion-modal-action-${b.id}`}
+              title="Available in Phase 3.8"
+              data-testid={`orion-cc-approval-action-${b.id}`}
+            >
+              <b.Icon size={13} />
+              <span>{b.label}</span>
+              <span className="orion-modal-action-tag">Phase 3.8</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function SectionLabel({ children, className = "" }) {
+  return (
+    <div
+      className={`text-[10px] uppercase tracking-widest font-bold ${className}`}
+      style={{ color: "var(--orion-muted)", marginBottom: 6 }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Kv({ k, v, pillColor }) {
+  return (
+    <div className="orion-modal-kv-row">
+      <dt>{k}</dt>
+      <dd>
+        {pillColor ? (
+          <span className="orion-status-pill" style={{ background: `${pillColor}22`, color: pillColor }}>{v}</span>
+        ) : v}
+      </dd>
     </div>
   );
 }
@@ -1825,6 +2063,212 @@ function OrionStyles() {
         display: flex; align-items: center; gap: 10px;
         padding: 10px 12px; border-radius: 12px;
         background: var(--orion-bg-2); border: 1px solid var(--orion-line);
+      }
+
+      /* Phase 3.7.5 — Pending Approvals polish */
+      .orion-approval-grid {
+        display: grid; gap: 10px; margin-top: 14px;
+        grid-template-columns: 1fr;
+      }
+      @media (min-width: 880px) {
+        .orion-approval-grid { grid-template-columns: 1fr 1fr; }
+      }
+      .orion-approval-card {
+        display: grid;
+        grid-template-columns: 44px 1fr auto 16px;
+        align-items: center;
+        gap: 12px;
+        padding: 14px;
+        text-align: left;
+        background: var(--orion-glass);
+        border: 1px solid var(--orion-line);
+        border-left: 3px solid var(--ap-accent);
+        border-radius: 14px;
+        color: var(--orion-fg);
+        cursor: pointer;
+        transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+      }
+      .orion-approval-card:hover {
+        transform: translateY(-1px);
+        background: rgba(80, 140, 220, 0.04);
+        border-color: color-mix(in srgb, var(--ap-accent) 50%, var(--orion-line));
+        box-shadow: 0 6px 30px color-mix(in srgb, var(--ap-accent) 16%, transparent);
+      }
+      .orion-approval-card:focus-visible { outline: 2px solid var(--ap-accent); outline-offset: 2px; }
+      .orion-approval-icon {
+        width: 44px; height: 44px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--ap-accent) 14%, transparent);
+        color: var(--ap-accent);
+        border: 1px solid color-mix(in srgb, var(--ap-accent) 35%, var(--orion-line));
+      }
+      .orion-approval-meta {
+        display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+        color: var(--orion-muted);
+      }
+      .orion-approval-kind { color: var(--ap-accent); font-weight: 800; }
+      .orion-approval-dot { opacity: 0.5; }
+      .orion-approval-author { color: var(--orion-muted); }
+      .orion-approval-time { color: var(--orion-muted); }
+      .orion-approval-title {
+        font-size: 14px; font-weight: 700; color: var(--orion-fg);
+        margin-top: 4px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .orion-approval-summary {
+        font-size: 11px; color: var(--orion-muted); margin-top: 2px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .orion-approval-status { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+      .orion-approval-chev { color: var(--orion-muted); }
+
+      .orion-status-pill {
+        font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+        padding: 3px 9px; border-radius: 999px; font-weight: 800; white-space: nowrap;
+      }
+      .orion-status-pending { background: rgba(245, 158, 11, 0.16); color: #F59E0B; }
+      .orion-status-draft   { background: rgba(148, 163, 184, 0.16); color: #94A3B8; }
+
+      /* Approval details modal */
+      .orion-modal-scrim {
+        position: fixed; inset: 0; z-index: 220;
+        background: rgba(3, 6, 18, 0.74);
+        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+        display: flex; align-items: flex-start; justify-content: center;
+        padding: 4vh 16px; overflow-y: auto;
+        animation: orionPaletteFade 0.16s ease-out;
+      }
+      .orion-modal {
+        width: min(720px, 100%);
+        background: linear-gradient(180deg, rgba(15,23,42,0.96), rgba(10,14,31,0.96));
+        border: 1px solid var(--orion-line);
+        border-top: 3px solid var(--ap-accent);
+        border-radius: 16px;
+        box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 0 1px color-mix(in srgb, var(--ap-accent) 18%, transparent);
+        overflow: hidden;
+        animation: orionPaletteSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .orion-modal-head {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 18px 18px 12px;
+        border-bottom: 1px solid var(--orion-line);
+        background: rgba(0,0,0,0.18);
+      }
+      .orion-modal-head-icon {
+        width: 38px; height: 38px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--ap-accent) 14%, transparent);
+        color: var(--ap-accent);
+        border: 1px solid color-mix(in srgb, var(--ap-accent) 35%, var(--orion-line));
+        flex-shrink: 0;
+      }
+      .orion-modal-title {
+        font-size: 18px; font-weight: 800;
+        color: var(--orion-fg);
+        margin-top: 4px;
+        font-family: var(--font-display, inherit);
+      }
+      .orion-modal-close {
+        flex-shrink: 0;
+        width: 32px; height: 32px;
+        display: flex; align-items: center; justify-content: center;
+        background: transparent;
+        border: 1px solid var(--orion-line);
+        border-radius: 10px;
+        color: var(--orion-muted);
+        cursor: pointer;
+        transition: color 150ms ease, background-color 150ms ease;
+      }
+      .orion-modal-close:hover { color: var(--orion-fg); background: rgba(255,255,255,0.06); }
+      .orion-modal-body {
+        padding: 16px 18px 4px;
+        max-height: 60vh; overflow-y: auto;
+      }
+      .orion-modal-body::-webkit-scrollbar { width: 6px; }
+      .orion-modal-body::-webkit-scrollbar-thumb { background: rgba(80,140,220,0.25); border-radius: 4px; }
+      .orion-modal-preview {
+        padding: 12px 14px;
+        background: var(--orion-glass);
+        border: 1px solid var(--orion-line);
+        border-radius: 10px;
+        font-size: 13px; line-height: 1.55;
+        color: var(--orion-fg);
+        max-height: 280px; overflow-y: auto;
+        white-space: pre-wrap;
+      }
+      .orion-modal-kv {
+        display: grid; gap: 6px;
+        grid-template-columns: 1fr;
+        background: var(--orion-glass);
+        border: 1px solid var(--orion-line);
+        border-radius: 10px;
+        padding: 10px 14px;
+      }
+      @media (min-width: 600px) { .orion-modal-kv { grid-template-columns: 1fr 1fr; } }
+      .orion-modal-kv-row {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; font-size: 12px; padding: 4px 0;
+      }
+      .orion-modal-kv-row dt {
+        color: var(--orion-muted);
+        text-transform: uppercase; letter-spacing: 0.10em; font-size: 10px; font-weight: 700;
+      }
+      .orion-modal-kv-row dd { color: var(--orion-fg); font-weight: 600; }
+      .orion-modal-summary {
+        padding: 10px 14px;
+        background: var(--orion-glass);
+        border: 1px solid var(--orion-line);
+        border-radius: 10px;
+        font-size: 12px; color: var(--orion-fg);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .orion-modal-notice {
+        display: flex; align-items: flex-start; gap: 8px;
+        margin: 18px 0 8px;
+        padding: 12px 14px;
+        background: rgba(245, 158, 11, 0.08);
+        border: 1px dashed rgba(245, 158, 11, 0.45);
+        border-radius: 10px;
+        color: #F59E0B;
+        font-size: 12px; line-height: 1.5;
+      }
+      .orion-modal-notice svg { flex-shrink: 0; margin-top: 1px; }
+      .orion-modal-actions {
+        display: flex; flex-wrap: wrap; gap: 8px;
+        padding: 12px 18px 18px;
+        border-top: 1px solid var(--orion-line);
+        background: rgba(0,0,0,0.18);
+      }
+      .orion-modal-action {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 8px 12px;
+        background: var(--orion-glass);
+        border: 1px solid var(--orion-line);
+        border-radius: 999px;
+        color: var(--orion-muted);
+        font-size: 12px; font-weight: 700;
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+      .orion-modal-action[disabled]:hover { background: var(--orion-glass); }
+      .orion-modal-action-tag {
+        margin-left: 4px;
+        font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+        padding: 2px 6px; border-radius: 999px;
+        background: rgba(96, 165, 250, 0.16); color: #93C5FD;
+      }
+      .orion-modal-action-approve { color: #34D399; }
+      .orion-modal-action-decline { color: #FB7185; }
+      .orion-modal-action-delete  { color: #EF4444; }
+      @media (max-width: 520px) {
+        .orion-approval-card { grid-template-columns: 40px 1fr 12px; }
+        .orion-approval-status { display: none; }
+        .orion-modal-head { flex-wrap: wrap; }
+        .orion-modal-actions { padding: 12px; }
       }
 
       .orion-scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 50; }
