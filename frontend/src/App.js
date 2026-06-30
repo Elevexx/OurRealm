@@ -49,6 +49,11 @@ import MiniPlayer from "@/components/MiniPlayer";
 import InstallPrompt from "@/components/InstallPrompt";
 import RestoreAccountPrompt from "@/components/RestoreAccountPrompt";
 
+// Phase: Portals 1.0 — Rainforest Realm AR foundation.
+import PortalsHub from "@/pages/PortalsHub";
+import PortalAR   from "@/pages/PortalAR";
+import PortalVR   from "@/pages/PortalVR";
+
 function ShellRoute({ children }) {
   const { isLoading } = useAuth();
   if (isLoading) {
@@ -131,6 +136,15 @@ function App() {
             <Route path="/safety" element={<SafetyPolicyPage />} />
             <Route path="/cookies" element={<CookieNoticePage />} />
             <Route path="/account-deletion" element={<AccountDeletionPage />} />
+
+            {/* Portals 1.0 — Rainforest Realm AR foundation.
+                AR/VR pages render fullscreen (no Layout) so the camera
+                feed and HUD can use the entire viewport including the
+                iOS safe-area inset. */}
+            <Route path="/portals" element={<ShellRoute><PortalsHub /></ShellRoute>} />
+            <Route path="/realms/portals/ar" element={<PortalAR />} />
+            <Route path="/realms/portals/vr" element={<PortalVR />} />
+
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           </RestoreGate>

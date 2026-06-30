@@ -1,5 +1,46 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Portals 1.0 — Rainforest Realm AR Foundation (Mar 1, 2026) ✅ COMPLETE
+
+**Frontend-only, mobile-first. Lightweight build (4 new files, 1 modified). Verified via smoke-test on iPhone-size viewport (390×844).**
+
+### Routes shipped
+- `GET /portals` — **Portals Hub**. Neon-green "Step Through Reality" page driven dynamically by `/src/config/portals.js`. Featured Rainforest AR card + Coming-Soon VR card. Renders inside ShellRoute (Layout chrome preserved).
+- `GET /realms/portals/ar` — **Rainforest Realm AR**. Fullscreen `getUserMedia({facingMode:'environment'})` camera passthrough + layered CSS/SVG jungle holograms. Renders **outside** ShellRoute so the camera + HUD use the entire viewport (incl. iOS safe-area insets).
+- `GET /realms/portals/vr` — **VR Coming Soon** placeholder with the same Portals aesthetic (purple variant). Back-to-Portals link.
+
+### Rainforest AR experience
+- **Camera lifecycle** — explicit permission gate ("Allow Camera & Enter" CTA), live state machine (`idle / requesting / live / denied / unavailable`), friendly denied-state with iOS/Android specific instructions, automatic cleanup on unmount (every track `.stop()`-ed).
+- **Layered overlays**:
+  - Canopy SVG + radial leaf gradient at the top (opacity scales with phone tilt via `deviceorientation.beta`).
+  - 3 animated light rays through the canopy (CSS keyframe flicker).
+  - Mist veil + up to 12 fireflies (low-quality mode dims to 0).
+  - Left + right vertical tree trunks with leaf clusters (SVG silhouettes).
+  - Ground silhouettes + flowing river (dual-layer 90deg gradient + repeating water lines, GPU-friendly `background-position` animation).
+- **Looping creatures** (all CSS-keyframe loops, GPU-friendly transforms only):
+  - **Caiman** 🐊 swimming back and forth in the river (14s loop, mirrors direction).
+  - **Jaguar** 🐆 pacing along the riverbank (11s loop, mirrors direction).
+  - **Macaws + Toucans** 🦜🐦 flying across with depth-fake scale + opacity changes (3–5 birds).
+  - **Monkeys** 🐒 climbing the left + right tree trunks toward the canopy (10–12s loop).
+  - **Frog** 🐸 hopping in place near the ground.
+- **HUD controls** — Rainforest Realm label (with live pulse dot), Ambient toggle, Creatures toggle, Quality (Balanced / Low), Exit Portal button → `/portals`.
+- **Performance** — `prefers-reduced-motion` respected, Low-quality mode cuts particle count + creature counts, animations limited to `transform/opacity` (no layout thrash), no external assets, no 3D models.
+
+### Future-ready architecture
+`/src/config/portals.js` ships a typed registry: `{ portalId, realmId, realmName, theme, route, status, supportedModes, overlayLayers, creatures, ambientEffects, performanceProfile, futureHooks }`. Adding a second realm = 1 entry. `futureHooks` lists the stubs for WebXR / Unity bridge / spatial mapping / multiplayer / persistence so Phase 1.1+ can flip them on without a route refactor.
+
+### Compatibility & regressions
+- Zero changes to existing routes / backend. `/`, `/signin`, `/admin`, `/admin/orion`, `/realms` all still 200.
+- No backend endpoints added.
+- All Phase 3.7.x Orion work untouched.
+
+### Known limitations (intentional, per credit cap)
+- Camera-live overlay can only be visually verified on a real device — Playwright headless has no camera hardware.
+- iOS Safari requires a user gesture for `DeviceOrientationEvent.requestPermission()`; we trigger it inside the same click that requests camera so most users get both at once. If the user dismisses motion, the canopy still renders at its baseline 45% opacity.
+- Only the Rainforest Realm is live in Phase 1.0 — additional realms / Unity bridge / multiplayer reserved for future phases.
+
+---
+
 ## Phase 3.7.5 — Orion Approval UX Polish (Mar 1, 2026) ✅ COMPLETE
 
 **Frontend-only UI polish. Verified via testing_agent_v3_fork iter_68 → 100% (21/21 checks + 3 regression). Zero bugs, zero backend changes.**
