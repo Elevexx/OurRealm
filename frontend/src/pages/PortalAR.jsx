@@ -56,6 +56,7 @@ export default function PortalAR() {
   //   plane_mapping_active         — a live WebXR session is producing plane data (reserved for Phase 1.1+).
   //   fallback_no_plane_detection  — WebXR or immersive-ar unsupported; we render the preview overlay and label it as such.
   const [rendererMode, setRendererMode] = useState("preview_overlay");
+  const [previewCardDismissed, setPreviewCardDismissed] = useState(false);
 
   // Detect WebXR immersive-ar capability on mount. We DO NOT auto-launch a
   // session — the actual plane-anchored renderer lands in a later phase.
@@ -284,16 +285,24 @@ export default function PortalAR() {
           <span>{PORTAL?.realmName || "Rainforest Realm"}</span>
           {camState === "live" && <span className="par-hud-dot" />}
         </div>
-        {/* Phase 1.0.2 — Honest render-mode badge. Tells the user
-            exactly what they're looking at: a screen-space preview
-            overlay vs a true plane-mapped AR session. */}
-        {camState === "live" && (
-          <div className="par-hud-mode" data-testid="portal-ar-mode-badge"
-               title="Phase 1.0 ships screen-space preview only. True room mapping (floor / wall / ceiling anchors) requires ARKit/WebXR support which Phase 1.1+ will enable.">
-            {rendererMode === "plane_mapping_active" && (<><span className="par-mode-dot par-mode-dot-ok" />Plane Mapping Active</>)}
-            {rendererMode === "webxr_supported"      && (<><span className="par-mode-dot par-mode-dot-warn" />WebXR Ready · Preview Mode</>)}
-            {rendererMode === "preview_overlay"      && (<><span className="par-mode-dot par-mode-dot-warn" />Preview Overlay Mode</>)}
-            {rendererMode === "fallback_no_plane_detection" && (<><span className="par-mode-dot par-mode-dot-warn" />Preview Overlay · No ARKit</>)}
+        {/* Phase 1.0.3 — Dismissible Immersive Preview card replaces the
+            permanent amber badge. Shown once per session, can be closed. */}
+        {camState === "live" && !previewCardDismissed && rendererMode !== "plane_mapping_active" && (
+          <div className="par-preview-card" data-testid="portal-ar-preview-card">
+            <div className="par-preview-card-head">
+              <Sparkles size={12} />
+              <span>Immersive Preview Mode</span>
+              <button
+                type="button"
+                onClick={() => setPreviewCardDismissed(true)}
+                className="par-preview-card-close"
+                aria-label="Dismiss"
+                data-testid="portal-ar-preview-card-close"
+              >✕</button>
+            </div>
+            <p className="par-preview-card-body">
+              You&apos;re viewing a cinematic preview of this Realm. True room mapping will become available on supported AR platforms in a future Portals release.
+            </p>
           </div>
         )}
         <button
@@ -472,36 +481,52 @@ function RainforestOverlay({ ambient, creatures, perf, tiltUp, onMount, onUnmoun
     <div
       className="par-overlay par-overlay-preview"
       aria-hidden="true"
-      style={{
-        // Subtle tilt-reactive parallax even in preview mode — not claiming room mapping.
-        transform: `translate3d(0, ${(-tiltUp * 10).toFixed(1)}px, 0)`,
-      }}
+      /* Phase 1.0.3 — Per-layer parallax. We DO NOT translate the master
+         overlay anymore. Each child layer gets its own tilt multiplier
+         so the user perceives real depth through differential motion. */
     >
       {/* Phase 1.0.2 — Honest "Preview Overlay" mode. We DO NOT pretend to
           map walls/floor/ceiling. Instead we render a clean screen-space
-          jungle frame on top of the camera: a soft top fade for the
-          canopy zone, edge vines along the sides, a floor mist + river
-          along the lower band, and creatures. Real plane mapping is
+          jungle frame on top of the camera. Real plane mapping is
           gated behind WebXR/ARKit (Phase 1.1+). */}
 
-      {/* Soft canopy fade — top of frame only, no fake leaf circles. */}
-      <div className="par-layer par-canopy" style={{ opacity: 0.5 + tiltUp * 0.3 }} data-testid="portal-ar-canopy">
+      {/* Soft canopy fade — top of frame only. Minimal parallax (0.15x). */}
+      <div
+        className="par-layer par-canopy"
+        style={{
+          opacity: 0.46 + tiltUp * 0.24,
+          transform: `translate3d(0, ${(tiltUp * -3).toFixed(1)}px, 0)`,
+        }}
+        data-testid="portal-ar-canopy"
+      >
         <CanopySvg />
       </div>
 
-      {/* Hanging vines along the top edges */}
-      <div className="par-layer par-vines" data-testid="portal-ar-vines">
+      {/* Hanging vines — slow parallax (0.3x). */}
+      <div
+        className="par-layer par-vines"
+        style={{ transform: `translate3d(0, ${(tiltUp * -5).toFixed(1)}px, 0)` }}
+        data-testid="portal-ar-vines"
+      >
         <HangingVinesSvg />
       </div>
 
-      {/* Edge vines along the LEFT + RIGHT borders — replaces the wall-wash
-          fake mapping with a clean vignette of foliage at the sides. */}
+      {/* Edge vines — left + right border vignettes (no parallax). */}
       <div className="par-layer par-edge-vines par-edge-vines-left"  data-testid="portal-ar-wall-left"  />
       <div className="par-layer par-edge-vines par-edge-vines-right" data-testid="portal-ar-wall-right" />
 
-      {/* Light rays through canopy */}
+      {/* Volumetric god rays — additive blend, soft cinematic feel. */}
       {ambient && (
-        <div className="par-layer par-rays" data-testid="portal-ar-rays">
+        <div className="par-layer par-godrays" data-testid="portal-ar-godrays" aria-hidden="true" />
+      )}
+
+      {/* Light rays through canopy — slow parallax (0.4x). */}
+      {ambient && (
+        <div
+          className="par-layer par-rays"
+          style={{ transform: `translate3d(0, ${(tiltUp * -7).toFixed(1)}px, 0)` }}
+          data-testid="portal-ar-rays"
+        >
           <div className="par-ray par-ray-1" />
           <div className="par-ray par-ray-2" />
           <div className="par-ray par-ray-3" />
@@ -533,21 +558,62 @@ function RainforestOverlay({ ambient, creatures, perf, tiltUp, onMount, onUnmoun
         </div>
       )}
 
-      {/* ── Side trees + ferns on left/right ───────────────────── */}
-      <div className="par-layer par-trees" data-testid="portal-ar-trees">
+      {/* ── Side trees — slow parallax (0.5x), wider opacity range. */}
+      <div
+        className="par-layer par-trees"
+        style={{ transform: `translate3d(0, ${(tiltUp * -8).toFixed(1)}px, 0)` }}
+        data-testid="portal-ar-trees"
+      >
         <TreesSvg />
       </div>
 
-      {/* ── Floor jungle + river ───────────────────────────────── */}
-      <div className="par-layer par-ground" data-testid="portal-ar-ground">
+      {/* ── Floor jungle + river — medium parallax (0.7x). */}
+      <div
+        className="par-layer par-ground"
+        style={{ transform: `translate3d(0, ${(tiltUp * 10).toFixed(1)}px, 0)` }}
+        data-testid="portal-ar-ground"
+      >
         <GroundSvg />
         <div className="par-river" data-testid="portal-ar-river">
           <div className="par-river-bed" />
           <div className="par-river-flow par-river-flow-1" />
           <div className="par-river-flow par-river-flow-2" />
           <div className="par-river-ripples" />
+          <div className="par-river-foam par-river-foam-1" />
+          <div className="par-river-foam par-river-foam-2" />
         </div>
       </div>
+
+      {/* ── Foreground fringe — broad tropical leaves at the bottom corners.
+            Highest parallax (1.2x) so the eye reads them as the closest
+            layer to camera. */}
+      {!perf.low && (
+        <div
+          className="par-layer par-fringe"
+          style={{ transform: `translate3d(0, ${(tiltUp * 14).toFixed(1)}px, 0)` }}
+          data-testid="portal-ar-fringe"
+        >
+          <ForegroundFringeSvg />
+        </div>
+      )}
+
+      {/* ── Floating dust / pollen — independent CSS drift. */}
+      {ambient && !perf.low && (
+        <div className="par-layer par-dust" data-testid="portal-ar-dust">
+          {Array.from({ length: 14 }, (_, i) => (
+            <span
+              key={`dust-${i}`}
+              className="par-dust-mote"
+              style={{
+                left:  `${(i * 41 + 5) % 100}%`,
+                top:   `${(i * 23 + 15) % 80}%`,
+                animationDuration: `${6 + (i % 5)}s`,
+                animationDelay: `${(i % 6) * 0.5}s`,
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* ── Drifting leaves particles ──────────────────────────── */}
       {ambient && (
@@ -716,6 +782,49 @@ function MidFoliageSvg() {
         ))}
       </g>
     </svg>
+  );
+}
+
+function ForegroundFringeSvg() {
+  // Phase 1.0.3 — broad tropical leaf silhouettes that fringe the bottom
+  // corners. Highest parallax layer so it reads as closest to camera.
+  // Renders as two SVGs anchored to bottom-left and bottom-right.
+  return (
+    <>
+      <svg viewBox="0 0 400 280" preserveAspectRatio="xMinYMax slice" className="par-svg-fringe par-svg-fringe-left">
+        <defs>
+          <linearGradient id="ff-l" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%"  stopColor="#0a3a22" stopOpacity="0" />
+            <stop offset="60%" stopColor="#0a3a22" stopOpacity="0.85" />
+            <stop offset="100%" stopColor="#020e08" stopOpacity="0.95" />
+          </linearGradient>
+        </defs>
+        {/* Broad tropical leaves curving up from the bottom-left */}
+        <path d="M-20 280 Q60 120 160 60 Q200 80 220 140 Q190 200 120 240 Q60 270 -20 280 Z" fill="url(#ff-l)" />
+        <path d="M-20 280 Q40 200 140 180 Q180 200 200 240 Q120 270 -20 280 Z" fill="#052e1e" opacity="0.85" />
+        {/* Leaf vein lines */}
+        <path d="M-10 280 Q60 180 160 80" stroke="#0a3a22" strokeWidth="1.4" fill="none" opacity="0.7" />
+        <path d="M-10 280 Q40 220 130 190" stroke="#14532D" strokeWidth="1.2" fill="none" opacity="0.7" />
+        {/* Tiny accent bromeliad */}
+        <ellipse cx="40" cy="240" rx="14" ry="6" fill="#22C55E" opacity="0.85" />
+        <ellipse cx="40" cy="234" rx="9" ry="5" fill="#86EFAC" opacity="0.7" />
+      </svg>
+      <svg viewBox="0 0 400 280" preserveAspectRatio="xMaxYMax slice" className="par-svg-fringe par-svg-fringe-right">
+        <defs>
+          <linearGradient id="ff-r" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%"  stopColor="#0a3a22" stopOpacity="0" />
+            <stop offset="60%" stopColor="#0a3a22" stopOpacity="0.85" />
+            <stop offset="100%" stopColor="#020e08" stopOpacity="0.95" />
+          </linearGradient>
+        </defs>
+        <path d="M420 280 Q340 120 240 60 Q200 80 180 140 Q210 200 280 240 Q340 270 420 280 Z" fill="url(#ff-r)" />
+        <path d="M420 280 Q360 200 260 180 Q220 200 200 240 Q280 270 420 280 Z" fill="#052e1e" opacity="0.85" />
+        <path d="M410 280 Q340 180 240 80" stroke="#0a3a22" strokeWidth="1.4" fill="none" opacity="0.7" />
+        <path d="M410 280 Q360 220 270 190" stroke="#14532D" strokeWidth="1.2" fill="none" opacity="0.7" />
+        <ellipse cx="360" cy="240" rx="14" ry="6" fill="#FB7185" opacity="0.85" />
+        <ellipse cx="360" cy="234" rx="9" ry="5" fill="#FECDD3" opacity="0.7" />
+      </svg>
+    </>
   );
 }
 
@@ -1014,8 +1123,7 @@ function PortalARStyles() {
          honest screen-space elements: top fade, edge vines, light rays,
          floor mist, river, creatures. */
 
-      /* Edge vines — gentle vertical foliage gradient hugging left + right
-         borders. Pure CSS, no shapes claiming to be mapped to walls. */
+      /* Edge vines — softer/cooler (lower alpha so the room shows through) */
       .par-edge-vines {
         position: absolute; top: 0; bottom: 0;
         width: 22%;
@@ -1025,14 +1133,118 @@ function PortalARStyles() {
       .par-edge-vines-left {
         left: 0;
         background:
-          radial-gradient(120% 60% at 0% 50%, rgba(20,83,45,0.55), transparent 65%),
-          linear-gradient(90deg, rgba(20,83,45,0.45), transparent 100%);
+          radial-gradient(120% 60% at 0% 50%, rgba(10,58,34,0.42), transparent 65%),
+          linear-gradient(90deg, rgba(10,58,34,0.32), transparent 100%);
       }
       .par-edge-vines-right {
         right: 0;
         background:
-          radial-gradient(120% 60% at 100% 50%, rgba(20,83,45,0.55), transparent 65%),
-          linear-gradient(270deg, rgba(20,83,45,0.45), transparent 100%);
+          radial-gradient(120% 60% at 100% 50%, rgba(10,58,34,0.42), transparent 65%),
+          linear-gradient(270deg, rgba(10,58,34,0.32), transparent 100%);
+      }
+
+      /* Volumetric god rays — cinematic warm light filtering through canopy */
+      .par-godrays {
+        z-index: 7;
+        mix-blend-mode: screen;
+        pointer-events: none;
+        background:
+          radial-gradient(620px 700px at 30% -10%, rgba(255,236,179,0.16), transparent 60%),
+          radial-gradient(440px 600px at 75% -15%, rgba(255,200,128,0.12), transparent 65%),
+          radial-gradient(360px 500px at 50%   5%, rgba(255,250,205,0.10), transparent 60%);
+        animation: godrays-breath 12s ease-in-out infinite alternate;
+      }
+      @keyframes godrays-breath {
+        from { opacity: 0.7; transform: translate3d(0,0,0); }
+        to   { opacity: 1;   transform: translate3d(6px, 4px, 0); }
+      }
+
+      /* Foreground fringe — broad tropical leaves at the bottom corners */
+      .par-fringe { z-index: 13; pointer-events: none; }
+      .par-svg-fringe {
+        position: absolute;
+        bottom: 110px;       /* sit ABOVE the HUD */
+        width: 42%;
+        height: 36vh; max-height: 280px;
+      }
+      .par-svg-fringe-left  { left: 0; }
+      .par-svg-fringe-right { right: 0; }
+
+      /* Dust / pollen motes — independent drift */
+      .par-dust { z-index: 9; pointer-events: none; }
+      .par-dust-mote {
+        position: absolute;
+        width: 3px; height: 3px; border-radius: 999px;
+        background: rgba(255,253,224,0.6);
+        box-shadow: 0 0 4px rgba(255,253,224,0.5);
+        animation-name: dust-drift;
+        animation-iteration-count: infinite;
+        animation-timing-function: linear;
+        opacity: 0.7;
+      }
+      @keyframes dust-drift {
+        0%   { transform: translate3d(0, 0, 0); opacity: 0.2; }
+        50%  { transform: translate3d(30px, -20px, 0); opacity: 0.8; }
+        100% { transform: translate3d(-20px, 20px, 0); opacity: 0.2; }
+      }
+
+      /* River foam — soft white wisps drifting on the surface */
+      .par-river-foam {
+        position: absolute; inset: 0;
+        background:
+          radial-gradient(90px 6px at 25% 30%, rgba(255,255,255,0.45), transparent 70%),
+          radial-gradient(120px 7px at 60% 65%, rgba(255,255,255,0.35), transparent 70%),
+          radial-gradient(70px 5px  at 88% 40%, rgba(255,255,255,0.40), transparent 70%);
+        mix-blend-mode: screen;
+        animation: river-flow 11s linear infinite;
+      }
+      .par-river-foam-2 {
+        opacity: 0.6;
+        transform: translateY(14px);
+        animation: river-flow 7s linear infinite reverse;
+      }
+
+      /* Phase 1.0.3 — Immersive Preview card */
+      .par-preview-card {
+        position: absolute;
+        top: max(60px, calc(env(safe-area-inset-top) + 50px));
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(420px, 90vw);
+        padding: 12px 14px 12px 14px;
+        background:
+          linear-gradient(180deg, rgba(15,32,24,0.92), rgba(8,18,14,0.92));
+        border: 1px solid rgba(134,239,172,0.32);
+        border-radius: 14px;
+        color: #ECFDF5;
+        box-shadow: 0 18px 50px rgba(0,0,0,0.55);
+        backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+        z-index: 75;
+        pointer-events: auto;
+        animation: card-in 320ms cubic-bezier(0.16,1,0.3,1);
+      }
+      @keyframes card-in {
+        from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+      }
+      .par-preview-card-head {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 800;
+        color: #86EFAC;
+      }
+      .par-preview-card-close {
+        margin-left: auto;
+        width: 24px; height: 24px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(134,239,172,0.20);
+        border-radius: 8px;
+        color: #BBF7D0;
+        cursor: pointer; font-size: 12px;
+      }
+      .par-preview-card-close:hover { background: rgba(255,255,255,0.12); }
+      .par-preview-card-body {
+        margin: 8px 0 0; font-size: 12.5px; line-height: 1.5;
+        color: #BBF7D0;
       }
 
       /* Canopy / sky — shorter so the user's actual room stays visible below. */
