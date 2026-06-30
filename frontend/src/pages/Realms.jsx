@@ -123,6 +123,14 @@ export default function Realms() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            className="or-chip"
+            onClick={() => navigate("/portals")}
+            data-testid="realms-portals-button"
+            title="Open Portals (AR/VR realms)"
+          >
+            <Compass size={14} /> Portals
+          </button>
           <button className="or-chip lg:hidden" onClick={() => setDrawerOpen(true)} data-testid="realms-mobile-menu"><Menu size={14} /> Menu</button>
           <button className="or-btn" onClick={() => setCreateOpen(true)} data-testid="realms-create-button"><Plus size={14} /> Create Realm</button>
         </div>
