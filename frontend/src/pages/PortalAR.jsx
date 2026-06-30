@@ -14,10 +14,19 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom";
 import {
   Camera, CameraOff, Compass, LogOut, Leaf, Bird, Sparkles, Zap,
+  Bug,
 } from "lucide-react";
 import { getPortalByRoute } from "../config/portals";
 
 const PORTAL = getPortalByRoute("/realms/portals/ar");
+
+// Phase: Portals 1.0 debug helper. Verbose console.info traces tagged with
+// `[PortalAR]` so the entire scene lifecycle can be traced from the browser
+// devtools when the user reports "no rainforest content".
+const log = (...args) => {
+  // eslint-disable-next-line no-console
+  console.info("[PortalAR]", ...args);
+};
 
 export default function PortalAR() {
   const navigate = useNavigate();
@@ -32,6 +41,27 @@ export default function PortalAR() {
   const [reducedMotion, setReducedMotion] = useState(false);
   const [tiltUp, setTiltUp]     = useState(0); // 0..1 normalized "looking up" intensity
 
+  // Phase 1.0 debug HUD state. The rainforest scene is built entirely from
+  // inline SVG + CSS + emoji glyphs — there are no external assets — so the
+  // "asset failure" channel exists primarily for future expansion. We still
+  // track render readiness for the debug overlay.
+  const [showDebug, setShowDebug] = useState(true);
+  const [assetErrors, setAssetErrors] = useState([]);
+  const [overlayMounted, setOverlayMounted] = useState(false);
+  const [videoReady, setVideoReady] = useState({ w: 0, h: 0, readyState: 0 });
+
+  // ── Mount-time trace ─────────────────────────────────────────────
+  useEffect(() => {
+    log("scene mounted", {
+      route: "/realms/portals/ar",
+      portalId: PORTAL?.portalId,
+      hasMediaDevices: typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia,
+      isSecureContext: typeof window !== "undefined" ? window.isSecureContext : null,
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+    });
+    return () => log("scene unmounted");
+  }, []);
+
   // ── Reduced-motion preference ────────────────────────────────────
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -44,9 +74,11 @@ export default function PortalAR() {
 
   // ── Camera lifecycle ─────────────────────────────────────────────
   const startCamera = useCallback(async () => {
+    log("startCamera() called");
     setCamState("requesting");
     setErrMsg("");
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      log("startCamera: mediaDevices.getUserMedia missing");
       setCamState("unavailable");
       setErrMsg("Camera API unavailable in this browser.");
       return;
@@ -62,15 +94,32 @@ export default function PortalAR() {
         },
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const track = stream.getVideoTracks()[0];
+      log("startCamera: stream acquired", {
+        trackLabel: track?.label,
+        trackSettings: track?.getSettings?.() || null,
+      });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        const onLoaded = () => {
+          const v = videoRef.current;
+          if (!v) return;
+          setVideoReady({ w: v.videoWidth, h: v.videoHeight, readyState: v.readyState });
+          log("video metadata loaded", { w: v.videoWidth, h: v.videoHeight, readyState: v.readyState });
+        };
+        videoRef.current.addEventListener("loadedmetadata", onLoaded, { once: true });
         // Safari requires explicit play() after metadata loads.
-        try { await videoRef.current.play(); } catch { /* will retry via user gesture */ }
+        try { await videoRef.current.play(); log("video.play() resolved"); }
+        catch (e) {
+          log("video.play() rejected (autoplay policy)", e?.name, e?.message);
+        }
       }
       setCamState("live");
+      log("camState → live");
     } catch (err) {
       const name = err?.name || "";
+      log("startCamera: getUserMedia threw", name, err?.message);
       if (name === "NotAllowedError" || name === "PermissionDeniedError") {
         setCamState("denied");
         setErrMsg("Camera permission was denied.");
@@ -85,6 +134,7 @@ export default function PortalAR() {
   }, []);
 
   const stopCamera = useCallback(() => {
+    log("stopCamera() called");
     try {
       streamRef.current?.getTracks?.().forEach((t) => t.stop());
     } catch { /* swallow */ }
@@ -160,6 +210,12 @@ export default function PortalAR() {
           creatures={creatures}
           perf={perf}
           tiltUp={tiltUp}
+          onMount={() => { setOverlayMounted(true); log("RainforestOverlay mounted"); }}
+          onUnmount={() => { setOverlayMounted(false); log("RainforestOverlay unmounted"); }}
+          onAssetError={(url, err) => {
+            log("ASSET ERROR", url, err);
+            setAssetErrors((prev) => prev.includes(url) ? prev : [...prev, url]);
+          }}
         />
       )}
 
@@ -205,6 +261,36 @@ export default function PortalAR() {
           />
           <QualityToggle value={quality} onChange={setQuality} />
         </footer>
+      )}
+
+      {/* Phase 1.0 — Debug HUD. Surfaces camera/render/scene state so the
+          founder can immediately tell what's happening on a real device.
+          Tap the bug icon in the top HUD to toggle. */}
+      {showDebug && (
+        <DebugHUD
+          camState={camState}
+          videoReady={videoReady}
+          overlayMounted={overlayMounted}
+          assetErrors={assetErrors}
+          tiltUp={tiltUp}
+          perf={perf}
+          creaturesEnabled={creatures}
+          ambientEnabled={ambient}
+          quality={quality}
+          reducedMotion={reducedMotion}
+          onClose={() => setShowDebug(false)}
+        />
+      )}
+      {!showDebug && (
+        <button
+          type="button"
+          className="par-debug-fab"
+          onClick={() => setShowDebug(true)}
+          data-testid="portal-ar-debug-open"
+          aria-label="Open debug overlay"
+        >
+          <Bug size={14} />
+        </button>
       )}
     </div>
   );
@@ -306,7 +392,12 @@ function QualityToggle({ value, onChange }) {
 // Rainforest overlay — pure CSS/SVG layers + emoji creatures.
 // Renders many <span> elements but each is GPU-cheap (transform/opacity).
 // ─────────────────────────────────────────────────────────────────────
-function RainforestOverlay({ ambient, creatures, perf, tiltUp }) {
+function RainforestOverlay({ ambient, creatures, perf, tiltUp, onMount, onUnmount }) {
+  useEffect(() => {
+    onMount?.();
+    return () => onUnmount?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Canopy intensity grows when the phone tilts up.
   const canopyOpacity = 0.45 + tiltUp * 0.45;
 
@@ -484,6 +575,74 @@ function GroundSvg() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Phase 1.0 — Temporary debug HUD. Read-only diagnostic for the founder
+// to verify camera + render + scene state on real devices. Toggle via the
+// floating bug icon. Designed to be removed (or gated behind ?debug=1)
+// once the scene is stable.
+// ─────────────────────────────────────────────────────────────────────
+function DebugHUD({
+  camState, videoReady, overlayMounted, assetErrors,
+  tiltUp, perf, creaturesEnabled, ambientEnabled, quality, reducedMotion,
+  onClose,
+}) {
+  // Active creature count = caiman(1) + jaguar(1) + birds(perf.birdCount)
+  //                      + monkeys(perf.monkeyCount) + frog(1).
+  const creatureTotal = creaturesEnabled
+    ? (1 + 1 + perf.birdCount + perf.monkeyCount + 1)
+    : 0;
+  // Asset registry — Portals 1.0 ships ZERO external assets (all SVG/CSS/emoji),
+  // so "assets loaded" is structural: 8 overlay layers + N creatures.
+  const layersDeclared = 8; // sky/canopy + rays + mist + trees + ground + river + creatures (when on)
+  const layersLoaded   = overlayMounted ? layersDeclared : 0;
+
+  const renderer = camState === "live"
+    ? (overlayMounted ? "active" : "video-only")
+    : "idle";
+
+  return (
+    <div className="par-debug" data-testid="portal-ar-debug">
+      <div className="par-debug-head">
+        <span className="par-debug-title"><Bug size={11} /> Debug HUD · Portals 1.0</span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="par-debug-close"
+          aria-label="Close debug overlay"
+          data-testid="portal-ar-debug-close"
+        >✕</button>
+      </div>
+      <DebugRow k="Cam state"      v={camState} testId="portal-ar-debug-cam" />
+      <DebugRow k="Renderer"       v={renderer} testId="portal-ar-debug-renderer" />
+      <DebugRow k="Video"          v={`${videoReady.w}×${videoReady.h} · rs=${videoReady.readyState}`} testId="portal-ar-debug-video" />
+      <DebugRow k="Overlay"        v={overlayMounted ? "mounted" : "not mounted"} testId="portal-ar-debug-overlay" />
+      <DebugRow k="Assets loaded"  v={`${layersLoaded} / ${layersDeclared} layers`} testId="portal-ar-debug-assets" />
+      <DebugRow k="Active creatures" v={creatureTotal} testId="portal-ar-debug-creatures" />
+      <DebugRow k="Tilt up"        v={`${(tiltUp * 100).toFixed(0)}%`} testId="portal-ar-debug-tilt" />
+      <DebugRow k="Quality"        v={`${quality}${reducedMotion ? " · reduced-motion" : ""}`} testId="portal-ar-debug-quality" />
+      <DebugRow k="Toggles"        v={`ambient=${ambientEnabled?"on":"off"} · creatures=${creaturesEnabled?"on":"off"}`} testId="portal-ar-debug-toggles" />
+      {assetErrors.length > 0 ? (
+        <>
+          <div className="par-debug-fail-head">Failed asset URLs ({assetErrors.length})</div>
+          {assetErrors.map((u) => (
+            <div className="par-debug-fail" key={u} data-testid="portal-ar-debug-fail">{u}</div>
+          ))}
+        </>
+      ) : (
+        <DebugRow k="Failed assets" v="0 (no external assets)" testId="portal-ar-debug-fails" />
+      )}
+    </div>
+  );
+}
+function DebugRow({ k, v, testId }) {
+  return (
+    <div className="par-debug-row">
+      <span className="par-debug-k">{k}</span>
+      <span className="par-debug-v" data-testid={testId}>{String(v)}</span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Styles
 // ─────────────────────────────────────────────────────────────────────
 function PortalARStyles() {
@@ -503,15 +662,17 @@ function PortalARStyles() {
         width: 100%; height: 100%;
         object-fit: cover;
         background: #000;
+        z-index: 1;
       }
       .par-video-fallback {
         position: absolute; inset: 0;
+        z-index: 1;
         background:
           radial-gradient(700px 500px at 20% 20%, #064e3b 0%, #021410 60%, #000 100%);
       }
 
-      /* Overlay master */
-      .par-overlay { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: normal; }
+      /* Overlay master — explicit z-index above video, below HUD/permission. */
+      .par-overlay { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: normal; z-index: 10; }
       .par-layer   { position: absolute; inset: 0; }
 
       /* Canopy / sky */
@@ -823,6 +984,69 @@ function PortalARStyles() {
       .par-gate-back {
         display: block; margin-top: 14px;
         color: #BBF7D0; font-size: 12px; text-decoration: underline;
+      }
+
+      /* Phase 1.0 debug HUD */
+      .par-debug {
+        position: fixed;
+        top: max(64px, env(safe-area-inset-top));
+        right: 10px;
+        z-index: 90;
+        width: min(280px, 86vw);
+        padding: 10px 12px;
+        background: rgba(0,0,0,0.78);
+        border: 1px solid rgba(134,239,172,0.40);
+        border-radius: 12px;
+        color: #ECFDF5;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px; line-height: 1.55;
+        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      }
+      .par-debug-head {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 6px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid rgba(134,239,172,0.20);
+      }
+      .par-debug-title {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 800;
+        color: #86EFAC;
+      }
+      .par-debug-close {
+        width: 22px; height: 22px;
+        background: transparent;
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 6px;
+        color: #BBF7D0;
+        cursor: pointer;
+        font-size: 11px;
+      }
+      .par-debug-row {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      }
+      .par-debug-k { color: rgba(187,247,208,0.65); }
+      .par-debug-v { color: #ECFDF5; text-align: right; word-break: break-all; }
+      .par-debug-fail-head {
+        margin-top: 6px; padding-top: 6px;
+        border-top: 1px dashed rgba(252,165,165,0.40);
+        font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 800;
+        color: #FCA5A5;
+      }
+      .par-debug-fail { color: #FECACA; font-size: 10px; word-break: break-all; }
+      .par-debug-fab {
+        position: fixed;
+        top: max(64px, env(safe-area-inset-top));
+        right: 10px;
+        z-index: 90;
+        width: 32px; height: 32px;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(0,0,0,0.7);
+        border: 1px solid rgba(134,239,172,0.35);
+        border-radius: 999px;
+        color: #BBF7D0;
+        cursor: pointer;
       }
     `}</style>
   );
