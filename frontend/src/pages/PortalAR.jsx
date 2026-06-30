@@ -50,6 +50,53 @@ export default function PortalAR() {
   const [overlayMounted, setOverlayMounted] = useState(false);
   const [videoReady, setVideoReady] = useState({ w: 0, h: 0, readyState: 0 });
 
+  // Phase 1.0.2 — Renderer mode state machine.
+  //   preview_overlay              — screen-space SVG/CSS overlay on the camera feed (the only mode iPhone Safari can do in 2026).
+  //   webxr_supported              — navigator.xr.isSessionSupported('immersive-ar') resolved true; session not yet started.
+  //   plane_mapping_active         — a live WebXR session is producing plane data (reserved for Phase 1.1+).
+  //   fallback_no_plane_detection  — WebXR or immersive-ar unsupported; we render the preview overlay and label it as such.
+  const [rendererMode, setRendererMode] = useState("preview_overlay");
+
+  // Detect WebXR immersive-ar capability on mount. We DO NOT auto-launch a
+  // session — the actual plane-anchored renderer lands in a later phase.
+  // This sets up the state machine + UI so the user knows what mode they're in.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const hasXR = typeof navigator !== "undefined" && !!navigator.xr;
+        if (!hasXR) {
+          if (!cancelled) setRendererMode("fallback_no_plane_detection");
+          log("renderer: navigator.xr missing → fallback_no_plane_detection");
+          return;
+        }
+        const supported = await navigator.xr.isSessionSupported?.("immersive-ar");
+        if (cancelled) return;
+        if (supported) {
+          setRendererMode("webxr_supported");
+          log("renderer: WebXR immersive-ar supported (session not started)");
+        } else {
+          setRendererMode("fallback_no_plane_detection");
+          log("renderer: WebXR immersive-ar NOT supported → fallback");
+        }
+      } catch (e) {
+        if (!cancelled) setRendererMode("fallback_no_plane_detection");
+        log("renderer: WebXR detection threw → fallback", e?.message);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Plane-anchor stubs — kept as no-ops in Phase 1.0 so future renderers
+  // can call them with the same shape. Each returns the screen-space
+  // position used by the SVG/CSS fallback when no real plane is available.
+  // eslint-disable-next-line no-unused-vars
+  const planeAnchors = useMemo(() => ({
+    floor:   { tracked: false, fallbackZone: "bottom-band" },
+    walls:   { tracked: false, fallbackZone: "side-edges" },
+    ceiling: { tracked: false, fallbackZone: "top-band" },
+  }), []);
+
   // ── Mount-time trace ─────────────────────────────────────────────
   useEffect(() => {
     log("scene mounted", {
@@ -237,6 +284,18 @@ export default function PortalAR() {
           <span>{PORTAL?.realmName || "Rainforest Realm"}</span>
           {camState === "live" && <span className="par-hud-dot" />}
         </div>
+        {/* Phase 1.0.2 — Honest render-mode badge. Tells the user
+            exactly what they're looking at: a screen-space preview
+            overlay vs a true plane-mapped AR session. */}
+        {camState === "live" && (
+          <div className="par-hud-mode" data-testid="portal-ar-mode-badge"
+               title="Phase 1.0 ships screen-space preview only. True room mapping (floor / wall / ceiling anchors) requires ARKit/WebXR support which Phase 1.1+ will enable.">
+            {rendererMode === "plane_mapping_active" && (<><span className="par-mode-dot par-mode-dot-ok" />Plane Mapping Active</>)}
+            {rendererMode === "webxr_supported"      && (<><span className="par-mode-dot par-mode-dot-warn" />WebXR Ready · Preview Mode</>)}
+            {rendererMode === "preview_overlay"      && (<><span className="par-mode-dot par-mode-dot-warn" />Preview Overlay Mode</>)}
+            {rendererMode === "fallback_no_plane_detection" && (<><span className="par-mode-dot par-mode-dot-warn" />Preview Overlay · No ARKit</>)}
+          </div>
+        )}
         <button
           type="button"
           onClick={onExit}
@@ -278,6 +337,7 @@ export default function PortalAR() {
           ambientEnabled={ambient}
           quality={quality}
           reducedMotion={reducedMotion}
+          rendererMode={rendererMode}
           onClose={() => setShowDebug(false)}
         />
       )}
@@ -410,44 +470,36 @@ function RainforestOverlay({ ambient, creatures, perf, tiltUp, onMount, onUnmoun
 
   return (
     <div
-      className="par-overlay"
+      className="par-overlay par-overlay-preview"
       aria-hidden="true"
       style={{
-        // Tilt-reactive parallax — the whole jungle drifts as you turn your phone.
-        // Up to ~14px shift, GPU-only (translate).
-        transform: `translate3d(0, ${(-tiltUp * 14).toFixed(1)}px, 0)`,
+        // Subtle tilt-reactive parallax even in preview mode — not claiming room mapping.
+        transform: `translate3d(0, ${(-tiltUp * 10).toFixed(1)}px, 0)`,
       }}
     >
-      {/* ── Room tint — subtle green wash so all surfaces feel "jungle". */}
-      <div className="par-layer par-room-tint" data-testid="portal-ar-tint" />
+      {/* Phase 1.0.2 — Honest "Preview Overlay" mode. We DO NOT pretend to
+          map walls/floor/ceiling. Instead we render a clean screen-space
+          jungle frame on top of the camera: a soft top fade for the
+          canopy zone, edge vines along the sides, a floor mist + river
+          along the lower band, and creatures. Real plane mapping is
+          gated behind WebXR/ARKit (Phase 1.1+). */}
 
-      {/* ── Wall washes — diagonal foliage trapezoids on left & right
-              edges that mimic the sides of the user's room being
-              "claimed" by the jungle. Pure clip-path SVG. */}
-      <div className="par-layer par-wall-wash par-wall-wash-left" data-testid="portal-ar-wall-left">
-        <WallWashSvg side="left" />
-      </div>
-      <div className="par-layer par-wall-wash par-wall-wash-right" data-testid="portal-ar-wall-right">
-        <WallWashSvg side="right" />
-      </div>
-
-      {/* ── Floor perspective plane — perspective-transformed leafy
-              texture that recedes into the room like a real floor. */}
-      <div className="par-layer par-floor-plane" data-testid="portal-ar-floor-plane">
-        <FloorPlaneSvg />
-      </div>
-
-      {/* ── Sky / canopy gradient — top region (ceiling) ───────── */}
-      <div className="par-layer par-canopy" style={{ opacity: canopyOpacity }} data-testid="portal-ar-canopy">
+      {/* Soft canopy fade — top of frame only, no fake leaf circles. */}
+      <div className="par-layer par-canopy" style={{ opacity: 0.5 + tiltUp * 0.3 }} data-testid="portal-ar-canopy">
         <CanopySvg />
       </div>
 
-      {/* ── Hanging vines from the canopy ──────────────────────── */}
+      {/* Hanging vines along the top edges */}
       <div className="par-layer par-vines" data-testid="portal-ar-vines">
         <HangingVinesSvg />
       </div>
 
-      {/* ── Light rays through canopy ──────────────────────────── */}
+      {/* Edge vines along the LEFT + RIGHT borders — replaces the wall-wash
+          fake mapping with a clean vignette of foliage at the sides. */}
+      <div className="par-layer par-edge-vines par-edge-vines-left"  data-testid="portal-ar-wall-left"  />
+      <div className="par-layer par-edge-vines par-edge-vines-right" data-testid="portal-ar-wall-right" />
+
+      {/* Light rays through canopy */}
       {ambient && (
         <div className="par-layer par-rays" data-testid="portal-ar-rays">
           <div className="par-ray par-ray-1" />
@@ -458,10 +510,9 @@ function RainforestOverlay({ ambient, creatures, perf, tiltUp, onMount, onUnmoun
         </div>
       )}
 
-      {/* ── Mid-depth parallax foliage (blurred for depth) ────── */}
-      <div className="par-layer par-midfoliage" data-testid="portal-ar-midfoliage">
-        <MidFoliageSvg />
-      </div>
+      {/* ── Mid-depth parallax foliage removed in 1.0.2 — looked like flat
+              circles. Phase 1.1+ will re-introduce parallax via real
+              WebXR plane data, not screen-space ellipses. */}
 
       {/* ── Mist / fireflies floating ──────────────────────────── */}
       {ambient && perf.mist && (
@@ -570,74 +621,41 @@ const LEAF_CLUSTER_PATH =
   "M0 0 q-30 -50 -10 -90 q40 -30 70 -10 q60 -10 80 30 q40 40 -10 70 q-30 40 -80 30 q-60 10 -50 -30 z";
 
 function CanopySvg() {
-  // Dense overlapping foliage canopy that fills the top of the scene.
-  // We layer 3 z-bands of leaf clusters with decreasing opacity so the
-  // illusion of depth holds without raising fragment cost.
+  // Phase 1.0.2 — simplified "honest preview" canopy. No more giant leaf
+  // ellipses pretending to be mapped to a ceiling. Just a soft top fade
+  // + a few hanging leaf hints + a couple of light-touch highlights.
   return (
-    <svg viewBox="0 0 1000 320" preserveAspectRatio="xMidYMin slice" className="par-svg-canopy">
+    <svg viewBox="0 0 1000 240" preserveAspectRatio="xMidYMin slice" className="par-svg-canopy">
       <defs>
-        <radialGradient id="cg-sky" cx="50%" cy="0%" r="70%">
-          <stop offset="0%"  stopColor="#86EFAC" stopOpacity="0.65" />
-          <stop offset="40%" stopColor="#16A34A" stopOpacity="0.55" />
+        <linearGradient id="cg-sky" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%"   stopColor="#86EFAC" stopOpacity="0.42" />
+          <stop offset="55%"  stopColor="#14532D" stopOpacity="0.30" />
           <stop offset="100%" stopColor="#022C19" stopOpacity="0.0" />
-        </radialGradient>
-        <linearGradient id="cg-leaf-a" x1="0" x2="0" y1="0" y2="1">
+        </linearGradient>
+        <linearGradient id="cg-leaf" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor="#22C55E" />
           <stop offset="100%" stopColor="#14532D" />
         </linearGradient>
-        <linearGradient id="cg-leaf-b" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#16A34A" />
-          <stop offset="100%" stopColor="#052e1e" />
-        </linearGradient>
       </defs>
-      {/* Sky wash */}
-      <rect x="0" y="0" width="1000" height="320" fill="url(#cg-sky)" />
-
-      {/* Back layer — distant leaves (most transparent, slightly desaturated) */}
-      <g opacity="0.45" filter="blur(0.6px)">
-        {Array.from({ length: 14 }, (_, i) => {
-          const cx = (i * 78 + 20) % 1000;
-          const cy = 25 + (i % 4) * 14;
-          const rx = 90 + (i % 3) * 18;
-          const ry = 38 + (i % 3) * 10;
-          return <ellipse key={`b${i}`} cx={cx} cy={cy} rx={rx} ry={ry} fill="#14532D" />;
-        })}
-      </g>
-
-      {/* Mid layer — strong leaves */}
-      <g opacity="0.85">
-        {Array.from({ length: 11 }, (_, i) => {
-          const cx = (i * 96 + 55) % 1000;
-          const cy = 70 + (i % 4) * 22;
-          const rx = 100 + (i % 4) * 14;
-          const ry = 44 + (i % 3) * 10;
-          return <ellipse key={`m${i}`} cx={cx} cy={cy} rx={rx} ry={ry} fill="url(#cg-leaf-b)" />;
-        })}
-      </g>
-
-      {/* Front layer — pointed leaf tongues hanging down from canopy */}
-      <g opacity="0.92">
-        {Array.from({ length: 18 }, (_, i) => {
-          const x = (i * 60 + 12) % 1000;
-          const y = 140 + (i % 5) * 14;
-          const w = 22 + (i % 4) * 8;
-          const h = 70 + (i % 3) * 24;
-          return (
-            <path
-              key={`f${i}`}
-              d={`M${x} ${y} q-${w} ${h * 0.45} 0 ${h} q${w} -${h * 0.45} 0 -${h} z`}
-              fill={i % 2 ? "url(#cg-leaf-a)" : "url(#cg-leaf-b)"}
-            />
-          );
-        })}
-      </g>
-
-      {/* Highlight strokes — light hitting top of canopy */}
-      <g opacity="0.35">
-        {Array.from({ length: 9 }, (_, i) => (
-          <ellipse key={`hl${i}`} cx={120 + i * 100} cy={20 + (i % 2) * 6} rx={60} ry={10} fill="#BBF7D0" />
-        ))}
-      </g>
+      {/* Soft top fade */}
+      <rect x="0" y="0" width="1000" height="240" fill="url(#cg-sky)" />
+      {/* Hanging leaf tongues — only along the very top, suggesting a
+          canopy line WITHOUT claiming to be a mapped surface. */}
+      {Array.from({ length: 12 }, (_, i) => {
+        const x = (i * 88 + 28) % 1000;
+        const w = 18 + (i % 4) * 6;
+        const h = 60 + (i % 3) * 20;
+        return (
+          <path
+            key={i}
+            d={`M${x} 0 q-${w} ${h * 0.5} 0 ${h} q${w} -${h * 0.5} 0 -${h} z`}
+            fill="url(#cg-leaf)"
+            opacity="0.78"
+          />
+        );
+      })}
+      {/* Light highlight along the top edge */}
+      <rect x="0" y="0" width="1000" height="12" fill="#BBF7D0" opacity="0.25" />
     </svg>
   );
 }
@@ -701,79 +719,37 @@ function MidFoliageSvg() {
   );
 }
 
+function VineColumn({ side }) {
+  return (
+    <svg
+      viewBox="0 0 80 1000"
+      preserveAspectRatio={side === "left" ? "xMinYMid slice" : "xMaxYMid slice"}
+      className={`par-svg-trees par-svg-trees-${side}`}
+    >
+      <defs>
+        <linearGradient id={`tg-${side}`} x1="0" x2="1" y1="0" y2="0">
+          <stop offset={side === "left" ? "0%"   : "100%"} stopColor="#14532D" stopOpacity="0.85" />
+          <stop offset={side === "left" ? "100%" : "0%"}   stopColor="#14532D" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <rect x={side === "left" ? 0 : 60} y="0" width="20" height="1000" fill={`url(#tg-${side})`} />
+      {[40, 140, 240, 360, 480, 620, 760, 880].map((y, i) => (
+        <ellipse
+          key={i}
+          cx={side === "left" ? 14 + (i % 2) * 6 : 66 - (i % 2) * 6}
+          cy={y}
+          rx="12" ry="5"
+          fill={i % 2 ? "#22C55E" : "#16A34A"}
+          opacity="0.92"
+        />
+      ))}
+    </svg>
+  );
+}
+
 function TreesSvg() {
-  // Dense vertical jungle on each edge — multiple trunks, vines, leaves.
-  const LeftTree = (
-    <svg viewBox="0 0 220 1000" preserveAspectRatio="xMinYMid slice" className="par-svg-trees par-svg-trees-left">
-      <defs>
-        <linearGradient id="tg-l" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0%"  stopColor="#1a0f06" stopOpacity="0.95" />
-          <stop offset="60%" stopColor="#3b2412" stopOpacity="0.75" />
-          <stop offset="100%" stopColor="#3b2412" stopOpacity="0" />
-        </linearGradient>
-        <linearGradient id="tg-leaf-l" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#22C55E" />
-          <stop offset="100%" stopColor="#14532D" />
-        </linearGradient>
-      </defs>
-      {/* Main trunk */}
-      <rect x="0" y="0" width="60" height="1000" fill="url(#tg-l)" />
-      {/* Secondary trunk further in */}
-      <rect x="70" y="120" width="22" height="880" fill="#1a0f06" opacity="0.55" />
-      {/* Bark texture lines */}
-      {[40, 130, 220, 320, 420, 520, 620, 720, 820, 920].map((y, i) => (
-        <path key={i} d={`M0 ${y} q14 -6 28 0`} stroke="#0a0703" strokeWidth="1.4" fill="none" opacity="0.6" />
-      ))}
-      {/* Hanging leaf clusters at multiple heights */}
-      {[80, 200, 360, 520, 680, 840].map((y, i) => (
-        <g key={`L${i}`} transform={`translate(${55 + (i % 2) * 20} ${y})`}>
-          <ellipse cx="0"  cy="0"  rx="52" ry="22" fill="url(#tg-leaf-l)" opacity="0.85" />
-          <ellipse cx="14" cy="-12" rx="34" ry="14" fill="#16A34A" opacity="0.9" />
-          <ellipse cx="-14" cy="10" rx="28" ry="12" fill="#14532D" opacity="0.95" />
-        </g>
-      ))}
-      {/* Vines draping in front */}
-      <path d="M30 0 Q60 320, 40 640 T20 1000" stroke="#14532D" strokeWidth="2" fill="none" opacity="0.85" />
-      <path d="M80 80 Q100 380, 70 680 T60 1000" stroke="#16A34A" strokeWidth="2" fill="none" opacity="0.7" />
-      {/* Small leaves on vines */}
-      {[180, 360, 540, 720, 900].map((y, i) => (
-        <ellipse key={`v${i}`} cx={32 + (i % 2) * 18} cy={y} rx="10" ry="5" fill="#22C55E" opacity="0.85" />
-      ))}
-    </svg>
-  );
-  const RightTree = (
-    <svg viewBox="0 0 220 1000" preserveAspectRatio="xMaxYMid slice" className="par-svg-trees par-svg-trees-right">
-      <defs>
-        <linearGradient id="tg-r" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0%"  stopColor="#3b2412" stopOpacity="0" />
-          <stop offset="40%" stopColor="#3b2412" stopOpacity="0.75" />
-          <stop offset="100%" stopColor="#1a0f06" stopOpacity="0.95" />
-        </linearGradient>
-        <linearGradient id="tg-leaf-r" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#16A34A" />
-          <stop offset="100%" stopColor="#052e1e" />
-        </linearGradient>
-      </defs>
-      <rect x="160" y="0" width="60" height="1000" fill="url(#tg-r)" />
-      <rect x="130" y="160" width="20" height="840" fill="#1a0f06" opacity="0.55" />
-      {[60, 150, 250, 350, 450, 550, 650, 750, 850, 950].map((y, i) => (
-        <path key={i} d={`M220 ${y} q-14 -6 -28 0`} stroke="#0a0703" strokeWidth="1.4" fill="none" opacity="0.6" />
-      ))}
-      {[120, 260, 420, 580, 740, 900].map((y, i) => (
-        <g key={`R${i}`} transform={`translate(${165 - (i % 2) * 20} ${y})`}>
-          <ellipse cx="0" cy="0" rx="52" ry="22" fill="url(#tg-leaf-r)" opacity="0.88" />
-          <ellipse cx="-14" cy="-12" rx="34" ry="14" fill="#22C55E" opacity="0.9" />
-          <ellipse cx="14" cy="10" rx="28" ry="12" fill="#0E3D26" opacity="0.95" />
-        </g>
-      ))}
-      <path d="M190 0 Q160 320, 180 640 T200 1000" stroke="#14532D" strokeWidth="2" fill="none" opacity="0.85" />
-      <path d="M140 80 Q120 380, 150 680 T160 1000" stroke="#16A34A" strokeWidth="2" fill="none" opacity="0.7" />
-      {[180, 360, 540, 720, 900].map((y, i) => (
-        <ellipse key={`vr${i}`} cx={188 - (i % 2) * 18} cy={y} rx="10" ry="5" fill="#22C55E" opacity="0.85" />
-      ))}
-    </svg>
-  );
-  return (<>{LeftTree}{RightTree}</>);
+  // Phase 1.0.2 — thin vertical vine columns hugging the edges.
+  return (<><VineColumn side="left" /><VineColumn side="right" /></>);
 }
 
 function GroundSvg() {
@@ -930,6 +906,7 @@ function FloorPlaneSvg() {
 function DebugHUD({
   camState, videoReady, overlayMounted, assetErrors,
   tiltUp, perf, creaturesEnabled, ambientEnabled, quality, reducedMotion,
+  rendererMode,
   onClose,
 }) {
   // Active creature count = caiman(1) + jaguar(1) + birds(perf.birdCount)
@@ -959,6 +936,7 @@ function DebugHUD({
         >✕</button>
       </div>
       <DebugRow k="Cam state"      v={camState} testId="portal-ar-debug-cam" />
+      <DebugRow k="Renderer mode"  v={rendererMode} testId="portal-ar-debug-mode" />
       <DebugRow k="Renderer"       v={renderer} testId="portal-ar-debug-renderer" />
       <DebugRow k="Video"          v={`${videoReady.w}×${videoReady.h} · rs=${videoReady.readyState}`} testId="portal-ar-debug-video" />
       <DebugRow k="Overlay"        v={overlayMounted ? "mounted" : "not mounted"} testId="portal-ar-debug-overlay" />
@@ -1030,41 +1008,31 @@ function PortalARStyles() {
       }
       .par-layer { position: absolute; inset: 0; }
 
-      /* Room-zone overlays (Phase 1.0 fake mapping) */
-      .par-room-tint {
-        z-index: 5;
-        background:
-          radial-gradient(120% 80% at 50% 50%, rgba(20,83,45,0.16), transparent 70%),
-          linear-gradient(180deg, rgba(20,83,45,0.10) 0%, rgba(0,0,0,0) 35%, rgba(20,83,45,0.18) 100%);
-        mix-blend-mode: multiply;
-      }
-      .par-wall-wash { z-index: 8; pointer-events: none; }
-      .par-wall-wash-left,
-      .par-wall-wash-right {
-        width: 38%;
-        height: 100%;
-        top: 0;
-        right: auto;
-        bottom: auto;
-      }
-      .par-wall-wash-left  { left: 0;  clip-path: polygon(0 0, 100% 18%, 75% 82%, 0 100%); }
-      .par-wall-wash-right { right: 0; left: auto; clip-path: polygon(100% 0, 0 18%, 25% 82%, 100% 100%); }
-      .par-svg-wall-wash { position: absolute; inset: 0; width: 100%; height: 100%; }
+      /* Phase 1.0.2 — fake-mapping layers (room-tint, wall-wash, floor-plane,
+         midfoliage) removed. They were creating the "flat green circles
+         stuck to the screen" look. The preview overlay now uses only
+         honest screen-space elements: top fade, edge vines, light rays,
+         floor mist, river, creatures. */
 
-      .par-floor-plane {
-        z-index: 9;
-        top: auto; left: 0; right: 0; bottom: 0;
-        height: 58%;
-        perspective: 600px;
-        perspective-origin: 50% 0%;
+      /* Edge vines — gentle vertical foliage gradient hugging left + right
+         borders. Pure CSS, no shapes claiming to be mapped to walls. */
+      .par-edge-vines {
+        position: absolute; top: 0; bottom: 0;
+        width: 22%;
+        z-index: 8;
         pointer-events: none;
       }
-      .par-svg-floor-plane {
-        position: absolute; inset: 0;
-        width: 100%; height: 100%;
-        transform: rotateX(56deg) translateZ(0);
-        transform-origin: 50% 0%;
-        opacity: 0.85;
+      .par-edge-vines-left {
+        left: 0;
+        background:
+          radial-gradient(120% 60% at 0% 50%, rgba(20,83,45,0.55), transparent 65%),
+          linear-gradient(90deg, rgba(20,83,45,0.45), transparent 100%);
+      }
+      .par-edge-vines-right {
+        right: 0;
+        background:
+          radial-gradient(120% 60% at 100% 50%, rgba(20,83,45,0.55), transparent 65%),
+          linear-gradient(270deg, rgba(20,83,45,0.45), transparent 100%);
       }
 
       /* Canopy / sky — shorter so the user's actual room stays visible below. */
@@ -1135,8 +1103,8 @@ function PortalARStyles() {
         100% { transform: translate(-15px,15px) scale(0.9); opacity: 0.2; }
       }
 
-      /* Trees on edges — taller, denser */
-      .par-svg-trees { position: absolute; top: 0; height: 100%; width: 32%; z-index: 9; }
+      /* Side trees — thin vine columns (10% width on each edge) */
+      .par-svg-trees { position: absolute; top: 0; height: 100%; width: 10%; z-index: 9; }
       .par-svg-trees-left  { left: 0; }
       .par-svg-trees-right { right: 0; }
 
@@ -1344,6 +1312,30 @@ function PortalARStyles() {
         animation: dot-pulse 1.6s ease-in-out infinite;
       }
       @keyframes dot-pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+      /* Render-mode badge — honest about what the user is looking at */
+      .par-hud-mode {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 10px;
+        background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(245, 158, 11, 0.45);
+        border-radius: 999px;
+        color: #FEF3C7;
+        font-size: 10px; font-weight: 800; letter-spacing: 0.10em; text-transform: uppercase;
+        pointer-events: auto;
+      }
+      .par-mode-dot {
+        width: 5px; height: 5px; border-radius: 999px;
+      }
+      .par-mode-dot-ok   { background: #22C55E; box-shadow: 0 0 6px #22C55E; }
+      .par-mode-dot-warn { background: #F59E0B; box-shadow: 0 0 6px #F59E0B; }
+      @media (max-width: 380px) {
+        /* On very narrow phones the 3-chip top HUD wraps — keep the
+           mode badge legible but allow it to drop to its own row. */
+        .par-hud-top { flex-wrap: wrap; gap: 6px; }
+        .par-hud-mode { order: 3; flex-basis: 100%; justify-content: center; }
+      }
 
       .par-exit-btn {
         display: inline-flex; align-items: center; gap: 6px;
