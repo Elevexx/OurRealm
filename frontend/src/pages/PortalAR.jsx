@@ -399,29 +399,44 @@ function RainforestOverlay({ ambient, creatures, perf, tiltUp, onMount, onUnmoun
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Canopy intensity grows when the phone tilts up.
-  const canopyOpacity = 0.45 + tiltUp * 0.45;
+  const canopyOpacity = 0.55 + tiltUp * 0.40;
 
   const fireflyArr = perf.fireflies > 0
     ? Array.from({ length: perf.fireflies }, (_, i) => i)
     : [];
+  const driftingLeafArr = perf.low
+    ? Array.from({ length: 4 }, (_, i) => i)
+    : Array.from({ length: 9 }, (_, i) => i);
 
   return (
     <div className="par-overlay" aria-hidden="true">
-      {/* Sky / canopy gradient — top region */}
+      {/* ── Sky / canopy gradient — top region ─────────────────── */}
       <div className="par-layer par-canopy" style={{ opacity: canopyOpacity }} data-testid="portal-ar-canopy">
         <CanopySvg />
       </div>
 
-      {/* Light rays through canopy */}
+      {/* ── Hanging vines from the canopy ──────────────────────── */}
+      <div className="par-layer par-vines" data-testid="portal-ar-vines">
+        <HangingVinesSvg />
+      </div>
+
+      {/* ── Light rays through canopy ──────────────────────────── */}
       {ambient && (
         <div className="par-layer par-rays" data-testid="portal-ar-rays">
           <div className="par-ray par-ray-1" />
           <div className="par-ray par-ray-2" />
           <div className="par-ray par-ray-3" />
+          <div className="par-ray par-ray-4" />
+          <div className="par-ray par-ray-5" />
         </div>
       )}
 
-      {/* Mist / fireflies floating */}
+      {/* ── Mid-depth parallax foliage (blurred for depth) ────── */}
+      <div className="par-layer par-midfoliage" data-testid="portal-ar-midfoliage">
+        <MidFoliageSvg />
+      </div>
+
+      {/* ── Mist / fireflies floating ──────────────────────────── */}
       {ambient && perf.mist && (
         <div className="par-layer par-mist" data-testid="portal-ar-mist">
           <div className="par-mist-veil" />
@@ -440,21 +455,42 @@ function RainforestOverlay({ ambient, creatures, perf, tiltUp, onMount, onUnmoun
         </div>
       )}
 
-      {/* Trees / vines on edges */}
+      {/* ── Side trees + ferns on left/right ───────────────────── */}
       <div className="par-layer par-trees" data-testid="portal-ar-trees">
         <TreesSvg />
       </div>
 
-      {/* Floor jungle + river */}
+      {/* ── Floor jungle + river ───────────────────────────────── */}
       <div className="par-layer par-ground" data-testid="portal-ar-ground">
         <GroundSvg />
         <div className="par-river" data-testid="portal-ar-river">
+          <div className="par-river-bed" />
           <div className="par-river-flow par-river-flow-1" />
           <div className="par-river-flow par-river-flow-2" />
+          <div className="par-river-ripples" />
         </div>
       </div>
 
-      {/* Creatures */}
+      {/* ── Drifting leaves particles ──────────────────────────── */}
+      {ambient && (
+        <div className="par-layer par-drift" data-testid="portal-ar-drift">
+          {driftingLeafArr.map((i) => (
+            <span
+              key={`leaf-${i}`}
+              className={`par-drift-leaf par-drift-leaf-${i % 3}`}
+              style={{
+                left: `${(i * 19 + 7) % 95}%`,
+                animationDuration: `${10 + (i % 6)}s`,
+                animationDelay: `${(i % 5) * 1.4}s`,
+              }}
+            >
+              {i % 3 === 0 ? "🍃" : i % 3 === 1 ? "🌿" : "🍂"}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* ── Creatures ──────────────────────────────────────────── */}
       {creatures && (
         <div className="par-layer par-creatures" data-testid="portal-ar-creatures">
           {/* River dweller */}
@@ -487,6 +523,14 @@ function RainforestOverlay({ ambient, creatures, perf, tiltUp, onMount, onUnmoun
 
           {/* Floor frog */}
           <span className="par-creature par-frog" data-testid="portal-ar-frog">🐸</span>
+
+          {/* Butterflies for ambient life */}
+          {!perf.low && (
+            <>
+              <span className="par-creature par-butterfly par-butterfly-1" data-testid="portal-ar-butterfly-0">🦋</span>
+              <span className="par-creature par-butterfly par-butterfly-2" data-testid="portal-ar-butterfly-1">🦋</span>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -494,82 +538,288 @@ function RainforestOverlay({ ambient, creatures, perf, tiltUp, onMount, onUnmoun
 }
 
 // SVG components — kept tiny so the bundle stays light.
+// Reusable leaf-cluster path: a chunky overlapping foliage shape.
+const LEAF_CLUSTER_PATH =
+  "M0 0 q-30 -50 -10 -90 q40 -30 70 -10 q60 -10 80 30 q40 40 -10 70 q-30 40 -80 30 q-60 10 -50 -30 z";
+
 function CanopySvg() {
+  // Dense overlapping foliage canopy that fills the top of the scene.
+  // We layer 3 z-bands of leaf clusters with decreasing opacity so the
+  // illusion of depth holds without raising fragment cost.
   return (
-    <svg viewBox="0 0 1000 300" preserveAspectRatio="none" className="par-svg-canopy">
+    <svg viewBox="0 0 1000 320" preserveAspectRatio="xMidYMin slice" className="par-svg-canopy">
       <defs>
-        <radialGradient id="cg" cx="50%" cy="0%" r="80%">
-          <stop offset="0%"  stopColor="#86EFAC" stopOpacity="0.5" />
-          <stop offset="60%" stopColor="#15803D" stopOpacity="0.55" />
+        <radialGradient id="cg-sky" cx="50%" cy="0%" r="70%">
+          <stop offset="0%"  stopColor="#86EFAC" stopOpacity="0.65" />
+          <stop offset="40%" stopColor="#16A34A" stopOpacity="0.55" />
           <stop offset="100%" stopColor="#022C19" stopOpacity="0.0" />
         </radialGradient>
+        <linearGradient id="cg-leaf-a" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#22C55E" />
+          <stop offset="100%" stopColor="#14532D" />
+        </linearGradient>
+        <linearGradient id="cg-leaf-b" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#16A34A" />
+          <stop offset="100%" stopColor="#052e1e" />
+        </linearGradient>
       </defs>
-      <rect x="0" y="0" width="1000" height="300" fill="url(#cg)" />
-      {/* leaf clusters */}
-      {[80, 220, 360, 500, 640, 780, 920].map((x, i) => (
-        <ellipse key={i} cx={x} cy={40 + (i % 3) * 20} rx="120" ry="60" fill="#166534" opacity="0.55" />
-      ))}
-      {[140, 320, 480, 680, 860].map((x, i) => (
-        <ellipse key={`l${i}`} cx={x} cy={110 + (i % 2) * 30} rx="90" ry="40" fill="#14532D" opacity="0.65" />
-      ))}
+      {/* Sky wash */}
+      <rect x="0" y="0" width="1000" height="320" fill="url(#cg-sky)" />
+
+      {/* Back layer — distant leaves (most transparent, slightly desaturated) */}
+      <g opacity="0.45" filter="blur(0.6px)">
+        {Array.from({ length: 14 }, (_, i) => {
+          const cx = (i * 78 + 20) % 1000;
+          const cy = 25 + (i % 4) * 14;
+          const rx = 90 + (i % 3) * 18;
+          const ry = 38 + (i % 3) * 10;
+          return <ellipse key={`b${i}`} cx={cx} cy={cy} rx={rx} ry={ry} fill="#14532D" />;
+        })}
+      </g>
+
+      {/* Mid layer — strong leaves */}
+      <g opacity="0.85">
+        {Array.from({ length: 11 }, (_, i) => {
+          const cx = (i * 96 + 55) % 1000;
+          const cy = 70 + (i % 4) * 22;
+          const rx = 100 + (i % 4) * 14;
+          const ry = 44 + (i % 3) * 10;
+          return <ellipse key={`m${i}`} cx={cx} cy={cy} rx={rx} ry={ry} fill="url(#cg-leaf-b)" />;
+        })}
+      </g>
+
+      {/* Front layer — pointed leaf tongues hanging down from canopy */}
+      <g opacity="0.92">
+        {Array.from({ length: 18 }, (_, i) => {
+          const x = (i * 60 + 12) % 1000;
+          const y = 140 + (i % 5) * 14;
+          const w = 22 + (i % 4) * 8;
+          const h = 70 + (i % 3) * 24;
+          return (
+            <path
+              key={`f${i}`}
+              d={`M${x} ${y} q-${w} ${h * 0.45} 0 ${h} q${w} -${h * 0.45} 0 -${h} z`}
+              fill={i % 2 ? "url(#cg-leaf-a)" : "url(#cg-leaf-b)"}
+            />
+          );
+        })}
+      </g>
+
+      {/* Highlight strokes — light hitting top of canopy */}
+      <g opacity="0.35">
+        {Array.from({ length: 9 }, (_, i) => (
+          <ellipse key={`hl${i}`} cx={120 + i * 100} cy={20 + (i % 2) * 6} rx={60} ry={10} fill="#BBF7D0" />
+        ))}
+      </g>
+    </svg>
+  );
+}
+
+function HangingVinesSvg() {
+  // Long thin vines dropping from the canopy with little leaf nodes.
+  // Each vine sways slightly via CSS keyframe on .par-vines.
+  const vines = [
+    { x:  60, len: 260, lean:  6, leafEvery: 70 },
+    { x: 180, len: 360, lean: -8, leafEvery: 90 },
+    { x: 300, len: 240, lean:  4, leafEvery: 60 },
+    { x: 420, len: 420, lean: -5, leafEvery: 80 },
+    { x: 560, len: 300, lean:  7, leafEvery: 70 },
+    { x: 700, len: 380, lean: -6, leafEvery: 90 },
+    { x: 820, len: 280, lean:  5, leafEvery: 70 },
+    { x: 930, len: 360, lean: -7, leafEvery: 80 },
+  ];
+  return (
+    <svg viewBox="0 0 1000 800" preserveAspectRatio="xMidYMin slice" className="par-svg-vines">
+      <defs>
+        <linearGradient id="vine-g" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#14532D" stopOpacity="0.95" />
+          <stop offset="100%" stopColor="#14532D" stopOpacity="0.0" />
+        </linearGradient>
+      </defs>
+      {vines.map((v, idx) => {
+        const path = `M${v.x} 0 Q${v.x + v.lean * 6} ${v.len * 0.4}, ${v.x + v.lean * 10} ${v.len} T${v.x + v.lean * 4} ${v.len + 40}`;
+        const leaves = [];
+        for (let y = v.leafEvery; y < v.len; y += v.leafEvery) {
+          const lx = v.x + v.lean * (y / v.len) * 8;
+          leaves.push(
+            <ellipse key={`${idx}-${y}`} cx={lx + (idx % 2 ? 8 : -8)} cy={y} rx="12" ry="6" fill="#16A34A" opacity="0.9" />
+          );
+        }
+        return (
+          <g key={idx}>
+            <path d={path} stroke="url(#vine-g)" strokeWidth="3" fill="none" />
+            {leaves}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function MidFoliageSvg() {
+  // Distant blurred trees behind the foreground — pure depth illusion.
+  return (
+    <svg viewBox="0 0 1000 800" preserveAspectRatio="xMidYMid slice" className="par-svg-midfoliage">
+      <g opacity="0.55" filter="blur(2px)">
+        {/* Distant tree trunks */}
+        {[120, 280, 460, 640, 820].map((x, i) => (
+          <rect key={i} x={x} y={300} width={14 + (i % 2) * 4} height={500} fill="#1e2d18" />
+        ))}
+        {/* Distant foliage masses */}
+        {[100, 260, 440, 620, 800].map((x, i) => (
+          <ellipse key={`fol-${i}`} cx={x + 6} cy={290 - (i % 3) * 20} rx="120" ry="80" fill="#0E3D26" />
+        ))}
+      </g>
     </svg>
   );
 }
 
 function TreesSvg() {
-  // Two vertical trunks (left & right) with vine drape silhouettes.
-  return (
-    <>
-      <svg viewBox="0 0 200 1000" preserveAspectRatio="none" className="par-svg-trees par-svg-trees-left">
-        <defs>
-          <linearGradient id="tg-l" x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0%"  stopColor="#3b2412" stopOpacity="0.85" />
-            <stop offset="100%" stopColor="#3b2412" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <rect x="0" y="0" width="80" height="1000" fill="url(#tg-l)" />
-        {[60, 200, 360, 540, 720, 880].map((y, i) => (
-          <ellipse key={i} cx={70 + (i % 2) * 20} cy={y} rx="48" ry="22" fill="#14532D" opacity="0.7" />
-        ))}
-      </svg>
-      <svg viewBox="0 0 200 1000" preserveAspectRatio="none" className="par-svg-trees par-svg-trees-right">
-        <defs>
-          <linearGradient id="tg-r" x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0%"  stopColor="#3b2412" stopOpacity="0" />
-            <stop offset="100%" stopColor="#3b2412" stopOpacity="0.85" />
-          </linearGradient>
-        </defs>
-        <rect x="120" y="0" width="80" height="1000" fill="url(#tg-r)" />
-        {[100, 260, 420, 600, 800].map((y, i) => (
-          <ellipse key={i} cx={130 - (i % 2) * 20} cy={y} rx="48" ry="22" fill="#166534" opacity="0.72" />
-        ))}
-      </svg>
-    </>
+  // Dense vertical jungle on each edge — multiple trunks, vines, leaves.
+  const LeftTree = (
+    <svg viewBox="0 0 220 1000" preserveAspectRatio="xMinYMid slice" className="par-svg-trees par-svg-trees-left">
+      <defs>
+        <linearGradient id="tg-l" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0%"  stopColor="#1a0f06" stopOpacity="0.95" />
+          <stop offset="60%" stopColor="#3b2412" stopOpacity="0.75" />
+          <stop offset="100%" stopColor="#3b2412" stopOpacity="0" />
+        </linearGradient>
+        <linearGradient id="tg-leaf-l" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#22C55E" />
+          <stop offset="100%" stopColor="#14532D" />
+        </linearGradient>
+      </defs>
+      {/* Main trunk */}
+      <rect x="0" y="0" width="60" height="1000" fill="url(#tg-l)" />
+      {/* Secondary trunk further in */}
+      <rect x="70" y="120" width="22" height="880" fill="#1a0f06" opacity="0.55" />
+      {/* Bark texture lines */}
+      {[40, 130, 220, 320, 420, 520, 620, 720, 820, 920].map((y, i) => (
+        <path key={i} d={`M0 ${y} q14 -6 28 0`} stroke="#0a0703" strokeWidth="1.4" fill="none" opacity="0.6" />
+      ))}
+      {/* Hanging leaf clusters at multiple heights */}
+      {[80, 200, 360, 520, 680, 840].map((y, i) => (
+        <g key={`L${i}`} transform={`translate(${55 + (i % 2) * 20} ${y})`}>
+          <ellipse cx="0"  cy="0"  rx="52" ry="22" fill="url(#tg-leaf-l)" opacity="0.85" />
+          <ellipse cx="14" cy="-12" rx="34" ry="14" fill="#16A34A" opacity="0.9" />
+          <ellipse cx="-14" cy="10" rx="28" ry="12" fill="#14532D" opacity="0.95" />
+        </g>
+      ))}
+      {/* Vines draping in front */}
+      <path d="M30 0 Q60 320, 40 640 T20 1000" stroke="#14532D" strokeWidth="2" fill="none" opacity="0.85" />
+      <path d="M80 80 Q100 380, 70 680 T60 1000" stroke="#16A34A" strokeWidth="2" fill="none" opacity="0.7" />
+      {/* Small leaves on vines */}
+      {[180, 360, 540, 720, 900].map((y, i) => (
+        <ellipse key={`v${i}`} cx={32 + (i % 2) * 18} cy={y} rx="10" ry="5" fill="#22C55E" opacity="0.85" />
+      ))}
+    </svg>
   );
+  const RightTree = (
+    <svg viewBox="0 0 220 1000" preserveAspectRatio="xMaxYMid slice" className="par-svg-trees par-svg-trees-right">
+      <defs>
+        <linearGradient id="tg-r" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0%"  stopColor="#3b2412" stopOpacity="0" />
+          <stop offset="40%" stopColor="#3b2412" stopOpacity="0.75" />
+          <stop offset="100%" stopColor="#1a0f06" stopOpacity="0.95" />
+        </linearGradient>
+        <linearGradient id="tg-leaf-r" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#16A34A" />
+          <stop offset="100%" stopColor="#052e1e" />
+        </linearGradient>
+      </defs>
+      <rect x="160" y="0" width="60" height="1000" fill="url(#tg-r)" />
+      <rect x="130" y="160" width="20" height="840" fill="#1a0f06" opacity="0.55" />
+      {[60, 150, 250, 350, 450, 550, 650, 750, 850, 950].map((y, i) => (
+        <path key={i} d={`M220 ${y} q-14 -6 -28 0`} stroke="#0a0703" strokeWidth="1.4" fill="none" opacity="0.6" />
+      ))}
+      {[120, 260, 420, 580, 740, 900].map((y, i) => (
+        <g key={`R${i}`} transform={`translate(${165 - (i % 2) * 20} ${y})`}>
+          <ellipse cx="0" cy="0" rx="52" ry="22" fill="url(#tg-leaf-r)" opacity="0.88" />
+          <ellipse cx="-14" cy="-12" rx="34" ry="14" fill="#22C55E" opacity="0.9" />
+          <ellipse cx="14" cy="10" rx="28" ry="12" fill="#0E3D26" opacity="0.95" />
+        </g>
+      ))}
+      <path d="M190 0 Q160 320, 180 640 T200 1000" stroke="#14532D" strokeWidth="2" fill="none" opacity="0.85" />
+      <path d="M140 80 Q120 380, 150 680 T160 1000" stroke="#16A34A" strokeWidth="2" fill="none" opacity="0.7" />
+      {[180, 360, 540, 720, 900].map((y, i) => (
+        <ellipse key={`vr${i}`} cx={188 - (i % 2) * 18} cy={y} rx="10" ry="5" fill="#22C55E" opacity="0.85" />
+      ))}
+    </svg>
+  );
+  return (<>{LeftTree}{RightTree}</>);
 }
 
 function GroundSvg() {
+  // Dense floor jungle: ferns, broad leaves, tropical flowers, fallen logs.
   return (
-    <svg viewBox="0 0 1000 300" preserveAspectRatio="none" className="par-svg-ground">
+    <svg viewBox="0 0 1000 360" preserveAspectRatio="xMidYMax slice" className="par-svg-ground">
       <defs>
-        <linearGradient id="gg" x1="0" x2="0" y1="0" y2="1">
+        <linearGradient id="gg-shade" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%"  stopColor="#022C19" stopOpacity="0" />
-          <stop offset="60%" stopColor="#022C19" stopOpacity="0.55" />
-          <stop offset="100%" stopColor="#000" stopOpacity="0.85" />
+          <stop offset="55%" stopColor="#022C19" stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#000" stopOpacity="0.92" />
+        </linearGradient>
+        <linearGradient id="gg-fern" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#22C55E" />
+          <stop offset="100%" stopColor="#0E3D26" />
         </linearGradient>
       </defs>
-      <rect x="0" y="0" width="1000" height="300" fill="url(#gg)" />
-      {[100, 280, 460, 620, 820].map((x, i) => (
-        <ellipse key={i} cx={x} cy={250 - (i % 2) * 30} rx="100" ry="32" fill="#0E3D26" opacity="0.7" />
-      ))}
-      {[180, 380, 560, 740, 900].map((x, i) => (
-        <path
-          key={`f${i}`}
-          d={`M${x} 240 q-30 -60 0 -100 q30 60 0 100 z`}
-          fill="#166534"
-          opacity="0.78"
-        />
-      ))}
+      <rect x="0" y="0" width="1000" height="360" fill="url(#gg-shade)" />
+
+      {/* Back row — broad leaf bushes */}
+      <g opacity="0.85">
+        {[60, 200, 360, 520, 680, 840, 960].map((x, i) => (
+          <g key={`b${i}`} transform={`translate(${x} ${260 + (i % 2) * 12})`}>
+            <ellipse cx="0"  cy="0"  rx={70 + (i % 3) * 10} ry={26} fill="#0E3D26" />
+            <ellipse cx="0"  cy="-14" rx={50}              ry={18} fill="#166534" />
+          </g>
+        ))}
+      </g>
+
+      {/* Mid row — fern fronds */}
+      <g opacity="0.95">
+        {Array.from({ length: 14 }, (_, i) => {
+          const x = (i * 78 + 30) % 1000;
+          const baseY = 320;
+          const h = 80 + (i % 4) * 14;
+          // Frond stem + small leaflets along it
+          const leaflets = Array.from({ length: 7 }, (_, k) => {
+            const ly = baseY - (h * (k + 1) / 8);
+            const tilt = (k % 2 ? 1 : -1) * (10 + k * 1.5);
+            return (
+              <ellipse key={`lf-${i}-${k}`} cx={x + tilt} cy={ly} rx={10 + k * 0.8} ry="4" fill="url(#gg-fern)" />
+            );
+          });
+          return (
+            <g key={`fern-${i}`}>
+              <path d={`M${x} ${baseY} q-2 -${h * 0.5} 0 -${h}`} stroke="#14532D" strokeWidth="2" fill="none" />
+              {leaflets}
+            </g>
+          );
+        })}
+      </g>
+
+      {/* Front row — tropical flowers + tall blades */}
+      <g opacity="1">
+        {[120, 260, 420, 600, 780, 920].map((x, i) => (
+          <g key={`fl-${i}`} transform={`translate(${x} ${340 - (i % 2) * 4})`}>
+            {/* tall blade */}
+            <path d="M0 0 q-2 -50 0 -90" stroke="#22C55E" strokeWidth="2.4" fill="none" />
+            {/* flower head */}
+            <circle cx="0" cy="-92" r="6" fill={i % 2 ? "#F472B6" : "#FDE047"} opacity="0.95" />
+            <circle cx="0" cy="-92" r="3" fill="#fff" opacity="0.6" />
+          </g>
+        ))}
+      </g>
+
+      {/* A fallen log near the riverbank */}
+      <g transform="translate(300 318)">
+        <ellipse cx="0"  cy="0"  rx="180" ry="14" fill="#1f1208" />
+        <ellipse cx="0"  cy="-3" rx="180" ry="12" fill="#3b2412" />
+        {[-160, -100, -40, 20, 80, 140].map((x, i) => (
+          <circle key={i} cx={x} cy="-3" r="3.5" fill="#1f1208" opacity="0.8" />
+        ))}
+      </g>
     </svg>
   );
 }
@@ -678,22 +928,41 @@ function PortalARStyles() {
       /* Canopy / sky */
       .par-canopy { transition: opacity 600ms ease; }
       .par-svg-canopy {
-        position: absolute; top: 0; left: 0; width: 100%; height: 38%;
-        filter: drop-shadow(0 4px 12px rgba(34,197,94,0.35));
+        position: absolute; top: 0; left: 0; width: 100%; height: 44%;
+        filter: drop-shadow(0 6px 14px rgba(20,83,45,0.55));
       }
 
-      /* Light rays */
-      .par-rays { mix-blend-mode: screen; opacity: 0.45; }
-      .par-ray {
-        position: absolute; top: -10%; width: 2px; height: 120%;
-        background: linear-gradient(180deg, rgba(255,255,200,0.35), transparent 70%);
-        transform-origin: top center;
-        filter: blur(0.6px);
+      /* Hanging vines — sway gently */
+      .par-vines { z-index: 11; }
+      .par-svg-vines {
+        position: absolute; top: 0; left: 0; width: 100%; height: 60%;
+        transform-origin: 50% 0%;
+        animation: vines-sway 9s ease-in-out infinite alternate;
+        opacity: 0.92;
       }
-      .par-ray-1 { left: 22%; transform: rotate(8deg);  animation: ray-flicker 6s ease-in-out infinite; }
-      .par-ray-2 { left: 48%; transform: rotate(-4deg); animation: ray-flicker 7s ease-in-out infinite 1s; }
-      .par-ray-3 { left: 75%; transform: rotate(12deg); animation: ray-flicker 8s ease-in-out infinite 2s; }
-      @keyframes ray-flicker { 0%,100% { opacity: 0.35; } 50% { opacity: 0.8; } }
+      @keyframes vines-sway {
+        from { transform: rotate(-0.6deg) translateX(-4px); }
+        to   { transform: rotate(0.6deg)  translateX(4px); }
+      }
+
+      /* Mid-depth distant foliage (parallax) */
+      .par-midfoliage { z-index: 6; opacity: 0.65; }
+      .par-svg-midfoliage { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+      /* Light rays */
+      .par-rays { mix-blend-mode: screen; opacity: 0.65; z-index: 7; }
+      .par-ray {
+        position: absolute; top: -10%; width: 3px; height: 130%;
+        background: linear-gradient(180deg, rgba(255,250,200,0.55), rgba(255,240,150,0.15) 50%, transparent 80%);
+        transform-origin: top center;
+        filter: blur(0.8px);
+      }
+      .par-ray-1 { left: 14%; transform: rotate(8deg);   animation: ray-flicker 6s ease-in-out infinite; }
+      .par-ray-2 { left: 30%; transform: rotate(-4deg);  animation: ray-flicker 7s ease-in-out infinite 0.6s; }
+      .par-ray-3 { left: 50%; transform: rotate(12deg);  animation: ray-flicker 8s ease-in-out infinite 1.2s; }
+      .par-ray-4 { left: 68%; transform: rotate(-6deg);  animation: ray-flicker 7.5s ease-in-out infinite 1.8s; }
+      .par-ray-5 { left: 86%; transform: rotate(10deg);  animation: ray-flicker 6.5s ease-in-out infinite 2.4s; }
+      @keyframes ray-flicker { 0%,100% { opacity: 0.35; } 50% { opacity: 0.85; } }
 
       /* Mist + fireflies */
       .par-mist-veil {
@@ -724,40 +993,84 @@ function PortalARStyles() {
         100% { transform: translate(-15px,15px) scale(0.9); opacity: 0.2; }
       }
 
-      /* Trees on edges */
-      .par-svg-trees { position: absolute; top: 0; height: 100%; width: 26%; }
+      /* Trees on edges — taller, denser */
+      .par-svg-trees { position: absolute; top: 0; height: 100%; width: 32%; z-index: 9; }
       .par-svg-trees-left  { left: 0; }
       .par-svg-trees-right { right: 0; }
 
       /* Ground + river */
-      .par-svg-ground { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 34%; }
+      .par-svg-ground { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 42%; }
       .par-river {
-        position: absolute; left: 0; right: 0; bottom: 4%;
-        height: 60px;
+        position: absolute; left: 0; right: 0; bottom: 3%;
+        height: 90px;
         overflow: hidden;
-        filter: drop-shadow(0 -2px 12px rgba(34,211,238,0.25));
+        filter: drop-shadow(0 -4px 16px rgba(34,211,238,0.35));
+        z-index: 11;
+      }
+      .par-river-bed {
+        position: absolute; inset: 0;
+        background:
+          radial-gradient(120% 60% at 50% 100%, rgba(8,47,73,0.85), rgba(2,20,30,0.6) 60%, transparent 100%),
+          linear-gradient(180deg, rgba(34,211,238,0.30), rgba(8,47,73,0.55));
       }
       .par-river-flow {
         position: absolute; inset: 0;
         background:
-          linear-gradient(90deg, rgba(34,211,238,0.20), rgba(20,184,166,0.30), rgba(34,211,238,0.20)),
+          linear-gradient(90deg, rgba(34,211,238,0.20), rgba(20,184,166,0.32), rgba(34,211,238,0.20)),
           repeating-linear-gradient(90deg,
-            rgba(255,255,255,0.18) 0 6px, transparent 6px 18px);
-        background-size: 200% 100%, 80px 100%;
+            rgba(255,255,255,0.22) 0 8px, transparent 8px 24px);
+        background-size: 200% 100%, 96px 100%;
         mix-blend-mode: screen;
         animation: river-flow 8s linear infinite;
       }
       .par-river-flow-2 {
-        opacity: 0.55;
+        opacity: 0.6;
         animation: river-flow 5s linear infinite reverse;
-        transform: translateY(8px);
+        transform: translateY(10px);
+      }
+      .par-river-ripples {
+        position: absolute; inset: 0;
+        background:
+          radial-gradient(50px 8px at 20% 30%, rgba(255,255,255,0.55), transparent 70%),
+          radial-gradient(70px 10px at 55% 60%, rgba(255,255,255,0.45), transparent 70%),
+          radial-gradient(40px 6px  at 85% 40%, rgba(255,255,255,0.55), transparent 70%);
+        animation: ripple-drift 6s ease-in-out infinite alternate;
+        mix-blend-mode: screen;
+      }
+      @keyframes ripple-drift {
+        from { transform: translateX(-6px); opacity: 0.5; }
+        to   { transform: translateX(6px);  opacity: 1; }
       }
       @keyframes river-flow {
         from { background-position: 0% 0, 0 0; }
-        to   { background-position: 100% 0, 80px 0; }
+        to   { background-position: 100% 0, 96px 0; }
+      }
+
+      /* Drifting leaves (foreground particles) */
+      .par-drift { z-index: 13; pointer-events: none; }
+      .par-drift-leaf {
+        position: absolute;
+        top: -8%;
+        font-size: 18px;
+        opacity: 0.85;
+        filter: drop-shadow(0 0 6px rgba(0,0,0,0.45));
+        animation-name: leaf-drift;
+        animation-iteration-count: infinite;
+        animation-timing-function: linear;
+        will-change: transform, opacity;
+      }
+      .par-drift-leaf-0 { font-size: 16px; }
+      .par-drift-leaf-1 { font-size: 20px; }
+      .par-drift-leaf-2 { font-size: 14px; opacity: 0.7; }
+      @keyframes leaf-drift {
+        0%   { transform: translate3d(0, -20vh, 0) rotate(0deg);    opacity: 0; }
+        10%  { opacity: 0.85; }
+        50%  { transform: translate3d(40px, 50vh, 0) rotate(180deg); }
+        100% { transform: translate3d(-30px, 110vh, 0) rotate(360deg); opacity: 0; }
       }
 
       /* Creatures (emoji) */
+      .par-creatures { z-index: 14; }
       .par-creature {
         position: absolute;
         font-size: 36px;
@@ -765,6 +1078,25 @@ function PortalARStyles() {
         will-change: transform, opacity;
         line-height: 1;
         user-select: none;
+      }
+
+      /* Butterflies — gentle figure-eight float */
+      .par-butterfly { font-size: 22px; }
+      .par-butterfly-1 { top: 38%; left: 18%; animation: butterfly-a 14s ease-in-out infinite; }
+      .par-butterfly-2 { top: 48%; left: 62%; animation: butterfly-b 16s ease-in-out infinite 3s; }
+      @keyframes butterfly-a {
+        0%   { transform: translate(0,0) rotate(0deg); }
+        25%  { transform: translate(40px,-30px) rotate(-8deg); }
+        50%  { transform: translate(80px,10px) rotate(8deg); }
+        75%  { transform: translate(40px,40px) rotate(-4deg); }
+        100% { transform: translate(0,0) rotate(0deg); }
+      }
+      @keyframes butterfly-b {
+        0%   { transform: translate(0,0) rotate(0deg); }
+        25%  { transform: translate(-50px,20px) rotate(6deg); }
+        50%  { transform: translate(-90px,-20px) rotate(-6deg); }
+        75%  { transform: translate(-40px,-40px) rotate(4deg); }
+        100% { transform: translate(0,0) rotate(0deg); }
       }
 
       /* Caiman — swims back and forth in the river */
