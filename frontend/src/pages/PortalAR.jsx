@@ -409,8 +409,35 @@ function RainforestOverlay({ ambient, creatures, perf, tiltUp, onMount, onUnmoun
     : Array.from({ length: 9 }, (_, i) => i);
 
   return (
-    <div className="par-overlay" aria-hidden="true">
-      {/* ── Sky / canopy gradient — top region ─────────────────── */}
+    <div
+      className="par-overlay"
+      aria-hidden="true"
+      style={{
+        // Tilt-reactive parallax — the whole jungle drifts as you turn your phone.
+        // Up to ~14px shift, GPU-only (translate).
+        transform: `translate3d(0, ${(-tiltUp * 14).toFixed(1)}px, 0)`,
+      }}
+    >
+      {/* ── Room tint — subtle green wash so all surfaces feel "jungle". */}
+      <div className="par-layer par-room-tint" data-testid="portal-ar-tint" />
+
+      {/* ── Wall washes — diagonal foliage trapezoids on left & right
+              edges that mimic the sides of the user's room being
+              "claimed" by the jungle. Pure clip-path SVG. */}
+      <div className="par-layer par-wall-wash par-wall-wash-left" data-testid="portal-ar-wall-left">
+        <WallWashSvg side="left" />
+      </div>
+      <div className="par-layer par-wall-wash par-wall-wash-right" data-testid="portal-ar-wall-right">
+        <WallWashSvg side="right" />
+      </div>
+
+      {/* ── Floor perspective plane — perspective-transformed leafy
+              texture that recedes into the room like a real floor. */}
+      <div className="par-layer par-floor-plane" data-testid="portal-ar-floor-plane">
+        <FloorPlaneSvg />
+      </div>
+
+      {/* ── Sky / canopy gradient — top region (ceiling) ───────── */}
       <div className="par-layer par-canopy" style={{ opacity: canopyOpacity }} data-testid="portal-ar-canopy">
         <CanopySvg />
       </div>
@@ -824,6 +851,76 @@ function GroundSvg() {
   );
 }
 
+// Wall-wash SVG — diagonal trapezoid covering the side of the screen with
+// thick foliage. Looks like the jungle is creeping in from the user's wall.
+function WallWashSvg({ side }) {
+  const isLeft = side === "left";
+  return (
+    <svg
+      viewBox="0 0 400 1000"
+      preserveAspectRatio={isLeft ? "xMinYMid slice" : "xMaxYMid slice"}
+      className={`par-svg-wall-wash par-svg-wall-${side}`}
+    >
+      <defs>
+        <linearGradient id={`ww-${side}`} x1={isLeft ? 0 : 1} x2={isLeft ? 1 : 0} y1="0" y2="0">
+          <stop offset="0%"   stopColor="#0E3D26" stopOpacity="0.78" />
+          <stop offset="55%"  stopColor="#14532D" stopOpacity="0.45" />
+          <stop offset="100%" stopColor="#022C19" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {/* base wash */}
+      <rect x="0" y="0" width="400" height="1000" fill={`url(#ww-${side})`} />
+      {/* leaf silhouettes climbing up the wall */}
+      {Array.from({ length: 22 }, (_, i) => {
+        const x = (isLeft ? 0 : 400) + (isLeft ? 1 : -1) * (30 + (i % 4) * 32);
+        const y = 60 + i * 42;
+        const rx = 50 + (i % 4) * 10;
+        const ry = 22 + (i % 3) * 6;
+        return <ellipse key={i} cx={x} cy={y} rx={rx} ry={ry} fill={i % 2 ? "#166534" : "#14532D"} opacity={0.55 + (i % 3) * 0.1} />;
+      })}
+    </svg>
+  );
+}
+
+// Floor-perspective plane — a leafy texture transformed in 3D so it
+// recedes into the room like a real floor. Pure CSS perspective.
+function FloorPlaneSvg() {
+  return (
+    <svg viewBox="0 0 1000 600" preserveAspectRatio="xMidYMax slice" className="par-svg-floor-plane">
+      <defs>
+        <linearGradient id="fp-grad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%"  stopColor="#022C19" stopOpacity="0" />
+          <stop offset="40%" stopColor="#0E3D26" stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#14532D" stopOpacity="0.85" />
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="1000" height="600" fill="url(#fp-grad)" />
+      {/* leafy spots scattered across the floor */}
+      {Array.from({ length: 28 }, (_, i) => {
+        const x = (i * 53 + 20) % 1000;
+        const y = 120 + (i % 6) * 80;
+        const r = 12 + (i % 4) * 6;
+        return <ellipse key={i} cx={x} cy={y} rx={r} ry={r * 0.5} fill={i % 2 ? "#166534" : "#14532D"} opacity="0.65" />;
+      })}
+      {/* moss/grass tufts */}
+      {Array.from({ length: 14 }, (_, i) => {
+        const x = (i * 78 + 12) % 1000;
+        const y = 450 + (i % 3) * 40;
+        return (
+          <path
+            key={`tuft-${i}`}
+            d={`M${x} ${y} q-3 -22 0 -34 q3 22 0 34`}
+            stroke="#22C55E"
+            strokeWidth="2.2"
+            fill="none"
+            opacity="0.7"
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Phase 1.0 — Temporary debug HUD. Read-only diagnostic for the founder
 // to verify camera + render + scene state on real devices. Toggle via the
@@ -921,14 +1018,59 @@ function PortalARStyles() {
           radial-gradient(700px 500px at 20% 20%, #064e3b 0%, #021410 60%, #000 100%);
       }
 
-      /* Overlay master — explicit z-index above video, below HUD/permission. */
-      .par-overlay { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: normal; z-index: 10; }
-      .par-layer   { position: absolute; inset: 0; }
+      /* Overlay master — explicit z-index above video, below HUD/permission.
+         Reserves the bottom 110px for the HUD so creatures + river never
+         hide behind the controls. */
+      .par-overlay {
+        position: absolute; inset: 0;
+        pointer-events: none;
+        mix-blend-mode: normal;
+        z-index: 10;
+        transition: transform 280ms ease-out;
+      }
+      .par-layer { position: absolute; inset: 0; }
 
-      /* Canopy / sky */
+      /* Room-zone overlays (Phase 1.0 fake mapping) */
+      .par-room-tint {
+        z-index: 5;
+        background:
+          radial-gradient(120% 80% at 50% 50%, rgba(20,83,45,0.16), transparent 70%),
+          linear-gradient(180deg, rgba(20,83,45,0.10) 0%, rgba(0,0,0,0) 35%, rgba(20,83,45,0.18) 100%);
+        mix-blend-mode: multiply;
+      }
+      .par-wall-wash { z-index: 8; pointer-events: none; }
+      .par-wall-wash-left,
+      .par-wall-wash-right {
+        width: 38%;
+        height: 100%;
+        top: 0;
+        right: auto;
+        bottom: auto;
+      }
+      .par-wall-wash-left  { left: 0;  clip-path: polygon(0 0, 100% 18%, 75% 82%, 0 100%); }
+      .par-wall-wash-right { right: 0; left: auto; clip-path: polygon(100% 0, 0 18%, 25% 82%, 100% 100%); }
+      .par-svg-wall-wash { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+      .par-floor-plane {
+        z-index: 9;
+        top: auto; left: 0; right: 0; bottom: 0;
+        height: 58%;
+        perspective: 600px;
+        perspective-origin: 50% 0%;
+        pointer-events: none;
+      }
+      .par-svg-floor-plane {
+        position: absolute; inset: 0;
+        width: 100%; height: 100%;
+        transform: rotateX(56deg) translateZ(0);
+        transform-origin: 50% 0%;
+        opacity: 0.85;
+      }
+
+      /* Canopy / sky — shorter so the user's actual room stays visible below. */
       .par-canopy { transition: opacity 600ms ease; }
       .par-svg-canopy {
-        position: absolute; top: 0; left: 0; width: 100%; height: 44%;
+        position: absolute; top: 0; left: 0; width: 100%; height: 32%;
         filter: drop-shadow(0 6px 14px rgba(20,83,45,0.55));
       }
 
@@ -998,14 +1140,16 @@ function PortalARStyles() {
       .par-svg-trees-left  { left: 0; }
       .par-svg-trees-right { right: 0; }
 
-      /* Ground + river */
-      .par-svg-ground { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 42%; }
+      /* Ground + river — river is anchored ABOVE the bottom HUD so the
+         caiman/jaguar/frog action is always visible to the user. */
+      .par-svg-ground { position: absolute; left: 0; right: 0; bottom: 110px; width: 100%; height: 36%; }
       .par-river {
-        position: absolute; left: 0; right: 0; bottom: 3%;
-        height: 90px;
+        position: absolute; left: 0; right: 0; bottom: 116px;
+        height: 80px;
         overflow: hidden;
-        filter: drop-shadow(0 -4px 16px rgba(34,211,238,0.35));
-        z-index: 11;
+        filter: drop-shadow(0 -4px 16px rgba(34,211,238,0.45));
+        z-index: 12;
+        border-radius: 8px 8px 0 0;
       }
       .par-river-bed {
         position: absolute; inset: 0;
@@ -1101,7 +1245,7 @@ function PortalARStyles() {
 
       /* Caiman — swims back and forth in the river */
       .par-caiman {
-        bottom: 5%; left: -10%;
+        bottom: 122px; left: -10%;
         font-size: 38px;
         animation: caiman-swim 14s linear infinite;
       }
@@ -1113,10 +1257,10 @@ function PortalARStyles() {
         100% { transform: translateX(-10vw)    scaleX(1)  translateY(0); }
       }
 
-      /* Jaguar — paces near river */
+      /* Jaguar — paces along the riverbank, just above the river. */
       .par-jaguar {
-        bottom: 16%; left: -10%;
-        font-size: 42px;
+        bottom: 195px; left: -10%;
+        font-size: 44px;
         animation: jaguar-pace 11s ease-in-out infinite;
       }
       @keyframes jaguar-pace {
@@ -1158,9 +1302,9 @@ function PortalARStyles() {
         100% { transform: translateY(0)      rotate(0deg);  opacity: 0.9; }
       }
 
-      /* Floor frog — hops in place */
+      /* Floor frog — hops on the riverbank */
       .par-frog {
-        bottom: 8%; left: 20%; font-size: 24px;
+        bottom: 145px; left: 20%; font-size: 28px;
         animation: frog-hop 4s ease-in-out infinite;
       }
       @keyframes frog-hop {
@@ -1221,6 +1365,7 @@ function PortalARStyles() {
         padding: 10px 12px max(14px, env(safe-area-inset-bottom));
         display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
         z-index: 70;
+        background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.45) 80%);
       }
       .par-toggle {
         display: inline-flex; align-items: center; gap: 8px;
