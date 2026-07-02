@@ -423,10 +423,10 @@ function PortalsStyles() {
       .ph-cta:hover  { transform: translateY(-1px); box-shadow: 0 12px 34px rgba(34,197,94,0.55); }
       .ph-cta:active { transform: translateY(0); }
 
-      /* Toast */
+      /* Toast — bottom offset clears the fixed BottomNav (~72px) on mobile. */
       .ph-toast {
         position: fixed;
-        bottom: max(24px, env(safe-area-inset-bottom));
+        bottom: calc(88px + env(safe-area-inset-bottom, 0px));
         left: 50%; transform: translateX(-50%);
         padding: 12px 18px;
         background: rgba(6,20,14,0.90);

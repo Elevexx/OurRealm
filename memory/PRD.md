@@ -1,5 +1,52 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Portals 1.1 — Real WebXR AR Foundation (Feb 7, 2026) ✅ COMPLETE
+
+**Modular reusable engine + first real 3D Realm. Verified via `testing_agent_v3_fork` iteration 69 (7/7 scenarios pass, 100%).**
+
+### What shipped
+- **PortalEngine** (`/src/lib/portals/PortalEngine.js`) — reusable Three.js + WebXR runtime. Static `PortalEngine.probe()` returns device capability. Owns WebGLRenderer, scene, camera, reference spaces, hit-test source, reticle, render loop, session lifecycle, and full GPU teardown. Emits typed events (`engine:init`, `xr:started`, `surface:detected/lost/placed`, `xr:ended`, `xr:error`).
+- **Realm base class** (`/src/lib/portals/Realm.js`) — every future realm extends this; lifecycle: `preload / mount / onSurfacePlaced / update / unmount`. Base class handles GPU disposal.
+- **RainforestRealm** (`/src/lib/portals/realms/RainforestRealm.js`) — first real 3D Realm. 12 procedural trees (trunk + rounded canopy blobs), 40 grass tufts (InstancedMesh), rocks, ferns, 60-point additive-blend firefly system with per-particle orbits, 3 procedural parrots that circle the canopy with flapping wings, smoothstep grow-in animation.
+- **Realm registry** (`/src/lib/portals/registry.js`) — lazy `createRealm(id)` factory. Add a realm = 1 line.
+- **PortalXRSession** (`/src/pages/PortalXRSession.jsx`) — new route `/realms/portals/ar/xr?realm=<id>`. Handles the full immersive-ar flow: probe → "Enter Immersive AR" CTA → session start → hit-test reticle → tap-to-place → in-session HUD → exit + re-enter. Graceful fallback UI with device-specific instructions when WebXR is unsupported.
+- **Preview upgrade** — `/realms/portals/ar` now surfaces an "Enter Immersive AR" CTA inside the Preview card **only when** `navigator.xr.isSessionSupported('immersive-ar')` resolves true (i.e. ARCore Android Chrome).
+
+### Contract for future realms
+```
+class MyRealm extends Realm {
+  constructor()                    { super("my-realm"); }
+  async preload(engine)            { /* async assets */ }
+  mount(engine)                    { /* add to this.root */ }
+  onSurfacePlaced(pose, engine)    { /* anchor logic */ }
+  update(dt, xrFrame, engine)      { /* per-frame anim */ }
+}
+```
+Register once in `/lib/portals/registry.js` → route `/realms/portals/ar/xr?realm=my-realm` works.
+
+### Constraints & limits (intentional)
+- iOS Safari **does not** support WebXR immersive-ar in 2026 — those users see the graceful fallback + keep the /realms/portals/ar preview.
+- Headless Playwright cannot start an immersive-ar session. Testing agent verifies the fallback UI, cleanup on unmount, engine dispose contract, and no regressions on existing routes.
+- 3D models are **procedural** — no external GLTF assets, so the entire bundle stays lightweight.
+
+### Files
+- **NEW** `/app/frontend/src/lib/portals/PortalEngine.js` (~260 lines)
+- **NEW** `/app/frontend/src/lib/portals/Realm.js` (~50 lines)
+- **NEW** `/app/frontend/src/lib/portals/realms/RainforestRealm.js` (~230 lines)
+- **NEW** `/app/frontend/src/lib/portals/registry.js` (~25 lines)
+- **NEW** `/app/frontend/src/pages/PortalXRSession.jsx` (~380 lines)
+- **MOD** `/app/frontend/src/pages/PortalAR.jsx` (added `Enter Immersive AR` button in preview card)
+- **MOD** `/app/frontend/src/App.js` (wired `/realms/portals/ar/xr` route)
+- **DEP** `three@0.170.0` added via yarn.
+
+---
+
+## Portals 1.0.4 — Opening Soon Hub (Feb 7, 2026) ✅ COMPLETE
+
+The `/portals` route now ships a full **Opening Soon** teaser (replacing the Phase-1.0 registry-driven browser). Massive spinning neon-green energy vortex (3 layered `conic-gradient` planes rotating at different rates), orbiting rim particles, outer bloom, electric flicker overlay, drifting dust motes, animated grid + fog backdrop, cycling status text ("Initializing Portal Network... / Constructing Realms... / Stabilizing Portal Energy... / Preparing for Launch...") that pauses when the tab is hidden, and a **Notify Me When Portals Launch** CTA that triggers a local toast ("Portals are currently under development."). CSS-only animations, 60fps-friendly, respects `prefers-reduced-motion`, safely clears the fixed BottomNav on mobile / tablet / desktop.
+
+
+
 ## Portals 1.0 — Rainforest Realm AR Foundation (Mar 1, 2026) ✅ COMPLETE
 
 **Frontend-only, mobile-first. Lightweight build (4 new files, 1 modified). Verified via smoke-test on iPhone-size viewport (390×844).**
