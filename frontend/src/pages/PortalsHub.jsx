@@ -16,6 +16,7 @@
  */
 import React, { useEffect, useRef, useState } from "react";
 import { Bell, Sparkles } from "lucide-react";
+import { useAnimationVisibility } from "@/lib/portals/useAnimationVisibility";
 
 const STATUSES = [
   "Initializing Portal Network...",
@@ -56,53 +57,9 @@ export default function PortalsHub() {
 
   // Portal animation controller — pauses ALL rotating layers when the
   // portal is fully off-screen OR the browser tab is hidden / phone is
-  // locked, and resumes from the exact rotation on re-entry.
-  //   • Uses IntersectionObserver so no scroll listeners fire.
-  //   • Uses CSS animation-play-state → no animation restart / flicker.
-  //   • One observer per PortalsHub instance; disconnects on unmount.
-  //   • Descendant selector auto-covers any future rotating layers.
-  useEffect(() => {
-    const el = portalRef.current;
-    if (!el) return undefined;
-
-    let visibleOnScreen = true;         // in-viewport (IO)
-    let tabVisible      = !document.hidden;  // page visibility API
-
-    const apply = () => {
-      const shouldRun = visibleOnScreen && tabVisible;
-      el.classList.toggle("is-paused", !shouldRun);
-    };
-
-    // IntersectionObserver — threshold:0 fires precisely when the
-    // element crosses the fully-off-screen boundary in either direction.
-    let observer = null;
-    if (typeof IntersectionObserver !== "undefined") {
-      observer = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            visibleOnScreen = entry.isIntersecting;
-          }
-          apply();
-        },
-        { threshold: 0 },
-      );
-      observer.observe(el);
-    }
-
-    const onVis = () => {
-      tabVisible = !document.hidden;
-      apply();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    apply(); // initial state
-
-    return () => {
-      if (observer) observer.disconnect();
-      document.removeEventListener("visibilitychange", onVis);
-      // Leave whatever pause class exists — the component is unmounting
-      // so DOM is discarded anyway. Safe under React StrictMode double-run.
-    };
-  }, []);
+  // locked, and resumes from the exact rotation on re-entry. See
+  // /lib/portals/useAnimationVisibility for the shared implementation.
+  useAnimationVisibility(portalRef);
 
   const notify = () => {
     setToast("Portals are currently under development.");
