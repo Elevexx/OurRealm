@@ -29,6 +29,12 @@ export default function PortalsHub() {
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
 
+  // Ref to the portal wrapper — the IntersectionObserver toggles the
+  // is-paused class on this element which, via a single CSS descendant
+  // rule, freezes every currently-and-future rotating layer at its
+  // current rotation. animation-play-state preserves position (no reset).
+  const portalRef = useRef(null);
+
   // Cycle statuses every 2s; pause when the tab is hidden to save CPU.
   useEffect(() => {
     let intervalId = null;
@@ -45,6 +51,56 @@ export default function PortalsHub() {
     return () => {
       stop();
       document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
+
+  // Portal animation controller — pauses ALL rotating layers when the
+  // portal is fully off-screen OR the browser tab is hidden / phone is
+  // locked, and resumes from the exact rotation on re-entry.
+  //   • Uses IntersectionObserver so no scroll listeners fire.
+  //   • Uses CSS animation-play-state → no animation restart / flicker.
+  //   • One observer per PortalsHub instance; disconnects on unmount.
+  //   • Descendant selector auto-covers any future rotating layers.
+  useEffect(() => {
+    const el = portalRef.current;
+    if (!el) return undefined;
+
+    let visibleOnScreen = true;         // in-viewport (IO)
+    let tabVisible      = !document.hidden;  // page visibility API
+
+    const apply = () => {
+      const shouldRun = visibleOnScreen && tabVisible;
+      el.classList.toggle("is-paused", !shouldRun);
+    };
+
+    // IntersectionObserver — threshold:0 fires precisely when the
+    // element crosses the fully-off-screen boundary in either direction.
+    let observer = null;
+    if (typeof IntersectionObserver !== "undefined") {
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            visibleOnScreen = entry.isIntersecting;
+          }
+          apply();
+        },
+        { threshold: 0 },
+      );
+      observer.observe(el);
+    }
+
+    const onVis = () => {
+      tabVisible = !document.hidden;
+      apply();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    apply(); // initial state
+
+    return () => {
+      if (observer) observer.disconnect();
+      document.removeEventListener("visibilitychange", onVis);
+      // Leave whatever pause class exists — the component is unmounting
+      // so DOM is discarded anyway. Safe under React StrictMode double-run.
     };
   }, []);
 
@@ -88,7 +144,7 @@ export default function PortalsHub() {
 
       {/* Portal */}
       <main className="ph-main">
-        <div className="ph-portal-wrap" data-testid="portals-portal">
+        <div className="ph-portal-wrap" data-testid="portals-portal" ref={portalRef}>
           {/* Outer thin ring (rotates opposite direction) */}
           <div className="ph-ring" aria-hidden="true" />
           {/* Outer bloom */}
@@ -243,6 +299,20 @@ function PortalsStyles() {
         width: var(--portal-size);
         height: var(--portal-size);
         border-radius: 999px;
+      }
+
+      /* IntersectionObserver-driven pause. Freezes every descendant
+       * animation at its current position (animation-play-state:paused
+       * DOES NOT reset the animation) so the portal resumes seamlessly
+       * from the exact rotation when it re-enters the viewport OR the
+       * tab is unlocked. Auto-covers every future rotating layer via
+       * the descendant selector. */
+      .ph-portal-wrap.is-paused,
+      .ph-portal-wrap.is-paused *,
+      .ph-portal-wrap.is-paused *::before,
+      .ph-portal-wrap.is-paused *::after {
+        animation-play-state: paused !important;
+        -webkit-animation-play-state: paused !important;
       }
 
       /* Outer thin rotating ring */
