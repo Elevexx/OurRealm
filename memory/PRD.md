@@ -1,5 +1,64 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Portals 1.3 — Backend Persistence + Platform Foundation (Feb 7, 2026) ✅ COMPLETE
+
+**Founder edits now persist server-side + reusable schema for future iOS ARKit / Android ARCore / visionOS / Meta Quest / WebXR / desktop preview / mobile-fallback Realms, Unity deployments, and OurRealm Asset Scrolls. Verified by `testing_agent_v3_fork` iteration 71: 33/33 backend pytest + 14/14 frontend flows (100%).**
+
+### Backend (new router `/app/backend/routers/admin_portals.py`)
+MongoDB collection: **`portal_realm_overrides`** (+ `portal_realm_overrides_deleted` for forensics).
+All routes gated by `require_admin(user)` — anon → 401, non-admin → 403, unknown realm → 404, invalid status → 422, and every mutation appends to `audit_history` (max 200 entries).
+
+| Route | |
+|---|---|
+| GET `/api/admin/portals/overrides` | list all |
+| GET `/api/admin/portals/{realm_id}/override` | fetch one |
+| POST `/api/admin/portals/{realm_id}/notes` | free-form notes |
+| POST `/api/admin/portals/{realm_id}/status` | change status (draft / internal_testing / founder_preview / private_beta / public_beta / released / disabled) |
+| POST `/api/admin/portals/{realm_id}/toggle` | enable/disable (auto-flips status to `disabled` when toggled off) |
+| POST `/api/admin/portals/{realm_id}/platform-readiness` | per-platform block merge (7 platforms) |
+| POST `/api/admin/portals/{realm_id}/asset-scrolls` | replace attached Asset Scroll refs |
+| POST `/api/admin/portals/{realm_id}/unity-deployment` | Unity project + build + release metadata |
+| POST `/api/admin/portals/{realm_id}/ar-vr-compatibility` | AR/VR capability block |
+| POST `/api/admin/portals/{realm_id}/roadmap-notes` | founder roadmap notes |
+| POST `/api/admin/portals/{realm_id}/performance-notes` | performance notes |
+| DELETE `/api/admin/portals/{realm_id}/override` | reset to catalogue defaults |
+
+### Frontend
+- **`/lib/portals/portalsApi.js`** — axios wrapper returning `{ok, override}` or `{ok:false, detail}`
+- **`/pages/AdminPortalsHub.jsx`** — hydrates from `/overrides` on mount, optimistic Disable/Enable + server round-trip, load-error banner + Retry
+- **`/pages/AdminPortalDetail.jsx`** — rewritten. Panels for Status/Toggle, Realm Profile, Platforms, Required Capabilities, Notes (auto-save), Roadmap Notes, Performance Notes, Platform Readiness (7 checkbox+textbox cards), Unity Deployment Metadata (14 fields), Asset Scrolls (add/remove refs with category + source_type), Audit History, Raw Persisted JSON. Each panel has its own Save button + loader + flash indicator. sessionStorage fallback for notes when backend is unreachable.
+
+### Storage summary
+- 1 primary collection (`portal_realm_overrides`) — 1 doc per realm, keyed by `realm_id`, upserted.
+- 1 tombstone collection (`portal_realm_overrides_deleted`) — hard-delete snapshots with `deleted_at`/`deleted_by_*` metadata.
+- Embedded `audit_history` per realm (max 200 recent entries, older ones auto-trimmed via `$push { $slice: -200 }`).
+
+### Asset Scrolls foundation
+Metadata-only for now (marketplace ships Portals 3.0). Each ref stores `asset_scroll_id`, `name`, `category`, `status`, `supported_platforms`, `source_type` (unity_prefab / web / gltf / …), `file_type`, `unity_prefab_path`, `web_asset_path`, `thumbnail`, `version`, `notes`, `approved_by`, `approved_at`. Founder can add/remove refs from the detail page today; when the marketplace ships, references simply start resolving to real assets — the schema is stable.
+
+### AR/VR platform foundation
+7 platform keys tracked per realm: `ios_arkit`, `android_arcore`, `visionos`, `meta_quest`, `webxr`, `desktop_preview`, `mobile_non_ar_fallback`. Each stores `supported`, `status`, `minimum_device_requirements`, `build_target`, `unity_build_profile`, `deployment_path`, `known_limitations`, `testing_status`, `last_tested_at`, `notes`.
+
+### Unity deployment readiness
+14 reserved fields per realm: `unity_project_name`, `unity_scene_name`, `unity_build_target`, `unity_bundle_id`, `unity_version`, `asset_bundle_url`, `addressables_catalog_url`, `webgl_build_url`, `ios_build_status`, `android_build_status`, `visionos_build_status`, `quest_build_status`, `release_channel`, `deployment_notes`. Full admin editor with per-field inputs + Save.
+
+### Security summary
+- Anon → 401 on every `/api/admin/portals/*`
+- Non-admin authenticated → 403
+- Unknown realm id (must be one of the 12 canonical ids) → 404
+- Every mutation writes `{at, by_id, by_username, field, action, before, after}` to `audit_history`
+- Public users still see `/portals` Opening Soon; `/realms/portals/ar*` still redirect anon to `/portals`
+
+### Files
+- **NEW** `/app/backend/routers/admin_portals.py` (~370 lines)
+- **NEW** `/app/frontend/src/lib/portals/portalsApi.js` (~40 lines)
+- **MOD** `/app/backend/server.py` (import + include_router)
+- **MOD** `/app/frontend/src/pages/AdminPortalsHub.jsx` (backend hydration + optimistic toggle)
+- **REWRITE** `/app/frontend/src/pages/AdminPortalDetail.jsx` (~600 lines, per-field persistence)
+- **MOD** `/app/frontend/src/lib/portals/README.md` (Portals 1.3 architecture + schema + Unity+Asset Scrolls plan + Security summary)
+
+
+
 ## Portals 1.2 — Founder-only Portal Development Hub (Feb 7, 2026) ✅ COMPLETE
 
 **Public surface unchanged. Every unfinished Realm is now invisible to normal users. Verified by `testing_agent_v3_fork` iteration 70 (13/13 scenarios pass, 100%).**
