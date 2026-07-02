@@ -162,7 +162,8 @@ function PortalsStyles() {
         color: #E6FFF3;
         font-family: var(--font-display, "Inter", system-ui, sans-serif);
         display: flex; flex-direction: column;
-        padding: 24px 18px 40px;
+        /* Bottom padding clears the fixed BottomNav bar (~72px) plus safe-area. */
+        padding: 24px 18px calc(96px + env(safe-area-inset-bottom, 0px));
       }
 
       /* Background layers */
@@ -229,14 +230,14 @@ function PortalsStyles() {
       .ph-main {
         position: relative; z-index: 2;
         flex: 1;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        gap: 20px;
-        padding: 24px 0 12px;
+        display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+        gap: 14px;
+        padding: 24px 0 8px;
       }
 
-      /* Portal wrapper — sizes 260..500px */
+      /* Portal wrapper — sizes 200..420px */
       .ph-portal-wrap {
-        --portal-size: clamp(240px, 60vmin, 500px);
+        --portal-size: clamp(200px, 44vmin, 420px);
         --rim-r: calc(var(--portal-size) / 2 - 8px);
         position: relative;
         width: var(--portal-size);

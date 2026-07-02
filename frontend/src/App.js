@@ -50,9 +50,11 @@ import InstallPrompt from "@/components/InstallPrompt";
 import RestoreAccountPrompt from "@/components/RestoreAccountPrompt";
 
 // Phase: Portals 1.0 — Rainforest Realm AR foundation.
-import PortalsHub from "@/pages/PortalsHub";
-import PortalAR   from "@/pages/PortalAR";
-import PortalVR   from "@/pages/PortalVR";
+// Phase: Portals 1.1 — Real WebXR immersive-ar session.
+import PortalsHub       from "@/pages/PortalsHub";
+import PortalAR         from "@/pages/PortalAR";
+import PortalVR         from "@/pages/PortalVR";
+import PortalXRSession  from "@/pages/PortalXRSession";
 
 function ShellRoute({ children }) {
   const { isLoading } = useAuth();
@@ -143,6 +145,7 @@ function App() {
                 iOS safe-area inset. */}
             <Route path="/portals" element={<ShellRoute><PortalsHub /></ShellRoute>} />
             <Route path="/realms/portals/ar" element={<PortalAR />} />
+            <Route path="/realms/portals/ar/xr" element={<PortalXRSession />} />
             <Route path="/realms/portals/vr" element={<PortalVR />} />
 
             <Route path="*" element={<Navigate to="/" replace />} />

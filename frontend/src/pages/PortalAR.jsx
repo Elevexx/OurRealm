@@ -303,6 +303,16 @@ export default function PortalAR() {
             <p className="par-preview-card-body">
               You&apos;re viewing a cinematic preview of this Realm. True room mapping will become available on supported AR platforms in a future Portals release.
             </p>
+            {rendererMode === "webxr_supported" && (
+              <button
+                type="button"
+                className="par-xr-cta"
+                onClick={() => navigate("/realms/portals/ar/xr?realm=rainforest")}
+                data-testid="portal-ar-enter-xr"
+              >
+                <Zap size={12} /> Enter Immersive AR
+              </button>
+            )}
           </div>
         )}
         <button
@@ -1246,6 +1256,20 @@ function PortalARStyles() {
         margin: 8px 0 0; font-size: 12.5px; line-height: 1.5;
         color: #BBF7D0;
       }
+      /* Phase 1.1 — CTA that launches the real WebXR immersive-ar route. */
+      .par-xr-cta {
+        display: inline-flex; align-items: center; gap: 6px;
+        margin-top: 10px;
+        padding: 8px 12px;
+        background: linear-gradient(180deg, #22C55E, #15803D);
+        color: #022C1A;
+        border: none; border-radius: 999px;
+        font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+        cursor: pointer;
+        box-shadow: 0 6px 18px rgba(34,197,94,0.35);
+        transition: transform 150ms ease;
+      }
+      .par-xr-cta:hover { transform: translateY(-1px); }
 
       /* Canopy / sky — shorter so the user's actual room stays visible below. */
       .par-canopy { transition: opacity 600ms ease; }

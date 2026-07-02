@@ -1,0 +1,31 @@
+{
+  "summary": "Frontend-only regression for Portals 1.0 Opening Soon page (/portals) across mobile/tablet/desktop AND Portals 1.1 real WebXR AR route (/realms/portals/ar/xr). All 7 requested scenarios PASS. Portals 1.0: portals-hub renders, spinning vortex visible, status cycles every 2s ('Initializing Portal Network' -> 'Constructing Realms'), Notify-Me toast appears with exact copy 'Portals are currently under development.' CTA (portals-notify-btn) is confirmed to sit ABOVE the fixed BottomNav on all three viewports (mobile gap=100px, tablet gap=244px, desktop gap=45px). Portals 1.1 XR: /realms/portals/ar/xr?realm=rainforest mounts portal-xr-root, portal-xr-canvas-host, portal-xr-overlay, portal-xr-back, portal-xr-card. As expected in a headless (no WebXR) browser, PortalEngine.probe() resolves arSupported=false and the portal-xr-error card renders with heading 'Immersive AR is unavailable'. portal-xr-return-preview successfully navigates back to /realms/portals/ar, and the top-bar portal-xr-back button also navigates to /realms/portals/ar when not in session. REGRESSION: /realms/portals/ar preview still loads (portal-ar-root + portal-ar-gate + portal-ar-allow-camera present, 0 pageerrors); /realms still loads (21 realm cards, 'Portals' text present in DOM, 0 pageerrors). Zero page errors on any route. Console shows pre-existing 401s from auth polling (unrelated to Portals - present on every route regardless).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/portals mobile 390x844", "issues": ["Cosmetic: the ph-toast (bottom: max(24px, env(safe-area-inset-bottom))) after clicking Notify Me visually overlaps the fixed BottomNav bar (BottomNav top ~772, toast bottom ~820). Not blocking - toast is still readable above the nav border and auto-dismisses in ~3.2s. Consider raising toast bottom to ~96px on mobile to sit above the nav like the CTA does."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "OPTIONAL cosmetic: raise .ph-toast bottom offset (currently 24px) above the ~72px BottomNav on mobile - use bottom: calc(88px + env(safe-area-inset-bottom)) so the confirmation toast is not visually behind the fixed nav.",
+    "OPTIONAL naming polish: the review-request referenced testid 'portal-ar-permission-modal' but the actual DOM uses 'portal-ar-gate' for the permission modal container. Either add an alias data-testid='portal-ar-permission-modal' or update future testing docs to use portal-ar-gate. Regression itself passes."
+  ],
+  "critical_code_review_comments": [
+    "PortalXRSession.jsx correctly handles headless / unsupported UA: PortalEngine.probe() returns arSupported=false -> phase='error' -> renders portal-xr-error card and disables the enter button - clean graceful degradation.",
+    "PortalXRSession.jsx cleanup on unmount calls engineRef.current.dispose() inside try/catch - good defensive pattern.",
+    "PortalsHub.jsx uses visibilitychange to pause the status interval when tab hidden - nice CPU-saving detail.",
+    "PortalsHub bottom padding uses calc(96px + env(safe-area-inset-bottom)) which correctly clears the ~72px BottomNav on all viewports (verified with bounding-box math on 390/820/1920).",
+    "Minor: PortalXRSession pre-session card has phase='ended' branch that re-uses className 'pxr-error' for a non-error state (session ended) - naming smell only, not a bug.",
+    "Minor: /portals still emits 6 pre-existing '401' console warnings from ShellRoute auth-status polling. Not new - present on /realms too. Not caused by Portals changes."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100% (7/7 scenarios pass)"},
+  "test_credentials": "Not used (Portals routes are public).",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Portals 1.0 (/portals) and Portals 1.1 (/realms/portals/ar/xr) both work as designed. In headless browsers, /realms/portals/ar/xr will ALWAYS show the portal-xr-error 'Immersive AR is unavailable' card - this is CORRECT behavior (immersive-ar requires ARCore Android Chrome). Do NOT flag it as a bug. To fully test the 'Enter Immersive AR' happy path you need a real ARCore device (Chrome on Android). The existing preview /realms/portals/ar uses testid 'portal-ar-gate' (not 'portal-ar-permission-modal'). The 401 console errors on every page come from ShellRoute auth polling and are pre-existing/unrelated."
+}
