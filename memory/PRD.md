@@ -1,5 +1,42 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Portals 1.2 — Founder-only Portal Development Hub (Feb 7, 2026) ✅ COMPLETE
+
+**Public surface unchanged. Every unfinished Realm is now invisible to normal users. Verified by `testing_agent_v3_fork` iteration 70 (13/13 scenarios pass, 100%).**
+
+### What shipped
+- **12-Realm metadata catalogue** (`/src/lib/portals/realmMetadata.js`). Rich schema: id, name, emoji, description, longDescription, thumbnail, accent, secondary, supportedPlatforms (AR/VR/Phone/Tablet/Desktop), requiredCapabilities, version, status (Draft / Internal Testing / Founder Preview / Private Beta / Public Beta / Released / Disabled), lastUpdated, notes, audioProfile, lightingProfile, weatherProfile, performanceLevel, estimatedFps, tags, hasGameplay. Query helpers: `listAllRealms`, `listPublicRealms`, `listFounderRealms`, `getRealmMeta`, `isRealmPublic`.
+- **12 Realms registered**: Rainforest 🌴 (Founder Preview, v1.1.0, real gameplay), Aquarium 🌊, Cyberpunk 🌆, Snow ❄, Desert 🏜, Volcano 🌋, Space 🌌, Fantasy 🏰, Jurassic 🦕, Ancient Ruins 🏛, Tropical Island 🏝, Moon Colony 🌙 (Draft, placeholder gameplay).
+- **PlaceholderRealm** (`/src/lib/portals/PlaceholderRealm.js`) — reusable Three.js fallback (neon obelisk + orbiting glyph particles + soft ground disc coloured from the realm's accent). Every metadata-only realm is instantly launchable.
+- **Auto-discovering registry** (`/src/lib/portals/registry.js`) — `createRealm(id)` returns the registered class or a `PlaceholderRealm(meta)`. Adding a new realm = 1 metadata entry (`hasGameplay: false`); promoting to full gameplay = 1 line in `REALM_CLASSES`.
+- **Portal Development Hub** (`/admin/portals`, `/src/pages/AdminPortalsHub.jsx`) — Founder-gated. Hero panel with 3 live stats (Total Realms / With Gameplay / Public). Search box (name/description/tags). Status filter chips. Grid of 12 cards each with: gradient thumbnail + emoji, status badge, name + version, description, platform chips, performance/weather/audio/updated grid, notes, and 3 actions (Launch → `/realms/portals/ar/xr?realm=<id>`, Edit → detail, Disable/Enable → session override).
+- **Realm Detail** (`/admin/portals/:realmId`, `/src/pages/AdminPortalDetail.jsx`) — Founder-gated. Hero with launch CTA. Panels: Platforms, Required Capabilities, Profiles, Tags, editable Notes textarea (sessionStorage-persisted with dirty-flag Save button), Raw Metadata JSON.
+- **AdminHub integration** — new "Portal Development Hub" card added to `/admin` (Founder-only).
+- **Access hardening** — `/realms/portals/ar`, `/realms/portals/ar/xr`, `/realms/portals/vr` are all wrapped in a new `<PortalsAdminGate>` in `App.js`. Non-admin visitors are redirected to `/portals` (Opening Soon). Direct URL entry to unfinished realms is impossible for public users.
+- **Documentation** — `/src/lib/portals/README.md` (architecture + step-by-step "How to add a new Realm" + full public/founder route table + roadmap).
+
+### Success criteria — all met
+- ✅ Public users still see the Opening Soon page at `/portals`.
+- ✅ Founder / Admin users have a dedicated Portal Development Hub at `/admin/portals`.
+- ✅ Rainforest is only reachable inside Founder tools.
+- ✅ New Realms can be added with a single metadata entry (or one metadata entry + one class registration for gameplay).
+- ✅ Engine is prepared for the future Portal Selector (query helpers reserved on `realmMetadata.js`).
+- ✅ No regressions on `/portals`, `/realms`, `/admin`, `/admin/orion`, `/admin/analytics`.
+- ✅ Responsive on mobile / tablet / desktop.
+- ✅ Testing agent iteration 70: 13/13 (100%), 0 UI bugs, 0 integration issues, 0 design issues, 0 action items.
+
+### Files
+- **NEW** `/app/frontend/src/lib/portals/realmMetadata.js` (~245 lines)
+- **NEW** `/app/frontend/src/lib/portals/PlaceholderRealm.js` (~115 lines)
+- **NEW** `/app/frontend/src/lib/portals/README.md` (architecture + how-to)
+- **NEW** `/app/frontend/src/pages/AdminPortalsHub.jsx` (~370 lines)
+- **NEW** `/app/frontend/src/pages/AdminPortalDetail.jsx` (~310 lines)
+- **MOD** `/app/frontend/src/lib/portals/registry.js` (auto-discovery + Placeholder fallback)
+- **MOD** `/app/frontend/src/App.js` (new PortalsAdminGate; wired /admin/portals* and gated /realms/portals/*)
+- **MOD** `/app/frontend/src/pages/AdminHub.jsx` (added Portal Dev Hub card)
+
+
+
 ## Portals 1.1 — Real WebXR AR Foundation (Feb 7, 2026) ✅ COMPLETE
 
 **Modular reusable engine + first real 3D Realm. Verified via `testing_agent_v3_fork` iteration 69 (7/7 scenarios pass, 100%).**
