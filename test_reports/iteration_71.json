@@ -1,0 +1,36 @@
+{
+  "summary": "Portals 1.3 backend persistence + admin UI fully verified. Backend: 33/33 pytest cases pass (anon 401 on all 12 mutation routes, non-admin 403 on 3 sample routes, unknown-realm 404, founder happy-path lifecycle covering notes/status/toggle/platform-readiness/asset-scrolls/unity/ar-vr/roadmap/performance with GET verification and audit history ≥10 entries, DELETE reset). Frontend: anon gating intact (/portals still shows Opening Soon, /admin/portals denied panel, /realms/portals/ar → /portals redirect). Founder full flow (/admin/portals/rainforest): all 8 sub-panels saved and persisted across reload — notes, status→private_beta, toggle→disabled (which per backend design also flipped status to 'disabled'), Unity, iOS ARKit supported, asset scroll tree_001/Kapok, roadmap notes, performance notes. Audit block shows @stealth entries. Raw JSON contains persisted override with realm_id='rainforest'. Hub reflects backend state (Rainforest pill = 'Disabled'). All regression routes /realms /admin /admin/orion /admin/analytics /portals /admin/portals returned HTTP 200 with zero pageerror/console-error events.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_portals_1_3.py",
+    "/app/test_reports/pytest/iter71_portals_1_3.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "admin_portals.py toggle-off deliberately overwrites status='disabled' AND toggle-on does not restore prior status — documented behavior. The review request itself contains an internal inconsistency (asks status='private_beta' in select after toggle-disable+reload, but its own earlier assertion says toggle-off forces status=disabled). Implemented behavior matches the earlier binding assertion. If the desired UX is to preserve prior status across a toggle, the router needs to snapshot pre-disable status and restore it on toggle-on — currently the founder must manually re-set status after re-enable.",
+    "Route order: admin_portals.py uses realm_id in path params before validating via _validate_realm_id; unknown realms surface 404 correctly. No 500-path found.",
+    "MongoDB _id is properly stripped via _clean() and projection={_id:0} in the /overrides list. Good hygiene.",
+    "AdminPortalDetail.jsx panels use per-panel save buttons — reduces cross-field race conditions but requires the user to click multiple Save buttons. Consider a single 'Save all' shortcut for founder productivity."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_portals_1_3.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (33/33 pytest)",
+    "frontend": "100% (all 14 scenarios in review request verified)"
+  },
+  "test_credentials": "Founder stealth/Password1$ used for admin ops; tfone/pass1234 used for 403 verification (seeded).",
+  "seed_data_creation": "Test transiently wrote a rainforest override; cleaned up via DELETE /api/admin/portals/rainforest/override in fixture teardown AND at end of Playwright run. No residual DB state.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Portals 1.3 backend + frontend both green. Regression suite lives at /app/backend/tests/test_portals_1_3.py (module-scoped fixtures wipe rainforest override before/after). Use fixtures anon/founder/member. Admin routes prefix: /api/admin/portals. Valid realm ids in VALID_REALM_IDS set (admin_portals.py line 64). Toggle-off ALWAYS overrides status to 'disabled' by design — do not assert prior status persists across a toggle-off cycle. AdminPortalDetail testids: admin-portal-detail-{page,name,notes,notes-save,status-select,toggle,unity-save,unity-<field>,assets,assets-save,asset-draft-{id,name,category,source},asset-add,roadmap,roadmap-save,perf,perf-save,audit,json,platform-grid}, plus admin-portal-plat-<platform>-{supported,save} for 7 platforms.",
+  "rca of the issue": "N/A — no issues found. Only nuance is the toggle-off status overwrite design decision; the review-request wording was internally inconsistent about it, and current implementation matches the more explicit assertion (toggle-off ⇒ status='disabled')."
+}

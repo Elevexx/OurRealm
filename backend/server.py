@@ -50,6 +50,7 @@ from routers import widget_chat as widget_chat_router_mod
 from routers import orion_logs as orion_logs_router_mod
 from routers import orion_health as orion_health_router_mod
 from routers import media_proxy as media_proxy_router_mod
+from routers import admin_portals as admin_portals_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -103,6 +104,7 @@ app.include_router(widget_chat_router_mod.router)
 app.include_router(orion_logs_router_mod.router)
 app.include_router(orion_health_router_mod.router)
 app.include_router(media_proxy_router_mod.router)
+app.include_router(admin_portals_router_mod.router)
 
 app.add_middleware(
     CORSMiddleware,

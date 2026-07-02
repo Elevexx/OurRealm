@@ -11,11 +11,11 @@
  * Not linked from public navigation. Access is gated by `isAdmin()`;
  * non-founders get a denial panel.
  */
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Crown, ShieldCheck, PlayCircle, Pencil, PowerOff, Power,
-  Sparkles, ArrowLeft, Search, Filter,
+  Sparkles, ArrowLeft, Search, Filter, Loader2, AlertCircle, RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdmin } from "@/lib/isAdmin";
@@ -25,6 +25,7 @@ import {
   REALM_STATUS_LABEL,
   REALM_STATUS_COLOR,
 } from "@/lib/portals/realmMetadata";
+import { portalsApi } from "@/lib/portals/portalsApi";
 
 const STATUS_FILTERS = [
   { id: "all",      label: "All" },
@@ -40,23 +41,51 @@ export default function AdminPortalsHub() {
   const navigate = useNavigate();
   const [query, setQuery]    = useState("");
   const [filter, setFilter]  = useState("all");
-  // Runtime status overrides — persist to sessionStorage so the founder
-  // can flip a realm to "Disabled" during a dev session without editing
-  // the metadata file. Server-side persistence lands in a future phase.
-  const [overrides, setOverrides] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem("portalsDevOverrides") || "{}"); }
-    catch (_) { return {}; }
-  });
+  // Persistent state loaded from the backend. `overrides` maps realmId
+  // → { status, enabled, notes, … }. When the backend is unavailable
+  // we transparently fall back to sessionStorage so the founder can
+  // still stage disable/status changes locally.
+  const [overrides, setOverrides] = useState({});
+  const [loading,   setLoading]   = useState(true);
+  const [loadErr,   setLoadErr]   = useState(null);
 
-  const persistOverrides = (next) => {
-    setOverrides(next);
-    try { sessionStorage.setItem("portalsDevOverrides", JSON.stringify(next)); } catch (_) { /* noop */ }
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const resp = await portalsApi.listOverrides();
+      if (cancelled) return;
+      if (resp.ok) {
+        const map = {};
+        for (const o of (resp.overrides || [])) map[o.realm_id] = o;
+        setOverrides(map);
+        setLoadErr(null);
+      } else {
+        setLoadErr(resp.detail || "Failed to load overrides");
+        // sessionStorage fallback (older keys — status only).
+        try {
+          const legacy = JSON.parse(sessionStorage.getItem("portalsDevOverrides") || "{}");
+          const map = {};
+          Object.entries(legacy).forEach(([id, status]) => { map[id] = { status, enabled: status !== REALM_STATUS.DISABLED }; });
+          setOverrides(map);
+        } catch (_) { setOverrides({}); }
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const applyOverride = (realmId, next) => {
+    setOverrides((prev) => ({ ...prev, [realmId]: { ...(prev[realmId] || {}), ...next } }));
   };
 
   const realms = useMemo(() => {
     const q = query.trim().toLowerCase();
     return REALM_METADATA
-      .map((r) => ({ ...r, status: overrides[r.id] || r.status }))
+      .map((r) => {
+        const ov = overrides[r.id];
+        return { ...r, status: (ov?.status) || r.status, enabled: ov ? (ov.enabled !== false) : true };
+      })
       .filter((r) => (filter === "all" ? true : r.status === filter))
       .filter((r) =>
         !q ||
@@ -81,15 +110,27 @@ export default function AdminPortalsHub() {
     );
   }
 
-  const onToggleDisable = (id, current) => {
-    const next = { ...overrides };
-    if (current === REALM_STATUS.DISABLED) {
+  const onToggleDisable = async (id, currentEnabled, currentStatus) => {
+    // Optimistic UI — flip immediately, then call backend.
+    const nextEnabled = !currentEnabled;
+    const optimisticNext = { enabled: nextEnabled };
+    if (!nextEnabled) optimisticNext.status = REALM_STATUS.DISABLED;
+    else if (currentStatus === REALM_STATUS.DISABLED) {
       const original = REALM_METADATA.find((r) => r.id === id)?.status || REALM_STATUS.DRAFT;
-      next[id] = original;
-    } else {
-      next[id] = REALM_STATUS.DISABLED;
+      optimisticNext.status = original;
     }
-    persistOverrides(next);
+    applyOverride(id, optimisticNext);
+    const resp = await portalsApi.toggleEnabled(id, nextEnabled);
+    if (resp.ok && resp.override) {
+      applyOverride(id, { status: resp.override.status, enabled: resp.override.enabled !== false });
+    } else if (!resp.ok) {
+      // Offline fallback — persist to sessionStorage.
+      try {
+        const legacy = JSON.parse(sessionStorage.getItem("portalsDevOverrides") || "{}");
+        legacy[id] = optimisticNext.status || currentStatus;
+        sessionStorage.setItem("portalsDevOverrides", JSON.stringify(legacy));
+      } catch (_) { /* noop */ }
+    }
   };
 
   return (
@@ -127,9 +168,26 @@ export default function AdminPortalsHub() {
         <div className="apx-hero-stats">
           <StatChip label="Total Realms"     value={REALM_METADATA.length} />
           <StatChip label="With Gameplay"    value={totalPlayable} accent="#22c55e" />
-          <StatChip label="Public"           value={REALM_METADATA.filter((r) => (overrides[r.id] || r.status) === REALM_STATUS.RELEASED).length} accent="#60a5fa" />
+          <StatChip label="Public"           value={REALM_METADATA.filter((r) => (overrides[r.id]?.status || r.status) === REALM_STATUS.RELEASED).length} accent="#60a5fa" />
         </div>
       </section>
+
+      {loading && (
+        <div className="apx-loading" data-testid="admin-portals-loading">
+          <Loader2 size={14} className="apx-spin" /> Loading realm overrides from backend…
+        </div>
+      )}
+      {loadErr && !loading && (
+        <div className="apx-banner" data-testid="admin-portals-load-err">
+          <AlertCircle size={14} /> Backend load failed — falling back to catalogue defaults. {loadErr}
+          <button
+            type="button"
+            className="apx-btn apx-btn-tiny"
+            onClick={() => window.location.reload()}
+            data-testid="admin-portals-retry"
+          ><RefreshCw size={12} /> Retry</button>
+        </div>
+      )}
 
       <section className="apx-toolbar">
         <div className="apx-search">
@@ -170,7 +228,7 @@ export default function AdminPortalsHub() {
             realm={r}
             onLaunch={() => navigate(`/realms/portals/ar/xr?realm=${encodeURIComponent(r.id)}`)}
             onEdit={()   => navigate(`/admin/portals/${encodeURIComponent(r.id)}`)}
-            onToggleDisable={() => onToggleDisable(r.id, r.status)}
+            onToggleDisable={() => onToggleDisable(r.id, r.enabled, r.status)}
           />
         ))}
       </section>
@@ -189,7 +247,7 @@ function StatChip({ label, value, accent = "#86efac" }) {
 }
 
 function RealmCard({ realm, onLaunch, onEdit, onToggleDisable }) {
-  const disabled = realm.status === REALM_STATUS.DISABLED;
+  const disabled = realm.status === REALM_STATUS.DISABLED || realm.enabled === false;
   return (
     <article
       className={`apx-card ${disabled ? "is-disabled" : ""}`}
@@ -382,6 +440,19 @@ function AdminPortalsStyles() {
       }
       .apx-chip-static { cursor: default; }
       .apx-chip-static:hover { border-color: rgba(134,239,172,0.25); }
+
+      .apx-loading, .apx-banner {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        font-size: 12px;
+        margin-bottom: 12px;
+      }
+      .apx-loading { color: #86efac; background: rgba(6,20,14,0.55); border: 1px solid rgba(134,239,172,0.2); }
+      .apx-banner  { color: #fca5a5; background: rgba(60,10,10,0.4); border: 1px solid rgba(239,68,68,0.35); }
+      .apx-spin    { animation: apx-spin 900ms linear infinite; }
+      @keyframes apx-spin { to { transform: rotate(360deg); } }
+      .apx-btn-tiny { padding: 4px 10px; font-size: 10px; }
 
       /* Grid */
       .apx-grid {
