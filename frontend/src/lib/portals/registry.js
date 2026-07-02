@@ -1,26 +1,50 @@
 /**
- * OurRealm — Portals 1.1 · Realm registry
+ * OurRealm — Portals · Realm Registry
  * -----------------------------------------------------------------
- * Maps realmId → Realm class constructor. Add new realms here and
- * they become instantiable by /realms/portals/ar/xr?realm=<id>.
+ * Auto-discovers every realm in `realmMetadata` and pairs it with a
+ * gameplay class. Realms with `hasGameplay: false` (or without a
+ * registered class) automatically fall back to `PlaceholderRealm`
+ * so the founder can still LAUNCH them from the Dev Hub.
  *
- * Kept as an object of lazy factory functions so the Three.js code
- * splits out of any page that doesn't need it (Portals Hub, etc.).
+ *   createRealm("rainforest")     → RainforestRealm()
+ *   createRealm("aquarium")       → PlaceholderRealm(meta)
+ *   listRealmIds()                → ["rainforest", "aquarium", …]
+ *
+ * Adding a new fully-playable Realm:
+ *   1. Add its metadata entry to `realmMetadata.js` (hasGameplay: true).
+ *   2. Import its class here.
+ *   3. Add one line to REALM_CLASSES.
  */
-import RainforestRealm from "./realms/RainforestRealm";
+import PlaceholderRealm  from "./PlaceholderRealm";
+import RainforestRealm   from "./realms/RainforestRealm";
+import { REALM_METADATA, getRealmMeta } from "./realmMetadata";
 
-const REGISTRY = {
-  rainforest: () => new RainforestRealm(),
+// Playable realm classes. Adding one line here promotes a placeholder
+// realm into a real gameplay experience.
+const REALM_CLASSES = {
+  rainforest: RainforestRealm,
 };
 
+/**
+ * Instantiate a Realm by id. Falls back to the PlaceholderRealm so
+ * every registered realm is *always* launchable.
+ */
 export function createRealm(realmId) {
-  const factory = REGISTRY[realmId];
-  if (!factory) throw new Error(`Realm not found in registry: ${realmId}`);
-  return factory();
+  const meta = getRealmMeta(realmId);
+  if (!meta) throw new Error(`Realm not registered in metadata: ${realmId}`);
+  const Cls = REALM_CLASSES[realmId];
+  if (Cls) return new Cls();
+  return new PlaceholderRealm(meta);
 }
 
+/** Every realm id known to the platform (metadata + gameplay). */
 export function listRealmIds() {
-  return Object.keys(REGISTRY);
+  return REALM_METADATA.map((r) => r.id);
 }
 
-export default { createRealm, listRealmIds };
+/** Just the realm ids with a real gameplay class. */
+export function listPlayableRealmIds() {
+  return Object.keys(REALM_CLASSES);
+}
+
+export default { createRealm, listRealmIds, listPlayableRealmIds };

@@ -130,6 +130,18 @@ const CARDS = [
     statKey: null,
     footer: "✦ Open Orion Command Center",
   },
+  {
+    id: "portals",
+    to: "/admin/portals",
+    title: "Portal Development Hub",
+    description: "Preview and manage every Realm (Rainforest, Aquarium, Cyberpunk, …). Launch, edit, disable. Never linked publicly.",
+    Icon: Crown,
+    accent: "#10E670",
+    badge: "Founder Only",
+    roles: ["founder"],
+    statKey: null,
+    footer: "◈ Open Portal Dev Hub",
+  },
 ];
 
 export default function AdminHub() {

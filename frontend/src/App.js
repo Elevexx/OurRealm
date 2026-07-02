@@ -51,10 +51,24 @@ import RestoreAccountPrompt from "@/components/RestoreAccountPrompt";
 
 // Phase: Portals 1.0 — Rainforest Realm AR foundation.
 // Phase: Portals 1.1 — Real WebXR immersive-ar session.
-import PortalsHub       from "@/pages/PortalsHub";
-import PortalAR         from "@/pages/PortalAR";
-import PortalVR         from "@/pages/PortalVR";
-import PortalXRSession  from "@/pages/PortalXRSession";
+// Phase: Portals 1.2 — Founder-only Portal Development Hub.
+import PortalsHub        from "@/pages/PortalsHub";
+import PortalAR          from "@/pages/PortalAR";
+import PortalVR          from "@/pages/PortalVR";
+import PortalXRSession   from "@/pages/PortalXRSession";
+import AdminPortalsHub   from "@/pages/AdminPortalsHub";
+import AdminPortalDetail from "@/pages/AdminPortalDetail";
+import { isAdmin }       from "@/lib/isAdmin";
+
+// Portals 1.2 — the entire /realms/portals/* AR surface (preview + XR
+// session) is Founder/Admin-only until Realms graduate to "Released".
+// Public users are redirected to the Opening Soon hub at /portals.
+function PortalsAdminGate({ children }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!user || !isAdmin(user)) return <Navigate to="/portals" replace />;
+  return children;
+}
 
 function ShellRoute({ children }) {
   const { isLoading } = useAuth();
@@ -144,9 +158,11 @@ function App() {
                 feed and HUD can use the entire viewport including the
                 iOS safe-area inset. */}
             <Route path="/portals" element={<ShellRoute><PortalsHub /></ShellRoute>} />
-            <Route path="/realms/portals/ar" element={<PortalAR />} />
-            <Route path="/realms/portals/ar/xr" element={<PortalXRSession />} />
-            <Route path="/realms/portals/vr" element={<PortalVR />} />
+            <Route path="/realms/portals/ar" element={<PortalsAdminGate><PortalAR /></PortalsAdminGate>} />
+            <Route path="/realms/portals/ar/xr" element={<PortalsAdminGate><PortalXRSession /></PortalsAdminGate>} />
+            <Route path="/realms/portals/vr" element={<PortalsAdminGate><PortalVR /></PortalsAdminGate>} />
+            <Route path="/admin/portals" element={<ShellRoute><AdminPortalsHub /></ShellRoute>} />
+            <Route path="/admin/portals/:realmId" element={<ShellRoute><AdminPortalDetail /></ShellRoute>} />
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
