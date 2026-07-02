@@ -1,337 +1,456 @@
 /**
- * Portals 1.0 — Hub page (/portals).
+ * OurRealm — Portals /portals
  *
- * Dynamic list rendered from /src/config/portals.js. Phase 1.0 ships:
- *   • Featured Rainforest Realm (AR) — live
- *   • Rainforest Realm (VR) — coming soon
+ * Phase 1.0 ships as an "Opening Soon" teaser. The full Portal browser
+ * (featured Realms / search / friends inside / live users / previews)
+ * will replace this file when Portals 1.0 launches. The existing AR
+ * & VR routes (/realms/portals/ar, /realms/portals/vr) remain intact.
  *
- * Visual style follows the futuristic neon-green Portals direction
- * defined in the brief.
+ * Design targets:
+ *   • Massive spinning neon-green energy portal, center of screen.
+ *   • Dark futuristic backdrop with drifting dust + faint circuit lines.
+ *   • Cycling loader statuses every 2s.
+ *   • Notify-me button (shows a local toast; no backend yet).
+ *   • CSS-only animations, mobile-first, 60fps friendly.
+ *   • Pauses the JS status interval when the tab is hidden.
  */
-import React from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, Compass, Sparkles, Lock } from "lucide-react";
-import { PORTALS, PORTAL_STATUS } from "../config/portals";
+import React, { useEffect, useRef, useState } from "react";
+import { Bell, Sparkles } from "lucide-react";
 
-const isLive = (p) => p.status === PORTAL_STATUS.LIVE;
+const STATUSES = [
+  "Initializing Portal Network...",
+  "Constructing Realms...",
+  "Stabilizing Portal Energy...",
+  "Preparing for Launch...",
+];
 
 export default function PortalsHub() {
-  const navigate = useNavigate();
-  const featured = PORTALS.find((p) => p.portalId === "rainforest-ar");
-  const others   = PORTALS.filter((p) => p.portalId !== "rainforest-ar");
+  const [statusIdx, setStatusIdx] = useState(0);
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+
+  // Cycle statuses every 2s; pause when the tab is hidden to save CPU.
+  useEffect(() => {
+    let intervalId = null;
+    const tick = () => setStatusIdx((i) => (i + 1) % STATUSES.length);
+    const start = () => {
+      if (!intervalId) intervalId = setInterval(tick, 2000);
+    };
+    const stop = () => {
+      if (intervalId) { clearInterval(intervalId); intervalId = null; }
+    };
+    const onVis = () => (document.hidden ? stop() : start());
+    start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
+
+  const notify = () => {
+    setToast("Portals are currently under development.");
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 3200);
+  };
 
   return (
-    <div className="portals-hub-root" data-testid="portals-hub">
+    <div className="ph-root" data-testid="portals-hub">
       <PortalsStyles />
-      <div className="portals-hub-bg" aria-hidden="true">
-        <div className="portals-hub-bg-rays" />
-        <div className="portals-hub-bg-mist" />
+
+      {/* Background */}
+      <div className="ph-bg" aria-hidden="true">
+        <div className="ph-bg-grid" />
+        <div className="ph-bg-fog" />
+        <div className="ph-bg-vignette" />
+        {/* Drifting dust motes — 18 cheap positioned spans */}
+        {Array.from({ length: 18 }, (_, i) => (
+          <span
+            key={i}
+            className="ph-dust"
+            style={{
+              left: `${(i * 47 + 8) % 100}%`,
+              top:  `${(i * 29 + 12) % 100}%`,
+              animationDuration: `${9 + (i % 6)}s`,
+              animationDelay: `${(i % 5) * 0.7}s`,
+              width:  `${2 + (i % 3)}px`,
+              height: `${2 + (i % 3)}px`,
+            }}
+          />
+        ))}
       </div>
 
-      <header className="portals-hub-header">
-        <div className="portals-hub-brand">
-          <Compass size={18} />
-          <span>Portals · 1.0</span>
-        </div>
-        <h1 className="portals-hub-title">
-          Step Through Reality
-        </h1>
-        <p className="portals-hub-subtitle">
-          Portals let you enter immersive AR &amp; VR Realm experiences. Pick a destination,
-          allow your camera, and the world around you transforms.
-        </p>
+      {/* Top branding */}
+      <header className="ph-header" data-testid="portals-header">
+        <div className="ph-brand">OurRealm</div>
+        <div className="ph-tagline">LIVE · CONNECT · EXPERIENCE</div>
       </header>
 
-      {/* Featured card */}
-      {featured && (
-        <section className="portals-featured" data-testid="portals-featured">
-          <div className="portals-featured-tag">
-            <Sparkles size={12} /> Featured Realm · Live
+      {/* Portal */}
+      <main className="ph-main">
+        <div className="ph-portal-wrap" data-testid="portals-portal">
+          {/* Outer thin ring (rotates opposite direction) */}
+          <div className="ph-ring" aria-hidden="true" />
+          {/* Outer bloom */}
+          <div className="ph-bloom" aria-hidden="true" />
+          {/* Rim particles orbiting */}
+          <div className="ph-rim" aria-hidden="true">
+            {Array.from({ length: 14 }, (_, i) => (
+              <span
+                key={i}
+                className="ph-rim-dot"
+                style={{ transform: `rotate(${i * (360 / 14)}deg) translateX(var(--rim-r))` }}
+              />
+            ))}
           </div>
-          <div className="portals-featured-grid">
-            <div className="portals-featured-art" aria-hidden="true">
-              <div className="portals-featured-art-leaves" />
-              <div className="portals-featured-art-glow" />
-              <div className="portals-featured-art-creatures">
-                <span className="creature-mini" style={{ animationDelay: "0s"   }}>🦜</span>
-                <span className="creature-mini" style={{ animationDelay: "0.6s" }}>🐆</span>
-                <span className="creature-mini" style={{ animationDelay: "1.2s" }}>🐒</span>
-                <span className="creature-mini" style={{ animationDelay: "1.8s" }}>🐊</span>
-              </div>
-            </div>
-            <div className="portals-featured-body">
-              <h2 className="portals-featured-title">{featured.realmName}</h2>
-              <p className="portals-featured-blurb">{featured.hubBlurb}</p>
-              <ul className="portals-featured-bullets">
-                <li>Layered jungle holograms over your live camera feed</li>
-                <li>River, caiman, jaguar, monkeys, macaws &amp; toucans</li>
-                <li>Tilt your phone upward to peek through the canopy</li>
-              </ul>
-              <div className="portals-featured-cta-row">
-                <button
-                  type="button"
-                  className="portals-cta-primary"
-                  onClick={() => navigate(featured.route)}
-                  data-testid="portals-cta-enter-ar"
-                >
-                  Enter AR Portal <ArrowRight size={14} />
-                </button>
-                <Link
-                  to={featured.route}
-                  className="portals-cta-secondary"
-                  data-testid="portals-cta-route"
-                >
-                  Open {featured.route}
-                </Link>
-              </div>
-            </div>
+          {/* Vortex — layered conic gradients rotating at different speeds. */}
+          <div className="ph-vortex ph-vortex-1" aria-hidden="true" />
+          <div className="ph-vortex ph-vortex-2" aria-hidden="true" />
+          <div className="ph-vortex ph-vortex-3" aria-hidden="true" />
+          {/* Electric flicker + inner glow */}
+          <div className="ph-electric" aria-hidden="true" />
+          <div className="ph-core" aria-hidden="true">
+            <Sparkles size={20} />
           </div>
-        </section>
+        </div>
+
+        <h1 className="ph-headline" data-testid="portals-headline">Opening Soon</h1>
+        <p className="ph-desc">
+          Step through the Portal into immersive shared Realms.<br />
+          Our first generation of Portals is currently under construction.
+        </p>
+
+        <div className="ph-status" data-testid="portals-status" aria-live="polite">
+          <span className="ph-status-dot" />
+          <span key={statusIdx} className="ph-status-text">
+            {STATUSES[statusIdx]}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={notify}
+          className="ph-cta"
+          data-testid="portals-notify-btn"
+        >
+          <Bell size={14} /> Notify Me When Portals Launch
+        </button>
+      </main>
+
+      {/* Toast */}
+      {toast && (
+        <div className="ph-toast" data-testid="portals-toast" role="status">
+          {toast}
+        </div>
       )}
-
-      {/* Other portal cards (incl. VR coming soon) */}
-      <section className="portals-grid" data-testid="portals-other-grid">
-        {others.map((p) => (
-          <article
-            key={p.portalId}
-            className={`portals-card ${isLive(p) ? "" : "portals-card-soon"}`}
-            data-testid={`portals-card-${p.portalId}`}
-          >
-            <div className="portals-card-head">
-              <span className="portals-card-mode">
-                {p.supportedModes.includes("vr") ? "VR" : "AR"}
-              </span>
-              {isLive(p) ? (
-                <span className="portals-card-pill portals-card-live">LIVE</span>
-              ) : (
-                <span className="portals-card-pill portals-card-pill-soon">
-                  <Lock size={9} /> Coming Soon
-                </span>
-              )}
-            </div>
-            <h3 className="portals-card-title">{p.realmName}</h3>
-            <p className="portals-card-blurb">{p.hubBlurb}</p>
-            <div className="portals-card-foot">
-              {isLive(p) ? (
-                <Link to={p.route} className="portals-cta-secondary" data-testid={`portals-card-${p.portalId}-link`}>
-                  Enter <ArrowRight size={12} />
-                </Link>
-              ) : (
-                <Link
-                  to={p.route}
-                  className="portals-cta-secondary portals-cta-disabled"
-                  data-testid={`portals-card-${p.portalId}-link`}
-                >
-                  Preview placeholder <ArrowRight size={12} />
-                </Link>
-              )}
-            </div>
-          </article>
-        ))}
-      </section>
-
-      <footer className="portals-hub-foot">
-        <p>More realms are launching soon. Portals are designed to host AR rainforests, VR oceans, holographic galleries, and beyond.</p>
-      </footer>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Shared Portals styles. Kept inline so a future migration to a CSS
-// module / styled-components system is trivial.
+// Styles — all CSS. No external assets. GPU-only transforms/opacity.
 // ─────────────────────────────────────────────────────────────────────
 function PortalsStyles() {
   return (
     <style>{`
-      .portals-hub-root {
+      .ph-root {
         position: relative;
         min-height: 100vh;
-        padding: 28px 18px 64px;
-        background: radial-gradient(1200px 700px at 20% -10%, #053a2a 0%, #021008 55%, #000 100%);
-        color: #DCFCE7;
-        font-family: var(--font-display, "Inter", system-ui, sans-serif);
+        min-height: 100dvh;
         overflow: hidden;
+        background: #030608;
+        color: #E6FFF3;
+        font-family: var(--font-display, "Inter", system-ui, sans-serif);
+        display: flex; flex-direction: column;
+        padding: 24px 18px 40px;
       }
-      .portals-hub-bg { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
-      .portals-hub-bg-rays {
+
+      /* Background layers */
+      .ph-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+      .ph-bg-grid {
+        position: absolute; inset: 0;
+        background-image:
+          linear-gradient(rgba(34,197,94,0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(34,197,94,0.06) 1px, transparent 1px);
+        background-size: 48px 48px;
+        mask-image: radial-gradient(ellipse at center, black 40%, transparent 75%);
+        -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 75%);
+      }
+      .ph-bg-fog {
         position: absolute; inset: 0;
         background:
-          radial-gradient(600px 600px at 80% 10%, rgba(134,239,172,0.18), transparent 65%),
-          radial-gradient(400px 400px at 10% 80%, rgba(34,197,94,0.10), transparent 65%);
+          radial-gradient(50% 40% at 50% 60%, rgba(34,197,94,0.14), transparent 65%),
+          radial-gradient(60% 50% at 20% 20%, rgba(20,83,45,0.20), transparent 70%),
+          radial-gradient(50% 40% at 80% 80%, rgba(6,95,70,0.18), transparent 70%);
+        animation: ph-fog 18s ease-in-out infinite alternate;
       }
-      .portals-hub-bg-mist {
+      @keyframes ph-fog {
+        from { transform: translate3d(-2%, 0, 0); }
+        to   { transform: translate3d(2%, 1%, 0); }
+      }
+      .ph-bg-vignette {
         position: absolute; inset: 0;
-        background:
-          repeating-linear-gradient(135deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 22px);
-        mix-blend-mode: screen;
+        background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.7) 90%);
       }
-      .portals-hub-header {
-        position: relative; z-index: 1;
-        max-width: 980px; margin: 0 auto 28px;
-        text-align: left;
+      .ph-dust {
+        position: absolute;
+        border-radius: 999px;
+        background: radial-gradient(circle, rgba(134,239,172,0.9), rgba(134,239,172,0) 70%);
+        filter: drop-shadow(0 0 4px rgba(134,239,172,0.7));
+        animation-name: ph-dust-drift;
+        animation-iteration-count: infinite;
+        animation-timing-function: linear;
+        opacity: 0.75;
       }
-      .portals-hub-brand {
-        display: inline-flex; align-items: center; gap: 8px;
-        padding: 6px 12px; border-radius: 999px;
-        background: rgba(34,197,94,0.10);
-        border: 1px solid rgba(134,239,172,0.35);
-        color: #86EFAC;
-        font-size: 11px; letter-spacing: 0.20em; text-transform: uppercase; font-weight: 800;
+      @keyframes ph-dust-drift {
+        0%   { transform: translate3d(0,0,0); opacity: 0.2; }
+        50%  { transform: translate3d(20px, -30px, 0); opacity: 0.8; }
+        100% { transform: translate3d(-15px, 20px, 0); opacity: 0.2; }
       }
-      .portals-hub-title {
-        margin: 16px 0 8px;
-        font-size: clamp(32px, 6vw, 56px);
-        line-height: 1.05;
-        font-weight: 900;
-        background: linear-gradient(180deg, #ECFDF5 0%, #86EFAC 70%, #22C55E 100%);
+
+      /* Header */
+      .ph-header {
+        position: relative; z-index: 2;
+        text-align: center;
+      }
+      .ph-brand {
+        font-size: 22px; font-weight: 900; letter-spacing: 0.02em;
+        background: linear-gradient(180deg, #ECFDF5, #86EFAC);
         -webkit-background-clip: text; background-clip: text;
         -webkit-text-fill-color: transparent;
       }
-      .portals-hub-subtitle {
-        max-width: 620px; color: #BBF7D0; font-size: 14px; line-height: 1.6;
+      .ph-tagline {
+        margin-top: 4px;
+        font-size: 10px; letter-spacing: 0.32em; text-transform: uppercase; font-weight: 700;
+        color: rgba(134,239,172,0.85);
       }
 
-      .portals-featured {
-        position: relative; z-index: 1;
-        max-width: 980px; margin: 0 auto 28px;
-        background: linear-gradient(180deg, rgba(20,83,45,0.55), rgba(6,40,21,0.7));
-        border: 1px solid rgba(134,239,172,0.30);
-        border-radius: 22px;
-        padding: 20px;
-        box-shadow:
-          0 20px 60px rgba(0,0,0,0.5),
-          inset 0 1px 0 rgba(255,255,255,0.05);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
+      /* Main flex container */
+      .ph-main {
+        position: relative; z-index: 2;
+        flex: 1;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 20px;
+        padding: 24px 0 12px;
       }
-      .portals-featured-tag {
-        display: inline-flex; align-items: center; gap: 6px;
-        font-size: 10px; letter-spacing: 0.20em; text-transform: uppercase; font-weight: 800;
-        color: #86EFAC;
-      }
-      .portals-featured-grid {
-        display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: 14px;
-      }
-      @media (min-width: 760px) {
-        .portals-featured-grid { grid-template-columns: 0.85fr 1.15fr; gap: 24px; }
-      }
-      .portals-featured-art {
+
+      /* Portal wrapper — sizes 260..500px */
+      .ph-portal-wrap {
+        --portal-size: clamp(240px, 60vmin, 500px);
+        --rim-r: calc(var(--portal-size) / 2 - 8px);
         position: relative;
-        min-height: 220px;
-        border-radius: 16px;
-        overflow: hidden;
+        width: var(--portal-size);
+        height: var(--portal-size);
+        border-radius: 999px;
+      }
+
+      /* Outer thin rotating ring */
+      .ph-ring {
+        position: absolute; inset: -14px;
+        border-radius: 999px;
+        border: 1px dashed rgba(134,239,172,0.65);
+        box-shadow: 0 0 24px rgba(34,197,94,0.25) inset;
+        animation: ph-spin-r 22s linear infinite;
+      }
+
+      /* Outer bloom */
+      .ph-bloom {
+        position: absolute; inset: -18%;
+        border-radius: 999px;
+        background: radial-gradient(circle,
+          rgba(34,197,94,0.35) 0%,
+          rgba(34,197,94,0.18) 30%,
+          rgba(34,197,94,0.04) 55%,
+          transparent 70%);
+        filter: blur(6px);
+        animation: ph-bloom 5s ease-in-out infinite alternate;
+      }
+      @keyframes ph-bloom {
+        from { opacity: 0.65; transform: scale(1); }
+        to   { opacity: 1;    transform: scale(1.05); }
+      }
+
+      /* Rim particles orbit */
+      .ph-rim {
+        position: absolute; inset: 0;
+        border-radius: 999px;
+        animation: ph-spin 14s linear infinite;
+      }
+      .ph-rim-dot {
+        position: absolute;
+        top: 50%; left: 50%;
+        width: 6px; height: 6px; margin: -3px 0 0 -3px;
+        border-radius: 999px;
+        background: #BBF7D0;
+        box-shadow: 0 0 8px #22C55E, 0 0 16px rgba(34,197,94,0.7);
+      }
+
+      /* Vortex — 3 conic-gradient layers spinning at different rates */
+      .ph-vortex {
+        position: absolute; inset: 6%;
+        border-radius: 999px;
+        mask-image: radial-gradient(circle, black 40%, transparent 100%);
+        -webkit-mask-image: radial-gradient(circle, black 40%, transparent 100%);
+      }
+      .ph-vortex-1 {
+        background: conic-gradient(from 0deg,
+          rgba(34,197,94,0.0),
+          rgba(34,197,94,0.75) 30%,
+          rgba(134,239,172,0.95) 55%,
+          rgba(34,197,94,0.65) 75%,
+          rgba(34,197,94,0.0) 100%);
+        animation: ph-spin 8s linear infinite;
+        filter: blur(2px);
+      }
+      .ph-vortex-2 {
+        inset: 14%;
+        background: conic-gradient(from 90deg,
+          rgba(6,95,70,0.0),
+          rgba(74,222,128,0.9) 40%,
+          rgba(34,197,94,0.6) 70%,
+          rgba(6,95,70,0.0) 100%);
+        animation: ph-spin-r 5s linear infinite;
+        filter: blur(1.5px);
+      }
+      .ph-vortex-3 {
+        inset: 24%;
+        background: conic-gradient(from 180deg,
+          rgba(240,253,244,0.0),
+          rgba(240,253,244,0.55) 35%,
+          rgba(134,239,172,0.9) 60%,
+          rgba(240,253,244,0.0) 100%);
+        animation: ph-spin 3s linear infinite;
+        filter: blur(1px);
+      }
+      @keyframes ph-spin   { to { transform: rotate(360deg); } }
+      @keyframes ph-spin-r { to { transform: rotate(-360deg); } }
+
+      /* Electric flicker overlay */
+      .ph-electric {
+        position: absolute; inset: 18%;
+        border-radius: 999px;
         background:
-          radial-gradient(220px 220px at 70% 70%, rgba(134,239,172,0.30), transparent 70%),
-          radial-gradient(140px 140px at 30% 30%, rgba(34,197,94,0.20), transparent 70%),
-          linear-gradient(180deg, #052e1e, #021410);
-        border: 1px solid rgba(134,239,172,0.18);
+          radial-gradient(circle at 30% 30%, rgba(255,255,255,0.5), transparent 40%),
+          radial-gradient(circle at 70% 60%, rgba(134,239,172,0.6), transparent 45%);
+        mix-blend-mode: screen;
+        animation: ph-flicker 2.2s ease-in-out infinite;
       }
-      .portals-featured-art-leaves {
-        position: absolute; inset: 0;
-        background:
-          radial-gradient(circle at 30% 20%, #166534 0 14px, transparent 16px),
-          radial-gradient(circle at 70% 30%, #14532d 0 18px, transparent 20px),
-          radial-gradient(circle at 50% 70%, #15803d 0 16px, transparent 18px),
-          radial-gradient(circle at 20% 80%, #166534 0 12px, transparent 14px);
-        opacity: 0.7;
-        filter: blur(0.4px);
+      @keyframes ph-flicker {
+        0%,100% { opacity: 0.85; }
+        45%     { opacity: 0.35; }
+        55%     { opacity: 1;    }
       }
-      .portals-featured-art-glow {
-        position: absolute; inset: 0;
-        background: radial-gradient(circle at 60% 50%, rgba(134,239,172,0.30), transparent 70%);
-        animation: portals-glow 5s ease-in-out infinite alternate;
+
+      /* Central core */
+      .ph-core {
+        position: absolute; inset: 40%;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 999px;
+        background: radial-gradient(circle, #F0FDF4 0%, #86EFAC 45%, #22C55E 80%, rgba(34,197,94,0) 100%);
+        box-shadow: 0 0 40px #22C55E, 0 0 80px rgba(34,197,94,0.7);
+        color: #052e1e;
+        animation: ph-core-pulse 3.6s ease-in-out infinite;
       }
-      @keyframes portals-glow { from { opacity: 0.5; } to { opacity: 1; } }
-      .portals-featured-art-creatures {
-        position: absolute; inset: 0;
-        display: flex; align-items: center; justify-content: center; gap: 28px;
-        font-size: 28px;
+      @keyframes ph-core-pulse {
+        0%,100% { transform: scale(1);    filter: brightness(1); }
+        50%     { transform: scale(1.08); filter: brightness(1.15); }
       }
-      .creature-mini {
-        animation: float-mini 3s ease-in-out infinite;
-        filter: drop-shadow(0 0 8px rgba(134,239,172,0.5));
+
+      /* Opening Soon headline */
+      .ph-headline {
+        font-size: clamp(28px, 6vw, 42px);
+        font-weight: 900;
+        letter-spacing: 0.02em;
+        text-align: center;
+        margin: 8px 0 0;
+        background: linear-gradient(180deg, #ECFDF5, #86EFAC 70%, #22C55E);
+        -webkit-background-clip: text; background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0 0 24px rgba(34,197,94,0.35);
+        animation: ph-glow 3.6s ease-in-out infinite alternate;
       }
-      @keyframes float-mini {
-        0%,100% { transform: translateY(0) rotate(0deg); }
-        50%     { transform: translateY(-10px) rotate(4deg); }
+      @keyframes ph-glow {
+        from { text-shadow: 0 0 18px rgba(34,197,94,0.25); }
+        to   { text-shadow: 0 0 34px rgba(34,197,94,0.55); }
       }
-      .portals-featured-title { font-size: 24px; font-weight: 900; margin: 0; color: #ECFDF5; }
-      .portals-featured-blurb { margin: 6px 0 8px; color: #BBF7D0; font-size: 13px; line-height: 1.55; }
-      .portals-featured-bullets {
-        margin: 8px 0 16px; padding-left: 18px; color: #A7F3D0; font-size: 13px; line-height: 1.7;
+      .ph-desc {
+        text-align: center;
+        color: #BBF7D0;
+        font-size: 14px; line-height: 1.6;
+        max-width: 460px;
+        margin: 0 12px;
       }
-      .portals-featured-cta-row { display: flex; flex-wrap: wrap; gap: 10px; }
-      .portals-cta-primary {
+
+      /* Status line */
+      .ph-status {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 8px 14px;
+        background: rgba(6,20,14,0.65);
+        border: 1px solid rgba(134,239,172,0.30);
+        border-radius: 999px;
+        color: #86EFAC;
+        font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+        backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      }
+      .ph-status-dot {
+        width: 8px; height: 8px; border-radius: 999px;
+        background: #22C55E;
+        box-shadow: 0 0 8px #22C55E;
+        animation: ph-blink 1.6s ease-in-out infinite;
+      }
+      @keyframes ph-blink { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+      .ph-status-text {
+        animation: ph-fade-in 480ms ease-out;
+      }
+      @keyframes ph-fade-in {
+        from { opacity: 0; transform: translateY(2px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      /* CTA */
+      .ph-cta {
         display: inline-flex; align-items: center; gap: 8px;
         padding: 12px 18px;
         background: linear-gradient(180deg, #22C55E, #15803D);
         color: #022C1A;
-        font-size: 13px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+        font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
         border: none; border-radius: 999px;
         cursor: pointer;
-        box-shadow: 0 8px 24px rgba(34,197,94,0.35), inset 0 1px 0 rgba(255,255,255,0.25);
+        box-shadow: 0 10px 28px rgba(34,197,94,0.40), inset 0 1px 0 rgba(255,255,255,0.25);
         transition: transform 150ms ease, box-shadow 150ms ease;
       }
-      .portals-cta-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 30px rgba(34,197,94,0.45); }
-      .portals-cta-primary:active { transform: translateY(0); }
-      .portals-cta-secondary {
-        display: inline-flex; align-items: center; gap: 8px;
-        padding: 11px 16px;
-        background: rgba(255,255,255,0.06);
+      .ph-cta:hover  { transform: translateY(-1px); box-shadow: 0 12px 34px rgba(34,197,94,0.55); }
+      .ph-cta:active { transform: translateY(0); }
+
+      /* Toast */
+      .ph-toast {
+        position: fixed;
+        bottom: max(24px, env(safe-area-inset-bottom));
+        left: 50%; transform: translateX(-50%);
+        padding: 12px 18px;
+        background: rgba(6,20,14,0.90);
+        border: 1px solid rgba(134,239,172,0.45);
+        border-radius: 12px;
         color: #ECFDF5;
-        font-size: 12px; font-weight: 700;
-        border: 1px solid rgba(134,239,172,0.30);
-        border-radius: 999px;
-        text-decoration: none;
-        transition: background-color 150ms ease, border-color 150ms ease;
+        font-size: 13px; font-weight: 600;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+        backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+        z-index: 100;
+        animation: ph-fade-in 220ms ease-out;
       }
-      .portals-cta-secondary:hover { background: rgba(134,239,172,0.10); border-color: rgba(134,239,172,0.55); }
-      .portals-cta-disabled { opacity: 0.7; }
 
-      .portals-grid {
-        position: relative; z-index: 1;
-        max-width: 980px; margin: 0 auto;
-        display: grid; gap: 14px;
-        grid-template-columns: 1fr;
+      /* Reduced-motion — pause every animation */
+      @media (prefers-reduced-motion: reduce) {
+        .ph-ring, .ph-rim, .ph-vortex, .ph-bloom, .ph-electric, .ph-core,
+        .ph-headline, .ph-status-dot, .ph-bg-fog, .ph-dust {
+          animation: none !important;
+        }
       }
-      @media (min-width: 720px) { .portals-grid { grid-template-columns: 1fr 1fr; } }
-      .portals-card {
-        position: relative;
-        padding: 18px;
-        background: rgba(8,30,20,0.65);
-        border: 1px solid rgba(134,239,172,0.18);
-        border-radius: 18px;
-        backdrop-filter: blur(8px);
-      }
-      .portals-card-soon { opacity: 0.92; }
-      .portals-card-head {
-        display: flex; align-items: center; justify-content: space-between;
-        margin-bottom: 12px;
-      }
-      .portals-card-mode {
-        font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 800;
-        color: #86EFAC;
-        padding: 3px 8px; border-radius: 6px;
-        background: rgba(134,239,172,0.10);
-        border: 1px solid rgba(134,239,172,0.30);
-      }
-      .portals-card-pill {
-        font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 800;
-        padding: 3px 8px; border-radius: 999px;
-        display: inline-flex; align-items: center; gap: 4px;
-      }
-      .portals-card-live      { background: rgba(34,197,94,0.18); color: #22C55E; }
-      .portals-card-pill-soon { background: rgba(167,139,250,0.16); color: #A78BFA; }
-      .portals-card-title { font-size: 18px; font-weight: 900; margin: 0; color: #ECFDF5; }
-      .portals-card-blurb { margin: 6px 0 14px; font-size: 12.5px; color: #BBF7D0; line-height: 1.55; }
-      .portals-card-foot { display: flex; justify-content: flex-end; }
 
-      .portals-hub-foot {
-        position: relative; z-index: 1;
-        max-width: 980px; margin: 32px auto 0;
-        text-align: center;
-        color: rgba(187,247,208,0.55); font-size: 11.5px;
+      /* Tablet / desktop spacing polish */
+      @media (min-width: 768px) {
+        .ph-root { padding-top: 40px; }
+        .ph-brand { font-size: 26px; }
       }
     `}</style>
   );
