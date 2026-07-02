@@ -251,6 +251,12 @@ function PortalsStyles() {
         border-radius: 999px;
         border: 1px dashed rgba(134,239,172,0.65);
         box-shadow: 0 0 24px rgba(34,197,94,0.25) inset;
+        transform-origin: center center;
+        will-change: transform;
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
         animation: ph-spin-r 22s linear infinite;
       }
 
@@ -275,6 +281,12 @@ function PortalsStyles() {
       .ph-rim {
         position: absolute; inset: 0;
         border-radius: 999px;
+        transform-origin: center center;
+        will-change: transform;
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
         animation: ph-spin 14s linear infinite;
       }
       .ph-rim-dot {
@@ -286,10 +298,21 @@ function PortalsStyles() {
         box-shadow: 0 0 8px #22C55E, 0 0 16px rgba(34,197,94,0.7);
       }
 
-      /* Vortex — 3 conic-gradient layers spinning at different rates */
+      /* Vortex — 3 conic-gradient layers spinning at different rates.
+       * NOTE: on iOS Safari, elements combining conic-gradient +
+       * mask-image + filter:blur() require explicit GPU-promotion hints
+       * (translateZ / backface-visibility / will-change) or their
+       * transform animation is silently skipped. Keep these in sync
+       * across .ph-vortex-1/-2/-3 or the mobile spin will regress. */
       .ph-vortex {
         position: absolute; inset: 6%;
         border-radius: 999px;
+        transform-origin: center center;
+        will-change: transform;
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
         mask-image: radial-gradient(circle, black 40%, transparent 100%);
         -webkit-mask-image: radial-gradient(circle, black 40%, transparent 100%);
       }
@@ -323,8 +346,27 @@ function PortalsStyles() {
         animation: ph-spin 3s linear infinite;
         filter: blur(1px);
       }
-      @keyframes ph-spin   { to { transform: rotate(360deg); } }
-      @keyframes ph-spin-r { to { transform: rotate(-360deg); } }
+      /* Explicit from + to keyframes with translateZ(0) baked in so
+       * the compositing layer is preserved across every frame. iOS
+       * Safari fails to animate when only the "to" state is defined
+       * AND the element has conic-gradient/mask/filter. */
+      @keyframes ph-spin {
+        from { transform: rotate(0deg)    translateZ(0); -webkit-transform: rotate(0deg)    translateZ(0); }
+        to   { transform: rotate(360deg)  translateZ(0); -webkit-transform: rotate(360deg)  translateZ(0); }
+      }
+      @keyframes ph-spin-r {
+        from { transform: rotate(0deg)    translateZ(0); -webkit-transform: rotate(0deg)    translateZ(0); }
+        to   { transform: rotate(-360deg) translateZ(0); -webkit-transform: rotate(-360deg) translateZ(0); }
+      }
+      /* WebKit-prefixed keyframe copies for older Safari (iOS 15/16). */
+      @-webkit-keyframes ph-spin {
+        from { -webkit-transform: rotate(0deg)    translateZ(0); transform: rotate(0deg)    translateZ(0); }
+        to   { -webkit-transform: rotate(360deg)  translateZ(0); transform: rotate(360deg)  translateZ(0); }
+      }
+      @-webkit-keyframes ph-spin-r {
+        from { -webkit-transform: rotate(0deg)    translateZ(0); transform: rotate(0deg)    translateZ(0); }
+        to   { -webkit-transform: rotate(-360deg) translateZ(0); transform: rotate(-360deg) translateZ(0); }
+      }
 
       /* Electric flicker overlay */
       .ph-electric {
