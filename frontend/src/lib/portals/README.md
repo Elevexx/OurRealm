@@ -3,6 +3,77 @@
 > **Status (Feb 2026):** Portals 1.2 · Founder-only Development Hub.
 > Public users see the Opening Soon page at `/portals` and cannot reach
 
+## Portals 1.4 — Config-driven Realm Template
+
+Portals 1.4 introduces the **TemplateRealm** system so future Realms can be
+authored purely as JavaScript configuration files. No new class required.
+
+### Adding a new Realm in three files
+
+1. **Config** — copy `/lib/portals/realmTemplates/rainforest.js` to
+   `/lib/portals/realmTemplates/<my-realm>.js` and edit metadata, lighting,
+   environment, spawn, portal, particles, props.
+2. **Registry** — add one line to `/lib/portals/registry.js`:
+   ```js
+   import myRealmConfig from "./realmTemplates/my-realm";
+   const REALM_CLASSES = {
+     ...,
+     "my-realm": () => new TemplateRealm(myRealmConfig),
+   };
+   ```
+3. **Metadata** — add a matching entry to `REALM_METADATA` in
+   `/lib/portals/realmMetadata.js` (name / emoji / thumbnail / status /
+   supported platforms / etc).
+
+The realm is instantly launchable at
+`/realms/portals/ar/xr?realm=my-realm` (founder-gated).
+
+### TemplateRealm config surface
+
+```
+{
+  id,
+  metadata: { name, description, emoji },
+  lighting: {
+    hemi:    { skyColor, groundColor, intensity },
+    dir:     { color, intensity, position: [x,y,z] },
+    ambient: { color, intensity }
+  },
+  environment: {
+    ground: { color, radius, roughness },
+    river:  { color, width, length, position }
+  },
+  spawn:  { position, lookAt },
+  portal: { position, color, radius },      // exit portal marker
+  particles: [ { name, count, colour, size, radius, minY, maxY, speed } ],
+  props:     [ { kind: 'tree'|'rock'|'plant', position, rotationY?, scale? } ],
+  ambientAudio: { url, volume },            // reserved
+  npcs:     [],                             // reserved for Portals 2.x AI
+  wildlife: []                              // reserved for Portals 2.x AI
+}
+```
+
+### RealmTransition overlay
+
+A shared full-screen fade overlay (`/lib/portals/RealmTransition.jsx`)
+plays whenever the founder enters or exits a Realm. It is CSS-only, GPU
+accelerated, respects `prefers-reduced-motion`, and never touches the
+Three.js runtime.
+
+```jsx
+const [transition, setTransition] = useState(null);
+setTransition({ phase: "entering", label: "Entering Rainforest" });
+<RealmTransition transition={transition} onDone={() => setTransition(null)} />
+```
+
+### Registry auto-discovery
+
+`createRealm(id)` now accepts either a class or a factory function so a
+config-driven realm can register itself in a single line without a new
+class file. Realms with no registered class fall back to
+`PlaceholderRealm(meta)` exactly as before — full backward compatibility.
+
+
 ## Portals 1.3 — Backend Persistence & Platform Foundation
 
 Portals 1.3 replaces the browser-only sessionStorage overrides with a

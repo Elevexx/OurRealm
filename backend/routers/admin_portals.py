@@ -62,9 +62,9 @@ VALID_STATUSES = {
 # We validate the path param against this set to prevent random realm
 # ids from being persisted.
 VALID_REALM_IDS = {
-    "rainforest", "aquarium", "cyberpunk", "snow", "desert", "volcano",
-    "space", "fantasy", "jurassic", "ancient-ruins", "tropical-island",
-    "moon-colony",
+    "rainforest", "rainforest-lite", "aquarium", "cyberpunk", "snow", "desert",
+    "volcano", "space", "fantasy", "jurassic", "ancient-ruins",
+    "tropical-island", "moon-colony",
 }
 
 # Platform keys tracked by the platform-readiness block.

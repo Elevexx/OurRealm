@@ -1,5 +1,46 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Portals 1.4 — Config-driven Realm Template Foundation (Feb 7, 2026) ✅ COMPLETE
+
+**Purpose:** finalize the reusable Realm architecture so every future Realm can ship as a single JavaScript config file, not a new class. Zero regressions on Portals 1.0–1.3.
+
+### What shipped
+- **`/src/lib/portals/TemplateRealm.js`** (~305 lines) — extends `Realm`; consumes a plain JS config with `metadata`, `lighting` (hemi + directional + ambient), `environment` (ground disc + optional river), `spawn`, `portal` (glowing torus marker), `particles` (any # of additive Points systems), `props` (`kind: 'tree' | 'rock' | 'plant'`), `ambientAudio`, `npcs`, `wildlife` (reserved hooks). Grows smoothstep on placement; portal core gently pulses; particles orbit; `getNamedObject(key)` exposes any placed node for future AI hooks.
+- **`/src/lib/portals/realmTemplates/rainforest.js`** (~90 lines) — first-ever config-driven Realm. Full working scene: mossy ground disc + river strip + 8 procedural trees around the spawn + 5 rocks + 8 fern plants + 50-firefly additive particle preset + exit-portal marker + warm daytime lighting. **All authored as pure data.**
+- **`/src/lib/portals/RealmTransition.jsx`** (~120 lines) — full-screen CSS fade overlay with pulsing accent-coloured portal rings + core, entering/exiting phases, GPU-composited, respects `prefers-reduced-motion`.
+- **Registry upgrade** — `createRealm(id)` now accepts either a class OR a factory function (arrow function detection via `.prototype`), so config-driven realms register in one line: `"rainforest-lite": () => new TemplateRealm(rainforestTemplateConfig)`.
+- **Metadata catalogue** — added `rainforest-lite` entry (status `internal_testing`, v1.4.0). Total realms now **13**.
+- **Backend `VALID_REALM_IDS`** updated to accept `rainforest-lite` for override persistence.
+- **PortalXRSession wiring** — imports `RealmTransition`, fires `{phase:"entering"}` when starting a session and `{phase:"exiting"}` on exit; transitions auto-dismiss after 900 ms / 700 ms respectively.
+- **README.md** — new "Portals 1.4" section: TemplateRealm config surface, three-file recipe for adding a new Realm, RealmTransition usage, registry factory-vs-class contract.
+
+### Verification
+- Portal Dev Hub renders **13 realm cards**, `rainforest-lite` card present with correct badge + version. ✅
+- `/realms/portals/ar/xr?realm=rainforest-lite` loads without errors, shows graceful "Immersive AR unavailable" on headless browsers (expected). ✅
+- Public `/portals` Opening Soon vortex still spins. ✅
+- Portals 1.0–1.3 fully intact: PortalsHub, PortalAR, PortalXRSession, AdminPortalsHub, AdminPortalDetail, PortalEngine, Realm, RainforestRealm, PlaceholderRealm, realmMetadata, registry, portalsApi, useAnimationVisibility all unchanged in behavior. ✅
+- Backend supervisor restarts cleanly. ✅
+- Zero lint issues on 5 new/modified JS files + admin_portals.py. ✅
+- Zero console errors on `/admin/portals`, XR route, `/portals`. ✅
+
+### Adding a new Realm going forward
+1. Copy `/lib/portals/realmTemplates/rainforest.js` → `/lib/portals/realmTemplates/my-realm.js` and edit config.
+2. Add one line to `REALM_CLASSES` in `registry.js`: `"my-realm": () => new TemplateRealm(myRealmConfig)`.
+3. Add matching entry to `REALM_METADATA` in `realmMetadata.js`.
+4. Realm is instantly launchable at `/realms/portals/ar/xr?realm=my-realm` (founder-gated) and appears in `/admin/portals`.
+
+### Files
+- **NEW** `/app/frontend/src/lib/portals/TemplateRealm.js`
+- **NEW** `/app/frontend/src/lib/portals/realmTemplates/rainforest.js`
+- **NEW** `/app/frontend/src/lib/portals/RealmTransition.jsx`
+- **MOD** `/app/frontend/src/lib/portals/registry.js` (factory support + rainforest-lite)
+- **MOD** `/app/frontend/src/lib/portals/realmMetadata.js` (new rainforest-lite metadata entry)
+- **MOD** `/app/frontend/src/pages/PortalXRSession.jsx` (transition overlay wired)
+- **MOD** `/app/frontend/src/lib/portals/README.md` (Portals 1.4 architecture section)
+- **MOD** `/app/backend/routers/admin_portals.py` (VALID_REALM_IDS += rainforest-lite)
+
+
+
 ## Portals 1.3 — Backend Persistence + Platform Foundation (Feb 7, 2026) ✅ COMPLETE
 
 **Founder edits now persist server-side + reusable schema for future iOS ARKit / Android ARCore / visionOS / Meta Quest / WebXR / desktop preview / mobile-fallback Realms, Unity deployments, and OurRealm Asset Scrolls. Verified by `testing_agent_v3_fork` iteration 71: 33/33 backend pytest + 14/14 frontend flows (100%).**

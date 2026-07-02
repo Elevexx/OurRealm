@@ -17,6 +17,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Crosshair, PlayCircle, Sparkles, XCircle, AlertTriangle } from "lucide-react";
 import { PortalEngine } from "../lib/portals/PortalEngine";
 import { createRealm, listRealmIds } from "../lib/portals/registry";
+import RealmTransition from "../lib/portals/RealmTransition";
 
 // Human-readable event log — capped so the array never balloons.
 const MAX_EVENTS = 40;
@@ -36,6 +37,8 @@ export default function PortalXRSession() {
   const [surfaceHint, setSurfaceHint] = useState("");
   const [events, setEvents]         = useState([]);
   const [errorMsg, setErrorMsg]     = useState("");
+  // Portals 1.4 — realm transition overlay driver.
+  const [transition, setTransition] = useState(null);
 
   const pushEvent = useCallback((label) => {
     setEvents((prev) => {
@@ -118,6 +121,7 @@ export default function PortalXRSession() {
     setPhase("initializing");
     setStatus("Initializing engine…");
     setErrorMsg("");
+    setTransition({ phase: "entering", label: `Entering ${realmId.replace(/-/g, " ")}`, durationMs: 900 });
     try {
       const realm = createRealm(realmId);
       const engine = new PortalEngine({
@@ -143,6 +147,7 @@ export default function PortalXRSession() {
   }, [onEngineEvent, pushEvent, realmId]);
 
   const exitAR = useCallback(async () => {
+    setTransition({ phase: "exiting", label: "Leaving Realm", durationMs: 700 });
     if (engineRef.current) {
       await engineRef.current.endXR();
     }
@@ -164,6 +169,10 @@ export default function PortalXRSession() {
   return (
     <div className="portal-xr-root" data-testid="portal-xr-root">
       <PortalXRStyles />
+      <RealmTransition
+        transition={transition}
+        onDone={() => setTransition(null)}
+      />
 
       {/* Three.js canvas mounts here in-session; empty otherwise. */}
       <div ref={canvasHostRef} className="portal-xr-canvas-host" data-testid="portal-xr-canvas-host" />

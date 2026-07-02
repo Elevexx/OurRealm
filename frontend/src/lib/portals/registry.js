@@ -17,12 +17,19 @@
  */
 import PlaceholderRealm  from "./PlaceholderRealm";
 import RainforestRealm   from "./realms/RainforestRealm";
+import TemplateRealm     from "./TemplateRealm";
+import rainforestTemplateConfig from "./realmTemplates/rainforest";
 import { REALM_METADATA, getRealmMeta } from "./realmMetadata";
 
 // Playable realm classes. Adding one line here promotes a placeholder
 // realm into a real gameplay experience.
+// Values may be a Class (invoked with `new Cls()`) or a factory function.
 const REALM_CLASSES = {
-  rainforest: RainforestRealm,
+  rainforest:        RainforestRealm,
+  // Portals 1.4 · first Realm authored purely via the reusable
+  // TemplateRealm + a config file. Copy /realmTemplates/rainforest.js
+  // to add a new config-driven Realm — no new class required.
+  "rainforest-lite": () => new TemplateRealm(rainforestTemplateConfig),
 };
 
 /**
@@ -33,7 +40,12 @@ export function createRealm(realmId) {
   const meta = getRealmMeta(realmId);
   if (!meta) throw new Error(`Realm not registered in metadata: ${realmId}`);
   const Cls = REALM_CLASSES[realmId];
-  if (Cls) return new Cls();
+  if (Cls) {
+    // Support both raw classes and factory functions.
+    return typeof Cls === "function" && !Cls.prototype
+      ? Cls()
+      : new Cls();
+  }
   return new PlaceholderRealm(meta);
 }
 
