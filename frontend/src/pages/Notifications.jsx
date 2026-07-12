@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Heart, MessageCircle, UserPlus, AtSign, Mail, Share2, Users, Bell, Calendar, Check, CheckCheck, Bookmark } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { NOTIFICATIONS, NOTIFICATION_CATEGORIES } from "@/data/mockData";
+import { NOTIFICATION_CATEGORIES } from "@/data/mockData";
 import { openPostPopupById } from "@/lib/postPopupController";
 
 const ICONS = {
@@ -34,11 +34,8 @@ export default function Notifications() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [cat, setCat] = useState("All");
-  // Hide any stale mock entries that pre-date the marketplace/wallet
-  // cleanup (defense-in-depth — the array itself was scrubbed too).
-  const [items, setItems] = useState(() =>
-    NOTIFICATIONS.filter((n) => !HIDDEN_KINDS.has(n.type))
-  );
+  // Real server notifications only (June 2026 audit — mock rows removed).
+  const [items, setItems] = useState([]);
   const [serverItems, setServerItems] = useState([]);
 
   // Load real notifications + mark all as seen as soon as the page opens

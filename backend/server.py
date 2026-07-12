@@ -51,6 +51,7 @@ from routers import orion_logs as orion_logs_router_mod
 from routers import orion_health as orion_health_router_mod
 from routers import media_proxy as media_proxy_router_mod
 from routers import admin_portals as admin_portals_router_mod
+from routers import admin_data_audit as admin_data_audit_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -105,6 +106,43 @@ app.include_router(orion_logs_router_mod.router)
 app.include_router(orion_health_router_mod.router)
 app.include_router(media_proxy_router_mod.router)
 app.include_router(admin_portals_router_mod.router)
+app.include_router(admin_data_audit_router_mod.router)
+
+
+# ─── Friendly signup validation errors + signup health telemetry ───────
+# Pydantic 422s on /api/auth/register previously surfaced as raw
+# validation JSON ("Something went wrong" client-side). Translate the
+# first error into a safe, specific message and record a signup_event.
+from fastapi.exceptions import RequestValidationError  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+
+_REGISTER_FIELD_MESSAGES = {
+    "email": "Please enter a valid email address.",
+    "password": "Password must be 6–128 characters long.",
+    "username": "Username must be 3–24 characters using only letters, numbers, dots, or underscores.",
+    "name": "Please enter your name (1–80 characters).",
+}
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc: RequestValidationError):
+    path = request.scope.get("path", "")
+    if path.rstrip("/").endswith("/auth/register"):
+        field = None
+        for err in exc.errors():
+            loc = [str(x) for x in err.get("loc", []) if x != "body"]
+            if loc:
+                field = loc[0]
+                break
+        message = _REGISTER_FIELD_MESSAGES.get(field, "Please check the signup form and try again.")
+        try:
+            from routers.auth import record_signup_event
+            await record_signup_event(ok=False, category=f"validation_{field or 'unknown'}",
+                                      status_code=422, detail=message)
+        except Exception:  # noqa: BLE001
+            pass
+        return JSONResponse(status_code=422, content={"detail": message})
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 app.add_middleware(
     CORSMiddleware,
@@ -138,6 +176,19 @@ async def api_v1_alias(request, call_next):
     if path.startswith("/api/v1/"):
         response.headers["X-API-Version"] = "v1"
     return response
+
+
+async def db_strip_fake_realm_counts() -> int:
+    """Idempotent — $unset the seeded fake member/online estimate fields."""
+    from core.db import db as _db
+    res = await _db.realms.update_many(
+        {"$or": [{"members": {"$exists": True}}, {"online": {"$exists": True}},
+                 {"member_count_estimate": {"$exists": True}},
+                 {"online_count_estimate": {"$exists": True}}]},
+        {"$unset": {"members": "", "online": "",
+                    "member_count_estimate": "", "online_count_estimate": ""}},
+    )
+    return res.modified_count
 
 
 # ─── Lifecycle ──────────────────────────────────────────
@@ -274,7 +325,19 @@ async def on_startup():
     try:
         from services import community_seed
         await community_seed.ensure_indexes()
-        await community_seed.seed_realms()
+        # PRODUCTION SAFEGUARD (June 2026 audit): demo/seed fixtures are
+        # OFF by default everywhere. The 8 realm containers already exist
+        # in every environment; new environments must opt in explicitly.
+        if os.environ.get("ENABLE_DEMO_SEEDS", "").lower() == "true":
+            await community_seed.seed_realms()
+        else:
+            logger.info("[communities] seed_realms skipped (ENABLE_DEMO_SEEDS not set)")
+        # Strip legacy FAKE count fields from realm docs so no code path
+        # can ever surface the seeded 18k/32k member numbers again. The
+        # API derives member_count from community_memberships (real data).
+        res = await db_strip_fake_realm_counts()
+        if res:
+            logger.info(f"[communities] stripped legacy fake-count fields from {res} realm docs")
         # Spec: every Realm must have a matching Realm group chat. Run
         # idempotent backfill so seeded realms (and any legacy realms
         # created before the chat-on-create flow existed) get one too.

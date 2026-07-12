@@ -10,7 +10,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  DEFAULT_WIDGETS, WIDGET_TYPES, ALLOWED_WIDGET_TYPES, TRENDING_TRACKS, CHARACTERS, WALLET, MARKETPLACE_ADS, MODE_PREVIEW_IMG,
+  DEFAULT_WIDGETS, WIDGET_TYPES, ALLOWED_WIDGET_TYPES, MODE_PREVIEW_IMG,
 } from "@/data/mockData";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";

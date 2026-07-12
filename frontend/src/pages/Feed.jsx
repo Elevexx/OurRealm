@@ -5,7 +5,6 @@ import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, User
 import ReactionAttachment from "@/components/ReactionAttachment";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { makeMockPosts } from "@/data/mockData";
 import GuestPrompt from "@/components/GuestPrompt";
 import MediaTypeBar from "@/components/MediaTypeBar";
 import AudiencePicker from "@/components/AudiencePicker";
@@ -142,20 +141,10 @@ export default function Feed() {
   };
   useEffect(() => { loadPosts(); }, [radius, JSON.stringify(media), user?.zip_code, user?.username]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Hard-coded mock posts (kept ONLY for dev/empty-state padding on
-  // non-sound surfaces). The "sound" mocks were the source of the
-  // "fake sound posts appearing on /foryou" bug — strip them so the
-  // Sounds tab only ever surfaces real DB rows.
-  const mockPosts = useMemo(
-    () => makeMockPosts(24).filter((p) => p?.media_type !== "sound"),
-    []
-  );
+  // Real database posts only (June 2026 audit — mock post padding removed).
   const allPosts = useMemo(() => {
-    const merged = [...serverPosts, ...mockPosts];
-    // De-dupe by id (server backfill can produce overlapping ids,
-    // and we never want React duplicate-key warnings on the feed).
     const seen = new Set();
-    let filtered = merged.filter((p) => {
+    let filtered = serverPosts.filter((p) => {
       if (!p?.id || seen.has(p.id)) return false;
       seen.add(p.id);
       return true;
@@ -170,12 +159,6 @@ export default function Feed() {
         return media.includes(p.media_type);
       });
     }
-    // Images category only: hide the two seeded "@Realm Admin" placeholder posts.
-    // Scoped strictly to the Images filter — does not affect other categories
-    // or the global post data.
-    if (media.length === 1 && media[0] === "image") {
-      filtered = filtered.filter((p) => (p.author_name || "").toLowerCase() !== "realm admin");
-    }
     // Apply interest filter when at least one interest is selected so the
     // For You feed actually reflects the user's saved preferences.
     if (interests.size > 0) {
@@ -187,7 +170,7 @@ export default function Feed() {
       });
     }
     return filtered;
-  }, [serverPosts, mockPosts, media, interests]);
+  }, [serverPosts, media, interests]);
 
   const submitPost = async () => {
     if (!user || isGuest) { setGuestPrompt("post a thought"); return; }
@@ -543,8 +526,18 @@ export default function Feed() {
 
       <div className="mt-5 space-y-4">
         {allPosts.length === 0 && (
-          <div className="or-surface p-6 text-center" style={{ color: "var(--text-muted)" }}>
-            Nothing matches these media types. Toggle some off to widen the feed.
+          <div className="or-surface p-8 text-center" data-testid="feed-empty-state">
+            <div className="text-2xl mb-2">✨</div>
+            <div className="font-semibold mb-1" style={{ color: "var(--text-main)" }}>
+              {media.length > 0 || interests.size > 0
+                ? "Nothing matches these filters yet"
+                : "Your Realm feed starts here"}
+            </div>
+            <div className="text-sm" style={{ color: "var(--text-muted)" }}>
+              {media.length > 0 || interests.size > 0
+                ? "Toggle some filters off to widen the feed."
+                : "Be the first to share a thought, photo, or video with the community."}
+            </div>
           </div>
         )}
         {allPosts.map((p) => (

@@ -128,18 +128,25 @@ async def admin_analytics(current: CurrentUser, range: str = "7d"):
     since = _range_to_since(range)
     days = {"24h": 1, "7d": 7, "30d": 30, "all": 30}.get(range, 7)
 
-    # ── User metrics
-    total_users = await db.users.count_documents({})
+    # ── User metrics — REAL registered members only (June 2026 audit).
+    # System accounts (@support), the neutralised legacy admin, and any
+    # account flagged synthetic/demo/test are excluded everywhere.
+    from core.analytics_filters import real_member_filter
+    _real = real_member_filter()
+    total_users = await db.users.count_documents(_real)
     new_signups = await db.users.count_documents(
-        {"created_at": {"$gte": (since or datetime(2000, 1, 1, tzinfo=timezone.utc)).isoformat()}}
+        {**_real, "created_at": {"$gte": (since or datetime(2000, 1, 1, tzinfo=timezone.utc)).isoformat()}}
     ) if since else total_users
     # DAU/MAU approximated via post or message activity in window
     dau_since = datetime.now(timezone.utc) - timedelta(hours=24)
     mau_since = datetime.now(timezone.utc) - timedelta(days=30)
-    dau_authors = await db.posts.distinct(
+    _dau_ids = await db.posts.distinct(
         "author_id", {"created_at": {"$gte": dau_since.isoformat()}})
-    mau_authors = await db.posts.distinct(
+    _mau_ids = await db.posts.distinct(
         "author_id", {"created_at": {"$gte": mau_since.isoformat()}})
+    # Keep only authors who are real members.
+    dau_authors = await db.users.distinct("id", {**_real, "id": {"$in": _dau_ids}})
+    mau_authors = await db.users.distinct("id", {**_real, "id": {"$in": _mau_ids}})
 
     # ── Content metrics
     q_since = {"created_at": {"$gte": since.isoformat()}} if since else {}

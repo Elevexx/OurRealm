@@ -25,7 +25,6 @@ import {
 } from "lucide-react";
 import apiClient from "@/api/client";
 import RegistryWidgetPicker from "@/components/RegistryWidgetPicker";
-import { REALMS as MOCK_REALMS, CHARACTERS, makeMockPosts } from "@/data/mockData";
 import BannerEditor, { BannerView } from "@/components/BannerEditor";
 import { resolveMediaUrl } from "@/lib/mediaUrl";
 import CommunityChat from "@/components/CommunityChat";
@@ -60,10 +59,9 @@ export default function RealmDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { openDM } = useMessagingPopups();
-  // Mock realm row used as a visual fallback while the live one loads.
-  const fallback = MOCK_REALMS.find((r) => r.id === id) || null;
 
-  const [realm, setRealm] = useState(fallback ? { ...fallback, description: fallback.desc } : null);
+  const [realm, setRealm] = useState(null);
+  const [realmLoading, setRealmLoading] = useState(true);
   const [chat, setChat] = useState(null);
   const [widgets, setWidgets] = useState([]);
   const [tab, setTab] = useState("chat");
@@ -71,7 +69,22 @@ export default function RealmDetail() {
   const [memberSheet, setMemberSheet] = useState(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const posts = useMemo(() => makeMockPosts(18), []);
+  // Real realm members (June 2026 audit — mock characters removed).
+  const [members, setMembers] = useState([]);
+
+  // Load real members whenever the realm resolves (powers the Members
+  // tab + real moderator list).
+  useEffect(() => {
+    if (!realm?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await apiClient.get(`/communities/realm/${realm.id}/members`, { params: { limit: 60 } });
+        if (!cancelled) setMembers(data?.members || data?.rows || []);
+      } catch { if (!cancelled) setMembers([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [realm?.id]);
 
   // Banner state (localStorage; same as previous pass).
   const [banner, setBanner] = useState(() => {
@@ -200,6 +213,13 @@ export default function RealmDetail() {
   };
 
   if (!realm) {
+    if (realmLoading) {
+      return (
+        <div className="max-w-3xl mx-auto or-surface p-8 text-center" data-testid="realm-loading" style={{ color: "var(--text-muted)" }}>
+          Loading realm…
+        </div>
+      );
+    }
     return (
       <div className="max-w-3xl mx-auto or-surface p-8 text-center" data-testid="realm-not-found">
         <div className="text-lg mb-3">Realm not found</div>
@@ -209,9 +229,9 @@ export default function RealmDetail() {
   }
 
   const accent = realm.accent || "#10E670";
-  const onlineCount = realm.online_count ?? realm.online ?? 0;
-  const memberCount = realm.member_count ?? realm.members ?? 0;
-  const moderators = CHARACTERS.slice(0, 3);
+  const onlineCount = realm.online_count ?? 0;
+  const memberCount = realm.member_count ?? 0;
+  const moderators = members.filter((m) => ["owner", "admin", "moderator"].includes(m.role));
 
   return (
     <div className="max-w-7xl mx-auto" data-testid={`realm-detail-${realm.id}`}>
@@ -411,113 +431,88 @@ export default function RealmDetail() {
         </>
       )}
 
-      {/* Other tabs preserve their existing mock visuals. */}
+      {/* Non-chat tabs — real database content only (June 2026 audit). */}
       {tab !== "chat" && (
         <div className="grid lg:grid-cols-[1fr_320px] gap-5">
           <div>
-            <div className="or-surface p-4 mb-4" data-testid="realm-pinned" style={{ outline: `1px solid ${accent}` }}>
-              <div className="flex items-center gap-2 mb-2 text-xs uppercase tracking-widest" style={{ color: accent }}>
-                <Pin size={12} /> Pinned by moderator
-              </div>
-              <div className="flex items-center gap-3 mb-2">
-                <img src={moderators[0].avatar} alt="" className="rounded-full" style={{ width: 36, height: 36 }} />
-                <div>
-                  <div className="font-semibold" style={{ color: "var(--text-main)" }}>@{moderators[0].name}</div>
-                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Welcome to {realm.name} — read the rules below.</div>
+            {["feed", "lives", "videos", "photos", "sounds"].includes(tab) && (
+              <div className="or-surface p-8 text-center" data-testid={`realm-${tab}-empty`}>
+                <div className="text-2xl mb-2">✨</div>
+                <div className="font-semibold mb-1" style={{ color: "var(--text-main)" }}>
+                  No {tab === "feed" ? "posts" : tab} in {realm.name} yet
                 </div>
-              </div>
-            </div>
-
-            {tab === "feed" && posts.slice(0, 8).map((p) => (
-              <article key={p.id} className="or-surface p-4 mb-3" data-testid={`realm-feed-${p.id}`}>
-                <div className="flex items-center gap-3 mb-2">
-                  <img src={p.author_avatar} alt="" className="rounded-full" style={{ width: 36, height: 36 }} />
-                  <div>
-                    <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>@{p.author_name}</div>
-                    <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{p.media_type}</div>
-                  </div>
+                <div className="text-sm" style={{ color: "var(--text-muted)" }}>
+                  Content shared by members will appear here.
                 </div>
-                {p.content && <p className="text-sm" style={{ color: "var(--text-main)" }}>{p.content}</p>}
-                {p.media_url && p.media_type !== "post" && p.media_type !== "thought" && (
-                  <img src={p.media_url} alt="" className="w-full h-56 object-cover mt-2" style={{ borderRadius: "calc(var(--radius) - 4px)" }} />
-                )}
-              </article>
-            ))}
-
-            {tab === "lives" && (
-              <div className="grid sm:grid-cols-2 gap-3">
-                {posts.filter((p) => p.media_type === "live").slice(0, 6).map((p) => (
-                  <div key={p.id} className="or-surface overflow-hidden">
-                    <div className="relative h-40"><img src={p.media_url} alt="" className="w-full h-full object-cover" /><span className="absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "#FF3F5A", color: "#fff" }}>● LIVE</span></div>
-                    <div className="p-3 text-sm font-semibold" style={{ color: "var(--text-main)" }}>@{p.author_name}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {(tab === "videos" || tab === "photos") && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {posts.slice(0, 9).map((p) => (
-                  <img key={p.id} src={p.media_url} alt="" className="aspect-square w-full object-cover" style={{ borderRadius: "calc(var(--radius) - 4px)" }} />
-                ))}
-              </div>
-            )}
-            {tab === "sounds" && (
-              <div className="space-y-2">
-                {posts.slice(0, 6).map((p, i) => (
-                  <div key={p.id} className="or-surface p-3 flex items-center gap-3">
-                    <Music2 size={18} style={{ color: accent }} />
-                    <div className="flex-1">
-                      <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>Track {i + 1}</div>
-                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>@{p.author_name}</div>
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
             {tab === "events" && (
-              <div className="space-y-2">
-                {["Realm Meetup", "Live Q&A", "Block Party", "Studio Tour"].map((n, i) => (
-                  <div key={n} className="or-surface p-3 flex items-center gap-3">
-                    <Calendar size={18} style={{ color: accent }} />
-                    <div className="flex-1">
-                      <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>{n}</div>
-                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>Next {["Sat", "Sun", "Tue", "Fri"][i]} · {7 + i} PM</div>
-                    </div>
-                    <button className="or-btn" style={{ padding: "0.35rem 0.7rem", fontSize: "0.75rem" }}>RSVP</button>
-                  </div>
-                ))}
+              <div className="or-surface p-8 text-center" data-testid="realm-events-empty">
+                <Calendar size={22} className="mx-auto mb-2" style={{ color: accent }} />
+                <div className="font-semibold mb-1" style={{ color: "var(--text-main)" }}>No events scheduled yet</div>
+                <div className="text-sm" style={{ color: "var(--text-muted)" }}>
+                  Realm events will show up here once they're created.
+                </div>
               </div>
             )}
             {tab === "members" && (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {CHARACTERS.map((m) => (
-                  <div key={m.id} className="or-surface p-3 flex items-center gap-3">
-                    <img src={m.avatar} alt="" className="rounded-full" style={{ width: 40, height: 40 }} />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold truncate" style={{ color: "var(--text-main)" }}>@{m.name}</div>
-                      <div className="text-xs" style={{ color: m.ringColor }}>{m.label}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              members.length === 0 ? (
+                <div className="or-surface p-8 text-center" data-testid="realm-members-empty">
+                  <Users size={22} className="mx-auto mb-2" style={{ color: accent }} />
+                  <div className="font-semibold mb-1" style={{ color: "var(--text-main)" }}>No members yet</div>
+                  <div className="text-sm" style={{ color: "var(--text-muted)" }}>Be the first to join this realm.</div>
+                </div>
+              ) : (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3" data-testid="realm-members-grid">
+                  {members.map((m) => (
+                    <button
+                      key={m.user_id}
+                      className="or-surface p-3 flex items-center gap-3 text-left"
+                      onClick={() => m.username && navigate(`/profile/${m.username}`)}
+                      data-testid={`realm-member-${m.username || m.user_id}`}
+                    >
+                      {m.avatar_url ? (
+                        <img src={resolveMediaUrl(m.avatar_url)} alt="" className="rounded-full object-cover" style={{ width: 40, height: 40 }}
+                             onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                      ) : (
+                        <div className="rounded-full flex items-center justify-center font-bold" style={{ width: 40, height: 40, background: "var(--surface-2)", color: accent }}>
+                          {(m.username || "?")[0].toUpperCase()}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold truncate" style={{ color: "var(--text-main)" }}>@{m.username || "member"}</div>
+                        <div className="text-xs capitalize" style={{ color: "var(--text-muted)" }}>{m.role || "member"}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )
             )}
           </div>
 
           <aside className="space-y-3" data-testid="realm-widgets">
-            <div className="or-surface p-4">
-              <h4 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: accent }}>
-                <Shield size={14} /> Moderators
-              </h4>
-              <div className="space-y-2">
-                {moderators.map((m) => (
-                  <div key={m.id} className="flex items-center gap-2">
-                    <img src={m.avatar} alt="" className="rounded-full" style={{ width: 28, height: 28 }} />
-                    <div className="text-sm" style={{ color: "var(--text-main)" }}>@{m.name}</div>
-                    <Crown size={12} style={{ marginLeft: "auto", color: "#F4C84A" }} />
-                  </div>
-                ))}
+            {moderators.length > 0 && (
+              <div className="or-surface p-4">
+                <h4 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: accent }}>
+                  <Shield size={14} /> Moderators
+                </h4>
+                <div className="space-y-2">
+                  {moderators.map((m) => (
+                    <div key={m.user_id} className="flex items-center gap-2">
+                      {m.avatar_url ? (
+                        <img src={resolveMediaUrl(m.avatar_url)} alt="" className="rounded-full object-cover" style={{ width: 28, height: 28 }} />
+                      ) : (
+                        <div className="rounded-full flex items-center justify-center text-xs font-bold" style={{ width: 28, height: 28, background: "var(--surface-2)", color: accent }}>
+                          {(m.username || "?")[0].toUpperCase()}
+                        </div>
+                      )}
+                      <div className="text-sm" style={{ color: "var(--text-main)" }}>@{m.username}</div>
+                      <Crown size={12} style={{ marginLeft: "auto", color: "#F4C84A" }} />
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             <div className="or-surface p-4">
               <h4 className="text-sm font-bold mb-3" style={{ color: accent }}>Realm Rules</h4>
               <ol className="text-xs space-y-1.5" style={{ color: "var(--text-muted)" }}>

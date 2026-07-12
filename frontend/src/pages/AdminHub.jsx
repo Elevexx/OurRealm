@@ -15,7 +15,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BarChart3, Zap, Hash, Headphones, HelpCircle, LifeBuoy,
-  Crown, ShieldCheck, ChevronRight, Loader2, Sparkles, LayoutGrid,
+  Crown, ShieldCheck, ChevronRight, Loader2, Sparkles, LayoutGrid, Database,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -141,6 +141,18 @@ const CARDS = [
     roles: ["founder"],
     statKey: null,
     footer: "◈ Open Portal Dev Hub",
+  },
+  {
+    id: "data-health",
+    to: "/admin/data-health",
+    title: "Data Health & Audit",
+    description: "Production data audit — media repair, synthetic-account cleanup, signup health, environment identity checks.",
+    Icon: Database,
+    accent: "#FF3F5A",
+    badge: "Founder Only",
+    roles: ["founder"],
+    statKey: null,
+    footer: "◈ Open Data Health Console",
   },
 ];
 

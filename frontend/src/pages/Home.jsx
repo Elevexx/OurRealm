@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
-import { INTERESTS, CHARACTERS } from "@/data/mockData";
+import { INTERESTS } from "@/data/mockData";
 import { useAuth } from "@/contexts/AuthContext";
 import MediaTypeBar from "@/components/MediaTypeBar";
 import { Sparkles, Edit3 } from "lucide-react";
@@ -50,12 +50,6 @@ function InterestCard({ interest, active, onClick, featured }) {
       </div>
       <div className="text-center text-sm font-bold mb-0.5 leading-tight" style={{ color: interest.glow }}>{interest.label}</div>
       <div className="text-[10px] text-center leading-snug" style={{ color: "var(--text-muted)" }}>{interest.desc}</div>
-      <div className="flex items-center justify-center gap-0.5 mt-1.5">
-        {CHARACTERS.slice(0, 3).map((c) => (
-          <img key={c.id} src={c.avatar} alt="" className="rounded-full" style={{ width: 14, height: 14, marginLeft: -3, border: "1px solid var(--bgc)" }} />
-        ))}
-        <span className="text-[9px] ml-1" style={{ color: "var(--text-muted)" }}>+{40 + interest.label.length * 6}</span>
-      </div>
     </button>
   );
 }

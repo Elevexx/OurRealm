@@ -92,6 +92,9 @@ export function AuthProvider({ children }) {
       setGuest(false);
       return { ok: true };
     } catch (e) {
+      if (!e.response) {
+        return { ok: false, error: "Network connection problem — please check your internet and try again." };
+      }
       return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) || e.message };
     }
   }, [setGuest]);

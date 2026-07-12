@@ -90,6 +90,36 @@ def _resolve_ext(mime: Optional[str], filename: Optional[str]) -> str:
     raise ValueError("Unsupported video format. Allowed: MP4, MOV, WebM.")
 
 
+# ── MOV → MP4 remux (iPhone uploads) ─────────────────────────────────
+# QuickTime .mov containers do not reliably play in Chrome/Firefox/
+# Android even when the codec inside is H.264. We REMUX (`-c copy`,
+# no re-encode — takes seconds) into an MP4 container with faststart
+# so uploads from iPhones play everywhere. If the remux fails (exotic
+# codec), the upload is rejected with a clear message instead of
+# silently creating a post that cannot play.
+def _remux_mov_to_mp4(raw: bytes) -> bytes:
+    import subprocess
+    import tempfile
+    from imageio_ffmpeg import get_ffmpeg_exe
+    ffmpeg = get_ffmpeg_exe()
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "in.mov"
+        dst = Path(tmp) / "out.mp4"
+        src.write_bytes(raw)
+        proc = subprocess.run(
+            [ffmpeg, "-y", "-i", str(src), "-c", "copy",
+             "-movflags", "+faststart", str(dst)],
+            capture_output=True, timeout=120,
+        )
+        if proc.returncode != 0 or not dst.exists() or dst.stat().st_size < 512:
+            raise ValueError(
+                "This MOV file uses a format browsers can't play. Please upload "
+                "an MP4 (H.264) instead — on iPhone: Settings → Camera → Formats "
+                "→ 'Most Compatible', or export the clip as MP4."
+            )
+        return dst.read_bytes()
+
+
 # ── Public API ────────────────────────────────────────────────────────
 async def save_video(
     raw: bytes,
@@ -103,6 +133,12 @@ async def save_video(
         raise ValueError("Empty or invalid video file")
 
     ext = _resolve_ext(declared_mime, filename)
+    if ext == "mov":
+        import asyncio
+        raw = await asyncio.to_thread(_remux_mov_to_mp4, raw)
+        ext = "mp4"
+        declared_mime = "video/mp4"
+        logger.info("remuxed MOV upload to MP4 (%d bytes) for user=%s", len(raw), owner_id)
     video_id = uuid.uuid4().hex
     target = video_dir() / f"{video_id}.{ext}"
     with open(target, "wb") as f:
@@ -119,7 +155,10 @@ async def save_video(
     # Mirror to cloud bucket (R2/S3) when configured. No-op for local.
     from services.r2_mirror import mirror_to_cloud
     cloud = mirror_to_cloud("videos", f"{video_id}.{ext}", target, "")
-    if cloud and cloud.startswith("http"):
+    # mirror_to_cloud returns the stable proxy path (`/api/media/videos/…`)
+    # when R2 is active — accept both that and legacy absolute URLs so the
+    # DB stores the durable URL instead of the ephemeral local-disk path.
+    if cloud and (cloud.startswith("http") or cloud.startswith("/api/media/")):
         rec.cloud_url = cloud
     # Persist metadata so upload_limits.count_documents works and so we can
     # garbage-collect orphans later.

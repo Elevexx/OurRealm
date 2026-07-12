@@ -30,6 +30,27 @@ logger = logging.getLogger("ourrealm.auth")
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+async def record_signup_event(ok: bool, category: str, status_code: int,
+                              email: str = "", detail: str = ""):
+    """Signup health telemetry — no passwords, no tokens, no raw PII.
+    Only the email domain + a truncated hash are stored for correlation."""
+    import hashlib
+    try:
+        domain = email.split("@")[-1].lower() if "@" in (email or "") else ""
+        await db.signup_events.insert_one({
+            "id": uuid.uuid4().hex,
+            "at": datetime.now(timezone.utc).isoformat(),
+            "ok": ok,
+            "category": category,
+            "status_code": status_code,
+            "email_domain": domain,
+            "email_hash": hashlib.sha256((email or "").lower().encode()).hexdigest()[:12] if email else None,
+            "detail": (detail or "")[:200],
+        })
+    except Exception:  # noqa: BLE001 — telemetry never blocks signup
+        pass
+
+
 @router.post("/register")
 async def register(payload: RegisterPayload, response: Response):
     email = payload.email.lower().strip()
@@ -40,15 +61,18 @@ async def register(payload: RegisterPayload, response: Response):
     # the frontend can surface a precise validation message.
     if not (payload.accepted_terms and payload.accepted_privacy
             and payload.accepted_conditions and payload.age_confirmed_13):
+        await record_signup_event(False, "compliance_missing", 400, email)
         raise HTTPException(
             status_code=400,
             detail="You must accept the Terms of Service, Terms & Conditions, "
                    "Privacy Policy, and confirm you are at least 13 years old.",
         )
     if await db.users.find_one({"email": email}):
-        raise HTTPException(status_code=400, detail="Email already registered")
+        await record_signup_event(False, "duplicate_email", 400, email)
+        raise HTTPException(status_code=400, detail="This email is already registered. Try logging in instead.")
     if await db.users.find_one({"username": username}):
-        raise HTTPException(status_code=400, detail="Username already taken")
+        await record_signup_event(False, "duplicate_username", 400, email)
+        raise HTTPException(status_code=400, detail="That username is unavailable. Please choose another.")
 
     user_id = str(uuid.uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -99,6 +123,14 @@ async def register(payload: RegisterPayload, response: Response):
         "friend_groups": [],
         "social": {},
         "created_at": now_iso,
+        # ── Analytics eligibility (June 2026 data audit) ──
+        # Durable flags so every admin metric can distinguish real
+        # registered humans from system/demo/test accounts.
+        "account_type": "human",
+        "is_synthetic": False,
+        "analytics_eligible": True,
+        "signup_completed": True,
+        "email_verified": False,
         # ── Compliance audit trail ──
         "compliance": {
             "accepted_terms": True,
@@ -109,67 +141,84 @@ async def register(payload: RegisterPayload, response: Response):
             "accepted_at": now_iso,
         },
     }
-    await db.users.insert_one(doc)
-
-    # Auto-friend the founder ("stealth") by user_id for every new user
-    founder = await db.users.find_one({"username": FOUNDER_USERNAME})
-    if founder and founder["id"] != user_id:
-        await db.users.update_one(
-            {"id": user_id}, {"$addToSet": {"friends": founder["id"]}}
-        )
-        await db.users.update_one(
-            {"id": founder["id"]}, {"$addToSet": {"friends": user_id}}
-        )
-
-    # Phase B — also auto-friend the protected @support account so every
-    # new user can immediately DM support from /profile/support.
-    support = await db.users.find_one({"username": "support"})
-    if support and support["id"] != user_id:
-        await db.users.update_one({"id": user_id}, {"$addToSet": {"friends": support["id"]}})
-        await db.users.update_one({"id": support["id"]}, {"$addToSet": {"friends": user_id}})
-        doc["friends"] = list(set(doc["friends"] + [support["id"]]))
-
-    # ── VIP first_1000 — single source of truth ──
-    # The live `vip` badge in badge_registry controls VIP grants. If it
-    # has auto_rule='first_1000' AND current_holders < first_x, this
-    # signup gets the badge AND `is_vip` flips to True on the user doc.
-    # If the badge is missing/draft/disabled, no VIP is granted — which
-    # is the desired admin lever. Wrapped in try/except so a badge
-    # hiccup never blocks signup.
+    from pymongo.errors import DuplicateKeyError
     try:
-        vip_badge = await db.badge_registry.find_one({"key": "vip", "status": "live"})
-        if vip_badge and (vip_badge.get("auto_rule") == "first_1000"):
-            cap = int(vip_badge.get("first_x") or 1000)
-            current_holders = await db.user_badges.count_documents({"badge_key": "vip"})
-            if current_holders < cap:
-                await db.user_badges.update_one(
-                    {"user_id": user_id, "badge_key": "vip"},
-                    {"$setOnInsert": {
-                        "id": f"{user_id}::vip",
-                        "user_id": user_id,
-                        "username": payload.username.lower(),
-                        "badge_key": "vip",
-                        "assigned_by": "system",
-                        "assigned_at": now_iso,
-                        "source": "first_1000",
-                    }},
-                    upsert=True,
-                )
-                # Mirror onto the user doc for backwards-compat with the
-                # existing `is_vip` checks scattered through the codebase.
-                await db.users.update_one(
-                    {"id": user_id},
-                    {"$set": {"is_vip": True, "vip_joined_at": now_iso}},
-                )
-                doc["is_vip"] = True
-                doc["vip_joined_at"] = now_iso
-    except Exception:
-        # Never block signup on a badge hiccup.
-        logger.exception("VIP first_1000 auto-grant failed for user_id=%s", user_id)
+        await db.users.insert_one(doc)
+    except DuplicateKeyError:
+        # Race: two simultaneous signups with the same email/username —
+        # the unique index wins where the pre-check couldn't.
+        await record_signup_event(False, "duplicate_race", 409, email)
+        raise HTTPException(status_code=409, detail="This email or username was just registered. Try logging in.")
 
-    access = create_access_token(user_id, email)
-    refresh = create_refresh_token(user_id)
-    set_auth_cookies(response, access, refresh)
+    try:
+        # Auto-friend the founder ("stealth") by user_id for every new user
+        founder = await db.users.find_one({"username": FOUNDER_USERNAME})
+        if founder and founder["id"] != user_id:
+            await db.users.update_one(
+                {"id": user_id}, {"$addToSet": {"friends": founder["id"]}}
+            )
+            await db.users.update_one(
+                {"id": founder["id"]}, {"$addToSet": {"friends": user_id}}
+            )
+
+        # Phase B — also auto-friend the protected @support account so every
+        # new user can immediately DM support from /profile/support.
+        support = await db.users.find_one({"username": "support"})
+        if support and support["id"] != user_id:
+            await db.users.update_one({"id": user_id}, {"$addToSet": {"friends": support["id"]}})
+            await db.users.update_one({"id": support["id"]}, {"$addToSet": {"friends": user_id}})
+            doc["friends"] = list(set(doc["friends"] + [support["id"]]))
+
+        # ── VIP first_1000 — single source of truth ──
+        # The live `vip` badge in badge_registry controls VIP grants.
+        # Wrapped in try/except so a badge hiccup never blocks signup.
+        try:
+            vip_badge = await db.badge_registry.find_one({"key": "vip", "status": "live"})
+            if vip_badge and (vip_badge.get("auto_rule") == "first_1000"):
+                cap = int(vip_badge.get("first_x") or 1000)
+                current_holders = await db.user_badges.count_documents({"badge_key": "vip"})
+                if current_holders < cap:
+                    await db.user_badges.update_one(
+                        {"user_id": user_id, "badge_key": "vip"},
+                        {"$setOnInsert": {
+                            "id": f"{user_id}::vip",
+                            "user_id": user_id,
+                            "username": payload.username.lower(),
+                            "badge_key": "vip",
+                            "assigned_by": "system",
+                            "assigned_at": now_iso,
+                            "source": "first_1000",
+                        }},
+                        upsert=True,
+                    )
+                    await db.users.update_one(
+                        {"id": user_id},
+                        {"$set": {"is_vip": True, "vip_joined_at": now_iso}},
+                    )
+                    doc["is_vip"] = True
+                    doc["vip_joined_at"] = now_iso
+        except Exception:
+            logger.exception("VIP first_1000 auto-grant failed for user_id=%s", user_id)
+
+        access = create_access_token(user_id, email)
+        refresh = create_refresh_token(user_id)
+        set_auth_cookies(response, access, refresh)
+    except HTTPException:
+        raise
+    except Exception:
+        # Roll back the partially-created account so failed signups never
+        # linger in the DB (and never inflate member counts).
+        logger.exception("Signup post-insert failure — rolling back user %s", user_id)
+        await db.users.delete_one({"id": user_id})
+        await db.user_badges.delete_many({"user_id": user_id})
+        await db.users.update_many({}, {"$pull": {"friends": user_id}})
+        await record_signup_event(False, "server_error", 500, email)
+        raise HTTPException(
+            status_code=500,
+            detail="A temporary server problem prevented account creation. Please try again in a moment.",
+        )
+
+    await record_signup_event(True, "success", 200, email)
     return {"user": serialize_user(doc), "access_token": access}
 
 
