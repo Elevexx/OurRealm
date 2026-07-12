@@ -2503,3 +2503,46 @@ See `/app/memory/test_credentials.md`. Note: `core/seed.py` backfills `is_vip=tr
 
 ---
 *Last updated: Feb 2026 — Phase 5 shipped: VideoEmbed (YouTube/Vimeo inline iframe + IntersectionObserver pause), Share-to-user (DM with metadata-only post_share, server-sanitised), SharedPostCard inline DM preview that opens the canonical PostPopup, PostPopup friend-request CTA + Share. Backend 7/7 PASS; frontend Feed flow PASS via test agent and PostPopup SharedPostCard click-through verified manually. Carries forward Phase 4 reporting + Phase 8 FAQ + Phase B Support + Phase A Moderation + Phase 5+ Parts 0/1/2/3.*
+
+---
+
+# June 2026 — Production Data Audit & Repair (Data Health Suite)
+
+## Problem
+Production (ourrealm.social) had: missing profile pictures after DB recovery, videos failing to play, real-user signup errors, mock/demo posts in For You that couldn't be deleted, and admin metrics inflated by test/seed accounts.
+
+## Root causes found
+1. **Undeletable For You posts**: `Feed.jsx` merged 24 hardcoded `makeMockPosts()` client-side; RealmDetail/Home/Notifications also rendered mock characters (LunaX, Jaxon, Nova, …). Not DB rows — hence undeletable. REMOVED entirely; polished empty states added.
+2. **Video failures**: (a) `video_store.save_video` mirrored to R2 but discarded the returned `/api/media/videos/...` proxy URL (checked `startswith("http")`), storing ephemeral local paths that die on redeploy; (b) iPhone MOV containers don't play in Chrome/Android. FIXED: proxy URL now persisted; MOV uploads remuxed server-side to MP4 (`imageio-ffmpeg`, `-c copy +faststart`) or rejected with a helpful message.
+3. **Signup errors**: raw Pydantic 422s surfaced as vague errors; duplicate-race unhandled; partial signups could linger. FIXED: friendly field-specific messages (register 422 handler in server.py), duplicate email/username/race messages, full rollback on post-insert failure, `signup_events` telemetry (redacted: domain + hash only).
+4. **Inflated metrics**: `count_documents({})` counted @support, neutralised legacy admin, and test accounts. FIXED: `core/analytics_filters.real_member_filter()` — canonical definition of a real member — applied to `/api/admin/analytics` (total/new/DAU/MAU).
+5. **Seed fixtures**: `community_seed.seed_realms` ran on every boot with fake member counts (18k/32k). NOW gated behind `ENABLE_DEMO_SEEDS=true` (default OFF everywhere); legacy fake-count fields `$unset` from realm docs on startup; realm APIs already derive real counts from `community_memberships`.
+
+## New: Founder-only Data Health & Audit suite
+- Backend: `/app/backend/routers/admin_data_audit.py` → `/api/admin/data-health/*` (all `require_founder`):
+  - `GET /identity` — env label (preview/production), DB name/host, R2 bucket, collection counts, real member count, founder presence check.
+  - `GET /media-audit` + `POST /media-repair {dry_run}` — classifies stored avatar/banner/post media values (proxy | expired_presigned | legacy_r2_public | absolute_host | legacy_local | external | missing), checks R2 object existence, rewrites only provably-broken values to `/api/media/<kind>/<name>`.
+  - `GET /synthetic-scan` — classifier: system_required (stealth/support), confirmed_synthetic (explicit flags, example.com/test.com domains, legacy admin), likely_synthetic (name patterns → NEVER auto-deleted, founder review required), real. Per-user linked counts across 12 collections.
+  - `POST /review {user_id, decision: real|synthetic|clear}` — founder overrides stored in `synthetic_review`.
+  - `POST /cleanup/dry-run` — exact proposed deletion totals by collection; rejects non-confirmed accounts.
+  - `POST /cleanup/execute {confirm: "DELETE CONFIRMED SYNTHETIC DATA"}` — cascade delete (posts, comments, reactions, messages, community msgs/memberships, notifications, media records, badges, tickets, tokens, graph refs pulled) + R2 object deletion ONLY when no retained record references the object (one-pass retained-names check) + `cleanup_audit` record. Refuses system/real/likely accounts.
+  - `GET /signup-health`, `POST /backfill-eligibility` (stamps account_type/is_synthetic/analytics_eligible/signup_completed), `GET /orphans`, `GET /cleanup/audit`.
+- Frontend: `/app/frontend/src/pages/AdminDataHealth.jsx` at `/admin/data-health` (AdminHub card added). Tabs: Overview / Media Audit / Synthetic Accounts (dry-run → confirm-phrase execute) / Signup Health / Orphans / Audit Log. Environment badge (PREVIEW/PRODUCTION).
+- New user docs get `account_type=human, is_synthetic=false, analytics_eligible=true, signup_completed=true, email_verified=false` at register.
+
+## Production runbook (founder, after Replace Deployment)
+1. `/admin/data-health` → Overview: verify PRODUCTION label, correct DB, bucket `ourrealm-media`, founder present. **Back up DB before any cleanup.**
+2. Media Audit → Run → Repair dry-run → Apply Repairs (only rewrites provably-broken URLs).
+3. Synthetic Accounts → Run Scan → review likely_synthetic rows (mark real/synthetic) → select confirmed rows → Dry-run → type confirm phrase → Execute (in small batches; large accounts with many media objects can take ~60s).
+4. Overview → Run Backfill (analytics eligibility) → verify Total Members on /admin/analytics.
+5. Signup Health tab monitors registrations going forward.
+
+## Testing
+- `/app/test_reports/iteration_72.json` — 100% pass (21/21 backend pytest incl. live one-account cleanup + audit row; all frontend flows: no-mock feed/realms/notifications, admin console, friendly signup errors). Regression suite: `/app/backend/tests/test_iter72_data_health.py`.
+- Deployment agent: PASS (June 2026).
+
+## Notes / deferred
+- Wallet/Marketplace pages still use placeholder feature-demo data (non-social, flagged to user).
+- `TRENDING_TRACKS` emptied — Sounds/Music show real tracks only.
+- tfone test account deleted during cleanup verification (see test_credentials.md).
+- Future: background job queue for very large cleanup batches; JWT_SECRET rotation + CORS scoping on production env (user-action items).
