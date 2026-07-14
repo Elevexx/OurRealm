@@ -818,6 +818,12 @@ async def widgets_available(
         "access_groups": {"$in": list(groups)},
     }).sort([("sort_order", 1), ("name", 1)])
     items = [_serialise_widget(d) async for d in cursor]
+    if placement == "realm":
+        # Only offer widgets that actually render in the Realm context:
+        # realm-native types + custom registry widgets with an editor_config.
+        from routers.realm_widgets import REALM_SUPPORTED_TYPES
+        items = [w for w in items
+                 if (w.get("key") in REALM_SUPPORTED_TYPES) or w.get("editor_config")]
     return {"widgets": items}
 
 

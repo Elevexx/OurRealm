@@ -99,7 +99,9 @@ async def create_post(payload: PostCreate, current: CurrentUser):
         "author_name": current.get("name", ""),
         "author_avatar": current.get("avatar_url"),
         "content": payload.content,
-        "media_type": payload.media_type,
+        # Normalize: a post with an attached poll IS a poll — store it as
+        # media_type="poll" so feed filters separate Polls from Thoughts.
+        "media_type": "poll" if payload.poll else payload.media_type,
         "media_url": payload.media_url,
         # Optional rich-media URLs (any combination, all additive).
         "image_url": payload.image_url,
@@ -352,7 +354,16 @@ async def list_posts(
 
     query: dict = {}
     if media_type and media_type != "all":
-        query["media_type"] = media_type
+        if media_type == "poll":
+            # Match by attached poll object so legacy polls stored with
+            # media_type="thought" (pre-migration) are still included.
+            query["poll"] = {"$ne": None}
+        elif media_type == "thought":
+            # Thoughts must EXCLUDE polls (polls have their own filter).
+            query["media_type"] = "thought"
+            query["poll"] = None
+        else:
+            query["media_type"] = media_type
     # Compose the visibility filter directly into the Mongo query so private
     # posts authored by others never travel over the wire.
     vis_clause = _visibility_query(viewer_doc)

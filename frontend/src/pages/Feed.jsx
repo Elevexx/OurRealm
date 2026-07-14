@@ -149,13 +149,13 @@ export default function Feed() {
       seen.add(p.id);
       return true;
     });
-    // Media type filter. "poll" is special-cased — a post is a poll
-    // when its `poll` field is truthy, regardless of its `media_type`
-    // bucket (poll posts are usually authored as media_type="thought"
-    // + an attached `poll` object).
+    // Media type filter. A post with an attached poll IS a poll — the
+    // Polls filter shows only polls and Thoughts excludes them (backend
+    // enforces the same rules; this covers multi-select client filtering).
     if (media.length > 0) {
       filtered = filtered.filter((p) => {
-        if (media.includes("poll") && p?.poll) return true;
+        const isPoll = !!p?.poll || p?.media_type === "poll";
+        if (isPoll) return media.includes("poll");
         return media.includes(p.media_type);
       });
     }

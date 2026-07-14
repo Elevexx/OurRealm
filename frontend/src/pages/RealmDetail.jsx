@@ -34,7 +34,7 @@ import MemberActionSheet from "@/components/MemberActionSheet";
 import { useMessagingPopups } from "@/contexts/MessagingPopupContext";
 import RealmPollWidget from "@/components/RealmPollWidget";
 import CommunityHubWidget from "@/components/CommunityHubWidget";
-import CustomWidgetRenderer from "@/components/widgets/CustomWidgetRenderer";
+import RealmBuiltinWidget from "@/components/RealmBuiltinWidget";
 import RealmWidgetGrid from "@/components/RealmWidgetGrid";
 import EditRealmModal from "@/components/EditRealmModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -388,7 +388,7 @@ export default function RealmDetail() {
               onChanged={(updated) => setWidgets((prev) => prev.map((x) => x.id === updated.id ? updated : x))}
               onDeleted={(wid) => setWidgets((prev) => prev.filter((x) => x.id !== wid))}
               renderWidget={(w) => {
-                if (w.type === "poll") {
+                if (w.type === "poll" || w.type === "polls") {
                   return (
                     <RealmPollWidget
                       realmId={realm.id}
@@ -420,10 +420,13 @@ export default function RealmDetail() {
                   );
                 }
                 return (
-                  <section className="or-surface p-4 h-full" data-testid={`realm-widget-${w.type}-${w.id}`}>
-                    <div className="text-[10px] uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>{w.type}</div>
-                    <CustomWidgetRenderer w={w} />
-                  </section>
+                  <RealmBuiltinWidget
+                    realmId={realm.id}
+                    widget={w}
+                    isAdmin={isAdmin}
+                    onChanged={(updated) => setWidgets((prev) => prev.map((x) => x.id === updated.id ? updated : x))}
+                    onDeleted={(wid) => setWidgets((prev) => prev.filter((x) => x.id !== wid))}
+                  />
                 );
               }}
             />
@@ -591,7 +594,7 @@ export default function RealmDetail() {
             try {
               const { data } = await apiClient.post(
                 `/communities/realm/${realm.id}/widgets`,
-                { type: item.id, size: item.default_size || "medium" },
+                { type: item.key || item.id, size: item.default_size || "medium" },
               );
               setWidgets((prev) => [...prev, data]);
             } catch (e) {

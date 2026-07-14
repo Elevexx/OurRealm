@@ -1,17 +1,21 @@
 /**
  * AvatarPicker — reusable modal to set the current user's profile picture.
  *
- * Two tabs:
- *  - Upload Photo  → /api/images/upload (CDN-rehosted, respects daily limits)
- *  - Post Image URL → /api/images/from-url (re-fetched + rehosted server-side)
+ * June 2026: every upload now goes through the shared ImageCropperModal
+ * (square editing area, circular preview, zoom/drag/pinch, reset) before
+ * saving. The crop is baked client-side and uploaded via the existing
+ * /api/images/upload R2 pipeline, so the final avatar renders correctly
+ * everywhere a plain <img> shows it (posts, comments, messages, admin…).
  *
- * On success, calls PATCH /api/profile/me { avatar_url } and surfaces the
- * fresh avatar via `refreshMe()` so it updates everywhere the user appears.
+ * Tabs:
+ *  - Upload Photo  → pick file → crop → upload
+ *  - Post Image URL → /api/images/from-url (rehost) → crop → upload
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Upload, Link2, X, Loader2, AlertCircle } from "lucide-react";
 import apiClient from "@/api/client";
 import { absoluteImageUrl } from "@/components/ImageUploadPicker";
+import ImageCropperModal from "@/components/ImageCropperModal";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function AvatarPicker({ open, onClose, onSaved, testid = "avatar-picker" }) {
@@ -20,7 +24,10 @@ export default function AvatarPicker({ open, onClose, onSaved, testid = "avatar-
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [url, setUrl] = useState("");
-  const [preview, setPreview] = useState(null);   // local data URL while picking
+  const [preview, setPreview] = useState(null);   // local data URL after crop
+  const [cropSrc, setCropSrc] = useState(null);   // object URL being cropped
+
+  useEffect(() => () => { if (cropSrc) URL.revokeObjectURL(cropSrc); }, [cropSrc]);
 
   if (!open) return null;
 
@@ -34,32 +41,49 @@ export default function AvatarPicker({ open, onClose, onSaved, testid = "avatar-
     onClose?.();
   };
 
-  const onFileChange = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (f.size > 10 * 1024 * 1024) { setErr("Image too large (max 10 MB)"); return; }
-    // Local preview so the user sees what they're about to save.
-    const reader = new FileReader();
-    reader.onload = (ev) => setPreview(ev.target?.result || null);
-    reader.readAsDataURL(f);
-    uploadFile(f);
+  const uploadBlob = async (blob) => {
+    const fd = new FormData();
+    fd.append("file", new File([blob], "avatar.jpg", { type: blob.type || "image/jpeg" }));
+    const { data } = await apiClient.post("/images/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+    const next = data?.url || data?.image?.original_url;
+    if (!next) throw new Error("Upload returned no URL");
+    return next;
   };
 
-  const uploadFile = async (file) => {
-    setErr(""); setBusy(true);
+  const onFileChange = (e) => {
+    setErr("");
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.size > 10 * 1024 * 1024) { setErr("Image too large (max 10 MB)"); return; }
+    if (f.type === "image/gif") {
+      // Cropping would freeze GIF animation — upload as-is.
+      setBusy(true);
+      uploadBlob(f).then(persist)
+        .catch((e2) => handleUploadErr(e2))
+        .finally(() => setBusy(false));
+      return;
+    }
+    setCropSrc(URL.createObjectURL(f));
+  };
+
+  const handleUploadErr = (e) => {
+    const code = e?.response?.status;
+    const detail = e?.response?.data?.detail;
+    if (code === 413) setErr(detail || "Image too large — max 3 MB per upload.");
+    else if (code === 429) setErr(detail || "Daily upload limit reached.");
+    else setErr(detail || e?.message || "Upload failed.");
+  };
+
+  const handleCropApply = async (blob) => {
+    setCropSrc(null);
+    setBusy(true); setErr("");
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const { data } = await apiClient.post("/images/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      const next = data?.url || data?.image?.original_url;
-      if (!next) throw new Error("Upload returned no URL");
+      setPreview(URL.createObjectURL(blob));
+      const next = await uploadBlob(blob);
       await persist(next);
     } catch (e) {
-      const code = e?.response?.status;
-      const detail = e?.response?.data?.detail;
-      if (code === 413) setErr(detail || "Image too large — max 3 MB per upload.");
-      else if (code === 429) setErr(detail || "Daily upload limit reached.");
-      else setErr(detail || "Upload failed.");
+      handleUploadErr(e);
     } finally { setBusy(false); }
   };
 
@@ -68,10 +92,19 @@ export default function AvatarPicker({ open, onClose, onSaved, testid = "avatar-
     if (!u) { setErr("Paste an image URL."); return; }
     setErr(""); setBusy(true);
     try {
+      // Rehost the remote image on our CDN first, then load the local
+      // same-origin copy into the cropper (avoids cross-origin canvas taint).
       const { data } = await apiClient.post("/images/from-url", { url: u });
-      const next = data?.url || data?.image?.original_url;
-      if (!next) throw new Error("Image fetch returned no URL");
-      await persist(next);
+      const hosted = data?.url || data?.image?.original_url;
+      if (!hosted) throw new Error("Image fetch returned no URL");
+      const name = hosted.split("?")[0].split("/").pop();
+      try {
+        const resp = await apiClient.get(`/images/${name}`, { responseType: "blob" });
+        setCropSrc(URL.createObjectURL(resp.data));
+      } catch {
+        // Local copy unavailable — persist the rehosted image without a crop.
+        await persist(hosted);
+      }
     } catch (e) {
       setErr(e?.response?.data?.detail || "Could not fetch that URL.");
     } finally { setBusy(false); }
@@ -166,7 +199,7 @@ export default function AvatarPicker({ open, onClose, onSaved, testid = "avatar-
               </span>
             </label>
             <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-              JPG, PNG, WebP, or GIF. We compress and rehost on our CDN.
+              JPG, PNG, WebP, or GIF. You'll crop it before saving — we rehost on our CDN.
             </p>
           </div>
         ) : (
@@ -188,7 +221,7 @@ export default function AvatarPicker({ open, onClose, onSaved, testid = "avatar-
               data-testid={`${testid}-url-save`}
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
-              {busy ? "Saving…" : "Use this URL"}
+              {busy ? "Fetching…" : "Use this URL"}
             </button>
           </div>
         )}
@@ -203,6 +236,18 @@ export default function AvatarPicker({ open, onClose, onSaved, testid = "avatar-
           </div>
         )}
       </div>
+
+      <ImageCropperModal
+        open={!!cropSrc}
+        src={cropSrc}
+        aspect={1}
+        cropShape="round"
+        title="Adjust profile picture"
+        maxWidth={1024}
+        onApply={handleCropApply}
+        onCancel={() => setCropSrc(null)}
+        testid={`${testid}-cropper`}
+      />
     </div>
   );
 }

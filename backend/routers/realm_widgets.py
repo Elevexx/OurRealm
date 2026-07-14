@@ -123,12 +123,13 @@ async def add_widget(realm_id: str, payload: WidgetCreate, current: CurrentUser)
         {"_id": 0, "position": 1},
     ).sort("position", -1).limit(1).to_list(1)
     next_pos = ((max_doc[0]["position"] if max_doc else 0) or 0) + 1
+    wtype = await _resolve_widget_type(payload.type)
     widget = {
         "id":             uuid.uuid4().hex,
         "community_type": "realm",
         "community_id":   realm["id"],
-        "type":           payload.type,
-        "config":         payload.config or _default_config(payload.type),
+        "type":           wtype,
+        "config":         payload.config or _default_config(wtype),
         "size":           payload.size,
         "pinned":         bool(payload.pinned),
         "collapsed":      False,
@@ -224,6 +225,26 @@ async def delete_widget(realm_id: str, widget_id: str, current: CurrentUser):
 
 
 # ────────────────────────────── poll widget ─────────────────────────
+# Widget types that have a REAL renderer in the Realm context. Anything
+# else renders as a dead/blank container, so the picker only offers these
+# (plus custom registry widgets that carry their own editor_config).
+REALM_SUPPORTED_TYPES = {
+    "poll", "polls", "hub", "announcements", "rules", "notes",
+    "countdown", "calendar", "top8", "events",
+}
+
+# Registry ids sometimes leak in as the saved `type` (picker bug, fixed
+# June 2026) — resolve them back to the canonical registry key.
+async def _resolve_widget_type(raw: str) -> str:
+    t = (raw or "").strip()
+    if t == "polls":
+        return "poll"
+    reg = await db.widget_registry.find_one({"id": t}, {"_id": 0, "key": 1})
+    if reg and reg.get("key"):
+        return "poll" if reg["key"] == "polls" else reg["key"]
+    return t
+
+
 def _default_config(widget_type: str) -> dict:
     if widget_type == "poll":
         return {
@@ -240,6 +261,12 @@ def _default_config(widget_type: str) -> dict:
         return {"announcement": "Welcome to the realm! Pin something important here."}
     if widget_type == "hub":
         return {"title": "Community Hub", "subtitle": "Share photos, videos, thoughts, sounds & events with the realm."}
+    if widget_type == "notes":
+        return {"text": ""}
+    if widget_type == "countdown":
+        return {"title": "", "target": None}
+    if widget_type == "events":
+        return {"events": []}
     return {}
 
 

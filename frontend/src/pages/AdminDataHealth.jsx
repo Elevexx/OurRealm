@@ -15,7 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import AdminBackButton from "@/components/AdminBackButton";
 import {
   Database, Image as ImageIcon, Users, Activity, Unlink, ScrollText,
-  RefreshCw, ShieldCheck, AlertTriangle, Trash2, CheckCircle2,
+  RefreshCw, ShieldCheck, AlertTriangle, Trash2, CheckCircle2, Link2, GitMerge,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,6 +23,8 @@ const TABS = [
   { id: "overview", label: "Overview",      Icon: Database },
   { id: "media",    label: "Media Audit",   Icon: ImageIcon },
   { id: "accounts", label: "Synthetic Accounts", Icon: Users },
+  { id: "relationships", label: "Relationships", Icon: Link2 },
+  { id: "migrations", label: "Migrations",  Icon: GitMerge },
   { id: "signup",   label: "Signup Health", Icon: Activity },
   { id: "orphans",  label: "Orphans",       Icon: Unlink },
   { id: "audit",    label: "Audit Log",     Icon: ScrollText },
@@ -354,6 +356,241 @@ function AccountsTab() {
   );
 }
 
+// ── Relationships ─────────────────────────────────────────────────────
+function RelationshipsTab() {
+  const [report, setReport] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const load = async () => {
+    setBusy(true);
+    try { const { data } = await apiClient.get("/admin/data-health/relationships"); setReport(data); }
+    catch (e) { toast.error(e.response?.data?.detail || "Audit failed"); }
+    setBusy(false);
+  };
+  const repair = async () => {
+    setBusy(true);
+    try {
+      const { data } = await apiClient.post("/admin/data-health/relationships/repair", { confirm: confirmText });
+      toast.success(`Repaired — ${JSON.stringify(data.actions)}`);
+      setConfirmText(""); load();
+    } catch (e) { toast.error(e.response?.data?.detail || "Repair failed"); }
+    setBusy(false);
+  };
+  const totals = report?.totals || {};
+  return (
+    <div data-testid="dh-relationships">
+      <Panel testid="dh-rel-actions">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button className="or-btn" onClick={load} disabled={busy} data-testid="dh-rel-run">Run Relationship Audit</button>
+          {busy && <span className="text-xs" style={{ color: "var(--text-muted)" }}>Working…</span>}
+        </div>
+        {report && (
+          <div className="flex gap-4 mt-3 text-xs flex-wrap">
+            <span style={{ color: "var(--text-muted)" }}>users with issues: <b style={{ color: totals.users_with_issues ? "#F4C84A" : "#10E670" }}>{totals.users_with_issues}</b></span>
+            <span style={{ color: "var(--text-muted)" }}>dangling refs: <b style={{ color: "var(--text-main)" }}>{totals.dangling_refs}</b></span>
+            <span style={{ color: "var(--text-muted)" }}>synthetic refs: <b style={{ color: "var(--text-main)" }}>{totals.synthetic_refs}</b></span>
+            <span style={{ color: "var(--text-muted)" }}>asymmetric: <b style={{ color: "var(--text-main)" }}>{totals.asymmetric}</b></span>
+            <span style={{ color: "var(--text-muted)" }}>count drift: <b style={{ color: "var(--text-main)" }}>{totals.count_drift}</b></span>
+          </div>
+        )}
+      </Panel>
+      {report && (report.rows || []).length > 0 && (
+        <>
+          <Panel testid="dh-rel-table">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead><tr style={{ color: "var(--text-muted)" }} className="text-left">
+                  <th className="py-1 pr-3">User</th><th className="py-1 pr-3">Stored count</th>
+                  <th className="py-1 pr-3">Recalculated</th><th className="py-1 pr-3">Dangling</th>
+                  <th className="py-1 pr-3">Synthetic refs</th><th className="py-1">Asymmetric (proposed action)</th>
+                </tr></thead>
+                <tbody>
+                  {report.rows.map((r) => (
+                    <tr key={r.user_id} style={{ borderTop: "1px solid var(--surface-2)" }} data-testid={`dh-rel-row-${r.username}`}>
+                      <td className="py-1.5 pr-3" style={{ color: "var(--text-main)" }}>@{r.username}</td>
+                      <td className="py-1.5 pr-3">{String(r.stored_follower_count)}</td>
+                      <td className="py-1.5 pr-3" style={{ color: r.stored_follower_count !== r.recalculated_count ? "#F4C84A" : "var(--text-main)" }}>{r.recalculated_count}</td>
+                      <td className="py-1.5 pr-3">{r.dangling_refs.length}</td>
+                      <td className="py-1.5 pr-3">{r.synthetic_refs.map((s) => `@${s.username}`).join(", ") || "—"}</td>
+                      <td className="py-1.5" style={{ color: "var(--text-muted)", maxWidth: 340 }}>
+                        {r.asymmetric.length === 0 ? "—" : r.asymmetric.map((a, i) => (
+                          <div key={i}>
+                            @{a.other_username}: <b style={{ color: a.proposal === "restore_reciprocal" ? "#10E670" : "#FF3F5A" }}>
+                              {a.proposal === "restore_reciprocal" ? "restore" : "remove one-way"}</b> — {a.reason}
+                          </div>
+                        ))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+          <Panel testid="dh-rel-repair">
+            <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
+              Repair strips dangling references, applies the exact evidence-based proposals shown above,
+              and resyncs every follower count. Synthetic references are left for the account cleanup engine.
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                className="text-xs px-2 py-1.5"
+                style={{ minWidth: 240, background: "var(--surface-2)", border: "1px solid var(--surface-2)", borderRadius: 8, color: "var(--text-main)" }}
+                placeholder="Type: REPAIR RELATIONSHIPS"
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                data-testid="dh-rel-confirm-input"
+              />
+              <button className="or-btn" style={{ background: "#F4C84A", color: "#1a1200" }}
+                      disabled={busy || confirmText !== "REPAIR RELATIONSHIPS"} onClick={repair}
+                      data-testid="dh-rel-execute">
+                Execute Repair
+              </button>
+            </div>
+          </Panel>
+        </>
+      )}
+      {report && (report.rows || []).length === 0 && (
+        <Panel testid="dh-rel-clean">
+          <div className="text-sm flex items-center gap-2" style={{ color: "#10E670" }}>
+            <CheckCircle2 size={14} /> Relationship graph is healthy — all counts match.
+          </div>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+// ── Migrations (polls + realm widgets) ────────────────────────────────
+function MigrationsTab() {
+  const [polls, setPolls] = useState(null);
+  const [widgets, setWidgets] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [pollConfirm, setPollConfirm] = useState("");
+  const [widgetConfirm, setWidgetConfirm] = useState("");
+
+  const loadPolls = async () => {
+    setBusy(true);
+    try { const { data } = await apiClient.get("/admin/data-health/poll-migration/dry-run"); setPolls(data); }
+    catch (e) { toast.error(e.response?.data?.detail || "Dry-run failed"); }
+    setBusy(false);
+  };
+  const execPolls = async () => {
+    setBusy(true);
+    try {
+      const { data } = await apiClient.post("/admin/data-health/poll-migration/execute", { confirm: pollConfirm });
+      toast.success(`Migrated ${data.migrated} polls`); setPollConfirm(""); loadPolls();
+    } catch (e) { toast.error(e.response?.data?.detail || "Migration failed"); }
+    setBusy(false);
+  };
+  const loadWidgets = async () => {
+    setBusy(true);
+    try { const { data } = await apiClient.get("/admin/data-health/realm-widgets/dry-run"); setWidgets(data); }
+    catch (e) { toast.error(e.response?.data?.detail || "Dry-run failed"); }
+    setBusy(false);
+  };
+  const execWidgets = async () => {
+    setBusy(true);
+    try {
+      const { data } = await apiClient.post("/admin/data-health/realm-widgets/execute", { confirm: widgetConfirm });
+      toast.success(`Normalized ${data.fixed} widgets`); setWidgetConfirm(""); loadWidgets();
+    } catch (e) { toast.error(e.response?.data?.detail || "Normalize failed"); }
+    setBusy(false);
+  };
+
+  return (
+    <div data-testid="dh-migrations">
+      <Panel testid="dh-poll-migration">
+        <h4 className="text-sm font-bold mb-1" style={{ color: "var(--text-main)" }}>Poll media_type migration</h4>
+        <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+          Reclassifies posts that carry a poll but were saved as "thought". Only the media_type field changes —
+          votes, comments, reactions, ownership and timestamps are untouched.
+        </p>
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <button className="or-btn" onClick={loadPolls} disabled={busy} data-testid="dh-poll-dryrun">Dry-run</button>
+          {polls && <span className="text-xs" style={{ color: "var(--text-muted)" }}>affected: <b style={{ color: polls.count ? "#F4C84A" : "#10E670" }}>{polls.count}</b></span>}
+        </div>
+        {polls && polls.count > 0 && (
+          <>
+            <div className="overflow-x-auto mb-2">
+              <table className="w-full text-xs">
+                <thead><tr style={{ color: "var(--text-muted)" }} className="text-left">
+                  <th className="py-1 pr-3">Post</th><th className="py-1 pr-3">Author</th>
+                  <th className="py-1 pr-3">Question</th><th className="py-1 pr-3">Current type</th><th className="py-1">Created</th>
+                </tr></thead>
+                <tbody>
+                  {polls.rows.map((r) => (
+                    <tr key={r.post_id} style={{ borderTop: "1px solid var(--surface-2)" }}>
+                      <td className="py-1.5 pr-3">{r.post_id.slice(0, 8)}…</td>
+                      <td className="py-1.5 pr-3">@{r.author}</td>
+                      <td className="py-1.5 pr-3" style={{ color: "var(--text-main)" }}>{r.question}</td>
+                      <td className="py-1.5 pr-3">{r.current_media_type} → <b style={{ color: "#10E670" }}>poll</b></td>
+                      <td className="py-1.5">{(r.created_at || "").slice(0, 10)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <input className="text-xs px-2 py-1.5"
+                     style={{ minWidth: 200, background: "var(--surface-2)", border: "1px solid var(--surface-2)", borderRadius: 8, color: "var(--text-main)" }}
+                     placeholder="Type: MIGRATE POLLS" value={pollConfirm}
+                     onChange={(e) => setPollConfirm(e.target.value)} data-testid="dh-poll-confirm-input" />
+              <button className="or-btn" style={{ background: "#10E670", color: "#04150a" }}
+                      disabled={busy || pollConfirm !== "MIGRATE POLLS"} onClick={execPolls}
+                      data-testid="dh-poll-execute">Execute Migration</button>
+            </div>
+          </>
+        )}
+        {polls && polls.count === 0 && (
+          <div className="text-sm flex items-center gap-2" style={{ color: "#10E670" }}>
+            <CheckCircle2 size={14} /> All polls are correctly classified.
+          </div>
+        )}
+      </Panel>
+
+      <Panel testid="dh-widget-migration">
+        <h4 className="text-sm font-bold mb-1" style={{ color: "var(--text-main)" }}>Realm widget type normalization</h4>
+        <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+          Fixes realm widgets saved with a registry UUID (old picker bug) or the "polls" alias, and flags
+          legacy widget types that have no Realm renderer.
+        </p>
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <button className="or-btn" onClick={loadWidgets} disabled={busy} data-testid="dh-widget-dryrun">Dry-run</button>
+          {widgets && <span className="text-xs" style={{ color: "var(--text-muted)" }}>issues: <b style={{ color: widgets.rows.length ? "#F4C84A" : "#10E670" }}>{widgets.rows.length}</b> (fixable: {widgets.fixable})</span>}
+        </div>
+        {widgets && widgets.rows.length > 0 && (
+          <>
+            <div className="text-xs space-y-1 mb-2">
+              {widgets.rows.map((r) => (
+                <div key={r.widget_id} style={{ color: "var(--text-muted)" }}>
+                  {r.widget_id.slice(0, 8)}… · realm {String(r.realm_id).slice(0, 8)}… · <b style={{ color: "var(--text-main)" }}>{r.current_type.slice(0, 20)}</b>
+                  {r.proposed_type ? <> → <b style={{ color: "#10E670" }}>{r.proposed_type}</b></> : null} — {r.reason}
+                </div>
+              ))}
+            </div>
+            {widgets.fixable > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <input className="text-xs px-2 py-1.5"
+                       style={{ minWidth: 220, background: "var(--surface-2)", border: "1px solid var(--surface-2)", borderRadius: 8, color: "var(--text-main)" }}
+                       placeholder="Type: NORMALIZE WIDGETS" value={widgetConfirm}
+                       onChange={(e) => setWidgetConfirm(e.target.value)} data-testid="dh-widget-confirm-input" />
+                <button className="or-btn" style={{ background: "#10E670", color: "#04150a" }}
+                        disabled={busy || widgetConfirm !== "NORMALIZE WIDGETS"} onClick={execWidgets}
+                        data-testid="dh-widget-execute">Execute Normalize</button>
+              </div>
+            )}
+          </>
+        )}
+        {widgets && widgets.rows.length === 0 && (
+          <div className="text-sm flex items-center gap-2" style={{ color: "#10E670" }}>
+            <CheckCircle2 size={14} /> All realm widgets use canonical types.
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 // ── Signup Health ─────────────────────────────────────────────────────
 function SignupTab() {
   const [data, setData] = useState(null);
@@ -511,6 +748,8 @@ export default function AdminDataHealth() {
       {tab === "overview" && <OverviewTab />}
       {tab === "media" && <MediaTab />}
       {tab === "accounts" && <AccountsTab />}
+      {tab === "relationships" && <RelationshipsTab />}
+      {tab === "migrations" && <MigrationsTab />}
       {tab === "signup" && <SignupTab />}
       {tab === "orphans" && <OrphansTab />}
       {tab === "audit" && <AuditTab />}

@@ -561,11 +561,18 @@ async def cleanup_execute(payload: CleanupPayload, current: CurrentUser):
             await _del("login_attempts", {"identifier": {"$regex": re.escape(u["email"])}}, "login_attempts")
 
         # Pull from social graphs of retained users — no orphaned refs.
+        affected_friend_ids = await db.users.distinct("id", {"friends": uid})
         pull = await db.users.update_many(
             {}, {"$pull": {"friends": uid, "friend_requests_in": uid,
                            "friend_requests_out": uid, "inner_8": uid}})
         if pull.modified_count:
             deleted["graph_references_pulled"] = pull.modified_count
+        # Keep follower_count in sync for everyone who lost this friend.
+        for fid in affected_friend_ids:
+            fdoc = await db.users.find_one({"id": fid}, {"_id": 0, "friends": 1})
+            if fdoc is not None:
+                await db.users.update_one(
+                    {"id": fid}, {"$set": {"follower_count": len(fdoc.get("friends") or [])}})
         # Remove likes by this user on retained posts.
         try:
             likes = await db.posts.update_many({}, {"$pull": {"liked_by": uid}})
@@ -744,3 +751,231 @@ async def orphans(current: CurrentUser, limit: int = 200):
         "media_records_missing_object": missing_media,
         "generated_at": _now(),
     }
+
+
+# ── 8. Poll media_type migration ─────────────────────────────────────
+POLL_MIGRATION_CONFIRM = "MIGRATE POLLS"
+
+
+@router.get("/poll-migration/dry-run")
+async def poll_migration_dry_run(current: CurrentUser):
+    """Posts that carry a poll but are stored under the wrong media_type
+    (usually 'thought' from the pre-normalization composer)."""
+    require_founder(current)
+    rows = []
+    async for p in db.posts.find(
+        {"poll": {"$ne": None}, "media_type": {"$ne": "poll"}},
+        {"_id": 0, "id": 1, "author_username": 1, "media_type": 1,
+         "created_at": 1, "poll.question": 1, "comments": 1, "likes": 1},
+    ).sort("created_at", -1).limit(2000):
+        rows.append({
+            "post_id": p["id"],
+            "author": p.get("author_username"),
+            "current_media_type": p.get("media_type"),
+            "proposed_media_type": "poll",
+            "question": (p.get("poll") or {}).get("question"),
+            "created_at": p.get("created_at"),
+            "comments": p.get("comments"),
+            "likes": p.get("likes"),
+        })
+    return {"rows": rows, "count": len(rows),
+            "note": "Only the media_type field changes — votes, comments, reactions, media, ownership, visibility and timestamps are untouched."}
+
+
+class PollMigrationPayload(BaseModel):
+    confirm: str = ""
+
+
+@router.post("/poll-migration/execute")
+async def poll_migration_execute(payload: PollMigrationPayload, current: CurrentUser):
+    require_founder(current)
+    if payload.confirm != POLL_MIGRATION_CONFIRM:
+        raise HTTPException(400, f"Confirmation phrase required: '{POLL_MIGRATION_CONFIRM}'")
+    res = await db.posts.update_many(
+        {"poll": {"$ne": None}, "media_type": {"$ne": "poll"}},
+        {"$set": {"media_type": "poll"}},
+    )
+    await db.cleanup_audit.insert_one({
+        "id": uuid.uuid4().hex, "at": _now(), "by": current.get("username"),
+        "action": "poll_media_type_migration", "migrated": res.modified_count,
+    })
+    return {"ok": True, "migrated": res.modified_count}
+
+
+# ── 9. Realm widget type normalization ───────────────────────────────
+@router.get("/realm-widgets/dry-run")
+async def realm_widget_dry_run(current: CurrentUser):
+    """Realm widgets saved with a registry UUID (picker bug) or the
+    'polls' alias instead of the canonical type key."""
+    require_founder(current)
+    from routers.realm_widgets import REALM_SUPPORTED_TYPES
+    reg_by_id = {}
+    async for r in db.widget_registry.find({}, {"_id": 0, "id": 1, "key": 1, "editor_config": 1}):
+        reg_by_id[r["id"]] = r
+    rows = []
+    async for w in db.community_widgets.find(
+        {"community_type": "realm"},
+        {"_id": 0, "id": 1, "community_id": 1, "type": 1, "created_at": 1},
+    ):
+        t = w.get("type") or ""
+        proposed, reason = None, None
+        if t == "polls":
+            proposed, reason = "poll", "'polls' alias → canonical 'poll'"
+        elif t in reg_by_id:
+            key = reg_by_id[t].get("key")
+            proposed = "poll" if key == "polls" else key
+            reason = f"registry UUID → key '{key}'"
+        elif t not in REALM_SUPPORTED_TYPES and t not in ("poll", "hub"):
+            reg = await db.widget_registry.find_one({"key": t}, {"_id": 0, "editor_config": 1})
+            if not (reg and reg.get("editor_config")):
+                reason = "unsupported in Realm context (renders a 'not available' card — remove or replace)"
+        if proposed or reason:
+            rows.append({"widget_id": w["id"], "realm_id": w.get("community_id"),
+                         "current_type": t, "proposed_type": proposed, "reason": reason})
+    return {"rows": rows, "fixable": sum(1 for r in rows if r["proposed_type"])}
+
+
+@router.post("/realm-widgets/execute")
+async def realm_widget_execute(payload: PollMigrationPayload, current: CurrentUser):
+    require_founder(current)
+    if payload.confirm != "NORMALIZE WIDGETS":
+        raise HTTPException(400, "Confirmation phrase required: 'NORMALIZE WIDGETS'")
+    report = await realm_widget_dry_run(current)
+    fixed = 0
+    for r in report["rows"]:
+        if r["proposed_type"]:
+            await db.community_widgets.update_one(
+                {"id": r["widget_id"]}, {"$set": {"type": r["proposed_type"], "updated_at": _now()}})
+            fixed += 1
+    await db.cleanup_audit.insert_one({
+        "id": uuid.uuid4().hex, "at": _now(), "by": current.get("username"),
+        "action": "realm_widget_normalization", "fixed": fixed,
+        "details": report["rows"][:200],
+    })
+    return {"ok": True, "fixed": fixed}
+
+
+# ── 10. Relationship audit & repair ──────────────────────────────────
+async def _relationship_report() -> dict:
+    """Full friends-graph audit: dangling refs, refs to confirmed-synthetic
+    accounts, asymmetric friendships (with evidence-based proposals), and
+    stored vs recalculated follower counts."""
+    reviews = {r["user_id"]: r async for r in db.synthetic_review.find({}, {"_id": 0})}
+    users: dict[str, dict] = {}
+    async for u in db.users.find({}, {"_id": 0, "id": 1, "username": 1, "friends": 1,
+                                      "friend_requests_in": 1, "friend_requests_out": 1,
+                                      "inner_8": 1, "follower_count": 1, "is_system": 1,
+                                      "is_synthetic": 1, "account_type": 1, "email": 1,
+                                      "is_founder": 1, "role": 1, "is_protected": 1,
+                                      "seeded": 1, "source": 1, "created_at": 1}):
+        users[u["id"]] = u
+    synthetic_ids = {uid for uid, u in users.items()
+                     if _classify_user(u, reviews.get(uid))[0] == "confirmed_synthetic"}
+
+    rows = []
+    totals = {"users_with_issues": 0, "dangling_refs": 0, "synthetic_refs": 0,
+              "asymmetric": 0, "count_drift": 0}
+    for uid, u in users.items():
+        friends = u.get("friends") or []
+        dangling = [f for f in friends if f not in users]
+        synth = [f for f in friends if f in synthetic_ids]
+        valid = [f for f in friends if f in users and f not in synthetic_ids]
+        asymmetric = []
+        for fid in valid:
+            other = users[fid]
+            if uid in (other.get("friends") or []):
+                continue
+            # Evidence-based proposal (June 2026 rules):
+            #  • pending request either way → the one-way ref is premature → remove
+            #  • DM history between the pair → mutual friendship evidence → restore
+            #  • otherwise → no reliable evidence → remove the one-way ref
+            pending = (uid in (other.get("friend_requests_in") or [])
+                       or uid in (other.get("friend_requests_out") or [])
+                       or fid in (u.get("friend_requests_in") or [])
+                       or fid in (u.get("friend_requests_out") or []))
+            if pending:
+                proposal, reason = "remove_one_way", "friend request still pending — friendship never accepted"
+            else:
+                dm = await db.messages.find_one(
+                    {"$or": [{"from_user_id": uid, "to_user_id": fid},
+                             {"from_user_id": fid, "to_user_id": uid}]},
+                    {"_id": 0, "id": 1})
+                if dm:
+                    proposal, reason = "restore_reciprocal", "DM history between both users indicates an accepted friendship"
+                else:
+                    proposal, reason = "remove_one_way", "no DM history or acceptance evidence — stale one-way reference"
+            asymmetric.append({"other_id": fid, "other_username": other.get("username"),
+                               "proposal": proposal, "reason": reason})
+        stored = u.get("follower_count")
+        recalculated = len([f for f in friends if f in users])
+        drift = (stored is not None and int(stored) != recalculated) or stored is None
+        if dangling or synth or asymmetric or drift:
+            totals["users_with_issues"] += 1
+            totals["dangling_refs"] += len(dangling)
+            totals["synthetic_refs"] += len(synth)
+            totals["asymmetric"] += len(asymmetric)
+            if drift:
+                totals["count_drift"] += 1
+            rows.append({
+                "user_id": uid, "username": u.get("username"),
+                "stored_follower_count": stored, "recalculated_count": recalculated,
+                "dangling_refs": dangling,
+                "synthetic_refs": [{"id": s, "username": users[s].get("username")} for s in synth],
+                "asymmetric": asymmetric,
+            })
+    return {"rows": rows, "totals": totals, "generated_at": _now()}
+
+
+@router.get("/relationships")
+async def relationships_audit(current: CurrentUser):
+    require_founder(current)
+    return await _relationship_report()
+
+
+class RelationshipRepairPayload(BaseModel):
+    confirm: str = ""
+
+
+@router.post("/relationships/repair")
+async def relationships_repair(payload: RelationshipRepairPayload, current: CurrentUser):
+    """Executes the exact proposals from the audit: strips dangling refs,
+    applies evidence-based asymmetry fixes, and resyncs follower_count.
+    Refs to confirmed-synthetic accounts are left for the cleanup engine
+    (deleting those accounts pulls the refs automatically)."""
+    require_founder(current)
+    if payload.confirm != "REPAIR RELATIONSHIPS":
+        raise HTTPException(400, "Confirmation phrase required: 'REPAIR RELATIONSHIPS'")
+    report = await _relationship_report()
+    actions = {"dangling_removed": 0, "reciprocal_restored": 0,
+               "one_way_removed": 0, "counts_resynced": 0}
+    for row in report["rows"]:
+        uid = row["user_id"]
+        if row["dangling_refs"]:
+            await db.users.update_one(
+                {"id": uid},
+                {"$pull": {"friends": {"$in": row["dangling_refs"]},
+                           "friend_requests_in": {"$in": row["dangling_refs"]},
+                           "friend_requests_out": {"$in": row["dangling_refs"]},
+                           "inner_8": {"$in": row["dangling_refs"]}}})
+            actions["dangling_removed"] += len(row["dangling_refs"])
+        for a in row["asymmetric"]:
+            if a["proposal"] == "restore_reciprocal":
+                await db.users.update_one({"id": a["other_id"]}, {"$addToSet": {"friends": uid}})
+                actions["reciprocal_restored"] += 1
+            else:
+                await db.users.update_one(
+                    {"id": uid}, {"$pull": {"friends": a["other_id"], "inner_8": a["other_id"]}})
+                actions["one_way_removed"] += 1
+    # Final pass — resync follower_count for every user from the repaired graph.
+    user_ids = {u["id"] async for u in db.users.find({}, {"_id": 0, "id": 1})}
+    async for u in db.users.find({}, {"_id": 0, "id": 1, "friends": 1, "follower_count": 1}):
+        real = len([f for f in (u.get("friends") or []) if f in user_ids])
+        if u.get("follower_count") != real:
+            await db.users.update_one({"id": u["id"]}, {"$set": {"follower_count": real}})
+            actions["counts_resynced"] += 1
+    await db.cleanup_audit.insert_one({
+        "id": uuid.uuid4().hex, "at": _now(), "by": current.get("username"),
+        "action": "relationship_repair", "actions": actions,
+        "details": report["rows"][:200],
+    })
+    return {"ok": True, "actions": actions}

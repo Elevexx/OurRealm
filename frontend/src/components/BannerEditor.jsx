@@ -1,23 +1,22 @@
 /**
- * BannerEditor — reusable banner upload + crop/zoom/reposition tool.
+ * BannerEditor — banner upload with the shared professional crop editor.
  *
- * Pipeline:
- *   1. User taps Choose file → upload via the existing /api/images/upload.
- *   2. Preview rectangle (same aspect ratio as the destination banner)
- *      shows the image inside, supports drag-to-reposition and a zoom
- *      slider.
- *   3. Save → emits { banner_url, banner_offset_y, banner_scale }.
+ * Pipeline (June 2026):
+ *   1. Choose file → shared ImageCropperModal (exact 4:1 banner aspect,
+ *      wheel/pinch zoom, drag reposition, reset).
+ *   2. Apply → the crop is baked via canvas at full quality and uploaded
+ *      through the existing /api/images/upload R2 pipeline (durable
+ *      /api/media/... URL — never blobs or local paths).
+ *   3. Save → emits { banner_url, banner_offset_y: 50, banner_scale: 1 }.
  *
- * The crop is fully **non-destructive**: we never re-encode the image.
- * Display surfaces use `object-position: 50% <banner_offset_y>%` and an
- * inner-scale transform to render the same view the user adjusted.
- *
- * Works for user profile banners, group banners, and realm banners — the
- * caller just decides where to PATCH the returned values.
+ * Animated GIFs bypass cropping (canvas would freeze the animation) and
+ * upload as-is. Existing banners saved with the legacy offset/scale
+ * values keep rendering exactly as before via <BannerView />.
  */
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import apiClient from "@/api/client";
 import { absoluteImageUrl } from "@/components/ImageUploadPicker";
+import ImageCropperModal from "@/components/ImageCropperModal";
 import { X, Upload, Loader2, Image as ImageIcon, AlertCircle, Trash2 } from "lucide-react";
 
 const ACCEPTED = "image/jpeg,image/png,image/webp,image/gif";
@@ -33,60 +32,57 @@ export default function BannerEditor({
   testid = "banner-editor",
 }) {
   const [uploadedUrl, setUploadedUrl] = useState(initial.banner_url || "");
-  const [offsetY, setOffsetY] = useState(Number.isFinite(initial.banner_offset_y) ? initial.banner_offset_y : 50);
-  const [scale, setScale]   = useState(Number.isFinite(initial.banner_scale) ? initial.banner_scale : 1);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [cropSrc, setCropSrc] = useState(null);   // local object URL while cropping
   const fileRef = useRef(null);
-  const previewRef = useRef(null);
-  const dragRef = useRef({ active: false, startY: 0, startOffset: 50 });
+
+  // Revoke object URLs when the modal unmounts.
+  useEffect(() => () => { if (cropSrc) URL.revokeObjectURL(cropSrc); }, [cropSrc]);
 
   if (!open) return null;
 
   const pickFile = () => fileRef.current?.click();
 
-  const handleFile = async (e) => {
+  const uploadBlob = async (blob, filename) => {
+    const fd = new FormData();
+    fd.append("file", new File([blob], filename, { type: blob.type || "image/jpeg" }));
+    const { data } = await apiClient.post("/images/upload", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    if (!data?.url) throw new Error("Upload failed");
+    return data.url;
+  };
+
+  const handleFile = (e) => {
     setErr("");
     const f = e.target.files?.[0];
-    e.target.value = "";   // allow re-picking same file
+    e.target.value = "";
     if (!f) return;
     if (!ACCEPTED.split(",").includes(f.type)) { setErr("Use JPG, PNG, GIF, or WebP."); return; }
     if (f.size > MAX_BYTES) { setErr("Max 8 MB."); return; }
-    setBusy(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", f);
-      const { data } = await apiClient.post("/images/upload", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      if (!data?.url) throw new Error("Upload failed");
-      setUploadedUrl(data.url);
-      setOffsetY(50);
-      setScale(1);
-    } catch (e2) {
-      setErr(e2?.response?.data?.detail || e2?.message || "Upload failed");
-    } finally { setBusy(false); }
+    if (f.type === "image/gif") {
+      // Cropping would freeze GIF animation — upload as-is.
+      setBusy(true);
+      uploadBlob(f, f.name)
+        .then((url) => setUploadedUrl(url))
+        .catch((e2) => setErr(e2?.response?.data?.detail || e2?.message || "Upload failed"))
+        .finally(() => setBusy(false));
+      return;
+    }
+    setCropSrc(URL.createObjectURL(f));
   };
 
-  // Drag — vertical only (banner crop is along the Y axis since the
-  // image already fills width via object-cover).
-  const onPointerDown = (e) => {
-    if (!uploadedUrl) return;
-    e.target.setPointerCapture?.(e.pointerId);
-    dragRef.current = { active: true, startY: e.clientY, startOffset: offsetY };
-  };
-  const onPointerMove = (e) => {
-    if (!dragRef.current.active) return;
-    const rect = previewRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const dyPct = ((e.clientY - dragRef.current.startY) / rect.height) * 100;
-    // Dragging DOWN should reveal the TOP of the image (lower offset).
-    const next = Math.max(0, Math.min(100, dragRef.current.startOffset - dyPct));
-    setOffsetY(next);
-  };
-  const onPointerUp = (e) => {
-    dragRef.current.active = false;
-    try { e.target.releasePointerCapture?.(e.pointerId); } catch { /* */ }
+  const handleCropApply = async (blob) => {
+    setErr("");
+    try {
+      const url = await uploadBlob(blob, "banner.jpg");
+      setUploadedUrl(url);
+      setCropSrc(null);
+    } catch (e2) {
+      setErr(e2?.response?.data?.detail || e2?.message || "Upload failed");
+      setCropSrc(null);
+    }
   };
 
   const doSave = async () => {
@@ -94,8 +90,9 @@ export default function BannerEditor({
     try {
       await onSave?.({
         banner_url: uploadedUrl,
-        banner_offset_y: Math.round(offsetY * 10) / 10,
-        banner_scale: Math.round(scale * 100) / 100,
+        // Crop is baked into the image itself — neutral render transform.
+        banner_offset_y: 50,
+        banner_scale: 1,
       });
       onClose?.();
     } catch (e2) {
@@ -123,9 +120,8 @@ export default function BannerEditor({
           <button className="starbar-icon" style={{ width: 32, height: 32 }} onClick={onClose} aria-label="Close" data-testid={`${testid}-close`}><X size={16} /></button>
         </div>
 
-        {/* Preview rectangle — same 4:1 ratio as the rendered banner. */}
+        {/* Preview rectangle — exact 4:1 banner aspect. */}
         <div
-          ref={previewRef}
           className="overflow-hidden mb-3"
           style={{
             position: "relative",
@@ -134,13 +130,7 @@ export default function BannerEditor({
             borderRadius: "var(--radius)",
             border: "1px solid var(--border-col)",
             background: "var(--surface-2)",
-            cursor: uploadedUrl ? "grab" : "default",
-            touchAction: "none",
           }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
           data-testid={`${testid}-preview`}
         >
           {uploadedUrl ? (
@@ -151,9 +141,10 @@ export default function BannerEditor({
               draggable={false}
               style={{
                 objectFit: "cover",
-                objectPosition: `50% ${offsetY}%`,
-                transform: `scale(${scale})`,
-                transformOrigin: `50% ${offsetY}%`,
+                // Legacy banners keep their saved offset/scale view.
+                objectPosition: `50% ${Number.isFinite(initial.banner_offset_y) && uploadedUrl === initial.banner_url ? initial.banner_offset_y : 50}%`,
+                transform: `scale(${Number.isFinite(initial.banner_scale) && uploadedUrl === initial.banner_url ? initial.banner_scale : 1})`,
+                transformOrigin: "50% 50%",
                 userSelect: "none",
                 pointerEvents: "none",
               }}
@@ -166,28 +157,6 @@ export default function BannerEditor({
             </div>
           )}
         </div>
-
-        {uploadedUrl && (
-          <div className="mb-3">
-            <label className="text-xs flex items-center justify-between" style={{ color: "var(--text-muted)" }}>
-              <span>Zoom</span>
-              <span data-testid={`${testid}-zoom-val`}>{scale.toFixed(2)}×</span>
-            </label>
-            <input
-              type="range"
-              min="1"
-              max="3"
-              step="0.05"
-              value={scale}
-              onChange={(e) => setScale(parseFloat(e.target.value))}
-              className="w-full"
-              data-testid={`${testid}-zoom`}
-            />
-            <div className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
-              Tip: drag the image inside the preview to reposition.
-            </div>
-          </div>
-        )}
 
         {err && (
           <div className="flex items-start gap-2 text-xs px-3 py-2 mb-3"
@@ -219,6 +188,18 @@ export default function BannerEditor({
           </button>
         )}
       </div>
+
+      <ImageCropperModal
+        open={!!cropSrc}
+        src={cropSrc}
+        aspect={ASPECT}
+        cropShape="rect"
+        title="Adjust banner"
+        maxWidth={2560}
+        onApply={handleCropApply}
+        onCancel={() => setCropSrc(null)}
+        testid={`${testid}-cropper`}
+      />
     </div>
   );
 }
@@ -227,7 +208,8 @@ export default function BannerEditor({
 /**
  * <BannerView /> — render-only helper that surfaces a saved banner with
  * the saved offset/scale applied. Used in the Profile / Public profile /
- * Group / Realm headers.
+ * Group / Realm headers. Legacy banners (saved before the baked-crop
+ * editor) keep their non-destructive transform view.
  */
 export function BannerView({ url, offsetY = 50, scale = 1, className = "", style, testid }) {
   if (!url) return null;
