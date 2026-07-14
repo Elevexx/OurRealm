@@ -2546,3 +2546,40 @@ Production (ourrealm.social) had: missing profile pictures after DB recovery, vi
 - `TRENDING_TRACKS` emptied — Sounds/Music show real tracks only.
 - tfone test account deleted during cleanup verification (see test_credentials.md).
 - Future: background job queue for very large cleanup batches; JWT_SECRET rotation + CORS scoping on production env (user-action items).
+
+---
+
+# June 2026 — UI, Social, Widgets & Feed Repairs (Iteration 73)
+
+## 1+2. Professional image cropper (banner + avatar)
+- New shared `ImageCropperModal.jsx` on `react-easy-crop@5.5.6` (locked): wheel zoom, pinch-to-zoom, touch drag, zoom buttons + slider, reset/cancel/apply, aspect-locked crop box.
+- `lib/cropImage.js` bakes the crop via canvas (high-quality smoothing, capped output: banner 2560px / avatar 1024px) → uploaded through existing `/api/images/upload` R2 pipeline → durable `/api/media/...` URLs only (never blobs).
+- `BannerEditor.jsx`: 4:1 crop; legacy banners keep offset/scale rendering via untouched `BannerView`. GIFs bypass cropping (animation preserved).
+- `AvatarPicker.jsx`: square stage + circular crop; URL tab rehosts via `/images/from-url` then crops the local same-origin copy (no canvas taint). Cropped avatar renders everywhere plain `<img>` is used.
+
+## 3. Relationship audit & repair
+- `GET /api/admin/data-health/relationships` — per-user stored vs recalculated follower_count, dangling refs, synthetic refs, asymmetric friendships with evidence-based proposals (restore_reciprocal only with DM history + no pending request; otherwise remove_one_way; each with reason).
+- `POST /relationships/repair` (confirm `REPAIR RELATIONSHIPS`) — strips dangling refs from friends/requests/inner_8, applies proposals, resyncs ALL follower_counts, audit-logged. Executed on preview: 14 dangling removed, 6 one-way removed, 8 counts resynced → graph clean.
+- Cleanup engine now resyncs follower_count of affected users after synthetic-account deletion.
+- New Relationships tab in `/admin/data-health`.
+
+## 4. Realm widgets blank-render fix
+- ROOT CAUSES: (a) picker posted registry UUID as widget `type` (unrenderable), (b) built-in library types had no realm renderer — generic CustomWidgetRenderer expected editor_config → blank cards.
+- Fixes: picker sends `item.key`; backend `_resolve_widget_type` maps UUIDs→keys and `polls`→`poll`; `GET /widgets/available?placement=realm` only offers renderable types (REALM_SUPPORTED_TYPES + custom widgets with editor_config).
+- New `RealmBuiltinWidget.jsx`: announcements/rules/notes (admin inline edit), countdown (live timer + setup card), calendar (real month), top8 (real members), events (admin-managed list); custom registry widgets hydrate editor_config; unsupported legacy types render a labelled card with Remove button — NEVER blank. Loading states included.
+- Founder migration `GET/POST /api/admin/data-health/realm-widgets/*` (confirm `NORMALIZE WIDGETS`) fixes legacy saved UUID/alias types.
+
+## 5. Poll / Thought separation
+- ROOT CAUSE: composer saved polls as `media_type="thought"` + poll object; backend filter matched literal media_type.
+- Fixes: `create_post` forces `media_type="poll"` when a poll is attached; `?media_type=poll` matches by attached poll (covers legacy rows); `?media_type=thought` excludes polls; Feed.jsx client multi-filter mirrors the rules.
+- Founder migration `GET/POST /api/admin/data-health/poll-migration/*` (confirm `MIGRATE POLLS`) reclassifies legacy mis-typed polls — only media_type changes (votes/comments/reactions/timestamps preserved). Preview: 0 affected.
+- New Migrations tab in `/admin/data-health`.
+
+## Testing
+- `/app/backend/tests/test_iter73_updates.py` — 13/13 pass (poll separation, widget normalization, available-filtering, migrations guards, relationships shape/auth).
+- `/app/test_reports/iteration_73.json` — 100% backend + 100% frontend (poll composer→filter→vote, avatar & banner crop persist after refresh, realm widget picker/setup cards/unsupported card, admin tabs, friends counts match).
+- Deleted 3 preview-only `testu*` fixture posts referencing example.com/v.mp4 (console noise).
+
+## Production runbook additions (after Replace Deployment)
+1. `/admin/data-health` → Migrations: Poll dry-run → review → `MIGRATE POLLS`; Widget dry-run → review → `NORMALIZE WIDGETS`.
+2. Relationships: Run audit → review every proposed action + reason → `REPAIR RELATIONSHIPS`.
