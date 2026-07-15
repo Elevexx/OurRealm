@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import {
   BarChart3, Zap, Hash, Headphones, HelpCircle, LifeBuoy,
   Crown, ShieldCheck, ChevronRight, Loader2, Sparkles, LayoutGrid, Database,
+  Image as ImageIcon,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -153,6 +154,18 @@ const CARDS = [
     roles: ["founder"],
     statKey: null,
     footer: "◈ Open Data Health Console",
+  },
+  {
+    id: "website-media",
+    to: "/admin/WebsiteMedia",
+    title: "Website Media",
+    description: "Manage mode logos, OurRealm wordmarks, and the new-user tutorial.",
+    Icon: ImageIcon,
+    accent: "#2EE6FF",
+    badge: "Stealth Only",
+    roles: ["founder"],
+    statKey: null,
+    footer: "◈ Open Website Media",
   },
 ];
 

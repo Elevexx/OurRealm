@@ -1,5 +1,6 @@
 import React from "react";
 import TopStarBar from "@/components/TopStarBar";
+import TutorialPopup from "@/components/TutorialPopup";
 import BottomNav from "@/components/BottomNav";
 
 /**
@@ -20,6 +21,7 @@ export default function Layout({ children }) {
       }}
     >
       <TopStarBar />
+      <TutorialPopup />
       <main
         className="flex-1 px-3 sm:px-5 lg:px-8 py-4 sm:py-6 or-min0"
         style={{

@@ -52,6 +52,7 @@ from routers import orion_health as orion_health_router_mod
 from routers import media_proxy as media_proxy_router_mod
 from routers import admin_portals as admin_portals_router_mod
 from routers import admin_data_audit as admin_data_audit_router_mod
+from routers import website_media as website_media_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -107,6 +108,7 @@ app.include_router(orion_health_router_mod.router)
 app.include_router(media_proxy_router_mod.router)
 app.include_router(admin_portals_router_mod.router)
 app.include_router(admin_data_audit_router_mod.router)
+app.include_router(website_media_router_mod.router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
@@ -345,6 +347,13 @@ async def on_startup():
         await _communities.backfill_main_realm_chats()
     except Exception as e:
         logger.warning(f"[communities] startup failed: {e}")
+
+    try:
+        from routers.website_media import ensure_website_media_seed
+        await ensure_website_media_seed()
+        logger.info("[website-media] seed ok")
+    except Exception as e:
+        logger.warning(f"[website-media] seed failed (header falls back to hardcoded logo): {e}")
 
     # PART 4 — log the resolved media-storage root so deploy logs make
     # it obvious whether uploads are landing on a persistent volume or

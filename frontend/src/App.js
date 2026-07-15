@@ -13,6 +13,7 @@ import HomeDashboard from "@/pages/HomeDashboard";
 import AdminAnalytics from "@/pages/AdminAnalytics";
 import AdminHub from "@/pages/AdminHub";
 import AdminDataHealth from "@/pages/AdminDataHealth";
+import AdminWebsiteMedia from "@/pages/AdminWebsiteMedia";
 import AdminWidgets from "@/pages/AdminWidgets";
 import AdminOrionLogs from "@/pages/AdminOrionLogs";
 import AdminOrion from "@/pages/AdminOrion";
@@ -111,6 +112,7 @@ function App() {
             <Route path="/interests" element={<ShellRoute><Home /></ShellRoute>} />
             <Route path="/admin" element={<ShellRoute><AdminHub /></ShellRoute>} />
             <Route path="/admin/data-health" element={<ShellRoute><AdminDataHealth /></ShellRoute>} />
+            <Route path="/admin/WebsiteMedia" element={<ShellRoute><AdminWebsiteMedia /></ShellRoute>} />
             <Route path="/admin/widgets" element={<ShellRoute><AdminWidgets /></ShellRoute>} />
             <Route path="/admin/orion-logs" element={<ShellRoute><AdminOrionLogs /></ShellRoute>} />
             <Route path="/admin/orion" element={<ShellRoute><AdminOrion /></ShellRoute>} />
