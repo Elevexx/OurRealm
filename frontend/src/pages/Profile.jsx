@@ -561,8 +561,14 @@ export default function Profile() {
             )}
             {editing ? (
               <>
-                <input className="or-input mb-2 text-xl" data-testid="profile-edit-name"
-                  value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Display name" />
+                <div className="flex items-center gap-2 flex-wrap mb-2">
+                  <input className="or-input text-xl flex-1 min-w-[200px]" data-testid="profile-edit-name"
+                    value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Display name" />
+                  {user?.username && (
+                    <LevelBadge username={user.username} testid="profile-level-badge-edit"
+                      onClick={() => document.querySelector('[data-testid="progress-card"]')?.scrollIntoView({ behavior: "smooth", block: "center" })} />
+                  )}
+                </div>
                 <input className="or-input text-sm" data-testid="profile-edit-bio"
                   value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder="Bio" />
               </>

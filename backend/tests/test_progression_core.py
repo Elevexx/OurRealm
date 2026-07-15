@@ -69,7 +69,7 @@ def test_admin_requires_founder(client, member_h):
 def test_me_progression_backend_calculated(client, founder_h):
     d = client.get("/api/progression/me", headers=founder_h).json()
     assert d["enabled"] is True
-    assert d["level"]["name"] in ("Newbie", "Explorer")
+    assert d["level"]["name"]  # a published level is always assigned
     assert isinstance(d["summary"]["completed_task_count"], int)
     assert all("current_value" in t for t in d["tasks"])
 

@@ -33,3 +33,12 @@ Founder (all require_founder + audited): /api/admin/progression/{flags, task-typ
 - Manually verified: preview full backfill (91 real users, 89 changed, 0 failed); highest-level fix; auto-advance logic (code-reviewed, unit path covered indirectly).
 - Deferred / known limitations: views_received counts 0 (no durable view tracking yet — never auto-completes); share/save/portals/mode/daily/onboarding/feature tasks count post-launch app-events only (no historical source exists); notifications flag has no push channel yet (in-app claim highlight + celebration only); per-mode visual QA of card in business/millennium/stealth pending full pass; reduced-motion honored in celebration; mobile layout responsive but not device-lab tested.
 - Production rollout: deploy → flags OFF by default in prod DB → founder runs Dry Run then backfill from Level Builder Jobs tab (phrase RECALCULATE ALL) → enable display/events → notifications → claims → rewards. Preview data is NOT proof of production backfill.
+
+### Update (same day) — visibility fixes + full level ladder
+- All 8 flags enabled in preview (display, events, calculations, notifications, claims, rewards, builder, analytics).
+- Level badge now also shows in profile EDIT mode (profile-level-badge-edit) — profile defaults to edit view, which previously hid it.
+- Seeded 6 more editable published levels via scripts/seed_launch_levels.py: Creator, Rising Star, Influencer, Elite, Master, Legend (5 tasks + completion badge + reputation each, per-level accent colors). All editable in Level Builder, nothing hard-coded.
+- Auto-advance verified live: stealth (claimed Explorer) automatically advanced to Creator when new levels were published, with pre-completed tasks recognized (4/5 instantly).
+- Functional republish flow verified: Creator required_task_count 5→4 triggered confirmation gate, published v2, migrated 1 user; stealth claimed Creator → celebration modal → advanced to Rising Star (3/5, rep 300, 3 completed levels).
+- Screenshots verified: desktop profile (Neon), mobile profile (Millennium), progress card + history, claim celebration with rewards, Level Builder levels list (8 levels), task builder + reward editor, analytics dashboard, jobs/repair with dry-run history.
+- Preview DB note: 90/91 real users genuinely have empty avatar_url (this is preview data; production differs — founder Dry Run in production shows real counts).
