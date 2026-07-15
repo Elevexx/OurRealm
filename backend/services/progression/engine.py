@@ -167,6 +167,29 @@ async def recalc_user(user: dict, persist: bool = True, source: str = "recalc") 
     elif level_status == "archived":
         status, claimable = "archived_level", False
 
+    # Already-claimed current level (terminal position): never re-offer the
+    # claim. If a NEW next level has since been published, advance into it.
+    already_claimed = await db.progression_claims.find_one(
+        {"user_id": user["id"], "level_id": snap["id"],
+         "level_version": snap["config_version"], "status": "success"},
+        {"_id": 0, "id": 1})
+    if already_claimed:
+        claimable = False
+        nxt = await next_level_after(snap, user)
+        if nxt:
+            await db.user_level_progress.update_one(
+                {"user_id": user["id"], "current_level_id": snap["id"]},
+                {"$set": {"current_level_id": nxt["id"],
+                          "current_level_version": nxt["config_version"],
+                          "current_level_number": nxt.get("level_number"),
+                          "current_level_started_at": _now(),
+                          "status": "active", "claim_available": False,
+                          "last_calculated_at": None,
+                          "calculation_source": "auto_advance", "updated_at": _now()}})
+            fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password": 0})
+            return await recalc_user(fresh or user, persist=persist, source="auto_advance")
+        status = "highest_level_reached"
+
     summary = {
         "current_level_id": snap["id"], "current_level_version": snap["config_version"],
         "current_level_number": snap.get("level_number"),

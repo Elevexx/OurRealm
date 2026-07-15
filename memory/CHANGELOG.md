@@ -1,0 +1,35 @@
+# OurRealm CHANGELOG (memory)
+
+## July 2026 — Profile Level & Progression System (iteration 76)
+
+### Files created
+Backend: `services/progression/{flags,eligibility,registry,calculators,engine,events,rewards,seed,backfill,indexes}.py`, `routers/progression.py`, `routers/progression_admin.py`, `tests/test_progression_core.py`
+Frontend: `components/progression/{LevelBadge,ProgressCard,CelebrationModal}.jsx`, `pages/AdminLevelBuilder.jsx`
+
+### Files modified
+`server.py` (routers + startup indexes/seed), `routers/posts.py` (post_created event hook), `pages/Profile.jsx` (badge + card), `pages/FounderProfile.jsx` (public badge + card), `pages/ModesPage.jsx` (mode_selected app-event), `pages/PortalsHub.jsx` (portals_visited app-event), `App.js` (route), `pages/AdminHub.jsx` (card)
+
+### Database
+Collections: progression_levels, progression_level_versions, progression_tasks, user_level_progress, user_task_progress, user_level_history, progression_claims, progression_events, user_reward_grants, reputation_transactions, progression_recalculation_jobs, progression_manual_approvals, progression_audit_logs, progression_flags.
+Unique indexes: level id; (level_id,version); task id; user_level_progress.user_id; (user,level,task,version) task progress; claims (user,level,version) partial status=success; events.event_id; reward grants idempotency_key; reputation idempotency_key; manual approvals (user,task).
+Users gained `reputation_points` (synced from reputation_transactions ledger).
+
+### Architecture
+- Canonical task-type registry (~50 launch task types across profile/posting/social/realm/engagement/platform/custom) sharing 16 calculator strategies. Unknown/retired types fail safe (never auto-complete).
+- Canonical For You eligibility: `services/progression/eligibility.is_foryou_eligible_post` (viewer-independent).
+- Engine: backend-only source of truth; read-time TTL recalc (120s) + event-driven recalc + jobs. Claims idempotent (unique claim per user+level+version), concurrency-safe (guarded transition), celebration only after backend confirm. Already-claimed terminal level → highest_level_reached; auto-advance when a new next level is later published.
+- Rewards: durable ledger, idempotent grants, retry/revoke (audited), reputation transactions ledger + synced balance, unlock checks via `rewards.has_unlock`.
+- App events: authenticated, allowlisted keys only (realm_visited, portals_visited, mode_selected, post_shared, post_saved, daily_task_completed, onboarding_step, feature_used, tutorial_resumed), deterministic event ids (replay-safe). No arbitrary code/queries/URLs in custom rules (schema + allowlist validation).
+- Feature flags (db.progression_flags): display, events, calculations, notifications, claims, rewards, builder, analytics. Rollback = flags off; data never deleted.
+- Backfill/recalc jobs: batched (100), resumable (cursor), cancellable, dry-run never mutates, all-user run requires phrase "RECALCULATE ALL".
+
+### API routes
+User: GET /api/progression/me, /summary/{username}, /history/me, /rewards/me, /visibility; POST /recalc, /claim, /app-event; PATCH /visibility.
+Founder (all require_founder + audited): /api/admin/progression/{flags, task-types, levels CRUD+publish+pause+unpause+archive+duplicate+reorder, levels/{id}/tasks CRUD+reorder, tasks/{id} patch/delete/duplicate, inspect/{username}, jobs start/list/get/cancel/resume, rewards/failed, rewards/{id}/retry|revoke, manual-approvals list/decide, analytics, audit-logs, claims, events, seed}.
+
+### Testing status (honest)
+- Implemented + automatically tested (16 pytest, all pass): seed publish, founder-only 401/403, backend-calculated progress, claim idempotency + 5x concurrent burst single record, reward dedupe, unknown task type fails safe, arbitrary code/config rejection, app-event allowlist + replay dedupe, published-level delete block, draft lifecycle, dry-run non-mutation, confirmation phrase, backend-enforced visibility, audit logging.
+- Implemented + tested by testing_agent E2E (iteration_76.json): profile badge + card, history, real claim flow with celebration + highest-level state, public summary privacy, Level Builder CRUD/publish/archive/delete, analytics/jobs/flags/audit tabs, dry-run job, inspect, non-founder guard, feed regression.
+- Manually verified: preview full backfill (91 real users, 89 changed, 0 failed); highest-level fix; auto-advance logic (code-reviewed, unit path covered indirectly).
+- Deferred / known limitations: views_received counts 0 (no durable view tracking yet — never auto-completes); share/save/portals/mode/daily/onboarding/feature tasks count post-launch app-events only (no historical source exists); notifications flag has no push channel yet (in-app claim highlight + celebration only); per-mode visual QA of card in business/millennium/stealth pending full pass; reduced-motion honored in celebration; mobile layout responsive but not device-lab tested.
+- Production rollout: deploy → flags OFF by default in prod DB → founder runs Dry Run then backfill from Level Builder Jobs tab (phrase RECALCULATE ALL) → enable display/events → notifications → claims → rewards. Preview data is NOT proof of production backfill.

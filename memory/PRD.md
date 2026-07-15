@@ -2646,3 +2646,9 @@ Production (ourrealm.social) had: missing profile pictures after DB recovery, vi
 - P1: Rotate production `JWT_SECRET` (shared with preview) + scope production `CORS_ORIGINS` (currently `*`).
 - P2: Optional server-side persistence of custom mode colors (currently per-device localStorage).
 - P2: Consider renaming internal orion_* modules/routes if ever safe (needs migration; low value).
+
+---
+
+# July 2026 — Profile Level & Progression System (Iterations 76)
+Full spec implemented across 4 phases. See /app/memory/CHANGELOG.md ("Progression System") for the complete completion report, architecture, collections, API routes, flags, backfill results, and known limitations.
+Key state: seeded Newbie(3 tasks) + Explorer(5 tasks) published v1; 8 feature flags in db.progression_flags (preview: display/claims/calculations/builder ON; events/notifications/rewards-gate/analytics configurable); preview backfill completed (91 real users, 0 failures). PRODUCTION: deploy code → flags default OFF → founder runs Dry Run + backfill from /admin/level-builder Jobs tab → enable flags.

@@ -436,7 +436,7 @@ export default function AdminLevelBuilder() {
                 )}
                 {l.status === "paused" && <button className="or-chip" onClick={() => act(() => apiClient.post(`/admin/progression/levels/${l.id}/unpause`), "Resumed")}><Play size={11} /> Unpause</button>}
                 <button className="or-chip" onClick={() => act(() => apiClient.post(`/admin/progression/levels/${l.id}/duplicate`), "Duplicated")}><Copy size={11} /></button>
-                {l.status !== "archived" && <button className="or-chip" onClick={() => act(() => apiClient.post(`/admin/progression/levels/${l.id}/archive`), "Archived")} title="Archive"><Archive size={11} /></button>}
+                {l.status !== "archived" && <button className="or-chip" onClick={() => act(() => apiClient.post(`/admin/progression/levels/${l.id}/archive`), "Archived")} title="Archive" data-testid={`level-archive-${l.id}`}><Archive size={11} /></button>}
                 <button className="or-chip" style={{ color: "#ff8080" }} title="Delete (drafts only)"
                   onClick={() => act(() => apiClient.delete(`/admin/progression/levels/${l.id}`), "Draft deleted")} data-testid={`level-delete-${l.id}`}>
                   <Trash2 size={11} />
