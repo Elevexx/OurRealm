@@ -2583,3 +2583,27 @@ Production (ourrealm.social) had: missing profile pictures after DB recovery, vi
 ## Production runbook additions (after Replace Deployment)
 1. `/admin/data-health` → Migrations: Poll dry-run → review → `MIGRATE POLLS`; Widget dry-run → review → `NORMALIZE WIDGETS`.
 2. Relationships: Run audit → review every proposed action + reason → `REPAIR RELATIONSHIPS`.
+
+---
+
+# July 2026 — Website Media (Founder-Only) — Iteration 74
+
+## Feature
+`/admin/WebsiteMedia` (+ Admin Hub card, roles=["founder"], STEALTH ONLY badge). Two sections:
+1. **Logos & Wordmarks** — per-mode branding (13 modes: neon, jungle, aquaria, terra_vetus, cyber, retro, ancient_egypt, alien, adventure, business, social, millennium, stealth; extensible via MODES list in `routers/website_media.py`). Upload → shared cropper (logo 1:1 / wordmark 5:1, PNG/JPG/WebP ≤5MB) → draft → preview nav mock → Publish (validated, atomic per-mode, previous version kept) → Discard / Rollback. Filters + search.
+2. **New User Tutorial Builder** — image/video slides (R2 pipelines, image ≤10MB, video ≤100MB w/ MOV remux), title/description/alt/button (next|finish|route-validated|none), autoplay/loop/muted/controls, enable/disable, up/down reorder (persists), duplicate, delete, settings (name/status/audience/delay/skip/close/progress), Save Draft / Preview (founder-only TutorialPopup preview mode) / Publish (versioned snapshots in `tutorial_versions`, confirm modal w/ counts + "show to everyone") / Rollback / Delete Draft (typed phrase).
+
+## Live behavior
+- `Logo.jsx` now dynamic: reads `GET /api/website-media/published` (module cache + version cache-busting, invalidated on publish) for the active theme mode. Fallback: mode asset → neon published → hardcoded master logo. Never a broken image. Wordmark renders beside icon only when configured.
+- `TutorialPopup.jsx` mounted in Layout: fetches `/api/tutorial/active` (server decides eligibility by audience + version + server-side completion), swipe/keyboard/dots/skip/finish, videos pause on slide change, progress via `/api/tutorial/progress/{start,update,complete,skip}` (unique per user/version). localStorage only a perf hint.
+
+## Data & API
+- Collections: `website_media_modes`, `tutorials` (id "main", draft_slides embedded), `tutorial_versions`, `user_tutorial_progress` (unique index user+tutorial+version), `admin_audit_logs` (all founder actions).
+- Endpoints in `routers/website_media.py`: admin (require_founder): GET /api/admin/website-media, PATCH /modes/{key}, POST /publish /discard-draft /rollback; GET/PATCH /api/admin/tutorial, slides POST/PATCH/DELETE/duplicate/reorder, POST /tutorial/publish /rollback, DELETE /tutorial/draft. Public: GET /api/website-media/published (cached), GET /api/tutorial/active, POST /api/tutorial/progress/*.
+- Durable-URL enforcement server-side (rejects blob:/data:), safe internal route validation for slide buttons.
+- Startup seed `ensure_website_media_seed()` (idempotent, seeds current logo as Neon published; never overwrites).
+
+## Testing
+- Backend: `/app/backend/tests/test_website_media.py` 6/6 (401/403 gating, durable upload, draft≠published, publish/rollback, tutorial CRUD/reorder/publish/version/progress-unique/completed-hidden, unsafe route rejection).
+- `/app/test_reports/iteration_74.json`: 100% backend (19/19 incl. iter73 regression) + 100% frontend (card visibility both roles, upload→crop→draft→publish→rollback, tutorial build/reorder-persist/preview/publish, popup shows for normal user → finish → never re-shows, header logo regression).
+- Final preview state: tutorial status=published audience=new_users (hidden from existing users), no mode drafts pending.
