@@ -64,6 +64,7 @@ function LegalShell({ title, subtitle, testid, children }) {
           <div className="space-y-5">{children}</div>
           <div className="text-xs pt-4" style={{ color: "var(--text-muted)", borderTop: "1px solid var(--border-col)" }}>
             Other policies: {" "}
+            <Link to="/faq" className="underline" style={{ color: "var(--primary)" }}>FAQ</Link>{" · "}
             <Link to="/terms" className="underline" style={{ color: "var(--primary)" }}>Terms</Link>{" · "}
             <Link to="/terms-conditions" className="underline" style={{ color: "var(--primary)" }}>Conditions</Link>{" · "}
             <Link to="/privacy" className="underline" style={{ color: "var(--primary)" }}>Privacy</Link>{" · "}

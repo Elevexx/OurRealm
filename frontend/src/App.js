@@ -41,6 +41,7 @@ import AccountSettings from "@/pages/AccountSettings";
 import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
 import AdminFAQ from "@/pages/AdminFAQ";
+import FAQPage from "@/pages/FAQPage";
 import AdminHashtags from "@/pages/AdminHashtags";
 import HashtagFeed from "@/pages/HashtagFeed";
 import TrendingHashtagsPage from "@/pages/TrendingHashtagsPage";
@@ -147,6 +148,7 @@ function App() {
             <Route path="/profile/support" element={<ShellRoute><Support /></ShellRoute>} />
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
             <Route path="/admin/faq" element={<ShellRoute><AdminFAQ /></ShellRoute>} />
+            <Route path="/faq" element={<ShellRoute><FAQPage /></ShellRoute>} />
             <Route path="/terms" element={<TermsOfServicePage />} />
             <Route path="/terms-conditions" element={<TermsConditionsPage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />

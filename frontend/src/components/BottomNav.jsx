@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Home, Sparkles, Plus, Music2 as SoundsIcon, Users, User, Radio, Video, Image as ImageIcon, MessageSquare, X, Music2, Send, Trash2 } from "lucide-react";
+import { Home, Sparkles, Plus, Music2 as SoundsIcon, Users, User, Radio, Video, Image as ImageIcon, MessageSquare, X, Music2, Send, Globe2, Users as UsersIcon, Lock, UserCheck } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import GuestPrompt from "@/components/GuestPrompt";
 import VideoUploadPicker from "@/components/VideoUploadPicker";
-import ImageUploadPicker from "@/components/ImageUploadPicker";
 import SoundUploadPicker from "@/components/SoundUploadPicker";
+import AlbumPicker from "@/components/composer/AlbumPicker";
+import HashtagInput, { appendHashtags } from "@/components/composer/HashtagInput";
+import AudiencePicker from "@/components/AudiencePicker";
 import RealmsIcon from "@/components/RealmsIcon";
 
 // Bottom nav — required order:
@@ -30,57 +32,33 @@ const CREATE_OPTIONS = [
   { id: "thought", label: "Thought", Icon: MessageSquare, color: "#F4C84A", desc: "Quick text from your mind" },
 ];
 
-const MAX_ALBUM_IMAGES = 6;
-
 function CreateWorkflow({ option, onClose, onDone }) {
   const [text, setText] = useState("");
   const [title, setTitle] = useState("");
   const [posting, setPosting] = useState(false);
   // Video: relative `/api/videos/...` URL populated by VideoUploadPicker.
   const [videoUrl, setVideoUrl] = useState("");
-  // Images: array of {url, thumbnailUrl?} from ImageUploadPicker.
-  // Initialised EMPTY — no demo/placeholder content.
+  // Images: array of {url, thumbnailUrl?} — shared AlbumPicker (same as For You composer).
   const [images, setImages] = useState([]);
-  const [imagePickerOpen, setImagePickerOpen] = useState(false);
-  const [imagePickerSlot, setImagePickerSlot] = useState(null); // index being added/replaced
   // Sound: track record returned by SoundUploadPicker after /sounds/upload.
   const [sound, setSound] = useState(null);
   const [soundPickerOpen, setSoundPickerOpen] = useState(false);
+  const [hashtags, setHashtags] = useState([]);
+  const [audience, setAudience] = useState({ visibility: "public", user_ids: [] });
+  const [audienceOpen, setAudienceOpen] = useState(false);
 
   if (!option) return null;
   const Icon = option.Icon;
 
-  const handleImagePicked = ({ url, thumbnailUrl }) => {
-    setImages((prev) => {
-      const next = [...prev];
-      if (typeof imagePickerSlot === "number" && imagePickerSlot < next.length) {
-        // Replace at slot
-        next[imagePickerSlot] = { url, thumbnailUrl };
-      } else if (next.length < MAX_ALBUM_IMAGES) {
-        // Append
-        next.push({ url, thumbnailUrl });
-      }
-      return next;
-    });
-    setImagePickerOpen(false);
-    setImagePickerSlot(null);
-  };
-
-  const removeImage = (idx) => {
-    setImages((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const openImagePicker = (idx) => {
-    setImagePickerSlot(idx);
-    setImagePickerOpen(true);
-  };
-
   const submit = async () => {
     setPosting(true);
     try {
-      const content = option.id === "thought"
+      // No automatic "Image"/"Video" label text — caption-less media posts
+      // publish with an empty caption.
+      const base = option.id === "thought"
         ? text.trim()
-        : `${title.trim() || option.label}${text.trim() ? " — " + text.trim() : ""}`;
+        : [title.trim(), text.trim()].filter(Boolean).join(" — ");
+      const content = appendHashtags(base, hashtags);
 
       // Per-workflow validation guards.
       if (option.id === "video" && !videoUrl) {
@@ -108,7 +86,7 @@ function CreateWorkflow({ option, onClose, onDone }) {
         : option.id === "video" ? "video"
         : option.id === "live"  ? "live"
         : "sound";
-      const body = { content, media_type: mediaType };
+      const body = { content, media_type: mediaType, audience };
       if (videoUrl) { body.video_url = videoUrl; body.media_url = videoUrl; }
       if (images.length > 0) {
         body.image_url = images[0].url;          // primary thumbnail
@@ -192,62 +170,8 @@ function CreateWorkflow({ option, onClose, onDone }) {
         )}
         {option.id === "image" && (
           <>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              {Array.from({ length: MAX_ALBUM_IMAGES }).map((_, i) => {
-                const img = images[i];
-                const isFilled = !!img;
-                return (
-                  <div
-                    key={i}
-                    className="aspect-square or-surface overflow-hidden relative"
-                    style={{ background: "var(--surface-2)", borderStyle: isFilled ? "solid" : "dashed" }}
-                  >
-                    {isFilled ? (
-                      <>
-                        <img src={img.thumbnailUrl || img.url} alt="" className="w-full h-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => openImagePicker(i)}
-                          className="absolute inset-0"
-                          aria-label="Replace image"
-                          data-testid={`create-image-slot-${i}`}
-                          style={{ background: "transparent" }}
-                        />
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); removeImage(i); }}
-                          className="absolute top-1 right-1 rounded-full"
-                          style={{
-                            width: 24, height: 24,
-                            background: "rgba(0,0,0,0.65)",
-                            color: "#fff",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                          }}
-                          aria-label="Remove image"
-                          data-testid={`create-image-slot-${i}-remove`}
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => openImagePicker(null)}
-                        className="w-full h-full flex items-center justify-center"
-                        aria-label="Add image"
-                        data-testid={`create-image-slot-${i}`}
-                      >
-                        <ImageIcon size={20} style={{ color: option.color }} />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <div className="text-[11px] mb-2" style={{ color: "var(--text-muted)" }}>
-              {images.length}/{MAX_ALBUM_IMAGES} images — tap an empty tile to add, tap a filled tile to replace, or use the trash icon to remove.
-            </div>
-            <input className="or-input mb-2" placeholder="Album title" value={title} onChange={(e) => setTitle(e.target.value)} data-testid="create-image-title" />
+            <AlbumPicker images={images} onChange={setImages} accent={option.color} testidPrefix="create-image" />
+            <input className="or-input mb-2" placeholder="Album title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} data-testid="create-image-title" />
             <textarea className="or-input resize-none" rows={2} placeholder="Caption (optional)" value={text} onChange={(e) => setText(e.target.value)} />
           </>
         )}
@@ -328,6 +252,23 @@ function CreateWorkflow({ option, onClose, onDone }) {
           />
         )}
 
+        {/* Hashtags + audience — shared across every workflow (parity with the For You composer). */}
+        <HashtagInput tags={hashtags} onChange={setHashtags} accent={option.color} testidPrefix={`create-${option.id}-hashtag`} />
+        <div className="flex items-center mt-2">
+          <button
+            type="button"
+            className="or-chip"
+            onClick={() => setAudienceOpen(true)}
+            data-testid={`create-${option.id}-audience`}
+            title="Who can see this post?"
+          >
+            {audience.visibility === "public" && <><Globe2 size={12} /> Public</>}
+            {audience.visibility === "friends" && <><UsersIcon size={12} /> Friends</>}
+            {audience.visibility === "private" && <><Lock size={12} /> Private</>}
+            {audience.visibility === "custom" && <><UserCheck size={12} /> Custom ({audience.user_ids?.length || 0})</>}
+          </button>
+        </div>
+
         <div className="flex gap-2 mt-4">
           <button className="or-btn flex-1" onClick={submit} disabled={posting} data-testid={`create-${option.id}-submit`}>
             {posting ? "Publishing…" : <><Send size={14} /> {option.id === "live" ? "Go live" : "Publish"}</>}
@@ -336,12 +277,11 @@ function CreateWorkflow({ option, onClose, onDone }) {
         </div>
 
         {/* Mounted pickers — share the existing app-wide upload pipelines. */}
-        <ImageUploadPicker
-          open={imagePickerOpen}
-          onClose={() => { setImagePickerOpen(false); setImagePickerSlot(null); }}
-          onPicked={handleImagePicked}
-          title={typeof imagePickerSlot === "number" ? "Replace image" : "Add image to album"}
-          testid="create-image-picker"
+        <AudiencePicker
+          open={audienceOpen}
+          value={audience}
+          onChange={setAudience}
+          onClose={() => setAudienceOpen(false)}
         />
         <SoundUploadPicker
           open={soundPickerOpen}

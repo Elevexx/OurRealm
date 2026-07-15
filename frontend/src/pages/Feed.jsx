@@ -12,6 +12,8 @@ import UsernameLink from "@/components/UsernameLink";
 import { openPostPopup } from "@/lib/postPopupController";
 import { usePostState, setPost } from "@/lib/postStore";
 import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPicker";
+import AlbumPicker from "@/components/composer/AlbumPicker";
+import HashtagInput, { appendHashtags } from "@/components/composer/HashtagInput";
 import SoundUploadPicker from "@/components/SoundUploadPicker";
 import SoundPlayerCard from "@/components/SoundPlayerCard";
 import UserAvatar from "@/components/UserAvatar";
@@ -79,7 +81,9 @@ export default function Feed() {
   const [composePoll, setComposePoll] = useState(null);   // Phase 4B
   const [pollComposerOpen, setPollComposerOpen] = useState(false);
   const [audiencePickerOpen, setAudiencePickerOpen] = useState(false);
-  const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  // Multi-image album (up to 6) — shared AlbumPicker, same as the "+" composer.
+  const [composeImages, setComposeImages] = useState([]);
+  const [composeTags, setComposeTags] = useState([]);
   const [soundPickerOpen, setSoundPickerOpen] = useState(false);
   // Sound attachment — populated by SoundUploadPicker (the same picker
   // used on the Sounds page) when the user picks "Sound" in the composer.
@@ -178,17 +182,20 @@ export default function Feed() {
     // uploads in production — backend now accepts empty text iff at least
     // one of content / media_url / image_url / video_url / link_url / poll
     // is present).
-    const hasMedia = !!(composeMediaUrl);
+    const hasImages = composeImages.length > 0;
+    const hasMedia = !!(composeMediaUrl) || hasImages;
     const hasSound = !!composeSound;
-    if (!composeText.trim() && !composePoll && !hasMedia && !hasSound) return;
+    if (!composeText.trim() && !composeTags.length && !composePoll && !hasMedia && !hasSound) return;
     if (composeText.length > charLimit) return;  // safety net; Share is already disabled
     setPosting(true);
     try {
+      const content = appendHashtags(composeText.trim() || (composePoll?.question || ""), composeTags);
       const body = {
-        content: composeText.trim() || (composePoll?.question || ""),
-        media_type: composeMediaType || "thought",
-        media_url: composeMediaUrl || null,
-        image_url: composeMediaType === "image" ? (composeMediaUrl || null) : null,
+        content,
+        media_type: hasImages ? "image" : (composeMediaType || "thought"),
+        media_url: hasImages ? composeImages[0].url : (composeMediaUrl || null),
+        image_url: hasImages ? composeImages[0].url : (composeMediaType === "image" ? (composeMediaUrl || null) : null),
+        image_urls: hasImages ? composeImages.map((i) => i.url) : undefined,
         video_url: composeMediaType === "video" ? (composeMediaUrl || null) : null,
         link_url: composeMediaType === "link" ? (composeMediaUrl || null) : null,
         audience: composeAudience,
@@ -207,6 +214,8 @@ export default function Feed() {
       setComposeText("");
       setComposeMediaType("thought");
       setComposeMediaUrl("");
+      setComposeImages([]);
+      setComposeTags([]);
       setComposeAudience({ visibility: "public", user_ids: [] });
       setComposePoll(null);
       setComposeSound(null);
@@ -331,9 +340,7 @@ export default function Feed() {
                         return;
                       }
                       setComposeMediaType(id);
-                      if (id === "thought") setComposeMediaUrl("");
-                      // Tapping "Image" opens the upload picker (device or URL).
-                      if (id === "image") setImagePickerOpen(true);
+                      if (id === "thought") { setComposeMediaUrl(""); setComposeImages([]); }
                     }}
                   >
                     <Icon size={12} /> {isPoll ? (composePoll ? "Poll on" : label) : label}
@@ -370,11 +377,10 @@ export default function Feed() {
                 </button>
               )}
             </div>
-            {composeMediaType !== "thought" && (
+            {composeMediaType !== "thought" && composeMediaType !== "image" && (
               <input
                 className="or-input mt-2 text-sm"
                 placeholder={
-                  composeMediaType === "image" ? "Paste an image URL (jpg/png/gif/webp)" :
                   composeMediaType === "video" ? "Paste a video URL (mp4/youtube/vimeo)" :
                   "Paste a link URL"
                 }
@@ -383,9 +389,14 @@ export default function Feed() {
                 data-testid="feed-composer-media-url"
               />
             )}
-            {composeMediaType === "image" && composeMediaUrl && (
-              <div className="mt-2" data-testid="feed-composer-preview-image">
-                <img src={composeMediaUrl} alt="" className="rounded" style={{ maxHeight: 180, maxWidth: "100%" }} />
+            {composeMediaType === "image" && (
+              <div className="mt-2" data-testid="feed-composer-album">
+                <AlbumPicker
+                  images={composeImages}
+                  onChange={setComposeImages}
+                  accent="var(--primary)"
+                  testidPrefix="feed-composer-image"
+                />
               </div>
             )}
             {composeMediaType === "video" && composeMediaUrl && (
@@ -442,6 +453,7 @@ export default function Feed() {
                 </div>
               </div>
             )}
+            <HashtagInput tags={composeTags} onChange={setComposeTags} testidPrefix="feed-composer-hashtag" />
             <div className="flex items-center justify-between mt-2 gap-2">
               <button
                 className="or-chip"
@@ -558,13 +570,6 @@ export default function Feed() {
         value={composeAudience}
         onChange={setComposeAudience}
         onClose={() => setAudiencePickerOpen(false)}
-      />
-      <ImageUploadPicker
-        open={imagePickerOpen}
-        onClose={() => setImagePickerOpen(false)}
-        onPicked={({ url }) => { setComposeMediaUrl(url); setComposeMediaType("image"); }}
-        title="Add an image to your post"
-        testid="feed-image-picker"
       />
       <SoundUploadPicker
         open={soundPickerOpen}

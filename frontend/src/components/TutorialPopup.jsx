@@ -114,8 +114,13 @@ export default function TutorialPopup({ preview = null, onClosePreview }) {
       role="dialog"
       aria-modal="true"
       aria-label={tut?.name || "Welcome tutorial"}
-      className="fixed inset-0 z-[300] flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.78)", backdropFilter: "blur(12px)" }}
+      className="fixed inset-0 z-[300] flex items-center justify-center px-4 py-5"
+      style={{
+        background: "rgba(0,0,0,0.6)",
+        backdropFilter: "blur(6px)",
+        paddingTop: "calc(env(safe-area-inset-top, 0px) + 20px)",
+        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)",
+      }}
       data-testid="tutorial-popup"
       onTouchStart={(e) => { touchX.current = e.touches[0].clientX; }}
       onTouchEnd={(e) => {
@@ -129,10 +134,13 @@ export default function TutorialPopup({ preview = null, onClosePreview }) {
       <div
         className="or-surface flex flex-col overflow-hidden"
         style={{
-          width: "min(100vw, 560px)",
-          height: "min(100dvh, 720px)",
-          maxHeight: "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+          // Centered modal with visible margins on every screen size — the
+          // site remains visible behind the popup (desktop AND mobile).
+          width: "min(calc(100vw - 32px), 560px)",
+          height: "min(calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)), 680px)",
+          maxHeight: "calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))",
           borderRadius: "var(--radius)",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.55)",
           background: slide.background || undefined,
         }}
       >

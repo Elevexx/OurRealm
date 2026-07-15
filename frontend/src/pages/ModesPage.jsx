@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Check, Zap, Crown, Sparkles, Shield, ArrowRight } from "lucide-react";
 import { useTheme, MODES } from "@/contexts/ThemeContext";
 import ModePreviewArt from "@/components/ModePreviewArt";
+import ColorCustomizer from "@/components/ColorCustomizer";
 
 const MODE_INFO = {
   neon: {
@@ -157,6 +158,8 @@ export default function ModesPage() {
           );
         })}
       </div>
+
+      <ColorCustomizer />
 
       <div className="mt-6 or-surface p-4 text-xs" style={{ color: "var(--text-muted)" }}>
         Tip: the OurRealm logo itself never changes between modes — only the surrounding UI re-themes. Your mode persists across sessions.

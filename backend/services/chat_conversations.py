@@ -174,7 +174,7 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
         so prod stays online even when the OpenAI key is rotated/revoked.
       • All upstream auth / connectivity failures collapse to a single
         sanitized 503 with detail:
-            "Orion LLM provider is unavailable or misconfigured."
+            "ORAi LLM provider is unavailable or misconfigured."
         so the founder UI never sees raw OpenAI error shells or stalls
         long enough for the reverse proxy to Cloudflare-502 the request.
     """
@@ -184,8 +184,8 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
     primary_key = os.environ.get("OPENAI_API_KEY")
     fallback_key = os.environ.get("EMERGENT_LLM_KEY")
     if not primary_key and not fallback_key:
-        logger.error("Orion LLM call: no OPENAI_API_KEY and no EMERGENT_LLM_KEY configured.")
-        raise HTTPException(status_code=503, detail="Orion LLM provider is unavailable or misconfigured.")
+        logger.error("ORAi LLM call: no OPENAI_API_KEY and no EMERGENT_LLM_KEY configured.")
+        raise HTTPException(status_code=503, detail="ORAi LLM provider is unavailable or misconfigured.")
 
     chosen_model = model or DEFAULT_MODEL
     body: Dict[str, Any] = {
@@ -209,11 +209,11 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
             if resp.status_code == 429:
                 raise HTTPException(status_code=429, detail=f"OpenAI rate-limited: {resp.text[:200]}")
             if resp.status_code in (401, 403):
-                logger.warning("Orion LLM openai rejected auth (%s) — trying Emergent fallback.",
+                logger.warning("ORAi LLM openai rejected auth (%s) — trying Emergent fallback.",
                                resp.status_code)
                 last_error = f"openai_{resp.status_code}"
             elif resp.status_code >= 400:
-                logger.warning("Orion LLM openai returned %s: %s", resp.status_code, resp.text[:200])
+                logger.warning("ORAi LLM openai returned %s: %s", resp.status_code, resp.text[:200])
                 last_error = f"openai_{resp.status_code}"
             else:
                 try:
@@ -228,12 +228,12 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
                         "provider": "openai",
                     }
                 except Exception:  # noqa: BLE001
-                    logger.warning("Orion LLM openai returned non-JSON")
+                    logger.warning("ORAi LLM openai returned non-JSON")
                     last_error = "openai_non_json"
         except HTTPException:
             raise
         except httpx.HTTPError as e:
-            logger.warning("Orion LLM openai transport error: %s", e)
+            logger.warning("ORAi LLM openai transport error: %s", e)
             last_error = "openai_transport"
 
     # ── Attempt 2: Emergent universal key via emergentintegrations ────
@@ -252,7 +252,7 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
             chat = LlmChat(
                 api_key=fallback_key,
                 session_id=f"orion-fallback-{abs(hash(combined)) % 10_000_000}",
-                system_message=system_text.strip() or "You are Orion, the founder assistant for OurRealm.",
+                system_message=system_text.strip() or "You are ORAi, the founder assistant for OurRealm.",
             ).with_model("openai", "gpt-4o-mini")
             reply = await chat.send_message(UserMessage(text=combined))
             return {
@@ -263,11 +263,11 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
                 "provider": "emergent",
             }
         except Exception as e:  # noqa: BLE001
-            logger.warning("Orion LLM emergent fallback failed: %s", e)
+            logger.warning("ORAi LLM emergent fallback failed: %s", e)
             last_error = f"emergent:{e!s}"[:200]
 
-    logger.error("Orion LLM: all providers failed (last=%s).", last_error)
-    raise HTTPException(status_code=503, detail="Orion LLM provider is unavailable or misconfigured.")
+    logger.error("ORAi LLM: all providers failed (last=%s).", last_error)
+    raise HTTPException(status_code=503, detail="ORAi LLM provider is unavailable or misconfigured.")
 
 
 # ─────────────────────────────────────────────────────────────────────

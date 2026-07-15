@@ -72,7 +72,7 @@ def _synth_orion_widget(widget_id: str) -> Dict[str, Any]:
         "id": widget_id,
         "key": widget_id,
         "status": "live",
-        "name": tpl.get("name") or "Orion (Founder)",
+        "name": tpl.get("name") or "ORAi (Founder)",
         "editor_config": tpl.get("editor_config") or {},
         "_synthetic": True,
     }
@@ -93,7 +93,7 @@ async def _heal_orion_registry(widget_id: str) -> None:
                     "id": widget_id,
                     "key": widget_id,
                     "status": "live",
-                    "name": tpl.get("name") or "Orion (Founder)",
+                    "name": tpl.get("name") or "ORAi (Founder)",
                     "category_group": tpl.get("category_group") or "utility",
                     "icon": tpl.get("icon") or "Sparkles",
                     "description": tpl.get("description") or "",

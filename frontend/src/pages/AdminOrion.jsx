@@ -1,5 +1,5 @@
 /**
- * /admin/orion — Orion Founder Command Center (Phase 3.7.1).
+ * /admin/orion — ORAi Founder Command Center (Phase 3.7.1).
  *
  * Premium full-screen "mission control" surface for OurRealm
  * founders/admins. Reuses Phase 3.6 + 3.7 backend tools entirely —
@@ -15,7 +15,7 @@
  *   • Chat view uses the same /api/widgets/chat/{message,history}
  *     endpoints the profile widget uses, scoped to a dedicated
  *     "command center" conversation per founder.
- *   • Draft cards are rendered when an Orion reply matches one of
+ *   • Draft cards are rendered when an ORAi reply matches one of
  *     the Phase 3.7 draft headers — markdown → structured card.
  *
  * NO backend changes. NO duplicate analytics. Founder gate is the
@@ -41,7 +41,7 @@ const ORION_WIDGET_ID = "stealth_ai_5a6";  // founder-only chat widget seeded by
 
 const NAV_SECTIONS = [
   { id: "dashboard", label: "Dashboard",       icon: Hexagon },
-  { id: "chat",      label: "Orion Chat",      icon: MessageSquare },
+  { id: "chat",      label: "ORAi Chat",      icon: MessageSquare },
   { id: "briefing",  label: "Founder Briefing", icon: BarChart3 },
   { id: "actions",   label: "Quick Actions",   icon: Zap },
   { id: "reports",   label: "Reports",         icon: FileText },
@@ -179,7 +179,7 @@ export default function AdminOrion() {
     if (missingSections.length) {
       // eslint-disable-next-line no-console
       console.error(
-        "[Orion] startup validation: NAV_SECTIONS contains unregistered ids → " +
+        "[ORAi] startup validation: NAV_SECTIONS contains unregistered ids → " +
         JSON.stringify(missingSections) +
         ". Add a handler in SectionRouter or mark them `soon: true`.",
       );
@@ -190,7 +190,7 @@ export default function AdminOrion() {
     if (soonsWithoutFlag.length) {
       // eslint-disable-next-line no-console
       console.warn(
-        "[Orion] startup validation: sections " + JSON.stringify(soonsWithoutFlag) +
+        "[ORAi] startup validation: sections " + JSON.stringify(soonsWithoutFlag) +
         " are coming-soon but not flagged.",
       );
     }
@@ -198,7 +198,7 @@ export default function AdminOrion() {
     if (tilesMissingPrompt.length) {
       // eslint-disable-next-line no-console
       console.error(
-        "[Orion] startup validation: QUICK_TILES missing prompt or id → " +
+        "[ORAi] startup validation: QUICK_TILES missing prompt or id → " +
         JSON.stringify(tilesMissingPrompt),
       );
     }
@@ -206,7 +206,7 @@ export default function AdminOrion() {
     if (emptyGroups.length) {
       // eslint-disable-next-line no-console
       console.warn(
-        "[Orion] startup validation: empty PROMPT_LIBRARY groups → " + JSON.stringify(emptyGroups),
+        "[ORAi] startup validation: empty PROMPT_LIBRARY groups → " + JSON.stringify(emptyGroups),
       );
     }
     // Server-side health probe — surfaces missing widget_registry row,
@@ -219,18 +219,18 @@ export default function AdminOrion() {
         const total = checks.length;
         if (failed.length === 0) {
           // eslint-disable-next-line no-console
-          console.info(`[Orion] backend health check ok (${total} checks).`);
+          console.info(`[ORAi] backend health check ok (${total} checks).`);
         } else {
           // eslint-disable-next-line no-console
           console.warn(
-            `[Orion] backend health check: ${total - failed.length}/${total} ok — failing: ` +
+            `[ORAi] backend health check: ${total - failed.length}/${total} ok — failing: ` +
             failed.map((c) => `${c.name} (${c.detail})`).join(" · "),
           );
         }
       })
       .catch((err) => {
         // eslint-disable-next-line no-console
-        console.warn("[Orion] backend health endpoint unreachable:", err?.message || err);
+        console.warn("[ORAi] backend health endpoint unreachable:", err?.message || err);
       });
   }, [isFounder]);
 
@@ -243,7 +243,7 @@ export default function AdminOrion() {
             Founder Command Center
           </div>
           <div className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Orion&apos;s full-screen mission control is only available to the OurRealm founder.
+            ORAi&apos;s full-screen mission control is only available to the OurRealm founder.
           </div>
         </div>
       </div>
@@ -265,7 +265,7 @@ export default function AdminOrion() {
         </button>
         <div className="flex items-center gap-2">
           <OrionLogo size={20} />
-          <div className="font-extrabold tracking-wide" style={{ color: "var(--orion-fg)" }}>ORION</div>
+          <div className="font-extrabold tracking-wide" style={{ color: "var(--orion-fg)" }}>ORAi</div>
         </div>
         <Link to="/admin/orion-logs" className="orion-icon-btn" data-testid="orion-cc-logs-link-mobile" aria-label="Audit logs">
           <Activity size={16} />
@@ -285,7 +285,7 @@ export default function AdminOrion() {
                 Founder
               </div>
               <div className="font-extrabold" style={{ color: "var(--orion-fg)", letterSpacing: 1 }}>
-                ORION
+                ORAi
               </div>
             </div>
             <button
@@ -445,10 +445,10 @@ function Dashboard({ summary, onSection }) {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Orion Chat — full conversational workspace
+// ORAi Chat — full conversational workspace
 // ─────────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────
-// Phase 3.7.2 — Simulated token reveal. The Orion analytics tools
+// Phase 3.7.2 — Simulated token reveal. The ORAi analytics tools
 // return deterministic replies in one shot (no upstream OpenAI for
 // analytics intents). We progressively reveal the reply so the UX
 // feels like a streaming AI. Speed adapts to length so short
@@ -516,7 +516,7 @@ function OrionChat({ onDraft }) {
         message: body,
       });
       const reply = data?.reply || "";
-      // Phase 3.7.2 — simulated token streaming. The Orion analytics
+      // Phase 3.7.2 — simulated token streaming. The ORAi analytics
       // interceptor returns deterministic replies (no upstream OpenAI
       // call for analytics/draft tools), so token-by-token streaming
       // from the model isn't available. We progressively reveal the
@@ -539,7 +539,7 @@ function OrionChat({ onDraft }) {
       const draftHit = DRAFT_HEADERS.find((d) => d.match.test(reply));
       if (draftHit) onDraft({ type: draftHit.type, content: reply, ts: Date.now() });
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Orion is unavailable right now.");
+      setErr(e?.response?.data?.detail || "ORAi is unavailable right now.");
     } finally {
       setBusy(false);
     }
@@ -560,7 +560,7 @@ function OrionChat({ onDraft }) {
   return (
     <div className="orion-section orion-chat" data-testid="orion-cc-chat">
       <SectionHeader
-        title="Orion Chat"
+        title="ORAi Chat"
         subtitle="Conversational workspace — every reply runs against the live Phase 3.6 / 3.7 backend tools."
         actions={(
           <button
@@ -579,7 +579,7 @@ function OrionChat({ onDraft }) {
           <div className="orion-chat-empty">
             <OrionLogo size={48} />
             <div className="text-sm mt-3" style={{ color: "var(--orion-muted)" }}>
-              Ask Orion anything. Try a quick action below.
+              Ask ORAi anything. Try a quick action below.
             </div>
           </div>
         )}
@@ -614,7 +614,7 @@ function OrionChat({ onDraft }) {
           rows={1}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask Orion…"
+          placeholder="Ask ORAi…"
           className="orion-input"
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
@@ -723,7 +723,7 @@ function QuickActions({ onPick }) {
 
   return (
     <div className="orion-section" data-testid="orion-cc-actions">
-      <SectionHeader title="Quick Action Center" subtitle="Tap a tile to send the matching command to Orion." />
+      <SectionHeader title="Quick Action Center" subtitle="Tap a tile to send the matching command to ORAi." />
       <div className="orion-quick-toolbar">
         <div className="orion-quick-search">
           <SearchIcon size={12} />
@@ -797,7 +797,7 @@ function QuickActions({ onPick }) {
 function SimplePromptList({ title, intros, onPrompt }) {
   return (
     <div className="orion-section" data-testid={`orion-cc-list-${title.toLowerCase()}`}>
-      <SectionHeader title={title} subtitle="One-tap into the relevant Orion command. Replies stream into Orion Chat." />
+      <SectionHeader title={title} subtitle="One-tap into the relevant ORAi command. Replies stream into ORAi Chat." />
       <div className="space-y-2">
         {intros.map((p) => (
           <button
@@ -893,7 +893,7 @@ function ApprovalsPanel() {
       {!busy && rows.length === 0 && (
         <div className="orion-empty" data-testid="orion-cc-approvals-empty">
           <CheckCircle size={14} style={{ display: "inline-block", marginRight: 6, verticalAlign: "-2px", color: "#34D399" }} />
-          No pending drafts right now. Orion is idle.
+          No pending drafts right now. ORAi is idle.
         </div>
       )}
 
@@ -916,7 +916,7 @@ function ApprovalsPanel() {
                 <div className="orion-approval-meta">
                   <span className="orion-approval-kind">{kind.label}</span>
                   <span className="orion-approval-dot">•</span>
-                  <span className="orion-approval-author">Generated by Orion</span>
+                  <span className="orion-approval-author">Generated by ORAi</span>
                   <span className="orion-approval-dot">•</span>
                   <span className="orion-approval-time">{_relativeTime(r.timestamp)}</span>
                 </div>
@@ -984,7 +984,7 @@ function ApprovalDetailsModal({ row, onClose }) {
             <div className="orion-approval-meta">
               <span className="orion-approval-kind">{kind.label}</span>
               <span className="orion-approval-dot">•</span>
-              <span className="orion-approval-author">Generated by Orion</span>
+              <span className="orion-approval-author">Generated by ORAi</span>
               <span className="orion-approval-dot">•</span>
               <span className="orion-approval-time">{created}</span>
             </div>
@@ -1023,10 +1023,10 @@ function ApprovalDetailsModal({ row, onClose }) {
             <Kv k="Latency"  v={`${row.execution_time_ms ?? 0} ms`} />
           </dl>
 
-          {/* Orion summary */}
+          {/* ORAi summary */}
           {row.short_result_summary && (
             <>
-              <SectionLabel className="mt-5">Orion summary</SectionLabel>
+              <SectionLabel className="mt-5">ORAi summary</SectionLabel>
               <div className="orion-modal-summary">{row.short_result_summary}</div>
             </>
           )}
@@ -1096,7 +1096,7 @@ function Kv({ k, v, pillColor }) {
 
 function SettingsPanel({ summary }) {
   // Phase 3.7.4 — embed the live Health Dashboard inside Settings so
-  // the founder can scan every Orion subsystem without leaving the
+  // the founder can scan every ORAi subsystem without leaving the
   // command center. Reuses the existing /api/admin/orion/health
   // endpoint with the 30s cache (refresh button forces fresh=1).
   const [health, setHealth] = useState(null);
@@ -1116,7 +1116,7 @@ function SettingsPanel({ summary }) {
 
   return (
     <div className="orion-section" data-testid="orion-cc-settings">
-      <SectionHeader title="Settings & Health" subtitle="Orion runtime state plus the live subsystem health snapshot." />
+      <SectionHeader title="Settings & Health" subtitle="ORAi runtime state plus the live subsystem health snapshot." />
       <div className="orion-stat-grid">
         <Stat label="Mode" value="Read-only" hue="#22D3EE" />
         <Stat label="Engine" value="orion-analytics" hue="#60A5FA" />
@@ -1190,7 +1190,7 @@ function ChatBubble({ msg, onDraft }) {
         {!mine && (
           <div className="orion-chat-meta">
             <OrionLogo size={12} />
-            <span className="ml-1.5">Orion · {msg.model || "—"}</span>
+            <span className="ml-1.5">ORAi · {msg.model || "—"}</span>
           </div>
         )}
         <Markdown text={msg.content || ""} onDraft={onDraft} />
@@ -1212,7 +1212,7 @@ function Markdown({ text, onDraft }) {
 
 function BasicMarkdown({ text }) {
   // Render `**bold**`, ``inline``, fenced ``` blocks, and bullet lists.
-  // We intentionally avoid a heavy MD lib — Orion replies are bounded
+  // We intentionally avoid a heavy MD lib — ORAi replies are bounded
   // and consistent.
   const blocks = splitFenced(text || "");
   return (
@@ -1394,7 +1394,7 @@ function firstLine(text) {
 function StatusCard({ summary }) {
   return (
     <div className="orion-ctx-card" data-testid="orion-cc-status">
-      <div className="orion-ctx-eyebrow">Orion status</div>
+      <div className="orion-ctx-eyebrow">ORAi status</div>
       <div className="flex items-center gap-2 mt-1.5">
         <span className="orion-status-dot" />
         <span className="orion-ctx-title">Online · Read-only</span>
@@ -1413,7 +1413,7 @@ function ContextDraftCard({ draft }) {
   return (
     <div className="orion-ctx-card" data-testid="orion-cc-context-draft">
       <div className="orion-ctx-eyebrow">Current draft</div>
-      {!draft && <div className="orion-ctx-empty">No draft pinned. Tap a tile or ask Orion to draft something.</div>}
+      {!draft && <div className="orion-ctx-empty">No draft pinned. Tap a tile or ask ORAi to draft something.</div>}
       {draft && (
         <>
           <div className="orion-ctx-title mt-1">{draft.type}</div>
@@ -1506,12 +1506,12 @@ function OrionLogo({ size = 24 }) {
 
 
 // ─────────────────────────────────────────────────────────────────────
-// Scoped styles — keeps the Orion aesthetic isolated from the rest of
+// Scoped styles — keeps the ORAi aesthetic isolated from the rest of
 // the OurRealm theme. Variables only apply inside `.orion-cc-root`.
 // ─────────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────
 // Phase 3.7.2 — Animated thinking states (rotating). Replaces the
-// single "Thinking…" spinner with phrases that hint at what Orion
+// single "Thinking…" spinner with phrases that hint at what ORAi
 // would be doing if it were a real autonomous agent. The list cycles
 // every 1.6s while the request is in flight.
 // ─────────────────────────────────────────────────────────────────────

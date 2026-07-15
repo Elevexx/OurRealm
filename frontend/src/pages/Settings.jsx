@@ -35,10 +35,29 @@ export default function Settings() {
         )}
       </div>
 
+      <div className="or-surface p-5 mb-4">
+        <h3 className="text-lg mb-3" style={{ fontFamily: "var(--font-display)" }}>Help</h3>
+        <div className="flex gap-2 flex-wrap">
+          <button className="or-btn or-btn-ghost" onClick={() => navigate("/faq")} data-testid="settings-faq-link">
+            FAQ
+          </button>
+          <button className="or-btn or-btn-ghost" onClick={() => navigate("/profile/support")} data-testid="settings-support-link">
+            Contact Support
+          </button>
+        </div>
+      </div>
+
       <div className="or-surface p-5">
         <h3 className="text-lg mb-3" style={{ fontFamily: "var(--font-display)" }}>About</h3>
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
           OurRealm · Live. Connect. Experience. v1.0 — multi-mode social platform with widget profiles.
+        </p>
+        <p className="text-xs mt-3" style={{ color: "var(--text-muted)" }}>
+          <button className="underline" style={{ color: "var(--primary)" }} onClick={() => navigate("/faq")} data-testid="settings-footer-faq-link">FAQ</button>
+          {" · "}
+          <button className="underline" style={{ color: "var(--primary)" }} onClick={() => navigate("/terms")}>Terms</button>
+          {" · "}
+          <button className="underline" style={{ color: "var(--primary)" }} onClick={() => navigate("/privacy")}>Privacy</button>
         </p>
       </div>
     </div>

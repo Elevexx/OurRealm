@@ -760,9 +760,13 @@ html[data-mode="business"] .or-surface {
 }
 
 /* ── MILLENNIUM: chrome highlight sweep on or-btn + twinkling stars overlay ── */
+/* :not(.absolute) — never override Tailwind's absolute positioning (e.g. the
+   Profile Settings button pinned top-right) with position:relative. */
 html[data-mode="millennium"] .or-btn {
-  position: relative;
   overflow: hidden;
+}
+html[data-mode="millennium"] .or-btn:not(.absolute) {
+  position: relative;
 }
 html[data-mode="millennium"] .or-btn::before {
   content: "";
@@ -790,7 +794,7 @@ html[data-mode="millennium"] body::after {
 }
 
 /* ── STEALTH: pulsing tactical ring around primary CTAs ── */
-html[data-mode="stealth"] .or-btn {
+html[data-mode="stealth"] .or-btn:not(.absolute) {
   position: relative;
 }
 html[data-mode="stealth"] .or-btn::after {

@@ -122,14 +122,14 @@ const CARDS = [
   {
     id: "orion",
     to: "/admin/orion",
-    title: "Orion Command Center",
-    description: "AI assistant hub for founder operations, analytics, reports, drafts, approvals, and Orion tools.",
+    title: "ORAi Command Center",
+    description: "AI assistant hub for founder operations, analytics, reports, drafts, approvals, and ORAi tools.",
     Icon: Sparkles,
     accent: "#C26BFF",
     badge: "Founder Only",
     roles: ["founder"],
     statKey: null,
-    footer: "✦ Open Orion Command Center",
+    footer: "✦ Open ORAi Command Center",
   },
   {
     id: "portals",
@@ -211,7 +211,7 @@ export default function AdminHub() {
     return () => { cancelled = true; };
   }, [user, role]);
 
-  // Phase 3.7.4 — live Orion Command Center health pill on the hub.
+  // Phase 3.7.4 — live ORAi Command Center health pill on the hub.
   // Founder only. Polls /api/admin/orion/health every 30s (backend has
   // its own 30s in-memory cache so this is cheap). Failure is silent —
   // the card still works as a passive launcher.
@@ -288,7 +288,7 @@ export default function AdminHub() {
 }
 
 
-// Phase 3.7.4 — Orion status pill. Color reflects the live /health
+// Phase 3.7.4 — ORAi status pill. Color reflects the live /health
 // summary: green when ok+no auto-heal, amber when auto-healed or
 // some warnings, red when overall ok=false or endpoint unreachable.
 function OrionStatusPill({ health }) {
@@ -298,7 +298,7 @@ function OrionStatusPill({ health }) {
         className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded-full inline-flex items-center gap-1"
         style={{ background: "#3a3a4a44", color: "#9CA3AF" }}
         data-testid="admin-hub-card-orion-status"
-        title="Checking Orion health…"
+        title="Checking ORAi health…"
       >
         <Loader2 size={9} className="animate-spin" /> Checking
       </span>
@@ -310,7 +310,7 @@ function OrionStatusPill({ health }) {
   else if (!health.ok) {
     // Distinguish between LLM provider failure (red, critical) and
     // optional-subsystem warnings (amber). The llm_provider check is
-    // the only true blocker for Orion Chat.
+    // the only true blocker for ORAi Chat.
     const llm = (health.checks || []).find((c) => c.name === "llm_provider");
     failing = (health.checks || []).filter((c) => !c.ok).map((c) => c.name);
     if (llm && !llm.ok) { color = "#EF4444"; label = "Provider Down"; }
@@ -318,7 +318,7 @@ function OrionStatusPill({ health }) {
   }
   else if (health.auto_healed) { color = "#F59E0B"; label = "Auto-Healed"; }
   const provider = (health.active_provider || "").toUpperCase();
-  const tooltip = `Orion: ${label}` +
+  const tooltip = `ORAi: ${label}` +
     (provider ? ` · provider=${provider}` : "") +
     (failing.length ? ` · failing=${failing.join(",")}` : "") +
     (typeof health.age_s === "number" ? ` · checked ${health.age_s}s ago` : "");

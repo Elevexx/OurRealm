@@ -179,7 +179,7 @@ export default function ChatLayout({ data, theme, widget }) {
             <Icons.Trash2 size={10} className="inline" />
           </button>
         )}
-        {/* Phase 3.7.1 — quick launcher into the full-screen Orion
+        {/* Phase 3.7.1 — quick launcher into the full-screen ORAi
             Command Center. Only renders for the founder, otherwise
             the link 404s and clutters the UI. The check is duplicated
             from /admin/orion (server-side gate) — that's fine. */}
@@ -190,7 +190,7 @@ export default function ChatLayout({ data, theme, widget }) {
             className="text-[10px] px-1.5 py-0.5 rounded"
             style={{ background: "color-mix(in srgb, var(--primary) 18%, transparent)", color: "var(--primary)" }}
             data-testid="chat-open-command-center"
-            title="Open Orion Command Center"
+            title="Open ORAi Command Center"
           >
             <Icons.ExternalLink size={10} className="inline" />
           </a>

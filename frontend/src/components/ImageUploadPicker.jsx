@@ -4,15 +4,17 @@
  *  - Upload from device      → multipart POST /api/images/upload
  *  - Upload via image URL    → POST   /api/images/from-url (re-hosted)
  *
- * Returns the hosted URL via the `onPicked(url)` callback. Callers can use
- * the absolute hosted URL anywhere (posts, profiles, messages, comments).
+ * Supports multi-select (`multiple` + `maxCount`) with sequential uploads
+ * and client-side compression, so large phone photos and multi-image
+ * albums upload reliably (fixes the 3 MB / 413 failures).
  *
- * Note: the API returns relative `/api/images/...` paths. We turn them
- * into absolute URLs against REACT_APP_BACKEND_URL via `absoluteImageUrl`.
+ * Returns the hosted URL via the `onPicked({url, thumbnailUrl})` callback,
+ * called once per uploaded image.
  */
 import React, { useEffect, useRef, useState } from "react";
 import { Upload, Link2, X, Loader2, Image as ImageIcon, AlertCircle, Trash2 } from "lucide-react";
 import apiClient from "@/api/client";
+import { compressImageFile } from "@/lib/imageCompress";
 
 const BACKEND = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
 export function absoluteImageUrl(maybeRelative) {
@@ -22,9 +24,14 @@ export function absoluteImageUrl(maybeRelative) {
   return maybeRelative;
 }
 
-export default function ImageUploadPicker({ open, onClose, onPicked, onRemove, removeLabel = "Remove photo", title = "Add an image", testid = "image-picker" }) {
+export default function ImageUploadPicker({
+  open, onClose, onPicked, onRemove,
+  removeLabel = "Remove photo", title = "Add an image",
+  testid = "image-picker", multiple = false, maxCount = 1,
+}) {
   const [tab, setTab] = useState("device"); // device | url
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null); // {done, total}
   const [err, setErr] = useState("");
   const [url, setUrl] = useState("");
   const [quota, setQuota] = useState(null); // {used, remaining, per_day} | null
@@ -44,33 +51,54 @@ export default function ImageUploadPicker({ open, onClose, onPicked, onRemove, r
   }, [open]);
 
   const close = () => { if (!busy) onClose?.(); };
-  const handle = (rec) => {
+  const emit = (rec) => {
     onPicked?.({
       url: absoluteImageUrl(rec.original_url || rec.url),
       thumbnailUrl: absoluteImageUrl(rec.thumbnail_url || rec.thumbnailUrl),
       image: rec.image || rec,
     });
-    onClose?.();
   };
 
-  const uploadFile = async (file) => {
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { setErr("Image is too large (max 10 MB)."); return; }
+  const errText = (e, fallback) => {
+    const code = e?.response?.status;
+    const detail = e?.response?.data?.detail;
+    if (code === 413) return detail || "Image is too large — max 3 MB per upload.";
+    if (code === 429) return detail || "Daily image upload limit reached. Try again later.";
+    return (typeof detail === "string" && detail) || fallback;
+  };
+
+  const uploadFiles = async (fileList) => {
+    const files = Array.from(fileList || []).slice(0, multiple ? Math.max(1, maxCount) : 1);
+    if (files.length === 0) return;
     setErr(""); setBusy(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const { data } = await apiClient.post("/images/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      // Refresh quota after success
-      apiClient.get("/upload-limits/me").then((r) => setQuota(r?.data?.limits?.image || null)).catch(() => {});
-      handle(data);
-    } catch (e) {
-      const code = e?.response?.status;
-      const detail = e?.response?.data?.detail;
-      if (code === 413) setErr(detail || "Image is too large — max 3 MB per upload.");
-      else if (code === 429) setErr(detail || "Daily image upload limit reached. Try again later.");
-      else setErr(detail || "Upload failed.");
-    } finally { setBusy(false); }
+    setProgress({ done: 0, total: files.length });
+    const failures = [];
+    let uploaded = 0;
+    // Sequential uploads (never parallel) — avoids proxy/connection limits
+    // and keeps quota checks deterministic.
+    for (let i = 0; i < files.length; i += 1) {
+      try {
+        const compressed = await compressImageFile(files[i]);
+        const fd = new FormData();
+        fd.append("file", compressed, compressed.name || "image.jpg");
+        const { data } = await apiClient.post("/images/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+        emit(data);
+        uploaded += 1;
+      } catch (e) {
+        failures.push(`${files[i].name || `image ${i + 1}`}: ${errText(e, "upload failed")}`);
+        if (e?.response?.status === 429) break; // quota gone — stop trying
+      }
+      setProgress({ done: i + 1, total: files.length });
+    }
+    apiClient.get("/upload-limits/me").then((r) => setQuota(r?.data?.limits?.image || null)).catch(() => {});
+    setBusy(false);
+    setProgress(null);
+    if (fileRef.current) fileRef.current.value = "";
+    if (failures.length) {
+      setErr(failures.join(" · "));
+    } else if (uploaded > 0) {
+      onClose?.();
+    }
   };
 
   const uploadUrl = async () => {
@@ -80,13 +108,11 @@ export default function ImageUploadPicker({ open, onClose, onPicked, onRemove, r
     try {
       const { data } = await apiClient.post("/images/from-url", { url: u });
       apiClient.get("/upload-limits/me").then((r) => setQuota(r?.data?.limits?.image || null)).catch(() => {});
-      handle(data);
+      emit(data);
+      setUrl("");
+      onClose?.();
     } catch (e) {
-      const code = e?.response?.status;
-      const detail = e?.response?.data?.detail;
-      if (code === 413) setErr(detail || "Image is too large — max 3 MB per upload.");
-      else if (code === 429) setErr(detail || "Daily image upload limit reached. Try again later.");
-      else setErr(detail || "Could not fetch that URL.");
+      setErr(errText(e, "Could not fetch that URL."));
     } finally { setBusy(false); }
   };
 
@@ -139,7 +165,8 @@ export default function ImageUploadPicker({ open, onClose, onPicked, onRemove, r
             <>
               <input
                 ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif"
-                onChange={(e) => uploadFile(e.target.files?.[0])}
+                multiple={multiple && maxCount > 1}
+                onChange={(e) => uploadFiles(e.target.files)}
                 style={{ display: "none" }}
                 data-testid={`${testid}-file-input`}
               />
@@ -150,10 +177,12 @@ export default function ImageUploadPicker({ open, onClose, onPicked, onRemove, r
                 className="or-btn w-full"
                 data-testid={`${testid}-device-pick`}
               >
-                {busy ? <><Loader2 size={14} className="animate-spin" /> Uploading…</> : <><Upload size={14} /> Choose image</>}
+                {busy
+                  ? <><Loader2 size={14} className="animate-spin" /> {progress && progress.total > 1 ? `Uploading ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…` : "Uploading…"}</>
+                  : <><Upload size={14} /> {multiple && maxCount > 1 ? `Choose up to ${maxCount} images` : "Choose image"}</>}
               </button>
               <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-                JPG, PNG, WebP, or GIF. Max 3 MB per image. We compress &amp; rehost on our CDN for fast global delivery.
+                JPG, PNG, WebP, or GIF. Large photos are compressed automatically before upload.
               </p>
               {quota && (
                 <p className="text-[11px]" style={{ color: "var(--text-muted)" }} data-testid={`${testid}-quota`}>
