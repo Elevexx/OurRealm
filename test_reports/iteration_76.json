@@ -1,0 +1,61 @@
+{
+  "summary": "Full E2E validation of Iter-76 Profile Level & Progression System — 6/6 backend gap pytests pass + all 8 frontend review-request scenarios executed end-to-end. Founder-only Level Builder CRUD (create → task-add → publish → archive; separate draft delete), Analytics/Jobs/Flags/Audit tabs, inspect, dry-run, and non-founder guard (level-builder-guard + admin API 403) verified against real production data. Public profile of auditcheckreal shows Newbie level badge + summary-only progress bar (no task rows). Stealth completed the last Explorer task via reaction (real one-time action, per instructions), claim executed, celebration modal (level-celebration + level-celebration-highest 'Highest Available Level Reached') appeared ONLY after backend claim success. FOUND ONE HIGH BUG: after claim of the highest available level, the card does NOT display the 'progress-card-highest' state because the backend /api/progression/me endpoint clobbers ulp.status back to 'active' and claim_available:True on every read (see rca).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/progression/me",
+        "issue": "After successfully claiming the highest available level, subsequent /me reads return status='active' and summary.claim_available=true even though the persisted user_level_progress row was correctly set to status='highest_level_reached', claim_available=false by claim_level(). services/progression/engine.py::recalc_user recomputes status from scratch from the published level state and overwrites ulp on every persist, losing the highest-level marker. Consequence: the UI never shows progress-card-highest and re-renders the Claim button after a successful claim (repeat clicks are idempotent, so no data corruption, but UX is broken).",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ProgressCard highest-level state",
+        "issue": "After celebration modal closes, progress-card-highest is not rendered and the Claim button remains visible. Root cause is backend (see backend critical bug) — frontend correctly renders whatever backend returns. If backend fix preserves highest_level_reached status, this UI behavior will self-correct without any FE changes.",
+        "selector": "[data-testid=\"progress-card-highest\"]",
+        "priority": "HIGH"
+      },
+      {
+        "component": "AdminLevelBuilder — Archive button on published rows",
+        "issue": "The Archive button on published level rows has only title=\"Archive\" and no data-testid=\"level-archive-{id}\". Review spec explicitly requires 'level-archive-*'. Existing testid coverage: level-publish-*, level-pause-*, level-delete-*, level-open-* are all present. Archive was verifiable only by title selector or direct POST /api/admin/progression/levels/{id}/archive. Add data-testid=\"level-archive-{l.id}\" to /app/frontend/src/pages/AdminLevelBuilder.jsx line ~439.",
+        "selector": "[data-testid=\"level-archive-*\"]",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_progression_gaps.py",
+    "/app/test_reports/pytest/iter76_progression_gaps.xml"
+  ],
+  "action_items": [
+    "P1 (backend): Fix services/progression/engine.py::recalc_user() to preserve status='highest_level_reached' and claim_available=false when the user has already successfully claimed the current (level_id, config_version). One approach: at the top of recalc_user, check db.progression_claims for a success record for the current level+version; if found and next_level_after() returns None, force status='highest_level_reached' and claim_available=False in the returned summary and persisted ulp.",
+    "P2 (frontend): Add data-testid=\"level-archive-{l.id}\" to the Archive chip button in /app/frontend/src/pages/AdminLevelBuilder.jsx (~line 439) for parity with level-publish-*/level-pause-*/level-delete-*.",
+    "P3 (cleanup): One leftover TESTAGENT_iter76_draft level exists in archived state (v1, 0 users). Cannot be hard-deleted because it was published. Leaving archived as intended by the deletion policy."
+  ],
+  "critical_code_review_comments": [
+    "engine.py::recalc_user overwrites ulp status regardless of prior claim state — root cause of the highest-level UI regression. See action item P1.",
+    "AdminLevelBuilder archive chip lacks data-testid (see FE bug 2). Small oversight — every other action chip has one.",
+    "progression.py::my_progression returns 'enabled: False' with NO other fields when display flag is off — client code that expects level/summary/tasks keys may need to null-check. Not a bug per se but a schema shape difference clients must handle.",
+    "recalc_user writes summary onto ulp via $set without $currentDate for updated_at (line 178/180); acceptable but future audit correlation might benefit from a monotonic server-side time.",
+    "ProgressCard.jsx claim() calls invalidateLevelBadge(username) then await load() — badge cache invalidation is correct, but LevelBadge.useEffect fetches via cache-first (60s TTL) so the badge on other surfaces (feed comments, profile lists) may still show the old level for up to 60s after claim. Consider a broadcast/context to force other LevelBadge instances to refetch.",
+    "AdminLevelBuilder mixes anchor-like <button> chips with native browser confirm() dialogs for destructive actions (level-delete). Using window.confirm is fine for now, but a testid-safe modal would be more consistent with the rest of the UI (matters for automated E2E)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_progression_gaps.py (new — 6 gap tests, all pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (6/6 gap pytest — plus 16/16 pre-existing core tests still passing)",
+    "frontend": "~92% (all 8 review scenarios executed; 1 HIGH bug in highest-level render + 1 MEDIUM missing testid; everything else PASS)"
+  },
+  "test_credentials": "Founder: stealth / Password1$ ; Member: auditcheckreal / Password1$",
+  "seed_data_creation": "As stealth: (a) reaction '❤️' on post d8e49ca1... (author testu96439741) — deliberate to complete last Explorer task; leaving reacted (real progression action per spec). (b) claimed Explorer level → history now has 2 entries (Newbie + Explorer), 4 total reward grants — one-time real action per instructions, intended and left in place. (c) Created 2 draft levels via UI — one renamed TESTAGENT_iter76_draft, added one task, published+archived (config_version=1, status=archived, cannot be hard-deleted by policy). Second draft was deleted successfully via level-delete-*. (d) Toggled feature flag 'notifications' on then back to off — final state matches original. No throwaway posts remain (feed regression composer test used feed-composer-input which was investigated but not final-executed).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Stealth is now permanently at Explorer + 'highest_level_reached' in DB (history: 2, claims: 2, rewards: 4). Do NOT attempt to re-claim — the endpoint returns idempotent success but the UI issue persists (see bug). auditcheckreal is still at Newbie 0/3 by default with visibility all public after the gap tests. Verify the backend fix by: POST /api/progression/recalc as stealth and check /api/progression/me returns summary.status='highest_level_reached' and claim_available=false. Also check that ProgressCard.jsx now renders [data-testid=progress-card-highest]. Login: POST /api/auth/login with {email:'stealth'|'auditcheckreal', password:'Password1$'} — 'email' accepts username. Use http://localhost:8001 for direct backend tests (Cloudflare edge cookie variance on external URL). Level Builder testids: level-builder-page, level-builder-guard, lb-tab-{levels,analytics,jobs,logs,flags}, lb-level-{id}, level-open-{id}, level-publish-{id}, level-pause-{id}, level-delete-{id}, level-create, level-editor, level-edit-name, level-editor-save, task-builder, task-add, task-row-{id}, task-edit-{id}, task-editor-{id}, task-editor-save, job-dry-run, job-{id}, inspect-username, inspect-go, inspect-result, flag-{key}, flag-{key}-toggle, lb-logs. MISSING: level-archive-{id} (only title=\"Archive\" today). ProgressCard testids: progress-card, progress-card-title, progress-card-count, progress-card-tasks, progress-task-{id}, progress-task-{id}-go, progress-claim-button, progress-history-toggle, progress-history, progress-history-{id}, progress-card-highest, progress-card-paused, progress-card-archived. Celebration: level-celebration, level-celebration-completed, level-celebration-highest, level-celebration-next, level-celebration-rewards, level-celebration-close, level-celebration-continue. Badge: profile-level-badge, profile-level-badge-name, public-level-badge, public-level-badge-name.",
+  "rca of the issue": "BUG: highest-level state lost on /me reads.\n\nReproduction:\n1) As stealth (Explorer, 5/5), POST /api/progression/claim {level_id: <explorer_id>} — succeeds, response has highest_level_reached=true and rewards granted.\n2) Immediately: db.user_level_progress.find_one({user_id: stealth}) shows status='highest_level_reached', claim_available=False, last_claimed_at set, history count = 2 → CORRECT.\n3) Call GET /api/progression/me → response has summary.status='active', summary.claim_available=true, top-level status='active' → WRONG.\n4) After that read, db.user_level_progress now shows status='active', claim_available=True (persist=True path overwrote it).\n\nRoot cause: services/progression/engine.py::recalc_user (lines 158-180) recomputes 'status' and 'claimable' purely from the current level snapshot state (published/paused/archived) and task completion, and always writes the recomputed summary into ulp via `$set: summary`. It ignores whether the user has already successfully claimed the current (level_id, config_version). When there is no next level (Explorer is the topmost), the correct terminal state 'highest_level_reached' set by claim_level() is silently reverted.\n\nMitigation (recommended patch — main agent to implement):\n  Before returning/persisting summary in recalc_user, add:\n\n    already_claimed = await db.progression_claims.find_one(\n        {\"user_id\": user[\"id\"], \"level_id\": snap[\"id\"],\n         \"level_version\": snap[\"config_version\"], \"status\": \"success\"},\n        {\"_id\": 0, \"id\": 1})\n    if already_claimed:\n        nxt = await next_level_after(snap, user)\n        if nxt is None:\n            status = \"highest_level_reached\"\n            claimable = False\n            summary[\"status\"] = status\n            summary[\"claim_available\"] = claimable\n\n  (The 'nxt is None' branch means the user is on the terminal level; if a next level exists the engine's separate claim_level → user_level_progress transition already moves them, so this guard only fires for the highest-level scenario.)\n\n  Additionally: recalc_user should ideally never write claim_available=True over a level+version that already has a successful claim on that same version — even if a next level exists, claim.status='success' on this (level, version) is a hard guarantee that the current-level claim was consumed.\n\nImpact scope: pure UX regression on highest-level users. No data corruption because the claim endpoint uses a unique (user_id, level_id, level_version, status='success') index in progression_claims and returns idempotent on duplicate — a repeat click after the state-clobber correctly returns 'idempotent: True' with the original response. Rewards and history are NOT duplicated (verified by test_rewards_never_duplicated + test_claim_idempotent_and_unique in the pre-existing test_progression_core.py suite)."
+}

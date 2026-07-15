@@ -53,6 +53,8 @@ from routers import media_proxy as media_proxy_router_mod
 from routers import admin_portals as admin_portals_router_mod
 from routers import admin_data_audit as admin_data_audit_router_mod
 from routers import website_media as website_media_router_mod
+from routers import progression as progression_router_mod
+from routers import progression_admin as progression_admin_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -109,6 +111,8 @@ app.include_router(media_proxy_router_mod.router)
 app.include_router(admin_portals_router_mod.router)
 app.include_router(admin_data_audit_router_mod.router)
 app.include_router(website_media_router_mod.router)
+app.include_router(progression_router_mod.router)
+app.include_router(progression_admin_router_mod.router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
@@ -321,6 +325,17 @@ async def on_startup():
         await sliding_window_rate_limit.ensure_indexes()
     except Exception as e:
         logger.warning(f"[api_widgets] startup failed: {e}")
+
+    # Progression system — indexes + editable seed levels (idempotent).
+    try:
+        from services.progression.indexes import ensure_progression_indexes
+        from services.progression.seed import ensure_progression_seed
+        await ensure_progression_indexes()
+        created = await ensure_progression_seed()
+        if created:
+            logger.info("[progression] seeded Newbie + Explorer levels.")
+    except Exception as e:
+        logger.warning(f"[progression] startup failed: {e}")
 
     # Communities (Realms + Groups + Chats) — ensure indexes + seed
     # the legacy mock realms into Mongo on the very first startup.

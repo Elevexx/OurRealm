@@ -20,6 +20,8 @@ import Top8Editor from "@/components/Top8Editor";
 import UserAvatar from "@/components/UserAvatar";
 import VipBadge from "@/components/VipBadge";
 import ProfileBadges from "@/components/ProfileBadges";
+import LevelBadge from "@/components/progression/LevelBadge";
+import ProgressCard from "@/components/progression/ProgressCard";
 import apiClient from "@/api/client";
 import AvatarPicker from "@/components/AvatarPicker";
 import BannerEditor, { BannerView } from "@/components/BannerEditor";
@@ -568,6 +570,10 @@ export default function Profile() {
               <>
                 <h2 className="text-2xl sm:text-3xl flex items-center gap-2 flex-wrap" style={{ fontFamily: "var(--font-display)" }} data-testid="profile-name">
                   {user?.name || "Guest visitor"}
+                  {user?.username && (
+                    <LevelBadge username={user.username} testid="profile-level-badge"
+                      onClick={() => document.querySelector('[data-testid="progress-card"]')?.scrollIntoView({ behavior: "smooth", block: "center" })} />
+                  )}
                 </h2>
                 {user?.username && (
                   <div className="flex items-center gap-2 mt-1" data-testid="profile-username-row">
@@ -623,6 +629,11 @@ export default function Profile() {
       {/* Phase-2: Top 8 management inline in Edit Profile.
           Auto-saves; instant; reflects on the Top-8 widget after refreshMe. */}
       {editing && !isGuest && user && <Top8Editor />}
+
+      {/* Level & progression card (backend-gated by the display flag) */}
+      {!isGuest && user?.username && (
+        <ProgressCard username={user.username} isOwner={true} />
+      )}
 
       {/* Widgets bento (drag-and-drop when editing) */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>

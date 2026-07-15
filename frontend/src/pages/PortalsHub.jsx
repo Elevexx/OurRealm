@@ -26,6 +26,11 @@ const STATUSES = [
 ];
 
 export default function PortalsHub() {
+  useEffect(() => {
+    // Progression app-event: user visited the Portals page (deduped server-side)
+    import("@/api/client").then(({ default: apiClient }) =>
+      apiClient.post("/progression/app-event", { event_key: "portals_visited" }).catch(() => {}));
+  }, []);
   const [statusIdx, setStatusIdx] = useState(0);
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);

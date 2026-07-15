@@ -4,6 +4,7 @@ import { Check, Zap, Crown, Sparkles, Shield, ArrowRight } from "lucide-react";
 import { useTheme, MODES } from "@/contexts/ThemeContext";
 import ModePreviewArt from "@/components/ModePreviewArt";
 import ColorCustomizer from "@/components/ColorCustomizer";
+import apiClient from "@/api/client";
 
 const MODE_INFO = {
   neon: {
@@ -71,13 +72,18 @@ export default function ModesPage() {
           const info = MODE_INFO[m];
           const Icon = info.Icon;
           const active = mode === m;
+          const pick = () => {
+            setMode(m);
+            // Progression app-event (allowlisted, deduped, guest-safe)
+            apiClient.post("/progression/app-event", { event_key: "mode_selected", object_id: m }).catch(() => {});
+          };
           return (
             <div
               key={m}
               role="button"
               tabIndex={0}
-              onClick={() => setMode(m)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setMode(m); } }}
+              onClick={pick}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } }}
               data-testid={`modes-card-${m}`}
               data-active={active}
               className="text-left or-surface overflow-hidden transition-all duration-300 cursor-pointer"

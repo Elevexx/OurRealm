@@ -15,6 +15,8 @@ import TopEightWidget from "@/components/TopEightWidget";
 import VipBadge from "@/components/VipBadge";
 import ReportButton from "@/components/ReportButton";
 import ProfileBadges from "@/components/ProfileBadges";
+import LevelBadge from "@/components/progression/LevelBadge";
+import ProgressCard from "@/components/progression/ProgressCard";
 import {
   NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PhotosBody, PollsBody, RadarBody,
 } from "@/components/ProfileWidgetBodies";
@@ -328,6 +330,7 @@ export default function FounderProfile() {
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl sm:text-2xl" style={{ fontFamily: "var(--font-display)" }} data-testid="founder-name">{profile.name}</h1>
+              <LevelBadge username={profile.username} testid="public-level-badge" />
               {/* FOUNDER / VIP / VERIFIED badges are now rendered as
                   rectangular pills via <ProfileBadges/> below. Inline
                   badges removed (Feb 26, 2026) to eliminate duplicate
@@ -391,6 +394,9 @@ export default function FounderProfile() {
           </div>
         )}
       </div>
+
+      {/* Public progression summary (visibility enforced by backend) */}
+      <ProgressCard username={profile.username} isOwner={false} />
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={widgets.filter((w) => ALLOWED_WIDGET_TYPES.has(w.type) || !!w.editor_config).map((w) => w.id)} strategy={rectSortingStrategy}>

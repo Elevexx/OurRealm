@@ -137,6 +137,12 @@ async def create_post(payload: PostCreate, current: CurrentUser):
         await index_post_hashtags(doc["id"], doc.get("content") or "")
     except Exception as e:
         log.warning(f"[hashtags] indexing failed for post {doc.get('id')}: {e}")
+    # Progression hook — post created (idempotent by post id; non-fatal).
+    try:
+        from services.progression.events import notify as progression_notify
+        await progression_notify(current["id"], "post_created", doc["id"])
+    except Exception:
+        pass
     # Moderation scan — sets moderation_* fields on the just-inserted doc.
     await scan_and_apply(
         coll_name="posts",

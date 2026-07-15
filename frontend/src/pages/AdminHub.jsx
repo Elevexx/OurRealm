@@ -16,7 +16,7 @@ import { Link } from "react-router-dom";
 import {
   BarChart3, Zap, Hash, Headphones, HelpCircle, LifeBuoy,
   Crown, ShieldCheck, ChevronRight, Loader2, Sparkles, LayoutGrid, Database,
-  Image as ImageIcon,
+  Image as ImageIcon, Trophy,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -84,6 +84,16 @@ const CARDS = [
     accent: "#6BD3FF",
     badge: null,
     roles: ["founder", "admin"],
+    statKey: null,
+  },
+  {
+    to: "/admin/level-builder",
+    title: "Level Builder",
+    description: "Configure progression levels, tasks, rewards, and rollout flags.",
+    Icon: Trophy,
+    accent: "#F4C84A",
+    badge: "NEW",
+    roles: ["founder"],
     statKey: null,
   },
   {
