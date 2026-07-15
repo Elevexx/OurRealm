@@ -198,6 +198,7 @@ function ModesManager() {
         cropShape="rect"
         title={crop?.kind === "logo" ? "Crop logo (1:1 — 320×320 recommended)" : "Crop wordmark (5:1 — 600×120 recommended)"}
         maxWidth={crop?.kind === "logo" ? 640 : 1200}
+        outputMime="image/png"
         onApply={applyCrop}
         onCancel={() => setCrop(null)}
         testid="wm-cropper"

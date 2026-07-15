@@ -23,7 +23,10 @@ export async function getCroppedBlob(src, cropPixels, opts = {}) {
   const canvas = document.createElement("canvas");
   canvas.width = outW;
   canvas.height = outH;
-  const ctx = canvas.getContext("2d");
+  // alpha:true keeps the canvas transparent; clear instead of filling a
+  // background so PNG/WebP exports keep their alpha channel intact.
+  const ctx = canvas.getContext("2d", { alpha: true });
+  ctx.clearRect(0, 0, outW, outH);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(

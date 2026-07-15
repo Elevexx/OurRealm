@@ -35,6 +35,7 @@ export default function BannerEditor({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [cropSrc, setCropSrc] = useState(null);   // local object URL while cropping
+  const [cropMime, setCropMime] = useState("image/jpeg");
   const fileRef = useRef(null);
 
   // Revoke object URLs when the modal unmounts.
@@ -70,13 +71,15 @@ export default function BannerEditor({
         .finally(() => setBusy(false));
       return;
     }
+    // PNG/WebP sources keep alpha — export PNG so transparency survives.
+    setCropMime(f.type === "image/png" || f.type === "image/webp" ? "image/png" : "image/jpeg");
     setCropSrc(URL.createObjectURL(f));
   };
 
   const handleCropApply = async (blob) => {
     setErr("");
     try {
-      const url = await uploadBlob(blob, "banner.jpg");
+      const url = await uploadBlob(blob, blob.type === "image/png" ? "banner.png" : "banner.jpg");
       setUploadedUrl(url);
       setCropSrc(null);
     } catch (e2) {
@@ -196,6 +199,7 @@ export default function BannerEditor({
         cropShape="rect"
         title="Adjust banner"
         maxWidth={2560}
+        outputMime={cropMime}
         onApply={handleCropApply}
         onCancel={() => setCropSrc(null)}
         testid={`${testid}-cropper`}

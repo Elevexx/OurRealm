@@ -21,7 +21,7 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 assert BASE_URL, "REACT_APP_BACKEND_URL must be set"
 
 FOUNDER = {"email": "slopestyle2022@gmail.com", "password": "Password1$"}
-USER1 = {"email": "testfriend1@example.com", "password": "pass1234"}
+USER1 = {"email": "auditcheck.real@gmail.com", "password": "Password1$"}
 
 
 # ─── Fixtures ────────────────────────────────────────────────────────

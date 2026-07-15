@@ -26,6 +26,7 @@ export default function AvatarPicker({ open, onClose, onSaved, testid = "avatar-
   const [url, setUrl] = useState("");
   const [preview, setPreview] = useState(null);   // local data URL after crop
   const [cropSrc, setCropSrc] = useState(null);   // object URL being cropped
+  const [cropMime, setCropMime] = useState("image/jpeg");
 
   useEffect(() => () => { if (cropSrc) URL.revokeObjectURL(cropSrc); }, [cropSrc]);
 
@@ -43,7 +44,8 @@ export default function AvatarPicker({ open, onClose, onSaved, testid = "avatar-
 
   const uploadBlob = async (blob) => {
     const fd = new FormData();
-    fd.append("file", new File([blob], "avatar.jpg", { type: blob.type || "image/jpeg" }));
+    const name = blob.type === "image/png" ? "avatar.png" : "avatar.jpg";
+    fd.append("file", new File([blob], name, { type: blob.type || "image/jpeg" }));
     const { data } = await apiClient.post("/images/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
     const next = data?.url || data?.image?.original_url;
     if (!next) throw new Error("Upload returned no URL");
@@ -64,6 +66,8 @@ export default function AvatarPicker({ open, onClose, onSaved, testid = "avatar-
         .finally(() => setBusy(false));
       return;
     }
+    // PNG/WebP sources keep alpha — export PNG so transparency survives.
+    setCropMime(f.type === "image/png" || f.type === "image/webp" ? "image/png" : "image/jpeg");
     setCropSrc(URL.createObjectURL(f));
   };
 
@@ -100,6 +104,7 @@ export default function AvatarPicker({ open, onClose, onSaved, testid = "avatar-
       const name = hosted.split("?")[0].split("/").pop();
       try {
         const resp = await apiClient.get(`/images/${name}`, { responseType: "blob" });
+        setCropMime(resp.data?.type === "image/png" || resp.data?.type === "image/webp" ? "image/png" : "image/jpeg");
         setCropSrc(URL.createObjectURL(resp.data));
       } catch {
         // Local copy unavailable — persist the rehosted image without a crop.
@@ -244,6 +249,7 @@ export default function AvatarPicker({ open, onClose, onSaved, testid = "avatar-
         cropShape="round"
         title="Adjust profile picture"
         maxWidth={1024}
+        outputMime={cropMime}
         onApply={handleCropApply}
         onCancel={() => setCropSrc(null)}
         testid={`${testid}-cropper`}

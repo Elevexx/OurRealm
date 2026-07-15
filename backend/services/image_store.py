@@ -122,13 +122,17 @@ def _normalize_and_save(raw: bytes, image_id: str, ext: str) -> Tuple[int, int, 
     orig.save(orig_path, format=save_format, **save_kwargs)
     bytes_written = orig_path.stat().st_size
 
-    # Thumbnail (always jpeg for size, except gif preserve)
+    # Thumbnail — keep alpha for transparent sources (PNG thumb),
+    # otherwise JPEG for size. GIFs preserve their format.
     thumb = img.copy()
     thumb.thumbnail(THUMB_MAX, Image.LANCZOS)
-    thumb_ext = ext if ext == "gif" else "jpg"
+    has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+    thumb_ext = "gif" if ext == "gif" else ("png" if has_alpha else "jpg")
     thumb_path = ROOT / f"{image_id}_thumb.{thumb_ext}"
     if thumb_ext == "gif":
         thumb.save(thumb_path, format="GIF")
+    elif thumb_ext == "png":
+        thumb.save(thumb_path, format="PNG", optimize=True)
     else:
         if thumb.mode not in ("RGB", "L"):
             thumb = thumb.convert("RGB")

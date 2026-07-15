@@ -23,6 +23,7 @@ export default function ImageCropperModal({
   cropShape = "rect",     // "rect" | "round"
   title = "Adjust image",
   maxWidth = 2560,
+  outputMime = "image/jpeg",   // pass "image/png" to preserve transparency
   onApply,                // async (blob) => void
   onCancel,
   testid = "image-cropper",
@@ -43,7 +44,7 @@ export default function ImageCropperModal({
     if (!areaPixels) return;
     setBusy(true); setErr("");
     try {
-      const blob = await getCroppedBlob(src, areaPixels, { maxWidth });
+      const blob = await getCroppedBlob(src, areaPixels, { maxWidth, mime: outputMime });
       await onApply?.(blob);
     } catch (e) {
       setErr(e?.message || "Could not crop image");

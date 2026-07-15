@@ -2607,3 +2607,22 @@ Production (ourrealm.social) had: missing profile pictures after DB recovery, vi
 - Backend: `/app/backend/tests/test_website_media.py` 6/6 (401/403 gating, durable upload, draft≠published, publish/rollback, tutorial CRUD/reorder/publish/version/progress-unique/completed-hidden, unsafe route rejection).
 - `/app/test_reports/iteration_74.json`: 100% backend (19/19 incl. iter73 regression) + 100% frontend (card visibility both roles, upload→crop→draft→publish→rollback, tutorial build/reorder-persist/preview/publish, popup shows for normal user → finish → never re-shows, header logo regression).
 - Final preview state: tutorial status=published audience=new_users (hidden from existing users), no mode drafts pending.
+
+---
+
+# July 2026 — Transparent PNG Fix (Website Media logo pipeline)
+
+## Root cause
+`lib/cropImage.js` exported crops as `image/jpeg` by default — JPEG has no alpha channel, so transparent pixels flattened to black. Secondary: backend thumbnails converted RGBA→RGB (black fill).
+
+## Fixes
+- `cropImage.js`: canvas `getContext("2d", {alpha:true})` + `clearRect` (no background fill), honors `mime` option.
+- `ImageCropperModal.jsx`: new `outputMime` prop (default jpeg unchanged).
+- `AdminWebsiteMedia.jsx`: logo + wordmark crops always export `image/png`.
+- `AvatarPicker.jsx` / `BannerEditor.jsx`: PNG/WebP sources export PNG (photos stay JPEG); upload filenames match type.
+- `services/image_store.py`: thumbnails of alpha images now saved as PNG (JPEG kept for opaque sources; GIF preserved). R2 already stores `.png` with `image/png` content type.
+
+## Validation (all passed)
+- API roundtrip: uploaded RGBA PNG → downloaded via R2 proxy → mode RGBA, corner alpha 0, content-type image/png; thumbnail also RGBA PNG.
+- Real UI E2E: Website Media → Replace Logo (Retro) → cropper → Apply → draft stored `/api/media/images/*.png`, RGBA, corner alpha 0, center 255; thumbnail rendered transparent on the dark card. Draft discarded after test.
+- Regression: `test_website_media.py` + `test_upload_limits.py` 18 passed / 1 skipped; frontend build clean. (Also repaired `test_upload_limits.py` fixture that referenced the deleted `tfone` test account → now uses `auditcheckreal`.)
