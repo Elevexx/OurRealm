@@ -1119,7 +1119,7 @@ function SettingsPanel({ summary }) {
       <SectionHeader title="Settings & Health" subtitle="ORAi runtime state plus the live subsystem health snapshot." />
       <div className="orion-stat-grid">
         <Stat label="Mode" value="Read-only" hue="#22D3EE" />
-        <Stat label="Engine" value="orion-analytics" hue="#60A5FA" />
+        <Stat label="Engine" value="orai-analytics" hue="#60A5FA" />
         <Stat label="Memory" value="Persistent" hue="#A78BFA" />
         <Stat label="Audit logging" value="Active" hue="#34D399" />
         <Stat label="Provider" value={(health?.active_provider || "—").toUpperCase()} hue="#F59E0B" />
@@ -1400,7 +1400,7 @@ function StatusCard({ summary }) {
         <span className="orion-ctx-title">Online · Read-only</span>
       </div>
       <div className="orion-ctx-rows">
-        <div><span className="orion-ctx-k">Engine</span><span className="orion-ctx-v">orion-analytics</span></div>
+        <div><span className="orion-ctx-k">Engine</span><span className="orion-ctx-v">orai-analytics</span></div>
         <div><span className="orion-ctx-k">Memory</span><span className="orion-ctx-v">persistent</span></div>
         <div><span className="orion-ctx-k">Audit</span><span className="orion-ctx-v">active</span></div>
         <div><span className="orion-ctx-k">Avg</span><span className="orion-ctx-v">~6 ms</span></div>

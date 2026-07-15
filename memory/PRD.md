@@ -2626,3 +2626,23 @@ Production (ourrealm.social) had: missing profile pictures after DB recovery, vi
 - API roundtrip: uploaded RGBA PNG → downloaded via R2 proxy → mode RGBA, corner alpha 0, content-type image/png; thumbnail also RGBA PNG.
 - Real UI E2E: Website Media → Replace Logo (Retro) → cropper → Apply → draft stored `/api/media/images/*.png`, RGBA, corner alpha 0, center 255; thumbnail rendered transparent on the dark card. Draft discarded after test.
 - Regression: `test_website_media.py` + `test_upload_limits.py` 18 passed / 1 skipped; frontend build clean. (Also repaired `test_upload_limits.py` fixture that referenced the deleted `tfone` test account → now uses `auditcheckreal`.)
+
+---
+
+# June/July 2026 — Iteration 75: Nine-Point Update (Composers, FAQ, ORAi rebrand, Modes colors)
+
+## Shipped (all tested — /app/test_reports/iteration_75.json, 100% backend + frontend)
+1. **No auto "Image" text**: `BottomNav.jsx` CreateWorkflow no longer injects `option.label` when title/caption empty — media-only posts publish with empty content (backend already allowed it). Titles now "optional".
+2. **Hashtags in every composer**: new shared `components/composer/HashtagInput.jsx` (chips input, max 10, `appendHashtags()` appends `#tags` to content on submit → existing backend indexing + clickable `HashtagText` work unchanged). Wired into Feed inline composer AND all 5 "+" workflows.
+3. **Tutorial popup resized**: `TutorialPopup.jsx` now a centered modal with visible margins on ALL screens (width min(100vw-32px,560px), height min(100dvh-40px-safe-area,680px)), lighter backdrop — site visible behind on desktop and mobile.
+4. **Unified composers**: shared `components/composer/AlbumPicker.jsx` (6-slot album grid) used by BOTH the For You inline composer (now supports multi-image albums, previously single) and the "+" modal. "+" workflows also gained AudiencePicker parity.
+5. **Multi-image upload fix**: `ImageUploadPicker.jsx` rewritten — `multiple`/`maxCount` props, sequential uploads with progress ("Uploading 2 of 4…"), and new `lib/imageCompress.js` client-side compression (≤2048px, ≤2.5MB, preserves PNG alpha, GIF passthrough) so >3MB phone photos no longer 413 at the proxy/backend.
+6. **Settings button position fix**: root cause = `html[data-mode="millennium|stealth"] .or-btn { position: relative }` overrode Tailwind `.absolute`. Fixed with `.or-btn:not(.absolute)` in `index.css`. Verified top-right in Millennium + Stealth.
+7. **UI Color Customization**: `components/ColorCustomizer.jsx` on /modes — primary + secondary accent pickers (native color input + 10 presets + hex display + reset). `ThemeContext.jsx` applies per-mode overrides as inline CSS vars on documentElement; persisted in localStorage `ourrealm.customColors` per mode.
+8. **Public FAQ**: new `/faq` page (`pages/FAQPage.jsx`, accordion + search + Contact Support + founder Manage link). Links added in Settings (Help section + About footer) and LegalPages "Other policies" footer. Seeded 10 starter FAQs via `backend/scripts/seed_faq_entries.py` (idempotent); admin CRUD at /admin/faq already existed. 11 published entries live.
+9. **ORAi rebrand**: all user-facing "Orion"/"ORION" → "ORAi" (AdminOrion.jsx, AdminHub.jsx, AdminOrionLogs.jsx, ChatLayout.jsx, backend chat_conversations.py system prompt + error details, widget name "ORAi (Founder)", model label "orai-analytics"). Internal identifiers (routes /admin/orion, ORION_WIDGET_KEY, orion-* CSS, api paths) intentionally unchanged. NEVER use "OurReam", "ORAI", "Orion".
+
+## Backlog / next
+- P1: Rotate production `JWT_SECRET` (shared with preview) + scope production `CORS_ORIGINS` (currently `*`).
+- P2: Optional server-side persistence of custom mode colors (currently per-device localStorage).
+- P2: Consider renaming internal orion_* modules/routes if ever safe (needs migration; low value).

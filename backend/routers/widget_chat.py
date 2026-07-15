@@ -257,7 +257,7 @@ async def chat_message(payload: ChatMessagePayload, current: CurrentUser, respon
             )
         return {
             "reply": analytics_reply,
-            "model": "orion-analytics",
+            "model": "orai-analytics",
             "usage": {},
             "finish_reason": "analytics_tool",
             "memory_mode": memory_mode,
