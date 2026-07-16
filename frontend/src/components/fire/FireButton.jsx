@@ -10,7 +10,7 @@
  */
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Flame, ChevronUp, X, Clock } from "lucide-react";
+import { Flame, ChevronUp, X, Clock, Info } from "lucide-react";
 import { toast } from "sonner";
 import { usePostState, setPost } from "@/lib/postStore";
 import { sendFire, fetchFireStatus } from "@/lib/fireApi";
@@ -30,9 +30,79 @@ function recoveryLabel(iso) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+/* ── Fire Pool education sheet (UI-only, Phase 0.6.1) ── */
+const HELP_SECTIONS = [
+  { title: "Unlimited 1🔥", lines: [
+    "You can always send 1🔥 to any public post.",
+    "1🔥 is unlimited and never uses your Daily Fire Pool."] },
+  { title: "Boost Fire (2×+)", lines: [
+    "Boosting lets you show stronger support.",
+    "Only boosts consume your Daily Fire Pool.",
+    "Pool Cost = Fire Sent − 1",
+    "1🔥 → Cost 0 · 2🔥 → Cost 1 · 5🔥 → Cost 4"] },
+  { title: "Rolling 24-Hour Pool", lines: [
+    "Your Daily Fire Pool automatically refills exactly 24 hours after each boost.",
+    "There is no midnight reset.",
+    "Each boost restores independently after 24 hours."] },
+  { title: "Why does Fire work this way?", lines: [
+    "Everyone can always support creators with 1🔥.",
+    "Limited boosts make stronger endorsements more meaningful.",
+    "This helps keep Fire rankings fair while reducing spam and artificial boosting."] },
+  { title: "Coming Soon", lines: [
+    "Fire Power will continue evolving with: Creator Rewards, Achievements, Quests, Marketplace, Realm Upgrades, Portal Unlocks and additional utilities."] },
+];
+
+function FirePoolHelpSheet({ onClose, testidPrefix }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[320] flex items-end sm:items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(3px)" }}
+      onClick={(e) => { e.stopPropagation(); onClose(); }}
+      data-testid={`${testidPrefix}-pool-help`}
+      role="dialog" aria-modal="true" aria-label="How Fire Power works"
+    >
+      <div
+        className="w-full sm:w-[400px] sm:rounded-2xl rounded-t-2xl p-4 sm:p-5 max-h-[85vh] overflow-y-auto"
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border-col)",
+          boxShadow: "0 -12px 40px rgba(0,0,0,0.5)",
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 mb-3">
+          <Flame size={22} style={{ color: FIRE_COLOR }} fill={FIRE_COLOR} />
+          <div className="flex-1 text-sm font-bold" style={{ color: FIRE_COLOR }}>How Fire Power Works</div>
+          <button onClick={onClose} className="starbar-icon" style={{ width: 34, height: 34 }}
+            aria-label="Close Fire Power help" data-testid={`${testidPrefix}-pool-help-close`}>
+            <X size={15} />
+          </button>
+        </div>
+        {HELP_SECTIONS.map((s) => (
+          <div key={s.title} className="mb-3">
+            <div className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: FIRE_COLOR }}>{s.title}</div>
+            {s.lines.map((l) => (
+              <div key={l} className="text-[12px] leading-relaxed" style={{ color: "var(--text-muted)" }}>{l}</div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 /* ── Portal Boost Picker (bottom sheet ≤639px / centered dialog ≥640px) ── */
 function FirePickerSheet({ post, cfg, pool, myFire, deadline, finalized, busy, onApply, onClose, testidPrefix }) {
   const [value, setValue] = useState(Math.max(myFire, 1));
+  const [showHelp, setShowHelp] = useState(false);
   const max = Math.max(1, cfg.max_fire_per_reaction || 1);
   const available = pool?.available ?? 0;
   const poolMax = pool?.pool_max ?? cfg.daily_fire_pool ?? 0;
@@ -100,12 +170,20 @@ function FirePickerSheet({ post, cfg, pool, myFire, deadline, finalized, busy, o
         {/* Fire Meter — rolling 24h boost pool */}
         {poolMax > 0 && (
           <div className="mb-4" data-testid={`${testidPrefix}-meter`}>
-            <div className="h-2 rounded-full overflow-hidden mb-1.5"
-              style={{ background: "color-mix(in srgb, var(--text-muted) 18%, transparent)" }}>
-              <div className="h-full rounded-full" style={{
-                width: `${Math.min(100, (available / poolMax) * 100)}%`,
-                background: FIRE_COLOR, transition: "width 300ms",
-              }} />
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="h-2 rounded-full overflow-hidden flex-1"
+                style={{ background: "color-mix(in srgb, var(--text-muted) 18%, transparent)" }}>
+                <div className="h-full rounded-full" style={{
+                  width: `${Math.min(100, (available / poolMax) * 100)}%`,
+                  background: FIRE_COLOR, transition: "width 300ms",
+                }} />
+              </div>
+              <button onClick={() => setShowHelp(true)} className="flex-shrink-0 -m-1.5 p-1.5"
+                style={{ color: "var(--text-muted)", lineHeight: 0 }}
+                aria-label="How does the Daily Fire Pool work?"
+                data-testid={`${testidPrefix}-pool-help-open`}>
+                <Info size={14} />
+              </button>
             </div>
             <div className="flex items-center justify-between text-[11px] flex-wrap gap-1" style={{ color: "var(--text-muted)" }}>
               <span data-testid={`${testidPrefix}-meter-available`}>
@@ -119,6 +197,8 @@ function FirePickerSheet({ post, cfg, pool, myFire, deadline, finalized, busy, o
             </div>
           </div>
         )}
+
+        {showHelp && <FirePoolHelpSheet onClose={() => setShowHelp(false)} testidPrefix={testidPrefix} />}
 
         {finalized && myFire > 0 ? (
           /* Read-only — 24h edit window has passed */
