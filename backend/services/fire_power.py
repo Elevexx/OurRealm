@@ -31,7 +31,7 @@ from core.db import db
 log = logging.getLogger("ourrealm.fire")
 
 # ── Flags (all default OFF — founder toggles per environment) ──────────
-FIRE_FLAG_KEYS = ["fire_reactions", "boosted_fire", "fire_ranked_feed", "fire_notifications"]
+FIRE_FLAG_KEYS = ["fire_reactions", "boosted_fire", "fire_ranked_feed", "fire_notifications", "fire_wallet_enabled"]
 FIRE_FLAG_DEFAULTS = {k: False for k in FIRE_FLAG_KEYS}
 
 POOL_WINDOW_HOURS = 24
@@ -134,11 +134,13 @@ async def fire_config_for_user(user: dict) -> dict:
     if ulp:
         level = await db.progression_levels.find_one(
             {"id": ulp["current_level_id"]},
-            {"_id": 0, "fire_settings": 1, "level_number": 1, "name": 1})
+            {"_id": 0, "fire_settings": 1, "level_number": 1, "name": 1, "graphics": 1})
     num = (level or {}).get("level_number") or (ulp or {}).get("current_level_number") or 1
     fs = (level or {}).get("fire_settings") or DEFAULT_LEVEL_FIRE.get(num) or FALLBACK_FIRE
     fs = clean_fire_settings(fs)
-    return {**fs, "level_number": num, "level_name": (level or {}).get("name")}
+    gfx = (level or {}).get("graphics") or {}
+    return {**fs, "level_number": num, "level_name": (level or {}).get("name"),
+            "level_badge_url": gfx.get("badge_thumb_url") or gfx.get("badge_url")}
 
 
 # ── Rolling 24h pool accounting ─────────────────────────────────────────
@@ -272,10 +274,15 @@ async def react(user: dict, post_id: str, fire_value: int,
             })
 
     now_iso = _now_iso()
+    # Fire Vault (Phase 0.5) — per-reaction high-water mark so the creator
+    # only earns on NET NEW fire above the historical max for this reaction.
+    prev_high = max(int((existing or {}).get("max_fire_value") or 0), old_value)
+    new_high = max(prev_high, fire_value)
     try:
         await db.post_fire_reactions.update_one(
             {"post_id": post_id, "user_id": uid},
             {"$set": {"fire_value": fire_value, "active": fire_value > 0,
+                      "max_fire_value": new_high,
                       "updated_at": now_iso, "source": "user"},
              "$inc": {"boosted_cost": cost},
              "$setOnInsert": {"id": reaction_id, "created_at": now_iso}},
@@ -285,6 +292,7 @@ async def react(user: dict, post_id: str, fire_value: int,
         await db.post_fire_reactions.update_one(
             {"post_id": post_id, "user_id": uid},
             {"$set": {"fire_value": fire_value, "active": fire_value > 0,
+                      "max_fire_value": new_high,
                       "updated_at": now_iso, "source": "user"},
              "$inc": {"boosted_cost": cost}})
 
@@ -295,6 +303,17 @@ async def react(user: dict, post_id: str, fire_value: int,
             {"id": post_id}, {"$inc": {"fire_total": delta_total, "fire_count": delta_count}})
         await db.posts.update_one({"id": post_id, "fire_total": {"$lt": 0}}, {"$set": {"fire_total": 0}})
         await db.posts.update_one({"id": post_id, "fire_count": {"$lt": 0}}, {"$set": {"fire_count": 0}})
+
+    # Fire Vault earn hook (Phase 0.5) — creator earns the net-new fire
+    # into their pending balance. Always accrues (UI flag gates display
+    # only). Sender never earns. Non-fatal: never blocks the reaction.
+    earn = max(fire_value - prev_high, 0)
+    if earn > 0 and post.get("author_id") and post["author_id"] != uid:
+        try:
+            from services.fire_vault import credit_fire
+            await credit_fire(post["author_id"], uid, post_id, reaction_id, earn, idem)
+        except Exception as e:  # noqa: BLE001
+            log.warning(f"[fire] vault credit failed for post {post_id}: {e}")
 
     if (fire_value > old_value and post.get("author_id") and post["author_id"] != uid
             and flags.get("fire_notifications")):

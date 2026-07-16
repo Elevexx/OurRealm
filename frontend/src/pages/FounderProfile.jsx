@@ -18,6 +18,7 @@ import ProfileBadges from "@/components/ProfileBadges";
 import LevelBadge from "@/components/progression/LevelBadge";
 import ProgressCard from "@/components/progression/ProgressCard";
 import ProgressionBadges from "@/components/progression/ProgressionBadges";
+import PublicFireStats from "@/components/fire/PublicFireStats";
 import {
   NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PhotosBody, PollsBody, RadarBody,
 } from "@/components/ProfileWidgetBodies";
@@ -397,6 +398,7 @@ export default function FounderProfile() {
       </div>
 
       {/* Public progression summary (visibility enforced by backend) */}
+      <PublicFireStats username={profile.username} />
       <ProgressCard username={profile.username} isOwner={isOwner} />
       <ProgressionBadges username={profile.username} isOwner={isOwner} />
 

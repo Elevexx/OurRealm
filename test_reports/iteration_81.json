@@ -1,0 +1,38 @@
+{
+  "summary": "Iter-81 — Phase 0.5 Fire Vault + Portal Fire Picker + Phase 1 Fire Wallet Privacy end-to-end. Backend: 21/21 pytest cases pass (1 transient network-timeout flake on first run, cleanly re-ran green). Frontend: portal picker (mobile bottom-sheet + desktop centered dialog) verified across 320/390/768/1366/1920 viewports — no horizontal overflow, send button always reachable, backdrop click closes, Escape closes, keyboard Enter opens, body scroll restored on close. Exhausted state renders correctly with unaffordable chips disabled. Newbie picker shows simple-state (\"Your level sends 1× 🔥 — always free, always unlimited\") + Send 1× 🔥 button. HomeDashboard shows `fire-wallet-compact` (Pool 0/0, Vault 1🔥, Pending 0🔥, View wallet link). Own /profile shows `fire-wallet-card` with pool/vault/pending/lifetime/given/received/history/locked-note ('Vault not spendable yet'). /settings has `fire-wallet-privacy-section` with 4 shadcn selects (vault_balance/lifetime_fire/fire_given/fire_received) that persist across reload. Non-friend viewer of /profile/auditcheckreal sees `public-fire-stats` with real values on `everyone` fields (lifetime=1🔥, received=1🔥) and 🔒 Private on `only_me` (vault) + `friends` (given) — verified backend JSON omits `value` key for hidden fields (audited via page.evaluate fetch: {vault_balance:{visible:false}, fire_given:{visible:false}}). Founder bypass verified. Friend flow via POST /friends/request + /friends/accept: pending request does NOT count as friend (friends-level fields still hidden), after accept fire_given becomes visible while only_me stays hidden.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "FirePicker Fire Meter recovery label", "issues": ["Meter shows '+9 in 22h 60m' instead of '+9 in 23h' — the minute-part rollover to '60' happens when it's within 60 seconds of the next hour tick. Cosmetic only, not blocking. See /app/frontend/src/components/fire/FireButton.jsx Fire Meter recovery formatter."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_fire_vault_privacy.py",
+    "/app/test_reports/pytest/iter81_vault_privacy.xml"
+  ],
+  "action_items": [
+    "OPTIONAL cosmetic: Fix Fire Meter recovery time formatter to roll '22h 60m' → '23h 0m' (edge case at hour boundary)."
+  ],
+  "critical_code_review_comments": [
+    "fire_vault.py credit_fire() correctly skips when sender==receiver (L96) and derives idem key `<orig>:earn` from the reaction key to make retries safe. Good.",
+    "fire_vault.py settle_due() uses per-transaction atomic {status:'pending'} filter + $inc in fire_wallets — settlement can't double-credit under concurrent reads. Also clamps pending_balance>=0 after the loop. Solid.",
+    "fire_vault.py public_fire_stats() (L350) never emits {value} on hidden fields — only {visible:false}. Verified end-to-end in the network response captured in the browser: hidden fields JSON is literally `{visible:false}` with no `value` key. Backend-authoritative privacy — good.",
+    "fire_vault.py wallet_for() calls settle_due(uid) on every read so pending→vault settlement is lazy and idempotent; combined with settlement_hours=0 patch this makes the settlement test deterministic without needing a scheduled job.",
+    "FireButton.jsx portal picker renders via document.body (verified by inspecting body.children after open — the picker div is a direct body child), so it correctly escapes any parent overflow/z-index issues. Confirmed no clipping at 320/390/768/1024/1366/1920 viewports.",
+    "PublicFireStats.jsx L48: uses `s.visible ? \\`${(s.value ?? 0)...}\\` : <Private/>` so even if backend accidentally sent value on hidden field, the nullish coalescing wouldn't leak it — but backend already never sends value on hidden. Double-safe. Good.",
+    "FireWalletPrivacy.jsx: uses shadcn Select — the option testids `fire-privacy-option-{key}-{value}` are placed on <SelectItem> which renders in a portal (Radix). Confirmed clickable via force + interactivity preserved.",
+    "fire.py /wallet/stats/{username} correctly looks up target user with `.lower()` on username; anonymous request works (OptionalUser). Backend authoritative privacy filter is applied inside fire_vault.public_fire_stats — router never trusts any client-supplied flags. Good separation."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_fire_vault_privacy.py"
+  ],
+  "success_rate": {"backend": "100% (21/21 pytest cases, 1 flake retried green)", "frontend": "100% (portal picker mobile+desktop+320/768/1024, wallet compact card /home, wallet full card /profile, settings privacy section w/ shadcn selects + persistence, public fire stats on non-friend viewer /profile/auditcheckreal with 🔒 Private on only_me+friends and real values on everyone, DOM+JSON leak audit clean, keyboard Enter opens, Escape/backdrop closes, body scroll restored, exhausted state, newbie simple-state)"},
+  "test_credentials": "Reused stealth / Password1$ (founder) + auditcheckreal / Password1$ (Newbie member). Registered ephemeral non-friend users `aud_a*`, `aud_b*` (friend-privacy test) and `privchk86237` (non-friend UI test) via /api/auth/register + /signup UI. All new users are throwaway.",
+  "seed_data_creation": "Backend tests created ~10 throwaway public posts under stealth ('TEST_iter81_*'). Ephemeral users `aud_a{6hex}` and `aud_b{6hex}` were created and befriended via POST /friends/request + /friends/accept. `privchk{ts}` registered via UI signup. Vault settlement_hours was temporarily set to 0 and RESTORED to 24 in the finally block of TestVaultSettlement. Stealth's fire_privacy vault_balance select was changed to 'Everyone' during the UI persistence test and restored to 'Only Me' before exit. Fire flags left untouched (fire_reactions ON, boosted_fire ON, fire_ranked_feed ON, fire_wallet_enabled ON, fire_notifications OFF).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Fire Vault (Phase 0.5) + Portal Fire Picker + Fire Wallet Privacy (Phase 1) all fully certified. To re-run backend: `cd /app/backend && python -m pytest tests/test_fire_vault_privacy.py -v --junitxml=/app/test_reports/pytest/iter{N}_vault_privacy.xml`. Screenshots: iter81_picker_mobile.png, iter81_picker_desktop.png, iter81_picker_320.png, iter81_picker_768.png, iter81_picker_newbie.png, iter81_home_wallet.png, iter81_profile_wallet.png, iter81_settings_privacy.png, iter81_public_stats.png (all in /app/test_reports/). One cosmetic edge case flagged: Fire Meter recovery formatter shows '22h 60m' at the hour boundary — see design_issues. Not blocking. Stealth's boost pool is at 0/50 (exhausted), so picker chips 2×/5×/10× correctly render disabled — chosen intentionally to prove exhausted-state UX.",
+  "rca of the issue": "N/A — no bugs. One minor cosmetic edge case in Fire Meter time formatter ('22h 60m' should collapse to '23h 0m' when seconds tick past 60). Located in the Fire Meter component's recovery label formatter (FireButton.jsx). Easy 1-line fix: after computing hours/minutes, if minutes === 60 then hours += 1; minutes = 0."
+}

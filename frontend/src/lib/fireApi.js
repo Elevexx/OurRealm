@@ -21,7 +21,14 @@ export async function fetchFireStatus(force = false) {
   _inflight = apiClient
     .get("/fire/status")
     .then((r) => { _cache = r.data; _at = Date.now(); return _cache; })
-    .catch(() => _cache || OFF)
+    .catch(async () => {
+      // One retry — covers requests aborted by the login navigation.
+      await new Promise((res) => setTimeout(res, 1500));
+      try {
+        const r2 = await apiClient.get("/fire/status");
+        _cache = r2.data; _at = Date.now(); return _cache;
+      } catch { return _cache || OFF; }
+    })
     .finally(() => { _inflight = null; });
   return _inflight;
 }

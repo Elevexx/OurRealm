@@ -19,6 +19,7 @@ const FLAG_LABELS = {
   boosted_fire: "Boosted Fire (2x+ consumes the 24h pool)",
   fire_ranked_feed: "Fire-ranked For You feed (time windows)",
   fire_notifications: "Fire notifications to post authors",
+  fire_wallet_enabled: "Fire Wallet UI (Vault earnings ALWAYS accrue; this only reveals the wallet)",
 };
 
 function ReportBlock({ title, report, testid }) {
@@ -79,6 +80,146 @@ function LevelFireRow({ level, onSaved }) {
       <button className="or-chip" onClick={save} disabled={saving} data-testid={`fire-level-save-${level.id}`}>
         {saving ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />} Save
       </button>
+    </div>
+  );
+}
+
+function WalletAdminSection() {
+  const [ov, setOv] = useState(null);
+  const [hours, setHours] = useState("");
+  const [txns, setTxns] = useState(null);
+  const [txnUser, setTxnUser] = useState("");
+  const [recalcUser, setRecalcUser] = useState("");
+  const [busy, setBusy] = useState(null);
+  const [recalcReport, setRecalcReport] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await apiClient.get("/fire/admin/wallets/overview");
+      setOv(r.data);
+      setHours(String(r.data.config.settlement_hours));
+    } catch (e) { toast.error(e?.response?.data?.detail || "Wallets load failed"); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const run = async (key, fn) => {
+    setBusy(key);
+    try { await fn(); } catch (e) { toast.error(e?.response?.data?.detail || "Action failed"); }
+    finally { setBusy(null); }
+  };
+
+  const loadTxns = () => run("txns", async () => {
+    const r = await apiClient.get("/fire/admin/wallets/transactions", {
+      params: { limit: 25, ...(txnUser.trim() ? { username: txnUser.trim() } : {}) },
+    });
+    setTxns(r.data.transactions);
+  });
+
+  if (!ov) return <div className="or-surface p-4"><Loader2 size={16} className="animate-spin" /></div>;
+
+  const who = (row) => row ? `@${row.username || row.user_id?.slice(0, 8)} — ${row.value.toLocaleString()} 🔥` : "—";
+
+  return (
+    <div className="or-surface p-4" data-testid="fire-admin-wallets">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2">
+        <Flame size={14} style={{ color: "#FF7A1A" }} /> Fire Vault &amp; Wallets (Phase 0.5)
+      </div>
+      <div className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>
+        Vault = permanent earned fire (not spendable yet). Earnings accrue even while the wallet UI flag is OFF.
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center mb-3" data-testid="fire-wallets-stats">
+        {[["Total Vault Fire", ov.total_vault_fire], ["Total Pending Fire", ov.total_pending_fire],
+          ["Wallets", ov.wallet_count], ["Pending txns", ov.pending_transactions]].map(([k, v]) => (
+          <div key={k} className="p-3 rounded-xl" style={{ border: "1px solid var(--border-col)" }}>
+            <div className="text-lg font-bold" style={{ color: "#FF7A1A" }}>{(v ?? 0).toLocaleString()}</div>
+            <div className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{k}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3 text-xs mb-3">
+        <div className="p-3 rounded-xl" style={{ border: "1px solid var(--border-col)" }}>
+          <div className="font-semibold mb-1">Largest wallet</div>
+          <div style={{ color: "var(--text-muted)" }} data-testid="fire-wallets-largest">{who(ov.largest_wallet)}</div>
+          <div className="font-semibold mb-1 mt-2">Largest pending</div>
+          <div style={{ color: "var(--text-muted)" }} data-testid="fire-wallets-largest-pending">{who(ov.largest_pending_wallet)}</div>
+        </div>
+        <div className="p-3 rounded-xl" style={{ border: "1px solid var(--border-col)" }}>
+          <div className="font-semibold mb-1">Top earners</div>
+          {(ov.top_earners || []).length === 0 ? <div style={{ color: "var(--text-muted)" }}>None yet</div>
+            : ov.top_earners.map((r, i) => <div key={i} style={{ color: "var(--text-muted)" }}>· {who(r)}</div>)}
+          <div className="font-semibold mb-1 mt-2">Top senders</div>
+          {(ov.top_senders || []).length === 0 ? <div style={{ color: "var(--text-muted)" }}>None yet</div>
+            : ov.top_senders.map((r, i) => <div key={i} style={{ color: "var(--text-muted)" }}>· {who(r)} ({r.events} events)</div>)}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
+        <label className="flex items-center gap-1">Settlement delay (h)
+          <input type="number" min={0} max={720} className="or-input" style={{ width: 80 }}
+            value={hours} onChange={(e) => setHours(e.target.value)} data-testid="fire-wallets-settlement-input" />
+        </label>
+        <button className="or-chip" data-testid="fire-wallets-settlement-save"
+          onClick={() => run("cfg", async () => {
+            const r = await apiClient.patch("/fire/admin/wallets/config", { settlement_hours: parseInt(hours || "24", 10) });
+            toast.success(`Settlement delay set to ${r.data.config.settlement_hours}h`);
+            await load();
+          })}>
+          {busy === "cfg" ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />} Save
+        </button>
+        <button className="or-chip" data-testid="fire-wallets-settle-now"
+          onClick={() => run("settle", async () => {
+            const r = await apiClient.post("/fire/admin/wallets/settle-now");
+            toast.success(`Settled ${r.data.settled} pending transaction(s)`);
+            await load();
+          })}>
+          {busy === "settle" ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Settle due now
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
+        <input className="or-input" style={{ width: 160 }} placeholder="username (blank = all)"
+          value={recalcUser} onChange={(e) => setRecalcUser(e.target.value)} data-testid="fire-wallets-recalc-user" />
+        <button className="or-chip" data-testid="fire-wallets-recalculate"
+          onClick={() => run("recalc", async () => {
+            const r = await apiClient.post("/fire/admin/wallets/recalculate",
+              recalcUser.trim() ? { username: recalcUser.trim() } : {});
+            setRecalcReport(r.data);
+            toast.success("Wallet recalculation complete");
+            await load();
+          })}>
+          {busy === "recalc" ? <Loader2 size={11} className="animate-spin" /> : <Wand2 size={11} />} Recalculate / Repair wallets
+        </button>
+      </div>
+      {recalcReport && (
+        <div className="text-[11px] mb-3 p-2 rounded-lg" style={{ border: "1px solid var(--border-col)", color: "var(--text-muted)" }} data-testid="fire-wallets-recalc-report">
+          {recalcReport.wallets_checked !== undefined
+            ? `Checked ${recalcReport.wallets_checked} wallet(s), repaired ${recalcReport.wallets_changed}.`
+            : `@${recalcUser}: vault ${recalcReport.before?.vault_balance ?? 0} → ${recalcReport.after?.vault_balance ?? 0}, pending ${recalcReport.before?.pending_balance ?? 0} → ${recalcReport.after?.pending_balance ?? 0}`}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
+        <input className="or-input" style={{ width: 160 }} placeholder="filter by username"
+          value={txnUser} onChange={(e) => setTxnUser(e.target.value)} data-testid="fire-wallets-txn-user" />
+        <button className="or-chip" onClick={loadTxns} data-testid="fire-wallets-audit">
+          {busy === "txns" ? <Loader2 size={11} className="animate-spin" /> : <Search size={11} />} Audit vault transactions
+        </button>
+      </div>
+      {txns !== null && (
+        <div className="text-[11px] max-h-56 overflow-y-auto" data-testid="fire-wallets-txn-list">
+          {txns.length === 0 ? <div style={{ color: "var(--text-muted)" }}>No transactions found.</div>
+            : txns.map((t) => (
+              <div key={t.id} className="py-1" style={{ borderTop: "1px solid var(--border-col)", color: "var(--text-muted)" }}>
+                <b style={{ color: t.status === "settled" ? "#10E670" : "#F4C84A" }}>{t.status}</b>
+                {" "}+{t.amount} 🔥 to @{t.receiver_username || t.user_id?.slice(0, 8)}
+                {" "}from @{t.sender_username || t.sender_id?.slice(0, 8)} · {t.created_at?.slice(0, 19)}
+                {t.status === "pending" && ` · settles ${t.settle_after?.slice(0, 19)}`}
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -176,6 +317,9 @@ export default function AdminFirePower() {
             </div>
             {data.levels.map((l) => <LevelFireRow key={l.id} level={l} onSaved={load} />)}
           </div>
+
+          {/* Fire Vault / Wallets (Phase 0.5) */}
+          <WalletAdminSection />
 
           {/* Migration */}
           <div className="or-surface p-4" data-testid="fire-admin-migration">

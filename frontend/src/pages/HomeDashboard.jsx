@@ -24,6 +24,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import FireWalletCard from "@/components/fire/FireWalletCard";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { listGroups, listRealms } from "@/lib/messaging";
 import FriendMultiPicker from "@/components/FriendMultiPicker";
@@ -143,6 +144,8 @@ export default function HomeDashboard() {
           {edit ? "Done" : "Customize"}
         </button>
       </header>
+
+      <FireWalletCard compact />
 
       {loading ? (
         <div className="or-surface p-10 text-center" style={{ color: "var(--text-muted)" }}>Loading your dashboard…</div>

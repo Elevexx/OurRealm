@@ -40,6 +40,7 @@ async def fire_status(current: OptionalUser):
         "enabled": flags.get("fire_reactions", False),
         "boosted_enabled": flags.get("boosted_fire", False),
         "ranked_feed_enabled": flags.get("fire_ranked_feed", False),
+        "wallet_enabled": flags.get("fire_wallet_enabled", False),
         "config": None, "pool": None,
     }
     if current and out["enabled"]:
@@ -47,6 +48,66 @@ async def fire_status(current: OptionalUser):
         out["config"] = cfg
         out["pool"] = await fp.pool_status(current, cfg)
     return out
+
+
+@router.get("/wallet")
+async def my_wallet(current: CurrentUser):
+    """Private Fire Wallet — own balances only (never another user's).
+    Flag-gated for display; earnings accrue regardless of the flag."""
+    flags = await fp.get_fire_flags()
+    if not flags.get("fire_wallet_enabled"):
+        return {"enabled": False}
+    from services import fire_vault as fv
+    wallet = await fv.wallet_for(current)
+    cfg = await fp.fire_config_for_user(current)
+    pool = await fp.pool_status(current, cfg)
+    wcfg = await fv.get_wallet_config()
+    return {"enabled": True, "wallet": wallet, "pool": pool, "config": cfg,
+            "settlement_hours": wcfg["settlement_hours"],
+            "fire_given": await fv.fire_given_total(current["id"]),
+            "fire_received": wallet["lifetime_fire_received"],
+            "recent": await fv.recent_earnings(current["id"], 5)}
+
+
+# ── Fire Wallet Privacy (Phase 1) ───────────────────────────────────────
+@router.get("/privacy")
+async def my_fire_privacy(current: CurrentUser):
+    from services import fire_vault as fv
+    doc = await db.users.find_one({"id": current["id"]}, {"_id": 0, "fire_privacy": 1})
+    return {"privacy": fv.merge_fire_privacy(doc),
+            "defaults": fv.FIRE_PRIVACY_DEFAULTS}
+
+
+class FirePrivacyBody(BaseModel):
+    vault_balance: Optional[str] = None
+    lifetime_fire: Optional[str] = None
+    fire_given: Optional[str] = None
+    fire_received: Optional[str] = None
+
+
+@router.patch("/privacy")
+async def update_fire_privacy(body: FirePrivacyBody, current: CurrentUser):
+    from services import fire_vault as fv
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    privacy = await fv.set_fire_privacy(current["id"], updates)
+    return {"ok": True, "privacy": privacy}
+
+
+@router.get("/wallet/stats/{username}")
+async def public_wallet_stats(username: str, current: OptionalUser):
+    """Privacy-filtered public fire stats. Hidden fields carry NO value
+    in the JSON — only {visible:false}. Owner/founder always see all."""
+    flags = await fp.get_fire_flags()
+    if not flags.get("fire_wallet_enabled"):
+        return {"enabled": False}
+    from services import fire_vault as fv
+    owner = await db.users.find_one(
+        {"username": username.lower()},
+        {"_id": 0, "id": 1, "username": 1, "friends": 1, "fire_privacy": 1})
+    if not owner:
+        raise HTTPException(status_code=404, detail="User not found")
+    out = await fv.public_fire_stats(owner, current)
+    return {"enabled": True, "username": owner["username"], **out}
 
 
 class ReactBody(BaseModel):
@@ -170,3 +231,72 @@ async def admin_migration_reconcile(body: MigrationBody, current: CurrentUser):
     report = await fp.migration_reconcile(fix=body.fix)
     await _audit(current, "fire_migration_reconcile", {"fix": body.fix, "mismatches": report["counter_mismatches"]})
     return report
+
+
+# ── Fire Vault / Wallets admin (Phase 0.5, founder only) ────────────────
+@router.get("/admin/wallets/overview")
+async def admin_wallets_overview(current: CurrentUser):
+    require_founder(current)
+    from services import fire_vault as fv
+    return await fv.admin_wallets_overview()
+
+
+class WalletConfigBody(BaseModel):
+    settlement_hours: int
+
+
+@router.patch("/admin/wallets/config")
+async def admin_wallets_config(body: WalletConfigBody, current: CurrentUser):
+    require_founder(current)
+    from services import fire_vault as fv
+    cfg = await fv.set_wallet_config(body.settlement_hours, current.get("username") or current["id"])
+    await _audit(current, "fire_wallet_config", {"settlement_hours": cfg["settlement_hours"]})
+    return {"ok": True, "config": cfg}
+
+
+class WalletRecalcBody(BaseModel):
+    username: Optional[str] = None
+
+
+@router.post("/admin/wallets/recalculate")
+async def admin_wallets_recalculate(body: WalletRecalcBody, current: CurrentUser):
+    require_founder(current)
+    from services import fire_vault as fv
+    if body.username:
+        u = await db.users.find_one({"username": body.username.lower()}, {"_id": 0, "id": 1})
+        if not u:
+            raise HTTPException(status_code=404, detail="User not found")
+        await fv.settle_due(u["id"])
+        report = await fv.recalculate_wallet(u["id"])
+    else:
+        report = await fv.recalculate_all()
+    await _audit(current, "fire_wallet_recalculate", {"username": body.username, "report": report if body.username else {k: report[k] for k in ("wallets_checked", "wallets_changed")}})
+    return report
+
+
+@router.post("/admin/wallets/settle-now")
+async def admin_wallets_settle_now(current: CurrentUser):
+    require_founder(current)
+    from services import fire_vault as fv
+    settled = await fv.settle_due()
+    await _audit(current, "fire_wallet_settle_now", {"settled": settled})
+    return {"ok": True, "settled": settled}
+
+
+@router.get("/admin/wallets/transactions")
+async def admin_wallets_transactions(current: CurrentUser,
+                                     username: Optional[str] = None,
+                                     status: Optional[str] = None,
+                                     limit: int = 50):
+    require_founder(current)
+    from services import fire_vault as fv
+    return {"transactions": await fv.admin_transactions(username, status, limit)}
+
+
+@router.post("/admin/privacy/seed-defaults")
+async def admin_privacy_seed_defaults(current: CurrentUser):
+    require_founder(current)
+    from services import fire_vault as fv
+    seeded = await fv.seed_fire_privacy_defaults()
+    await _audit(current, "fire_privacy_seed_defaults", {"seeded": seeded})
+    return {"ok": True, "users_seeded": seeded}

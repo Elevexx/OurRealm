@@ -23,6 +23,7 @@ import ProfileBadges from "@/components/ProfileBadges";
 import LevelBadge from "@/components/progression/LevelBadge";
 import ProgressCard from "@/components/progression/ProgressCard";
 import ProgressionBadges from "@/components/progression/ProgressionBadges";
+import FireWalletCard from "@/components/fire/FireWalletCard";
 import apiClient from "@/api/client";
 import AvatarPicker from "@/components/AvatarPicker";
 import BannerEditor, { BannerView } from "@/components/BannerEditor";
@@ -641,6 +642,7 @@ export default function Profile() {
           Rendered in BOTH view and edit modes — parity is mandatory. */}
       {!isGuest && user?.username && (
         <>
+          <FireWalletCard />
           <ProgressCard username={user.username} isOwner={true} />
           <ProgressionBadges username={user.username} isOwner={true} />
         </>
