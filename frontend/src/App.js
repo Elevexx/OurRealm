@@ -42,6 +42,8 @@ import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
 import AdminFAQ from "@/pages/AdminFAQ";
 import AdminLevelBuilder from "@/pages/AdminLevelBuilder";
+import AdminLeaderboardSettings from "@/pages/AdminLeaderboardSettings";
+import Leaderboards from "@/pages/Leaderboards";
 import FAQPage from "@/pages/FAQPage";
 import AdminHashtags from "@/pages/AdminHashtags";
 import HashtagFeed from "@/pages/HashtagFeed";
@@ -150,6 +152,8 @@ function App() {
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
             <Route path="/admin/faq" element={<ShellRoute><AdminFAQ /></ShellRoute>} />
             <Route path="/admin/level-builder" element={<ShellRoute><AdminLevelBuilder /></ShellRoute>} />
+            <Route path="/admin/leaderboards" element={<ShellRoute><AdminLeaderboardSettings /></ShellRoute>} />
+            <Route path="/leaderboards" element={<ShellRoute><Leaderboards /></ShellRoute>} />
             <Route path="/faq" element={<ShellRoute><FAQPage /></ShellRoute>} />
             <Route path="/terms" element={<TermsOfServicePage />} />
             <Route path="/terms-conditions" element={<TermsConditionsPage />} />

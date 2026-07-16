@@ -1,0 +1,40 @@
+{
+  "summary": "Iter-77 Leaderboards + Profile Progression Parity — 12/12 backend pytests PASS + all 10 frontend review-request scenarios PASS end-to-end. Verified: all 10 categories (reputation/level/achievements/posts/likes/comments/followers/realms/weekly_activity/alltime_activity) × 4 periods return ranked rows with correct schema (category/period/audience/updated_at/total/page/page_size/me/rows/settings), no deleted_ or null-username users leak, /leaderboards/me returns reputation+global_rank+total_ranked+weekly_reputation, non-founder gets 403 on admin endpoints, cache_seconds clamped [30-86400], tie_breaker validated ('reputation'|'alphabetical', bogus falls back to 'reputation'), disabled category → 400, refresh cache founder-only, hidden users (stealth) removed from public rows while /me still returns display_rank with hidden:True. Frontend: /profile parity — progress-card + progression-badges + view-leaderboards-button all visible in BOTH edit and view mode; progression-badge-1 click shows progression-badge-detail; profile-level-badge-edit click OK; view-leaderboards-button navigates to /leaderboards; leaderboard-my-rank + category/period/audience chips + search + row click all functional (level cat shows level names 'Rising Star (L4)' as scores, search 'stealth' → 1 row, row click → /profile/stealth); public profile /profile/auditcheckreal shows progression-badges + view-leaderboards-button; /admin/leaderboards toggle-cat-achievements off → save → GET /api/leaderboards?category=achievements returns 400, toggle back on → 200; hide auditcheckreal via lb-hide-input+lb-hide-add+lb-settings-save → 0 rows in search, unhide → 1 row restored; mobile 390x844 both /profile and /leaderboards render correctly, category chips horizontally scrollable (scrollWidth=1000 > clientWidth=366). Settings & data fully restored (hidden=[], all 10 cats enabled, cache=300, tie=reputation).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "PATCH /api/admin/leaderboards/settings (enabled_categories)",
+        "issue": "When a category is toggled off and back on, its position in enabled_categories moves to the end (e.g., 'achievements' now stored last after off→on cycle). The immutable category_order field in DEFAULT_SETTINGS is preserved, but /api/admin/leaderboards/settings returns enabled_categories only, and Leaderboards.jsx iterates it in stored order — so chip position visibly changes. If a stable display order is desired, either sort enabled_categories by CATEGORIES constant when returning, or have the frontend order by category_order intersected with enabled_categories."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_leaderboards.py",
+    "/app/test_reports/pytest/iter77_leaderboards.xml"
+  ],
+  "action_items": [
+    "P3 (optional / minor): Stabilize enabled_categories order in leaderboards.py::settings_patch so toggling a category off then on preserves its original position (sort by CATEGORIES constant when persisting). Currently the chip order on /leaderboards shifts after each toggle cycle. Cosmetic only; all functionality is correct."
+  ],
+  "critical_code_review_comments": [
+    "Hidden-user policy at leaderboards.py:186-190 is implemented correctly and matches the spec: hidden users are removed from public rows but the 'me' field is preserved with hidden:True + display_rank so the user retains a private-rank UX. This is a good separation of concerns and matches the founder's stated policy.",
+    "Cache invalidation on tie_breaker change (line 257-258) is correct — leaderboard_cache.delete_many({}) forces recompute with new sort. However, changing 'hidden_usernames' does NOT clear cache: hidden filtering happens at serving time (line 186-190) which is correct for hidden state changes but means the tests must call POST /refresh separately if they modified cached rows via computation-affecting fields — currently the code only invalidates on tie_breaker. Consider documenting or expanding auto-invalidation.",
+    "leaderboards.py::_compute_rows caps users at 5000 (line 74). For sites larger than ~5k real members this will silently truncate leaderboards. Acceptable for current scale but note as growth cliff.",
+    "PATCH endpoint accepts any subset of DEFAULT_SETTINGS keys but has no strict schema validation (e.g., 'public' bool, 'friends_enabled' bool). A payload with malformed types is silently coerced/passed through. Consider Pydantic model for future hardening.",
+    "GET /api/leaderboards page_size max is 50 (line 175) — no way to page > 50 for admin/moderation use. Non-blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_leaderboards.py (new — 12 tests, all pass)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% (10/10 review scenarios)"},
+  "test_credentials": "Founder: stealth / Password1$; Member: auditcheckreal / Password1$ (see /app/memory/test_credentials.md)",
+  "seed_data_creation": "None persistent. Test flow toggled category 'achievements' off then on (final state = all 10 enabled), added and removed 'auditcheckreal' from hidden_usernames (final state = []), patched cache_seconds/tie_breaker within the clamp+validation tests then restored to defaults (300 / 'reputation'). All settings verified restored via direct MongoDB read at end of run. NOTE: 'enabled_categories' list order in DB now has 'achievements' at the end (was originally 3rd) due to the toggle-off/on cycle — see minor issue above.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Leaderboards + Profile parity feature is fully verified. Backend: /app/backend/tests/test_leaderboards.py has 12 passing tests covering categories, periods, /me, founder settings (403 guard, cache_seconds clamp, tie_breaker validation, disabled category 400, refresh founder-only, hidden users flow). Frontend testids confirmed: leaderboards-page, leaderboard-my-rank, leaderboard-refresh, leaderboard-categories, leaderboard-cat-{reputation|level|achievements|posts|likes|comments|followers|realms|weekly_activity|alltime_activity}, leaderboard-aud-{global|friends|realm}, leaderboard-period-{today|week|month|all}, leaderboard-search, leaderboard-rows, leaderboard-row-{username}, leaderboard-prev, leaderboard-next, leaderboard-loading, leaderboard-error, leaderboard-empty. Admin: admin-leaderboard-settings, lb-settings-view-public, lb-settings-categories, lb-toggle-cat-{category} (NOT lb-cat-*), lb-settings-general, lb-toggle-friends, lb-toggle-realm, lb-toggle-top3, lb-toggle-rank-summary, lb-cache-seconds, lb-tie-breaker, lb-refresh-cache, lb-settings-hidden, lb-hide-input, lb-hide-add, lb-hidden-empty, lb-hidden-list, lb-hidden-{username}, lb-unhide-{username}, lb-settings-save, lb-settings-error, lb-settings-loading. Progression: progression-badges, progression-badges-row, progression-badge-{level_number}, progression-badge-detail, reputation-summary, view-leaderboards-button. Profile parity: progress-card + progression-badges + view-leaderboards-button rendered in BOTH edit and view mode at Profile.jsx:642-647. Enabled categories order in DB has drifted (achievements is last) — non-blocking. Note stealth is currently Rising Star (L4), 300 reputation, global rank #1 of 77 real members."
+}

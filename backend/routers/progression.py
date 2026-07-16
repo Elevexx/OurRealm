@@ -26,6 +26,16 @@ def _sanitize_tasks(tasks):
             for t in tasks]
 
 
+@router.get("/ladder")
+async def public_ladder(current: CurrentUser):
+    """Published level ladder — for next-level previews and locked badges."""
+    from services.progression.engine import published_levels
+    levels = await published_levels()
+    return {"levels": [{k: l.get(k) for k in
+                        ("id", "name", "level_number", "short_description", "graphics")}
+                       for l in levels]}
+
+
 @router.get("/me")
 async def my_progression(current: CurrentUser):
     flags = await get_flags()

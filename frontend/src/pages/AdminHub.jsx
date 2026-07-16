@@ -97,6 +97,16 @@ const CARDS = [
     statKey: null,
   },
   {
+    to: "/admin/leaderboards",
+    title: "Leaderboard Settings",
+    description: "Enable boards, cache duration, tie-breaking, and hidden users.",
+    Icon: BarChart3,
+    accent: "#F4C84A",
+    badge: "NEW",
+    roles: ["founder"],
+    statKey: null,
+  },
+  {
     id: "public-support",
     to: "/profile/support",
     title: "Public Support & FAQ",

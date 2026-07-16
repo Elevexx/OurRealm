@@ -17,6 +17,7 @@ import ReportButton from "@/components/ReportButton";
 import ProfileBadges from "@/components/ProfileBadges";
 import LevelBadge from "@/components/progression/LevelBadge";
 import ProgressCard from "@/components/progression/ProgressCard";
+import ProgressionBadges from "@/components/progression/ProgressionBadges";
 import {
   NotesBody, BlogBody, VideosBody, MusicBody, PodcastsBody, PhotosBody, PollsBody, RadarBody,
 } from "@/components/ProfileWidgetBodies";
@@ -396,7 +397,8 @@ export default function FounderProfile() {
       </div>
 
       {/* Public progression summary (visibility enforced by backend) */}
-      <ProgressCard username={profile.username} isOwner={false} />
+      <ProgressCard username={profile.username} isOwner={isOwner} />
+      <ProgressionBadges username={profile.username} isOwner={isOwner} />
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={widgets.filter((w) => ALLOWED_WIDGET_TYPES.has(w.type) || !!w.editor_config).map((w) => w.id)} strategy={rectSortingStrategy}>
