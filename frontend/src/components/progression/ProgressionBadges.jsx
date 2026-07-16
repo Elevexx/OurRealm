@@ -36,7 +36,10 @@ export default function ProgressionBadges({ username, isOwner }) {
       <div className="text-xs uppercase tracking-[0.25em] mb-3 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
         <Award size={13} style={{ color: "var(--primary)" }} /> Progression Badges
       </div>
-      <div className="flex gap-2 flex-wrap" data-testid="progression-badges-row">
+      <div
+        className="grid gap-2"
+        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(104px, 100%), 1fr))" }}
+        data-testid="progression-badges-row">
         {ladder.map((l) => {
           const earned = completedByName[l.name];
           const isCurrent = l.name === currentName;
@@ -45,9 +48,9 @@ export default function ProgressionBadges({ username, isOwner }) {
           return (
             <button key={l.id} type="button"
               onClick={() => setDetail(detail?.id === l.id ? null : { ...l, earned, isCurrent })}
-              className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg"
+              className="flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-lg w-full"
               style={{
-                width: 74,
+                minHeight: 76,
                 border: `1px solid ${locked ? "var(--border-col)" : accent}`,
                 background: isCurrent ? `color-mix(in srgb, ${accent} 12%, transparent)` : "var(--surface-2)",
                 opacity: locked ? 0.55 : 1,
@@ -59,7 +62,8 @@ export default function ProgressionBadges({ username, isOwner }) {
                 : locked ? <Lock size={20} style={{ color: "var(--text-muted)" }} />
                   : isCurrent ? <Star size={20} style={{ color: accent }} />
                     : <Trophy size={20} style={{ color: accent }} />}
-              <span className="text-[10px] font-semibold text-center leading-tight" style={{ color: locked ? "var(--text-muted)" : "var(--text-main)" }}>
+              <span className="text-[11px] font-semibold text-center leading-tight break-words w-full"
+                style={{ color: locked ? "var(--text-muted)" : "var(--text-main)" }}>
                 {l.name}
               </span>
             </button>

@@ -33,19 +33,19 @@ function Bar({ pct, accent }) {
 
 function TaskRow({ t, accent, navigate }) {
   return (
-    <div className="flex items-start gap-2.5 py-2" data-testid={`progress-task-${t.id}`}>
+    <div className="flex items-start gap-2.5 py-2 flex-wrap" data-testid={`progress-task-${t.id}`}>
       {t.completed
         ? <CheckCircle2 size={17} style={{ color: accent, flexShrink: 0, marginTop: 1 }} aria-label="Completed" />
         : <Circle size={17} style={{ color: "var(--text-muted)", flexShrink: 0, marginTop: 1 }} aria-label="Not completed" />}
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium" style={{
+      <div className="flex-1 min-w-[180px]">
+        <div className="text-sm font-medium break-words" style={{
           color: t.completed ? "var(--text-muted)" : "var(--text-main)",
           textDecoration: t.completed ? "line-through" : "none",
         }}>
           {t.name}{!t.required && <span className="text-[10px] ml-1.5" style={{ color: "var(--text-muted)" }}>(optional)</span>}
         </div>
         {t.description && !t.completed && (
-          <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{t.description}</div>
+          <div className="text-xs mt-0.5 break-words" style={{ color: "var(--text-muted)" }}>{t.description}</div>
         )}
         {t.required_value > 1 && (
           <div className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
@@ -205,9 +205,9 @@ export default function ProgressCard({ username, isOwner }) {
           </span>
         </div>
       )}
+      <div className="mt-2.5"><Bar pct={pct} accent={accent} /></div>
       {(expanded || !isOwner) && (
       <>
-      <div className="mt-2.5"><Bar pct={pct} accent={accent} /></div>
 
       {status === "paused_level" && (
         <div className="mt-3 text-xs flex items-center gap-2" style={{ color: "var(--text-muted)" }} data-testid="progress-card-paused">
