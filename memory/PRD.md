@@ -2699,3 +2699,31 @@ Route: https://ourrealm.social/admin/level-builder → "Activation" tab. Click s
 
 ## Backlog (unchanged, deferred per user)
 - P1 JWT_SECRET rotation + CORS scoping; P1 task-accuracy audit; P2/P3 as before. NO new feature work until production activation verified by user.
+
+---
+
+# July 2026 — Iteration 78-79: Production Progression Bug-Fix Pass + Responsive Audit (COMPLETE, 100% tested)
+
+## User confirmed production activation succeeded (47 eligible = 47 tracked, 0 failures, all flags ON).
+
+## Bug 1 — Progress Card accordion (FIXED)
+ProgressCard.jsx: header is now a full-width ≥44px button with aria-expanded; whole row tappable; chevron down=collapsed/up=expanded; collapsed shows header+count+progress bar only; expanded state persists across remounts via module-level `expandedMemory` Map keyed by username; after successful claim card re-expands showing the new level.
+
+## Bug 2 — Black screen on claim (ROOT CAUSE + FIX)
+Root cause: nested backdrop-filters — the CelebrationModal backdrop was rgba(0,0,0,0.7)+blur(8px) and the inner card used .or-surface which in neon mode is rgba(15,35,60,0.55) glass with its OWN blur(18px). Stacked backdrop-filters inside a dimmed fixed overlay render near-black on iOS Safari (known WebKit issue), making the modal invisible → page looked black + "stuck" (tapping the invisible card hit stopPropagation).
+Fix: backdrop rgba(0,0,0,0.45) with NO blur; new `.or-modal-card` CSS (index.css) = opaque layered background (#0d1626 base) + `backdrop-filter:none !important`; Escape-to-close; claimingRef double-submit guard; celebration only if response.completed_level; refetch failure ≠ claim failure; finally-block cleanup. Verified via getComputedStyle in tests: card bg rgb(13,22,38) opaque, no filters.
+
+## Bug 3 — Stale leaderboards after claim (ROOT CAUSE + FIX)
+Root cause: leaderboard_cache has 300s TTL and claims never invalidated it; frontend rank fetched only on mount.
+Fix: engine.py claim_level() now `db.leaderboard_cache.delete_many({})` after successful non-idempotent claim; ProgressCard dispatches `or-progression-claimed` CustomEvent; ProgressionBadges listens → refetches ladder+summary+/leaderboards/me. Profile rank and leaderboard page both read the same _cached_rows source (canonical). Founder repair action already exists: POST /api/admin/leaderboards/refresh (idempotent, audited).
+
+## Task 4 — Responsive audit (CERTIFIED)
+ProgressionBadges: CSS grid `repeat(auto-fill, minmax(min(104px,100%),1fr))`, equal-height 76px cards, all 8 badges always visible, states distinct. TaskRow: flex-wrap + min-w-[180px] + break-words; action chips wrap below text at narrow widths. Layout global bottom padding calc(110px + safe-area) verified clearing bottom nav everywhere.
+Certified at 18 viewports 320x568→2560x1440: 0px horizontal overflow, min badge width ≥105px, columns 2@320→3@390→4@600→6-7@768-834→8@≥1024; zoom 150%/200% pass; long content pass; celebration modal fits at 320 and 1920. LIMITATION: test tooling is chromium-only (webkit/firefox engines unavailable); CSS techniques used are standard and safe cross-engine.
+
+## Tests
+- Backend: 10/10 test_progression_claim_flow.py (claim advance-one-level, idempotent replay no duplicates, cache invalidation, rank consistency, stealth untouched) + 12/12 test_leaderboards.py regression = 22/22.
+- Frontend E2E: iteration_78 (claim flow, no black screen, live rank update) + iteration_79 (10-viewport matrix, accordion, wraps, zoom) = all pass. Screenshots in /app/test_reports/iter79_*.png.
+- Preview throwaway QA user: clmc8069d / Password1$ (Explorer, 100 rep) left in preview DB intentionally.
+
+## Deploy note: user must click Deploy to push these fixes to ourrealm.social.
