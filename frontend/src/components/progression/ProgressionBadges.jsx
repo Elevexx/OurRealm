@@ -6,6 +6,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Award, Lock, Star, TrendingUp, Trophy } from "lucide-react";
 import apiClient from "@/api/client";
+import { CollapsibleHeader, useAccordionState } from "./CollapsibleHeader";
 
 export default function ProgressionBadges({ username, isOwner }) {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ export default function ProgressionBadges({ username, isOwner }) {
   const [summary, setSummary] = useState(null);
   const [rank, setRank] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [expanded, setExpanded] = useAccordionState(`badges:${username}`, true);
 
   useEffect(() => {
     const loadAll = () => {
@@ -33,11 +35,19 @@ export default function ProgressionBadges({ username, isOwner }) {
 
   return (
     <div className="or-surface p-4 mb-5" data-testid="progression-badges">
-      <div className="text-xs uppercase tracking-[0.25em] mb-3 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
-        <Award size={13} style={{ color: "var(--primary)" }} /> Progression Badges
-      </div>
+      <CollapsibleHeader
+        icon={<Award size={16} style={{ color: "var(--primary)" }} aria-hidden="true" />}
+        title="Progression Badges"
+        expanded={expanded}
+        onToggle={() => setExpanded((e) => !e)}
+        testid="progression-badges-header"
+        titleTestid="progression-badges-title"
+        arrowTestid="progression-badges-toggle"
+      />
+      {expanded && (
+      <>
       <div
-        className="grid gap-2"
+        className="grid gap-2 mt-2.5"
         style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(104px, 100%), 1fr))" }}
         data-testid="progression-badges-row">
         {ladder.map((l) => {
@@ -92,6 +102,8 @@ export default function ProgressionBadges({ username, isOwner }) {
       <button className="or-btn w-full mt-4" onClick={() => navigate("/leaderboards")} data-testid="view-leaderboards-button">
         <Trophy size={14} /> VIEW LEADERBOARDS
       </button>
+      </>
+      )}
     </div>
   );
 }

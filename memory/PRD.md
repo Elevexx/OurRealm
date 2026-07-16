@@ -2727,3 +2727,9 @@ Certified at 18 viewports 320x568→2560x1440: 0px horizontal overflow, min badg
 - Preview throwaway QA user: clmc8069d / Password1$ (Explorer, 100 rep) left in preview DB intentionally.
 
 ## Deploy note: user must click Deploy to push these fixes to ourrealm.social.
+
+## Iteration 79b — Unified Progression Accordion (Task 5, verified)
+- New shared `components/progression/CollapsibleHeader.jsx`: `CollapsibleHeader` (identical typography/height/padding/arrow rotation/a11y) + `useAccordionState(key)` hook (module-level Map persistence).
+- ProgressCard refactored to use it (no lookalike duplication); ProgressionBadges now uses the SAME component — header matches Progress card exactly (computed styles verified: 14px/600/same color/44px), whole row tappable, aria-expanded, ChevronDown rotates 180°.
+- Collapsed badges section hides grid + reputation + weekly + rank + View Leaderboards with zero residual height (78px section = padding+header); state persists across profile Save rerenders (keys progress:${username} / badges:${username}).
+- Testids: progression-badges-header/-title/-toggle. Needs user redeploy to reach production.

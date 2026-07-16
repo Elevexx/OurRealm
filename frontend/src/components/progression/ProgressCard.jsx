@@ -7,15 +7,13 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  CheckCircle2, Circle, ChevronDown, ChevronUp, History, Loader2,
+  CheckCircle2, Circle, History, Loader2,
   RefreshCw, Sparkles, Trophy, PauseCircle, Archive,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import CelebrationModal from "./CelebrationModal";
 import { invalidateLevelBadge } from "./LevelBadge";
-
-// Survives component remounts on the same page; cleared on full page load.
-const expandedMemory = new Map();
+import { CollapsibleHeader, useAccordionState } from "./CollapsibleHeader";
 
 function Bar({ pct, accent }) {
   return (
@@ -79,13 +77,7 @@ export default function ProgressCard({ username, isOwner }) {
   const [history, setHistory] = useState(null);
   // Expanded state persists across remounts on the same page (spec: no
   // reset on ordinary React rerenders). Keyed per profile username.
-  const [expanded, setExpandedState] = useState(() =>
-    expandedMemory.has(username) ? expandedMemory.get(username) : true);
-  const setExpanded = (v) => {
-    const next = typeof v === "function" ? v(expandedMemory.get(username) ?? true) : v;
-    expandedMemory.set(username, next);
-    setExpandedState(next);
-  };
+  const [expanded, setExpanded] = useAccordionState(`progress:${username}`, true);
   const claimingRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -177,23 +169,20 @@ export default function ProgressCard({ username, isOwner }) {
         backgroundSize: "cover", backgroundPosition: "center",
       } : undefined}>
       {isOwner ? (
-        <button type="button" className="w-full flex items-center gap-2 flex-wrap text-left"
-          style={{ minHeight: 44 }}
-          onClick={() => setExpanded((e) => !e)}
-          aria-expanded={expanded}
-          aria-label={`${settings.progress_bar_label || `${level.name || "Level"} Progress`} — ${expanded ? "collapse" : "expand"}`}
-          data-testid="progress-card-header">
-          <Sparkles size={16} style={{ color: accent }} aria-hidden="true" />
-          <h3 className="font-semibold text-sm flex-1" style={{ color: "var(--text-main)" }} data-testid="progress-card-title">
-            {settings.progress_bar_label || `${level.name || "Level"} Progress`}
-          </h3>
-          <span className="text-xs font-semibold" style={{ color: accent }} data-testid="progress-card-count">
-            {summary.completed_task_count ?? 0}/{summary.required_task_count ?? 0} Tasks Completed
-          </span>
-          <span className="starbar-icon" style={{ width: 30, height: 30 }} aria-hidden="true" data-testid="progress-card-toggle">
-            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </span>
-        </button>
+        <CollapsibleHeader
+          icon={<Sparkles size={16} style={{ color: accent }} aria-hidden="true" />}
+          title={settings.progress_bar_label || `${level.name || "Level"} Progress`}
+          right={
+            <span className="text-xs font-semibold" style={{ color: accent }} data-testid="progress-card-count">
+              {summary.completed_task_count ?? 0}/{summary.required_task_count ?? 0} Tasks Completed
+            </span>
+          }
+          expanded={expanded}
+          onToggle={() => setExpanded((e) => !e)}
+          testid="progress-card-header"
+          titleTestid="progress-card-title"
+          arrowTestid="progress-card-toggle"
+        />
       ) : (
         <div className="flex items-center gap-2 flex-wrap">
           <Sparkles size={16} style={{ color: accent }} aria-hidden="true" />
