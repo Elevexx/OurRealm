@@ -196,6 +196,13 @@ async def upload_track(
     # trust the frontend gate alone.
     rights_confirmed: bool = Form(False),
     app_version: str = Form(""),
+    classification_id: str = Form(""),
+    caption: str = Form(""),
+    visibility: str = Form("public"),
+    # For You composer uploads defer the canonical post to the SHARE step
+    # (create_post marks it canonical) so caption/hashtags/audience land
+    # on the one shared record.
+    defer_post: bool = Form(False),
 ):
     if not rights_confirmed:
         raise HTTPException(
@@ -283,8 +290,58 @@ async def upload_track(
         },
         "created_at": rec.created_at,
     }
+    from services import sound_posts as sp
+    cid = (classification_id or "").strip() or sp.classification_id_for_category(category)
+    valid_ids = {c["id"] for c in await sp.list_classifications()}
+    doc["classification_id"] = cid if cid in valid_ids else "other"
+    doc["visibility"] = _normalise_visibility(visibility)
     await db.tracks.insert_one(doc)
-    return {"track": _public(doc, viewer_id=current["id"])}
+    doc.pop("_id", None)
+    post = None
+    if not defer_post:
+        post = await sp.create_canonical_post(doc, current, caption=caption,
+                                              source_composer="sounds")
+    out = _public(doc, viewer_id=current["id"])
+    if post:
+        out["post"] = {"id": post["id"], "fire_total": 0, "fire_count": 0,
+                       "comments": 0, "audience": post.get("audience"),
+                       "sound_classification_id": post.get("sound_classification_id")}
+    return {"track": out}
+
+
+@router.get("/classifications")
+async def sound_classifications():
+    """Shared classification list — both composers load from here."""
+    from services import sound_posts as sp
+    return {"classifications": await sp.list_classifications()}
+
+
+class ClassificationPatch(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=60)
+    active: Optional[bool] = None
+    order: Optional[int] = None
+
+
+@router.patch("/admin/classifications/{cid}")
+async def admin_patch_classification(cid: str, payload: ClassificationPatch, current: CurrentUser):
+    """Founder rename — existing sound posts keep the stable id and pick
+    up the new display name automatically."""
+    if get_admin_role(current) != ROLE_FOUNDER:
+        raise HTTPException(status_code=403, detail="Founder access only")
+    set_ops = {}
+    if payload.name is not None and payload.name.strip():
+        set_ops["name"] = payload.name.strip()
+    if payload.active is not None:
+        set_ops["active"] = bool(payload.active)
+    if payload.order is not None:
+        set_ops["order"] = int(payload.order)
+    if not set_ops:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    r = await db.sound_classifications.update_one({"id": cid}, {"$set": set_ops})
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="Classification not found")
+    from services import sound_posts as sp
+    return {"classifications": await sp.list_classifications(force=True)}
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -345,6 +402,15 @@ async def update_track(track_id: str, payload: TrackUpdatePayload, current: Curr
 
     set_ops["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.tracks.update_one({"id": track_id}, {"$set": set_ops})
+    # Keep the canonical post mirrored (title/cover/audience/classification).
+    try:
+        from services import sound_posts as sp
+        if payload.category is not None:
+            await db.tracks.update_one({"id": track_id}, {"$set": {
+                "classification_id": sp.classification_id_for_category(payload.category)}})
+        await sp.sync_canonical_from_track(track_id)
+    except Exception:  # noqa: BLE001
+        pass
     fresh = await db.tracks.find_one({"id": track_id})
     return {"track": _public(fresh, viewer_id=current["id"])}
 
@@ -474,6 +540,8 @@ async def feed(
     chart: Optional[str] = "Top 100",
     radius: Optional[str] = None,
     q: Optional[str] = None,
+    sort: Optional[str] = None,
+    window: str = "24h",
     limit: int = 50,
 ):
     query: dict = {"is_ai_generated": False}
@@ -521,7 +589,38 @@ async def feed(
     # ── Phase 4B — Personalization (70% global / 30% user signal)
     items = await _apply_personalization(current["id"], items, chart=chart)
 
-    return {"tracks": [_public(t, viewer_id=current["id"]) for t in items]}
+    out = [_public(t, viewer_id=current["id"]) for t in items]
+    # Canonical post + live Fire data on every card (batched).
+    try:
+        from services import sound_posts as sp
+        await sp.attach_posts_to_tracks(out, current["id"])
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Fire-ranked Sounds — identical rules to the For You fire sort:
+    # window fire desc → created desc (stable ids keep ties deterministic).
+    if sort == "fire":
+        try:
+            from services.fire_power import get_fire_flags, window_fire_map
+            fflags = await get_fire_flags()
+            if fflags.get("fire_reactions") and fflags.get("fire_ranked_feed"):
+                pids = [t["post"]["id"] for t in out if t.get("post")]
+                fmap = await window_fire_map(pids, window)
+
+                def _fire_of(t):
+                    p = t.get("post")
+                    if not p:
+                        return 0
+                    if fmap is None:  # window == "all" → lifetime totals
+                        return int(p.get("fire_total") or 0)
+                    return fmap.get(p["id"], 0)
+
+                out.sort(key=lambda t: (t.get("created_at") or "", t.get("id") or ""), reverse=True)
+                out.sort(key=_fire_of, reverse=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+    return {"tracks": out}
 
 
 async def _apply_personalization(user_id: str, items, chart: str = "Top 100"):
@@ -606,11 +705,16 @@ async def top100(
     end = start + PAGE_SIZE
     page_items = items[start:end]
 
+    ranked = [{**_public(t, viewer_id=current["id"]), "rank": start + i + 1}
+              for i, t in enumerate(page_items)]
+    try:
+        from services import sound_posts as sp
+        await sp.attach_posts_to_tracks(ranked, current["id"])
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
-        "tracks": [
-            {**_public(t, viewer_id=current["id"]), "rank": start + i + 1}
-            for i, t in enumerate(page_items)
-        ],
+        "tracks": ranked,
         "page": page,
         "page_size": PAGE_SIZE,
         "total": len(items),
@@ -739,7 +843,13 @@ async def tracks_by_username(
     # Filter for public-visible tracks. We pass viewer_id=None since this
     # is a public endpoint; only `visibility=public` rows will survive.
     items = [t for t in items if _can_view_track(t, None)]
-    return {"tracks": [_public(t, viewer_id=None) for t in items]}
+    out = [_public(t, viewer_id=None) for t in items]
+    try:
+        from services import sound_posts as sp
+        await sp.attach_posts_to_tracks(out, None)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"tracks": out}
 
 
 @router.get("/resolve")
@@ -793,3 +903,42 @@ async def my_personalization_status(current: CurrentUser):
         "total_plays": summary.get("total_plays", 0),
         "total_likes": summary.get("total_likes", 0),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Legacy Sound migration — tracks → canonical posts (founder only)
+# ─────────────────────────────────────────────────────────────────────
+class SoundMigrationBody(BaseModel):
+    confirmation_phrase: Optional[str] = None
+
+
+def _require_founder_sound(current: dict) -> None:
+    if get_admin_role(current) != ROLE_FOUNDER:
+        raise HTTPException(status_code=403, detail="Founder access only")
+
+
+@router.post("/admin/migration/dry-run")
+async def sound_migration_dry_run(current: CurrentUser):
+    _require_founder_sound(current)
+    from services import sound_posts as sp
+    return await sp.migration_dry_run()
+
+
+@router.post("/admin/migration/execute")
+async def sound_migration_execute(body: SoundMigrationBody, current: CurrentUser):
+    _require_founder_sound(current)
+    if (body.confirmation_phrase or "").strip() != "MIGRATE SOUNDS TO POSTS":
+        raise HTTPException(status_code=400,
+                            detail='Type "MIGRATE SOUNDS TO POSTS" to confirm')
+    from services import sound_posts as sp
+    return await sp.migration_execute(current)
+
+
+@router.post("/admin/migration/rollback")
+async def sound_migration_rollback(body: SoundMigrationBody, current: CurrentUser):
+    _require_founder_sound(current)
+    if (body.confirmation_phrase or "").strip() != "ROLLBACK SOUND MIGRATION":
+        raise HTTPException(status_code=400,
+                            detail='Type "ROLLBACK SOUND MIGRATION" to confirm')
+    from services import sound_posts as sp
+    return await sp.migration_rollback(current)

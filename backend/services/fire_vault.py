@@ -713,7 +713,11 @@ async def post_inspector(post_id: str) -> dict:
     p = await db.posts.find_one({"id": post_id},
                                 {"_id": 0, "id": 1, "author_id": 1, "author_username": 1,
                                  "content": 1, "audience": 1, "fire_total": 1, "fire_count": 1,
-                                 "likes": 1, "created_at": 1})
+                                 "likes": 1, "created_at": 1, "media_type": 1,
+                                 "content_type": 1, "sound_track_id": 1, "sound_title": 1,
+                                 "sound_url": 1, "sound_cover_url": 1,
+                                 "sound_classification_id": 1, "is_canonical_sound": 1,
+                                 "source_composer": 1, "moderation_status": 1})
     if not p:
         raise HTTPException(status_code=404, detail="Post not found")
     reactions = [r async for r in db.post_fire_reactions.find(

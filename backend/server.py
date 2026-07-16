@@ -289,6 +289,14 @@ async def on_startup():
     except Exception as e:
         logger.warning(f"[fire-finalize] startup error: {e}")
 
+    # Canonical Sound posts — indexes + classification seed (idempotent).
+    try:
+        from services import sound_posts as _sp
+        await _sp.ensure_sound_indexes()
+        await _sp.ensure_classifications()
+    except Exception as e:
+        logger.warning(f"[sound-posts] startup error: {e}")
+
     # Realm Pulse — ensure indexes + boot the hourly snapshot loop.
     try:
         from services import realm_pulse as rp

@@ -130,6 +130,30 @@ async def create_post(payload: PostCreate, current: CurrentUser):
         "author_lng": current.get("zip_lng"),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    # Canonical Sound unification — a For You sound post becomes THE
+    # canonical record for its track when the uploader posts it and no
+    # canonical post exists yet. Re-posts (own or others') stay regular
+    # posts with their own separate Fire.
+    if payload.sound_track_id and (payload.media_type == "sound"):
+        try:
+            from services import sound_posts as sp
+            track = await db.tracks.find_one({"id": payload.sound_track_id}, {"_id": 0})
+            if track:
+                doc["content_type"] = "sound"
+                doc["sound_classification_id"] = (track.get("classification_id")
+                    or sp.classification_id_for_category(track.get("category")))
+                if (track.get("user_id") == current["id"]
+                        and not await sp.canonical_post_for_track(track["id"])):
+                    doc["is_canonical_sound"] = True
+                    doc["source_composer"] = "foryou"
+                    # Track mirrors the post audience so the Sounds page
+                    # respects the same privacy setting.
+                    await db.tracks.update_one({"id": track["id"]}, {"$set": {
+                        "visibility": audience.get("visibility") or "public",
+                        "custom_user_ids": list(audience.get("user_ids") or []),
+                    }})
+        except Exception as e:
+            log.warning(f"[sound-canonical] create_post link failed: {e}")
     await db.posts.insert_one(doc)
     # Phase F — hashtag indexing.
     try:
@@ -190,6 +214,13 @@ async def update_post(post_id: str, payload: PostUpdatePayload, current: Current
 
     await db.posts.update_one({"id": post_id}, {"$set": set_ops})
     fresh = await db.posts.find_one({"id": post_id}, {"_id": 0})
+    # Canonical sound — mirror the new audience onto the track so the
+    # Sounds page enforces the same privacy.
+    try:
+        from services import sound_posts as sp
+        await sp.sync_track_from_post(fresh or {})
+    except Exception:
+        pass
     if isinstance(fresh.get("created_at"), str):
         try:
             fresh["created_at"] = datetime.fromisoformat(fresh["created_at"])
@@ -202,7 +233,9 @@ async def update_post(post_id: str, payload: PostUpdatePayload, current: Current
 async def delete_post(post_id: str, current: CurrentUser):
     """Owners can delete their own posts; @stealth can delete ANY post
     (covers AI-generated, seed, demo, regression-test, and future posts)."""
-    post = await db.posts.find_one({"id": post_id}, {"_id": 0, "author_id": 1})
+    post = await db.posts.find_one({"id": post_id},
+                                   {"_id": 0, "author_id": 1, "is_canonical_sound": 1,
+                                    "sound_track_id": 1})
     if not post:
         return {"ok": True, "deleted": post_id}
     is_owner = post.get("author_id") == current["id"]
@@ -219,6 +252,21 @@ async def delete_post(post_id: str, current: CurrentUser):
     await db.posts.delete_one({"id": post_id})
     # Clean dependent rows so likes/comments don't dangle.
     await db.comments.delete_many({"post_id": post_id})
+    # Canonical sound post — the track (and audio file) goes with it so the
+    # Sound disappears from the Sounds page, charts, and search too.
+    if post.get("is_canonical_sound") and post.get("sound_track_id"):
+        try:
+            track = await db.tracks.find_one({"id": post["sound_track_id"]}, {"_id": 0})
+            if track:
+                await db.tracks.delete_one({"id": track["id"]})
+                from services.audio_store import audio_dir, is_safe_audio_filename
+                url = (track.get("file_url") or "")
+                if url.startswith("/api/sounds/file/"):
+                    name = url.rsplit("/", 1)[-1]
+                    if is_safe_audio_filename(name):
+                        (audio_dir() / name).unlink(missing_ok=True)
+        except Exception as e:
+            log.warning(f"[sound-canonical] track cleanup failed: {e}")
     return {"ok": True, "deleted": post_id}
 
 
@@ -437,6 +485,9 @@ async def list_posts(
             from routers.sounds import _can_view_track, _normalise_visibility
             t_cursor = db.tracks.find({}, {"_id": 0}).sort("created_at", -1).limit(200)
             already = {p.get("id") for p in items if p.get("id")}
+            # Canonical sound posts already carry the track — never merge
+            # the raw track again (one canonical record, zero duplicates).
+            already |= {p.get("sound_track_id") for p in items if p.get("sound_track_id")}
             full_viewer = None
             if viewer_id:
                 full_viewer = await db.users.find_one(
@@ -455,6 +506,15 @@ async def list_posts(
                 if not _can_view_track(t, full_viewer):
                     continue
                 visible_tracks.append(t)
+
+            # Global canonical check (not just current page) — a track with
+            # a canonical post is ALWAYS represented by that post.
+            if visible_tracks:
+                canon_ids = set(await db.posts.distinct(
+                    "sound_track_id",
+                    {"sound_track_id": {"$in": [t["id"] for t in visible_tracks]},
+                     "is_canonical_sound": True}))
+                visible_tracks = [t for t in visible_tracks if t["id"] not in canon_ids]
 
             # Batch-lookup artist info for any track row that doesn't
             # carry the denormalised `artist_*` fields. Single round-trip.
