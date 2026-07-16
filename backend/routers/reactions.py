@@ -47,9 +47,26 @@ from core.deps import CurrentUser
 router = APIRouter(prefix="/api/reactions", tags=["reactions"])
 
 
-# Allow-list (variant-selector-16 included for ❤️ and ⚡️, no skin tones).
+# Allow-list (variant-selector-16 included where applicable, no skin
+# tones). Includes every picker emoji plus legacy 🔥 for backward
+# compatibility (old 🔥 reactions still render and can be removed).
 ALLOWED_EMOJIS: frozenset[str] = frozenset([
+    # legacy
     "❤️", "😍", "😘", "🔥", "🙏", "💪", "⚡️",
+    # popular
+    "😂", "👍", "🥰", "😉", "😎",
+    # celebrate
+    "🤩", "🥳", "🎉", "🙌", "👏", "💯", "✅",
+    # fun
+    "🤣", "😭", "😜", "😅", "🤘", "🐇",
+    # surprise
+    "😮", "🤯", "😳", "🫣", "⚠️",
+    # feelings
+    "😢", "😞", "😕", "😣", "🥺", "😡",
+    # responses
+    "👋", "👆", "🫡", "🤔", "👎",
+    # ourrealm
+    "👽", "🛸",
 ])
 
 TARGET_TYPES: frozenset[str] = frozenset([

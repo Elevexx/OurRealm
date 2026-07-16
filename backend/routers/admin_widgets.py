@@ -1256,13 +1256,22 @@ async def list_profile_badges(username: str):
     # Fetch only LIVE badges; disabled badges silently disappear from
     # the public surface even if assignments still exist.
     badges = []
+    # Public member number for the permanent Founding VIP badge.
+    fvip_number = None
+    if "founding_vip" in keys:
+        u = await db.users.find_one({"username": uname},
+                                    {"_id": 0, "founding_vip_member_number": 1})
+        fvip_number = (u or {}).get("founding_vip_member_number")
     async for b in db.badge_registry.find(
         {"key": {"$in": keys}, "status": "live"},
         {"_id": 0},
     ):
+        name = b.get("name")
+        if b["key"] == "founding_vip" and fvip_number:
+            name = f"Founding VIP #{fvip_number}"
         badges.append({
             "key": b["key"],
-            "name": b.get("name"),
+            "name": name,
             "icon": b.get("icon"),
             "color": b.get("color"),
             "bg_color": b.get("bg_color"),

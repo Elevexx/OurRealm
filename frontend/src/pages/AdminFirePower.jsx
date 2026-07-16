@@ -516,6 +516,9 @@ function FoundingVipAdminSection() {
             {stats.enabled ? "ENABLED" : "DISABLED"}
           </span>
           <span className="or-chip">{stats.published ? "Published" : "Unpublished"}</span>
+          <span className="or-chip" style={{ color: "#F4C84A" }} data-testid="fvip-mode-label">
+            Automatically eligible · manually claimed — no Fire is deposited until the user claims
+          </span>
         </div>
         <div className="flex gap-2">
           <button className="or-chip" onClick={load} data-testid="fvip-refresh"><RefreshCw size={11} /> Refresh</button>

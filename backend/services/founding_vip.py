@@ -111,6 +111,19 @@ async def ensure_indexes() -> None:
     await db.founding_vip_rewards.create_index([("status", 1)], name="by_status")
     await db.founding_vip_rewards.create_index([("member_number", 1)], name="by_member_number")
     await db.users.create_index([("member_number", 1)], sparse=True, name="by_member_number")
+    # Permanent Founding VIP badge in the shared registry — SAME source of
+    # truth as all other public-profile badges (user_badges + registry).
+    await db.badge_registry.update_one(
+        {"key": "founding_vip"},
+        {"$setOnInsert": {
+            "id": "badge-founding-vip", "key": "founding_vip",
+            "name": "Founding VIP", "icon": "Trophy",
+            "color": "#F4C84A", "text_color": "#1A1200",
+            "border_color": "#F4C84A", "glow_color": "#F4C84A",
+            "badge_type": "system", "locked": True, "status": "live",
+            "description": "One of OurRealm's first 1,000 members — permanent.",
+            "created_at": _now_iso(),
+        }}, upsert=True)
     _INDEXES_READY = True
 
 
@@ -497,7 +510,8 @@ async def claim(user_id: str, actor: dict, *, force: bool = False,
     await db.user_badges.update_one(
         {"user_id": user_id, "badge_key": "founding_vip"},
         {"$setOnInsert": {"id": f"{user_id}::founding_vip", "user_id": user_id,
-                          "username": (u or {}).get("username"), "badge_key": "founding_vip",
+                          "username": ((u or {}).get("username") or "").lower(),
+                          "badge_key": "founding_vip",
                           "assigned_by": actor.get("username") or "system",
                           "assigned_at": now, "source": "founding_vip_claim"}}, upsert=True)
     # Complete the record

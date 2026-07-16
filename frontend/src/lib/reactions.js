@@ -15,7 +15,22 @@
 import apiClient from "@/api/client";
 import { supabase, isSupabaseConfigured } from "./supabase";
 
-export const ALLOWED_EMOJIS = ["❤️", "😍", "😘", "🔥", "🙏", "💪", "⚡️"];
+// Categorized reaction panel — single source of truth for the shared
+// Messenger picker (DMs, groups, support, realm chat). Fire Power stays
+// a separate control and is NOT part of this grid; the legacy 🔥 emoji
+// remains server-allowed so existing 🔥 reactions still display and can
+// be toggled off, but it is intentionally absent from the picker.
+export const REACTION_CATEGORIES = [
+  { label: "Popular",   emojis: ["❤️", "😂", "😍", "👍", "🥰", "😘", "😉", "😎"] },
+  { label: "Celebrate", emojis: ["🤩", "🥳", "🎉", "🙌", "👏", "💯", "💪", "✅"] },
+  { label: "Fun",       emojis: ["🤣", "😭", "😜", "😅", "🤘", "🐇"] },
+  { label: "Surprise",  emojis: ["😮", "🤯", "😳", "🫣", "⚠️"] },
+  { label: "Feelings",  emojis: ["😢", "😞", "😕", "😣", "🥺", "😡"] },
+  { label: "Responses", emojis: ["🙏", "👋", "👆", "🫡", "🤔", "👎"] },
+  { label: "OurRealm",  emojis: ["👽", "🛸", "⚡️"] },
+];
+
+export const ALLOWED_EMOJIS = REACTION_CATEGORIES.flatMap((c) => c.emojis);
 
 // ── Mongo path ─────────────────────────────────────────────────────────
 export async function setMongoReaction({ targetType, targetId, emoji }) {

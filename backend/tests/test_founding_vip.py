@@ -215,11 +215,9 @@ def test_new_registration_auto_assigns_and_claims(founder_tok):
     assert body["previous_vault_balance"] == vault_before
     assert body["new_vault_balance"] == vault_before + 1000
     assert get_vault(tok) == vault_before + 1000
-    # Explicit assertion for the bug — fail if signup hook worked and the
-    # workaround was unneeded (so we notice when it's fixed)
-    assert not signup_hook_ok, (
-        "on_new_registration signup hook appears to work now — please "
-        "remove the backfill workaround from tests")
+    # Signup hook fixed (assign_member_number falsy-projection bug) — the
+    # hook now auto-assigns numbers + eligibility on registration.
+    assert signup_hook_ok, "on_new_registration signup hook regressed"
 
 
 # ─── 4. Founder guard on admin endpoints ────────────────────────────────
