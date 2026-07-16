@@ -13,7 +13,10 @@ const LABELS = [
   ["lifetime_fire", "Lifetime Fire"],
   ["fire_received", "Fire Received"],
   ["fire_given", "Fire Given"],
+  ["fire_collected", "Fire Collected"],
   ["vault_balance", "Vault Balance"],
+  ["unique_supporters", "Supporters"],
+  ["weekly_fire", "Weekly Fire"],
 ];
 
 export default function PublicFireStats({ username }) {
@@ -45,7 +48,7 @@ export default function PublicFireStats({ username }) {
               <div className="text-sm font-bold"
                 style={{ color: s.visible ? "var(--text-main)" : "var(--text-muted)" }}
                 data-testid={`public-fire-stat-${key}-value`}>
-                {s.visible ? `${(s.value ?? 0).toLocaleString()} 🔥` : (
+                {s.visible ? `${(s.value ?? 0).toLocaleString()}${key === "unique_supporters" ? "" : " 🔥"}` : (
                   <span className="inline-flex items-center gap-1 text-xs" aria-label="Private">
                     <Lock size={10} /> Private
                   </span>
@@ -58,6 +61,12 @@ export default function PublicFireStats({ username }) {
           );
         })}
       </div>
+      {data.stats.most_fired_post?.visible && data.stats.most_fired_post.post_id && (
+        <div className="mt-3 text-[11px]" style={{ color: "var(--text-muted)" }} data-testid="public-fire-most-fired">
+          🔥 Most fired post: <b style={{ color: "#FF7A1A" }}>{data.stats.most_fired_post.value} 🔥</b>
+          {" — "}{data.stats.most_fired_post.preview || "View post"}
+        </div>
+      )}
     </div>
   );
 }

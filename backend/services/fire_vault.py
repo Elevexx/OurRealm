@@ -29,8 +29,9 @@ DEFAULT_SETTLEMENT_HOURS = 24
 _INDEXES_READY = False
 
 WALLET_DEFAULTS = {
-    "vault_balance": 0, "pending_balance": 0,
+    "vault_balance": 0, "pending_balance": 0, "collectable_balance": 0,
     "lifetime_fire_earned": 0, "lifetime_fire_received": 0,
+    "lifetime_fire_collected": 0,
     "largest_single_fire": 0, "largest_daily_fire": 0,
     "largest_weekly_fire": 0, "largest_monthly_fire": 0,
     "last_fire_received_at": None,
@@ -88,22 +89,26 @@ async def set_wallet_config(settlement_hours: int, updated_by: str) -> dict:
 # ── Credit (called from fire_power.react — additive hook) ───────────────
 async def credit_fire(receiver_id: str, sender_id: str, post_id: str,
                       reaction_id: str, amount: int,
-                      idempotency_key: Optional[str] = None) -> Optional[dict]:
-    """Record an earn: pending immediately, vault after settlement delay.
-    Idempotent per reaction mutation via the derived idempotency key."""
+                      idempotency_key: Optional[str] = None,
+                      finalize_at: Optional[str] = None) -> Optional[dict]:
+    """Record an earn: Pending immediately → Collectable at the reaction's
+    edit deadline → Vault when the creator collects. Idempotent."""
     await ensure_vault_indexes()
     amount = int(amount)
     if amount <= 0 or not receiver_id or receiver_id == sender_id:
         return None
-    cfg = await get_wallet_config()
     now = _now()
+    if not finalize_at:
+        cfg = await get_wallet_config()
+        finalize_at = (now + timedelta(hours=cfg["settlement_hours"])).isoformat()
     txn = {
         "id": uuid.uuid4().hex,
         "user_id": receiver_id, "sender_id": sender_id,
         "post_id": post_id, "reaction_id": reaction_id,
-        "amount": amount, "type": "earn", "status": "pending",
+        "amount": amount, "type": "earn", "transaction_type": "earn",
+        "status": "pending", "policy_version": "0.6",
         "created_at": now.isoformat(),
-        "settle_after": (now + timedelta(hours=cfg["settlement_hours"])).isoformat(),
+        "settle_after": finalize_at, "edit_deadline": finalize_at,
         "settled_at": None,
         "idempotency_key": f"{idempotency_key}:earn" if idempotency_key else None,
         "audit": {"source": "fire_reaction"},
@@ -116,12 +121,12 @@ async def credit_fire(receiver_id: str, sender_id: str, post_id: str,
         return None  # retry of an already-credited mutation
     await db.fire_wallets.update_one(
         {"user_id": receiver_id},
-        {"$inc": {"pending_balance": amount,
-                  "lifetime_fire_earned": amount,
-                  "lifetime_fire_received": amount},
-         "$max": {"largest_single_fire": amount},
+        {"$inc": {"pending_balance": amount},
          "$set": {"last_fire_received_at": now.isoformat()},
-         "$setOnInsert": {"vault_balance": 0, "largest_daily_fire": 0,
+         "$setOnInsert": {"vault_balance": 0, "collectable_balance": 0,
+                          "lifetime_fire_earned": 0, "lifetime_fire_received": 0,
+                          "lifetime_fire_collected": 0,
+                          "largest_single_fire": 0, "largest_daily_fire": 0,
                           "largest_weekly_fire": 0, "largest_monthly_fire": 0,
                           "created_at": now.isoformat()}},
         upsert=True)
@@ -129,30 +134,132 @@ async def credit_fire(receiver_id: str, sender_id: str, post_id: str,
     return txn
 
 
-# ── Settlement (lazy, atomic per transaction) ───────────────────────────
+async def adjust_fire(receiver_id: str, sender_id: str, post_id: str,
+                      reaction_id: str, amount: int,
+                      idempotency_key: Optional[str] = None,
+                      finalize_at: Optional[str] = None) -> Optional[dict]:
+    """Negative pending adjustment when the sender lowers/removes Fire
+    inside the edit window. Never drives pending below the reaction's
+    own net (react() only sends true deltas)."""
+    await ensure_vault_indexes()
+    amount = int(amount)
+    if amount >= 0 or not receiver_id or receiver_id == sender_id:
+        return None
+    now = _now()
+    txn = {
+        "id": uuid.uuid4().hex,
+        "user_id": receiver_id, "sender_id": sender_id,
+        "post_id": post_id, "reaction_id": reaction_id,
+        "amount": amount, "type": "earn", "transaction_type": "adjust",
+        "status": "pending", "policy_version": "0.6",
+        "created_at": now.isoformat(),
+        "settle_after": finalize_at or now.isoformat(),
+        "edit_deadline": finalize_at,
+        "idempotency_key": f"{idempotency_key}:adjust" if idempotency_key else None,
+        "audit": {"source": "fire_reaction_edit"},
+    }
+    if txn["idempotency_key"] is None:
+        txn.pop("idempotency_key")
+    try:
+        await db.fire_wallet_transactions.insert_one(txn)
+    except DuplicateKeyError:
+        return None
+    await db.fire_wallets.update_one(
+        {"user_id": receiver_id}, {"$inc": {"pending_balance": amount}}, upsert=True)
+    await db.fire_wallets.update_one(
+        {"user_id": receiver_id, "pending_balance": {"$lt": 0}},
+        {"$set": {"pending_balance": 0}})
+    txn.pop("_id", None)
+    return txn
+
+
+# ── Finalization (Pending → Collectable, lazy + background) ────────────
 async def settle_due(user_id: Optional[str] = None) -> int:
+    """Finalize pending transactions whose edit window has passed:
+    Pending → Collectable. Atomic per transaction, idempotent, batch-safe,
+    resumable. Lifetime Received counts at finalization (net per txn).
+    Emits ONE grouped 'ready to collect' notification per user per run."""
     now_iso = _now_iso()
     q: dict = {"status": "pending", "settle_after": {"$lte": now_iso}}
     if user_id:
         q["user_id"] = user_id
-    settled = 0
+    finalized = 0
+    per_user: dict[str, int] = {}
     async for txn in db.fire_wallet_transactions.find(
-            q, {"_id": 0, "id": 1, "user_id": 1, "amount": 1}):
+            q, {"_id": 0, "id": 1, "user_id": 1, "amount": 1}).limit(2000):
         r = await db.fire_wallet_transactions.update_one(
             {"id": txn["id"], "status": "pending"},
-            {"$set": {"status": "settled", "settled_at": now_iso}})
+            {"$set": {"status": "collectable", "finalized_at": now_iso,
+                      "collectable_at": now_iso, "settled_at": now_iso}})
         if r.modified_count:
+            amt = int(txn["amount"])
             await db.fire_wallets.update_one(
                 {"user_id": txn["user_id"]},
-                {"$inc": {"pending_balance": -int(txn["amount"]),
-                          "vault_balance": int(txn["amount"])}},
+                {"$inc": {"pending_balance": -amt, "collectable_balance": amt,
+                          "lifetime_fire_earned": amt,
+                          "lifetime_fire_received": amt},
+                 "$max": {"largest_single_fire": max(amt, 0)}},
                 upsert=True)
-            settled += 1
-    clamp_q = {"pending_balance": {"$lt": 0}}
+            per_user[txn["user_id"]] = per_user.get(txn["user_id"], 0) + amt
+            finalized += 1
+    clamp_q: dict = {}
     if user_id:
         clamp_q["user_id"] = user_id
-    await db.fire_wallets.update_many(clamp_q, {"$set": {"pending_balance": 0}})
-    return settled
+    for f in ("pending_balance", "collectable_balance", "lifetime_fire_received", "lifetime_fire_earned"):
+        await db.fire_wallets.update_many({**clamp_q, f: {"$lt": 0}}, {"$set": {f: 0}})
+    # Grouped collectable notifications (flag-gated, one per user per run)
+    try:
+        from services.fire_power import get_fire_flags
+        flags = await get_fire_flags()
+        if flags.get("fire_notifications"):
+            from routers.notifications import emit_notification
+            for uid, net in per_user.items():
+                if net > 0:
+                    w = await db.fire_wallets.find_one({"user_id": uid}, {"_id": 0, "collectable_balance": 1})
+                    total = int((w or {}).get("collectable_balance") or 0)
+                    await emit_notification(
+                        uid, "fire_collectable",
+                        payload={"amount": net, "collectable_total": total,
+                                 "message": f"{net} 🔥 is ready to collect — you have {total} 🔥 waiting.",
+                                 "cta": "View Fire Wallet"})
+    except Exception:  # noqa: BLE001
+        pass
+    return finalized
+
+
+finalize_due = settle_due  # canonical Phase 0.6 name
+
+
+# ── Collection (Collectable → Permanent Vault, manual) ─────────────────
+async def collect_fire(user: dict, txn_ids: Optional[list] = None) -> dict:
+    """COLLECT FIRE — moves finalized Collectable Fire into the permanent
+    Vault. Atomic per transaction, idempotent (status-guarded flips),
+    duplicate-collection impossible, batch-safe and resumable."""
+    uid = user["id"]
+    await ensure_vault_indexes()
+    await settle_due(uid)
+    q: dict = {"user_id": uid, "status": "collectable"}
+    if txn_ids:
+        q["id"] = {"$in": [str(t) for t in txn_ids][:500]}
+    now_iso = _now_iso()
+    collected = 0
+    count = 0
+    async for txn in db.fire_wallet_transactions.find(q, {"_id": 0, "id": 1, "amount": 1}).limit(2000):
+        r = await db.fire_wallet_transactions.update_one(
+            {"id": txn["id"], "status": "collectable"},
+            {"$set": {"status": "collected", "collected_at": now_iso}})
+        if r.modified_count:
+            amt = int(txn["amount"])
+            await db.fire_wallets.update_one(
+                {"user_id": uid},
+                {"$inc": {"collectable_balance": -amt, "vault_balance": amt,
+                          "lifetime_fire_collected": amt}},
+                upsert=True)
+            collected += amt
+            count += 1
+    for f in ("collectable_balance", "vault_balance", "lifetime_fire_collected"):
+        await db.fire_wallets.update_many({"user_id": uid, f: {"$lt": 0}}, {"$set": {f: 0}})
+    return {"collected": max(collected, 0), "transactions": count}
 
 
 # ── Reads ───────────────────────────────────────────────────────────────
@@ -160,7 +267,7 @@ async def _window_earned(uid: str, hours: int) -> int:
     since = (_now() - timedelta(hours=hours)).isoformat()
     agg = await db.fire_wallet_transactions.aggregate([
         {"$match": {"user_id": uid, "type": "earn",
-                    "status": {"$in": ["pending", "settled"]},
+                    "status": {"$in": ["pending", "collectable", "collected", "settled"]},
                     "created_at": {"$gte": since}}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
     ]).to_list(1)
@@ -188,6 +295,17 @@ async def wallet_for(user: dict) -> dict:
     out["earned_last_24h"] = day
     out["earned_last_7d"] = week
     out["earned_last_30d"] = month
+    # Pending / collectable breakdown for the wallet UI
+    nxt = await db.fire_wallet_transactions.find(
+        {"user_id": uid, "status": "pending"},
+        {"_id": 0, "settle_after": 1, "amount": 1},
+    ).sort("settle_after", 1).to_list(1)
+    out["pending_count"] = await db.fire_wallet_transactions.count_documents(
+        {"user_id": uid, "status": "pending"})
+    out["next_finalization_at"] = nxt[0]["settle_after"] if nxt else None
+    out["next_finalization_amount"] = int(nxt[0]["amount"]) if nxt else 0
+    out["collectable_count"] = await db.fire_wallet_transactions.count_documents(
+        {"user_id": uid, "status": "collectable"})
     return out
 
 
@@ -203,25 +321,33 @@ async def recalculate_wallet(user_id: str) -> dict:
         }},
     ]).to_list(10)
     by_status = {row["_id"]: row for row in agg}
-    pending = int(by_status.get("pending", {}).get("total") or 0)
-    vault = int(by_status.get("settled", {}).get("total") or 0)
-    lifetime = pending + vault
-    largest = max(int(r.get("largest") or 0) for r in by_status.values()) if by_status else 0
+    pending = max(0, int(by_status.get("pending", {}).get("total") or 0))
+    collectable = max(0, int(by_status.get("collectable", {}).get("total") or 0))
+    # Legacy Phase 0.5 "settled" rows live in the Vault (auto-settled).
+    vault = max(0, int(by_status.get("collected", {}).get("total") or 0)
+                + int(by_status.get("settled", {}).get("total") or 0))
+    lifetime_received = collectable + vault
+    lifetime_collected = vault
+    largest = max((int(r.get("largest") or 0) for r in by_status.values()), default=0)
     last = max((r.get("last") for r in by_status.values() if r.get("last")), default=None)
     before = await db.fire_wallets.find_one({"user_id": user_id}, {"_id": 0}) or {}
     await db.fire_wallets.update_one(
         {"user_id": user_id},
-        {"$set": {"pending_balance": pending, "vault_balance": vault,
-                  "lifetime_fire_earned": lifetime, "lifetime_fire_received": lifetime,
+        {"$set": {"pending_balance": pending, "collectable_balance": collectable,
+                  "vault_balance": vault,
+                  "lifetime_fire_earned": lifetime_received,
+                  "lifetime_fire_received": lifetime_received,
+                  "lifetime_fire_collected": lifetime_collected,
                   "largest_single_fire": largest, "last_fire_received_at": last,
                   "repaired_at": _now_iso()},
          "$setOnInsert": {"largest_daily_fire": 0, "largest_weekly_fire": 0,
                           "largest_monthly_fire": 0, "created_at": _now_iso()}},
         upsert=True)
     after = await db.fire_wallets.find_one({"user_id": user_id}, {"_id": 0})
+    keys = ("vault_balance", "pending_balance", "collectable_balance", "lifetime_fire_earned")
     return {"user_id": user_id,
-            "before": {k: before.get(k) for k in ("vault_balance", "pending_balance", "lifetime_fire_earned")},
-            "after": {k: after.get(k) for k in ("vault_balance", "pending_balance", "lifetime_fire_earned")}}
+            "before": {k: before.get(k) for k in keys},
+            "after": {k: after.get(k) for k in keys}}
 
 
 async def recalculate_all() -> dict:
@@ -252,6 +378,7 @@ async def admin_wallets_overview() -> dict:
     totals = await db.fire_wallets.aggregate([
         {"$group": {"_id": None, "vault": {"$sum": "$vault_balance"},
                     "pending": {"$sum": "$pending_balance"},
+                    "collectable": {"$sum": "$collectable_balance"},
                     "wallets": {"$sum": 1}}},
     ]).to_list(1)
     t = totals[0] if totals else {}
@@ -277,6 +404,7 @@ async def admin_wallets_overview() -> dict:
     return {
         "total_vault_fire": int(t.get("vault") or 0),
         "total_pending_fire": int(t.get("pending") or 0),
+        "total_collectable_fire": int(t.get("collectable") or 0),
         "wallet_count": int(t.get("wallets") or 0),
         "pending_transactions": await db.fire_wallet_transactions.count_documents({"status": "pending"}),
         "largest_wallet": (_rows(top_vault, "vault_balance") or [None])[0],
@@ -362,12 +490,35 @@ async def public_fire_stats(owner_doc: dict, viewer: Optional[dict]) -> dict:
         "lifetime_fire": wallet["lifetime_fire_earned"],
         "fire_given": await fire_given_total(owner_id),
         "fire_received": wallet["lifetime_fire_received"],
+        "fire_collected": wallet["lifetime_fire_collected"],
+        "weekly_fire": wallet["earned_last_7d"],
     }
+    supporters = await db.post_fire_reactions.aggregate([
+        {"$match": {"active": True}},
+        {"$lookup": {"from": "posts", "localField": "post_id", "foreignField": "id", "as": "post"}},
+        {"$match": {"post.author_id": owner_id}},
+        {"$group": {"_id": "$user_id"}}, {"$count": "n"},
+    ]).to_list(1)
+    values["unique_supporters"] = int(supporters[0]["n"]) if supporters else 0
+    top = await db.posts.find_one(
+        {"author_id": owner_id, "fire_total": {"$gt": 0}},
+        {"_id": 0, "id": 1, "fire_total": 1, "content": 1}, sort=[("fire_total", -1)])
+    # Privacy mapping: collected → vault setting; supporters/weekly/top post → fire_received setting
+    field_privacy = {"vault_balance": "vault_balance", "lifetime_fire": "lifetime_fire",
+                     "fire_given": "fire_given", "fire_received": "fire_received",
+                     "fire_collected": "vault_balance", "weekly_fire": "fire_received",
+                     "unique_supporters": "fire_received"}
     stats = {}
     for field, value in values.items():
-        level = privacy[field]
+        level = privacy[field_privacy[field]]
         allowed = is_owner or is_founder or level == "everyone" or (level == "friends" and is_friend)
         stats[field] = {"visible": True, "value": int(value)} if allowed else {"visible": False}
+    top_level = privacy["fire_received"]
+    top_allowed = is_owner or is_founder or top_level == "everyone" or (top_level == "friends" and is_friend)
+    stats["most_fired_post"] = (
+        {"visible": True, "value": int(top["fire_total"]),
+         "post_id": top["id"], "preview": (top.get("content") or "")[:60]}
+        if (top_allowed and top) else {"visible": bool(top_allowed and top)})
     return {"is_owner": is_owner, "stats": stats}
 
 
@@ -389,3 +540,209 @@ async def admin_transactions(username: Optional[str] = None,
         r["receiver_username"] = names.get(r["user_id"])
         r["sender_username"] = names.get(r.get("sender_id"))
     return rows
+
+# ── Phase 0.6: history, reversal, dashboard, inspectors, background job ─
+HISTORY_FILTERS = {"pending", "collectable", "collected", "reversed", "given", "received", "collections", "all"}
+
+
+async def wallet_history(user: dict, flt: str = "all", limit: int = 50) -> list:
+    uid = user["id"]
+    flt = flt if flt in HISTORY_FILTERS else "all"
+    if flt == "given":
+        q: dict = {"sender_id": uid}
+    elif flt == "received":
+        q = {"user_id": uid}
+    elif flt == "collections":
+        q = {"user_id": uid, "status": "collected"}
+    elif flt == "all":
+        q = {"$or": [{"user_id": uid}, {"sender_id": uid}]}
+    else:
+        status = ["collected", "settled"] if flt == "collected" else [flt]
+        q = {"user_id": uid, "status": {"$in": status}}
+    rows = [t async for t in db.fire_wallet_transactions.find(
+        q, {"_id": 0, "idempotency_key": 0}).sort("created_at", -1).limit(min(max(limit, 1), 200))]
+    names = await _usernames_for(list({r["user_id"] for r in rows}
+                                      | {r.get("sender_id") for r in rows if r.get("sender_id")}))
+    for r in rows:
+        r["receiver_username"] = names.get(r["user_id"])
+        r["sender_username"] = names.get(r.get("sender_id"))
+        r["direction"] = "given" if r.get("sender_id") == uid else "received"
+        if r["direction"] == "given":
+            r.pop("id", None)  # transaction ids are admin/debug only
+    return rows
+
+
+async def reverse_reaction(founder: dict, reaction_id: str, reason: str) -> dict:
+    """Founder compensating reversal of a (possibly finalized) reaction.
+    Zeroes the reaction, recomputes the post, releases any active pool
+    reservation and reverses wallet credits per lifecycle stage —
+    all via append-only compensating ledger transactions."""
+    reaction = await db.post_fire_reactions.find_one({"id": reaction_id}, {"_id": 0})
+    if not reaction:
+        raise HTTPException(status_code=404, detail="Reaction not found")
+    now_iso = _now_iso()
+    old_value = int(reaction.get("fire_value") or 0) if reaction.get("active") else 0
+    await db.post_fire_reactions.update_one(
+        {"id": reaction_id},
+        {"$set": {"fire_value": 0, "active": False, "reversed_at": now_iso,
+                  "reversed_by": founder.get("username"), "reversed_reason": reason}})
+    from services.fire_power import recompute_post_fire
+    await recompute_post_fire(reaction["post_id"])
+    # Release remaining pool reservation for the sender
+    sender = reaction["user_id"]
+    agg = await db.fire_power_transactions.aggregate([
+        {"$match": {"reaction_id": reaction_id, "status": "active"}},
+        {"$group": {"_id": None, "net": {"$sum": "$boosted_amount"}}}]).to_list(1)
+    reserved = max(0, int(agg[0]["net"])) if agg else 0
+    if reserved > 0:
+        await db.fire_power_transactions.insert_one({
+            "id": uuid.uuid4().hex, "user_id": sender, "post_id": reaction["post_id"],
+            "reaction_id": reaction_id, "boosted_amount": -reserved,
+            "transaction_type": "admin_reversal_release", "policy_version": "0.6",
+            "effective_at": now_iso, "expires_at": reaction.get("edit_deadline") or now_iso,
+            "status": "active"})
+        await db.fire_pool_counters.update_one({"_id": sender}, {"$inc": {"spent_active": -reserved}})
+        await db.fire_pool_counters.update_one(
+            {"_id": sender, "spent_active": {"$lt": 0}}, {"$set": {"spent_active": 0}})
+    # Reverse wallet credits stage-by-stage
+    reversed_amounts = {"pending": 0, "collectable": 0, "collected": 0}
+    async for txn in db.fire_wallet_transactions.find(
+            {"reaction_id": reaction_id, "status": {"$in": ["pending", "collectable", "collected", "settled"]}},
+            {"_id": 0, "id": 1, "status": 1, "amount": 1, "user_id": 1}):
+        stage = "collected" if txn["status"] in ("collected", "settled") else txn["status"]
+        r = await db.fire_wallet_transactions.update_one(
+            {"id": txn["id"], "status": txn["status"]},
+            {"$set": {"status": "reversed", "reversed_at": now_iso,
+                      "reversed_reason": reason, "reversed_by": founder.get("username")}})
+        if r.modified_count:
+            amt = int(txn["amount"])
+            reversed_amounts[stage] += amt
+            field = {"pending": "pending_balance", "collectable": "collectable_balance",
+                     "collected": "vault_balance"}[stage]
+            inc = {field: -amt}
+            if stage in ("collectable", "collected"):
+                inc["lifetime_fire_received"] = -max(amt, 0)
+                inc["lifetime_fire_earned"] = -max(amt, 0)
+            if stage == "collected":
+                inc["lifetime_fire_collected"] = -max(amt, 0)
+            await db.fire_wallets.update_one({"user_id": txn["user_id"]}, {"$inc": inc}, upsert=True)
+    for f in ("pending_balance", "collectable_balance", "vault_balance",
+              "lifetime_fire_received", "lifetime_fire_earned", "lifetime_fire_collected"):
+        await db.fire_wallets.update_many({f: {"$lt": 0}}, {"$set": {f: 0}})
+    report = {"reaction_id": reaction_id, "post_id": reaction["post_id"],
+              "sender_id": sender, "old_value": old_value,
+              "pool_released": reserved, "wallet_reversed": reversed_amounts,
+              "reason": reason, "reversed_by": founder.get("username"), "at": now_iso}
+    await db.fire_migration_log.insert_one({"id": uuid.uuid4().hex, "action": "reverse_reaction", **report})
+    return report
+
+
+async def admin_dashboard() -> dict:
+    await settle_due()
+    ov = await admin_wallets_overview()
+    now = _now()
+    day = (now - timedelta(hours=24)).isoformat()
+    week = (now - timedelta(days=7)).isoformat()
+    month = (now - timedelta(days=30)).isoformat()
+
+    async def _sum(match):
+        agg = await db.fire_wallet_transactions.aggregate([
+            {"$match": match}, {"$group": {"_id": None, "t": {"$sum": "$amount"}, "n": {"$sum": 1}}}]).to_list(1)
+        return (int(agg[0]["t"]), int(agg[0]["n"])) if agg else (0, 0)
+
+    sent_today, _ = await _sum({"type": "earn", "amount": {"$gt": 0}, "created_at": {"$gte": day}})
+    coll_today = await db.fire_wallet_transactions.count_documents({"status": "collected", "collected_at": {"$gte": day}})
+    coll_week = await db.fire_wallet_transactions.count_documents({"status": "collected", "collected_at": {"$gte": week}})
+    coll_month = await db.fire_wallet_transactions.count_documents({"status": "collected", "collected_at": {"$gte": month}})
+    lifetime = await db.fire_wallets.aggregate([
+        {"$group": {"_id": None, "recv": {"$sum": "$lifetime_fire_received"},
+                    "coll": {"$sum": "$lifetime_fire_collected"}}}]).to_list(1)
+    lt = lifetime[0] if lifetime else {}
+    top_post = await db.posts.find_one(
+        {"fire_total": {"$gt": 0}}, {"_id": 0, "id": 1, "fire_total": 1, "author_username": 1, "content": 1},
+        sort=[("fire_total", -1)])
+    exhausted = 0
+    async for c in db.fire_pool_counters.find({}, {"spent_active": 1}):
+        if int(c.get("spent_active") or 0) > 0:
+            exhausted += 1
+    top_collectable = [w async for w in db.fire_wallets.find({}, {"_id": 0})
+                       .sort("collectable_balance", -1).limit(1)]
+    names = await _usernames_for([w["user_id"] for w in top_collectable])
+    return {
+        **ov,
+        "finalization_queue": await db.fire_wallet_transactions.count_documents({"status": "pending"}),
+        "collectable_transactions": await db.fire_wallet_transactions.count_documents({"status": "collectable"}),
+        "reversed_transactions": await db.fire_wallet_transactions.count_documents({"status": "reversed"}),
+        "lifetime_fire_received_total": int(lt.get("recv") or 0),
+        "lifetime_fire_collected_total": int(lt.get("coll") or 0),
+        "fire_sent_today": sent_today,
+        "collections_today": coll_today,
+        "collections_this_week": coll_week,
+        "collections_this_month": coll_month,
+        "largest_collectable": ({"username": names.get(top_collectable[0]["user_id"]),
+                                 "value": int(top_collectable[0].get("collectable_balance") or 0)}
+                                if top_collectable else None),
+        "top_fire_post": top_post,
+        "users_with_pool_usage": exhausted,
+        "active_pool_reservations": await db.fire_power_transactions.count_documents({"status": "active"}),
+    }
+
+
+async def user_inspector(username: str) -> dict:
+    u = await db.users.find_one({"username": username.lower()},
+                                {"_id": 0, "id": 1, "username": 1, "fire_paused": 1})
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    from services.fire_power import fire_config_for_user, pool_status
+    cfg = await fire_config_for_user(u)
+    pool = await pool_status(u, cfg)
+    wallet = await wallet_for(u)
+    given = await fire_given_total(u["id"])
+    reactions = [r async for r in db.post_fire_reactions.find(
+        {"user_id": u["id"]}, {"_id": 0}).sort("updated_at", -1).limit(15)]
+    history = [t async for t in db.fire_wallet_transactions.find(
+        {"$or": [{"user_id": u["id"]}, {"sender_id": u["id"]}]},
+        {"_id": 0}).sort("created_at", -1).limit(20)]
+    return {"user": {"username": u["username"], "user_id": u["id"],
+                     "fire_paused": bool(u.get("fire_paused"))},
+            "config": cfg, "pool": pool, "wallet": wallet, "fire_given": given,
+            "active_reactions": reactions, "recent_transactions": history}
+
+
+async def post_inspector(post_id: str) -> dict:
+    p = await db.posts.find_one({"id": post_id},
+                                {"_id": 0, "id": 1, "author_id": 1, "author_username": 1,
+                                 "content": 1, "audience": 1, "fire_total": 1, "fire_count": 1,
+                                 "likes": 1, "created_at": 1})
+    if not p:
+        raise HTTPException(status_code=404, detail="Post not found")
+    reactions = [r async for r in db.post_fire_reactions.find(
+        {"post_id": post_id}, {"_id": 0}).sort("fire_value", -1).limit(50)]
+    names = await _usernames_for([r["user_id"] for r in reactions])
+    for r in reactions:
+        r["username"] = names.get(r["user_id"])
+    credits = {}
+    async for row in db.fire_wallet_transactions.aggregate([
+            {"$match": {"post_id": post_id}},
+            {"$group": {"_id": "$status", "total": {"$sum": "$amount"}, "n": {"$sum": 1}}}]):
+        credits[row["_id"]] = {"total": int(row["total"]), "count": int(row["n"])}
+    active = [r for r in reactions if r.get("active")]
+    return {"post": p, "supporter_count": len(active),
+            "largest_fire": max((int(r.get("fire_value") or 0) for r in active), default=0),
+            "standard_fire": sum(1 for r in active if int(r.get("fire_value") or 0) == 1),
+            "boosted_fire": sum(1 for r in active if int(r.get("fire_value") or 0) > 1),
+            "reactions": reactions, "wallet_credits_by_status": credits}
+
+
+async def finalization_loop(interval_seconds: int = 600):
+    """Background finalization — Pending → Collectable even while users
+    are offline. Idempotent, batch-safe, resumable."""
+    import asyncio
+    while True:
+        try:
+            n = await settle_due()
+            if n:
+                log.info(f"[fire-finalize] finalized {n} transaction(s)")
+        except Exception as e:  # noqa: BLE001
+            log.warning(f"[fire-finalize] pass failed: {e}")
+        await asyncio.sleep(interval_seconds)

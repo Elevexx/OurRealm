@@ -832,18 +832,22 @@ function FeedCard({ p, fireStatus, onGuestAction, isGuest, onPostDeleted, onPost
         onClick={(e) => e.stopPropagation()}
         data-testid={`feed-reactions-row-${p.id}`}
       >
-        <ReactionAttachment
-          mode="mongo"
-          targetType="post"
-          targetId={p.id}
-          summary={p.reactions?.summary}
-          myReaction={p.reactions?.my_reaction}
-          isGuest={isGuest}
-          onGuestAction={(why) => onGuestAction(why || "react")}
-          pickerAlign="left"
-          pickerPosition="above"
-          testIdPrefix={`feed-reaction-${p.id}`}
-        />
+        {/* Public posts use ONLY Fire — emoji reactions stay in messaging.
+            The launcher renders only for non-public posts. */}
+        {!(fireStatus?.enabled && ((p.audience?.visibility || "public") === "public")) && (
+          <ReactionAttachment
+            mode="mongo"
+            targetType="post"
+            targetId={p.id}
+            summary={p.reactions?.summary}
+            myReaction={p.reactions?.my_reaction}
+            isGuest={isGuest}
+            onGuestAction={(why) => onGuestAction(why || "react")}
+            pickerAlign="left"
+            pickerPosition="above"
+            testIdPrefix={`feed-reaction-${p.id}`}
+          />
+        )}
       </div>
       <ShareToUserModal
         open={shareOpen}

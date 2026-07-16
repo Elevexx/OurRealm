@@ -224,6 +224,220 @@ function WalletAdminSection() {
   );
 }
 
+function DashboardSection() {
+  const [d, setD] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setBusy(true);
+    try {
+      const r = await apiClient.get("/fire/admin/dashboard");
+      setD(r.data);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Dashboard load failed"); }
+    finally { setBusy(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  if (!d) return <div className="or-surface p-4" data-testid="fire-admin-dashboard"><Loader2 size={16} className="animate-spin" /></div>;
+
+  const stats = [
+    ["Finalization queue", d.finalization_queue],
+    ["Collectable txns", d.collectable_transactions],
+    ["Reversed txns", d.reversed_transactions],
+    ["Fire sent (24h)", d.fire_sent_today],
+    ["Collections today", d.collections_today],
+    ["Collections (7d)", d.collections_this_week],
+    ["Collections (30d)", d.collections_this_month],
+    ["Lifetime received", d.lifetime_fire_received_total],
+    ["Lifetime collected", d.lifetime_fire_collected_total],
+    ["Users w/ pool usage", d.users_with_pool_usage],
+    ["Active reservations", d.active_pool_reservations],
+    ["Total Vault Fire", d.total_vault_fire],
+  ];
+
+  return (
+    <div className="or-surface p-4" data-testid="fire-admin-dashboard">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-semibold flex items-center gap-2">
+          <Flame size={14} style={{ color: "#FF7A1A" }} /> Fire Command Center — Live Dashboard (Phase 0.6)
+        </div>
+        <button className="or-chip" onClick={load} data-testid="fire-dashboard-refresh">
+          {busy ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Refresh
+        </button>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center mb-3" data-testid="fire-dashboard-stats">
+        {stats.map(([k, v]) => (
+          <div key={k} className="p-2.5 rounded-xl" style={{ border: "1px solid var(--border-col)" }}>
+            <div className="text-lg font-bold" style={{ color: "#FF7A1A" }}>{(v ?? 0).toLocaleString()}</div>
+            <div className="text-[9px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{k}</div>
+          </div>
+        ))}
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3 text-xs">
+        <div className="p-3 rounded-xl" style={{ border: "1px solid var(--border-col)" }}>
+          <div className="font-semibold mb-1">Largest collectable balance</div>
+          <div style={{ color: "var(--text-muted)" }} data-testid="fire-dashboard-largest-collectable">
+            {d.largest_collectable ? `@${d.largest_collectable.username || "?"} — ${d.largest_collectable.value.toLocaleString()} 🔥` : "—"}
+          </div>
+        </div>
+        <div className="p-3 rounded-xl" style={{ border: "1px solid var(--border-col)" }}>
+          <div className="font-semibold mb-1">Top Fire post</div>
+          <div style={{ color: "var(--text-muted)" }} data-testid="fire-dashboard-top-post">
+            {d.top_fire_post
+              ? `${d.top_fire_post.fire_total.toLocaleString()} 🔥 — @${d.top_fire_post.author_username}: "${(d.top_fire_post.content || "").slice(0, 60)}"`
+              : "No fire posts yet"}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InspectorSection() {
+  const [uName, setUName] = useState("");
+  const [uData, setUData] = useState(null);
+  const [pId, setPId] = useState("");
+  const [pData, setPData] = useState(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(null);
+
+  const run = async (key, fn) => {
+    setBusy(key);
+    try { await fn(); } catch (e) { toast.error(e?.response?.data?.detail || "Action failed"); }
+    finally { setBusy(null); }
+  };
+
+  const inspectUser = () => run("iu", async () => {
+    const r = await apiClient.get(`/fire/admin/inspect/user/${uName.trim()}`);
+    setUData(r.data);
+  });
+  const inspectPost = () => run("ip", async () => {
+    const r = await apiClient.get(`/fire/admin/inspect/post/${pId.trim()}`);
+    setPData(r.data);
+  });
+  const userAction = (key, path, label) => run(key, async () => {
+    const r = await apiClient.post(`/fire/admin/users/${uName.trim()}/${path}`, { reason: reason.trim() || "admin action" });
+    toast.success(`${label} done${r.data.finalized !== undefined ? ` (${r.data.finalized} finalized)` : ""}${r.data.collected !== undefined ? ` (${r.data.collected} collected)` : ""}`);
+    await inspectUser();
+  });
+  const reverseReaction = (rid) => run(`rev-${rid}`, async () => {
+    if (!reason.trim()) { toast.error("Enter a reason first (required for reversal)"); return; }
+    const r = await apiClient.post(`/fire/admin/reactions/${rid}/reverse`, { reason: reason.trim() });
+    toast.success(`Reaction reversed (${r.data.fire_value ?? ""} 🔥)`);
+    if (uData) await inspectUser();
+    if (pData) await inspectPost();
+  });
+
+  const st = (s) => ({ collectable: "#10E670", pending: "#F4C84A", collected: "#5ec8ff", reversed: "#ff8080" }[s] || "var(--text-muted)");
+
+  return (
+    <div className="or-surface p-4" data-testid="fire-admin-inspector">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2">
+        <Search size={14} style={{ color: "#FF7A1A" }} /> Fire Inspector &amp; Controls (Phase 0.6)
+      </div>
+      <div className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>
+        Inspect any user's fire state or any post's fire ledger. Pause abusers, force-finalize, collect on
+        behalf, or reverse a specific reaction (reason required, fully audited).
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
+        <input className="or-input" style={{ width: 160 }} placeholder="username"
+          value={uName} onChange={(e) => setUName(e.target.value)} data-testid="fire-inspect-user-input" />
+        <button className="or-chip" onClick={inspectUser} data-testid="fire-inspect-user-btn">
+          {busy === "iu" ? <Loader2 size={11} className="animate-spin" /> : <Search size={11} />} Inspect user
+        </button>
+        <input className="or-input" style={{ width: 220 }} placeholder="reason (for actions below)"
+          value={reason} onChange={(e) => setReason(e.target.value)} data-testid="fire-inspect-reason-input" />
+      </div>
+
+      {uData && (
+        <div className="text-xs mb-3 p-3 rounded-xl" style={{ border: "1px solid var(--border-col)" }} data-testid="fire-inspect-user-result">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <b>@{uData.user.username}</b>
+            {uData.user.fire_paused && <span className="or-chip" style={{ color: "#ff8080" }}>FIRE PAUSED</span>}
+            <span style={{ color: "var(--text-muted)" }}>
+              Pool {uData.pool.available}/{uData.pool.pool} · Vault {uData.wallet.vault_balance} 🔥 ·
+              Pending {uData.wallet.pending_balance} 🔥 · Collectable {uData.wallet.collectable_balance ?? 0} 🔥 ·
+              Given {uData.fire_given} 🔥
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {!uData.user.fire_paused ? (
+              <button className="or-chip" style={{ color: "#ff8080" }} data-testid="fire-inspect-pause"
+                onClick={() => userAction("pause", "pause-fire", "Fire paused")}>
+                {busy === "pause" ? <Loader2 size={11} className="animate-spin" /> : <ShieldAlert size={11} />} Pause fire
+              </button>
+            ) : (
+              <button className="or-chip" style={{ color: "#10E670" }} data-testid="fire-inspect-restore"
+                onClick={() => userAction("restore", "restore-fire", "Fire restored")}>
+                {busy === "restore" ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />} Restore fire
+              </button>
+            )}
+            <button className="or-chip" data-testid="fire-inspect-finalize"
+              onClick={() => userAction("fin", "finalize-pending", "Force-finalize")}>
+              {busy === "fin" ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Force-finalize pending
+            </button>
+            <button className="or-chip" data-testid="fire-inspect-collect"
+              onClick={() => userAction("col", "collect", "Collect on behalf")}>
+              {busy === "col" ? <Loader2 size={11} className="animate-spin" /> : <Flame size={11} />} Collect on behalf
+            </button>
+          </div>
+          <div className="font-semibold mb-1">Active reactions (latest 15)</div>
+          <div className="max-h-40 overflow-y-auto" data-testid="fire-inspect-user-reactions">
+            {(uData.active_reactions || []).length === 0 ? <div style={{ color: "var(--text-muted)" }}>None</div>
+              : uData.active_reactions.map((r) => (
+                <div key={r.id} className="py-1 flex flex-wrap items-center gap-2" style={{ borderTop: "1px solid var(--border-col)", color: "var(--text-muted)" }}>
+                  {r.fire_value}× 🔥 on post {r.post_id?.slice(0, 8)}… · {r.active ? "active" : "removed"}
+                  {r.finalized_at ? " · finalized" : ""}
+                  <button className="or-chip" style={{ color: "#ff8080" }} data-testid={`fire-reverse-${r.id}`}
+                    onClick={() => reverseReaction(r.id)}>
+                    {busy === `rev-${r.id}` ? <Loader2 size={10} className="animate-spin" /> : <Undo2 size={10} />} Reverse
+                  </button>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
+        <input className="or-input" style={{ width: 280 }} placeholder="post id"
+          value={pId} onChange={(e) => setPId(e.target.value)} data-testid="fire-inspect-post-input" />
+        <button className="or-chip" onClick={inspectPost} data-testid="fire-inspect-post-btn">
+          {busy === "ip" ? <Loader2 size={11} className="animate-spin" /> : <Search size={11} />} Inspect post
+        </button>
+      </div>
+
+      {pData && (
+        <div className="text-xs p-3 rounded-xl" style={{ border: "1px solid var(--border-col)" }} data-testid="fire-inspect-post-result">
+          <div className="mb-1">
+            <b>@{pData.post.author_username}</b> — {pData.post.fire_total ?? 0} 🔥 total ·
+            {" "}{pData.supporter_count} supporters · largest {pData.largest_fire}× ·
+            {" "}{pData.standard_fire} standard / {pData.boosted_fire} boosted
+          </div>
+          <div style={{ color: "var(--text-muted)" }} className="mb-2">"{(pData.post.content || "").slice(0, 100)}"</div>
+          <div className="font-semibold mb-1">Wallet credits by status</div>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {Object.entries(pData.wallet_credits_by_status || {}).map(([s, v]) => (
+              <span key={s} className="or-chip" style={{ color: st(s) }}>{s}: {v.total} 🔥 ({v.count})</span>
+            ))}
+          </div>
+          <div className="max-h-40 overflow-y-auto" data-testid="fire-inspect-post-reactions">
+            {(pData.reactions || []).map((r) => (
+              <div key={r.id} className="py-1 flex flex-wrap items-center gap-2" style={{ borderTop: "1px solid var(--border-col)", color: "var(--text-muted)" }}>
+                @{r.username || r.user_id?.slice(0, 8)} — {r.fire_value}× 🔥 · {r.active ? "active" : "removed"}
+                <button className="or-chip" style={{ color: "#ff8080" }} data-testid={`fire-post-reverse-${r.id}`}
+                  onClick={() => reverseReaction(r.id)}>
+                  {busy === `rev-${r.id}` ? <Loader2 size={10} className="animate-spin" /> : <Undo2 size={10} />} Reverse
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminFirePower() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -320,6 +534,10 @@ export default function AdminFirePower() {
 
           {/* Fire Vault / Wallets (Phase 0.5) */}
           <WalletAdminSection />
+
+          {/* Phase 0.6 — command center */}
+          <DashboardSection />
+          <InspectorSection />
 
           {/* Migration */}
           <div className="or-surface p-4" data-testid="fire-admin-migration">

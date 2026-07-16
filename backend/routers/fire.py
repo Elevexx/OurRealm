@@ -66,7 +66,42 @@ async def my_wallet(current: CurrentUser):
             "settlement_hours": wcfg["settlement_hours"],
             "fire_given": await fv.fire_given_total(current["id"]),
             "fire_received": wallet["lifetime_fire_received"],
-            "recent": await fv.recent_earnings(current["id"], 5)}
+            "recent": await fv.recent_earnings(current["id"], 5),
+            "features": {
+                "pending": flags.get("fire_pending_enabled", False),
+                "collectable": flags.get("fire_collectable_enabled", False),
+                "collection": flags.get("fire_collection_enabled", False),
+                "history": flags.get("fire_wallet_history_enabled", False),
+            }}
+
+
+class CollectBody(BaseModel):
+    transaction_ids: Optional[list] = None
+    collect_all: bool = False
+
+
+@router.post("/wallet/collect")
+async def wallet_collect(body: CollectBody, current: CurrentUser):
+    """COLLECT FIRE — moves finalized Collectable Fire into the Vault."""
+    flags = await fp.get_fire_flags()
+    if not flags.get("fire_collection_enabled"):
+        raise HTTPException(status_code=403, detail="Fire collection is not enabled yet")
+    from services import fire_vault as fv
+    ids = None if body.collect_all else (body.transaction_ids or None)
+    if not body.collect_all and not ids:
+        raise HTTPException(status_code=400, detail="Select Fire to collect or use Collect All")
+    result = await fv.collect_fire(current, ids)
+    wallet = await fv.wallet_for(current)
+    return {"ok": True, **result, "wallet": wallet}
+
+
+@router.get("/wallet/history")
+async def wallet_history(current: CurrentUser, filter: str = "all", limit: int = 50):
+    flags = await fp.get_fire_flags()
+    if not flags.get("fire_wallet_history_enabled"):
+        raise HTTPException(status_code=403, detail="Wallet history is not enabled yet")
+    from services import fire_vault as fv
+    return {"history": await fv.wallet_history(current, filter, limit)}
 
 
 # ── Fire Wallet Privacy (Phase 1) ───────────────────────────────────────
@@ -300,3 +335,88 @@ async def admin_privacy_seed_defaults(current: CurrentUser):
     seeded = await fv.seed_fire_privacy_defaults()
     await _audit(current, "fire_privacy_seed_defaults", {"seeded": seeded})
     return {"ok": True, "users_seeded": seeded}
+
+
+# ── Phase 0.6 admin command center (founder only) ───────────────────────
+class ReasonBody(BaseModel):
+    reason: str
+
+
+@router.get("/admin/dashboard")
+async def admin_dashboard(current: CurrentUser):
+    require_founder(current)
+    from services import fire_vault as fv
+    return await fv.admin_dashboard()
+
+
+@router.get("/admin/inspect/user/{username}")
+async def admin_inspect_user(username: str, current: CurrentUser):
+    require_founder(current)
+    from services import fire_vault as fv
+    return await fv.user_inspector(username)
+
+
+@router.get("/admin/inspect/post/{post_id}")
+async def admin_inspect_post(post_id: str, current: CurrentUser):
+    require_founder(current)
+    from services import fire_vault as fv
+    return await fv.post_inspector(post_id)
+
+
+@router.post("/admin/users/{username}/pause-fire")
+async def admin_pause_fire(username: str, body: ReasonBody, current: CurrentUser):
+    require_founder(current)
+    r = await db.users.update_one({"username": username.lower()}, {"$set": {"fire_paused": True}})
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="User not found")
+    await _audit(current, "fire_pause_user", {"username": username, "reason": body.reason})
+    return {"ok": True, "fire_paused": True}
+
+
+@router.post("/admin/users/{username}/restore-fire")
+async def admin_restore_fire(username: str, body: ReasonBody, current: CurrentUser):
+    require_founder(current)
+    r = await db.users.update_one({"username": username.lower()}, {"$set": {"fire_paused": False}})
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="User not found")
+    await _audit(current, "fire_restore_user", {"username": username, "reason": body.reason})
+    return {"ok": True, "fire_paused": False}
+
+
+@router.post("/admin/users/{username}/finalize-pending")
+async def admin_finalize_pending(username: str, body: ReasonBody, current: CurrentUser):
+    require_founder(current)
+    u = await db.users.find_one({"username": username.lower()}, {"_id": 0, "id": 1})
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    from services import fire_vault as fv
+    # Force-finalize: pull the user's pending settle_after into the past, then run finalization
+    await db.fire_wallet_transactions.update_many(
+        {"user_id": u["id"], "status": "pending"},
+        {"$set": {"settle_after": _now(), "force_finalized_by": current.get("username")}})
+    n = await fv.settle_due(u["id"])
+    await _audit(current, "fire_force_finalize", {"username": username, "reason": body.reason, "finalized": n})
+    return {"ok": True, "finalized": n}
+
+
+@router.post("/admin/users/{username}/collect")
+async def admin_collect_on_behalf(username: str, body: ReasonBody, current: CurrentUser):
+    require_founder(current)
+    u = await db.users.find_one({"username": username.lower()}, {"_id": 0, "id": 1})
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    from services import fire_vault as fv
+    result = await fv.collect_fire(u, None)
+    await _audit(current, "fire_collect_on_behalf", {"username": username, "reason": body.reason, **result})
+    return {"ok": True, **result}
+
+
+@router.post("/admin/reactions/{reaction_id}/reverse")
+async def admin_reverse_reaction(reaction_id: str, body: ReasonBody, current: CurrentUser):
+    require_founder(current)
+    if not (body.reason or "").strip():
+        raise HTTPException(status_code=400, detail="A reason is required")
+    from services import fire_vault as fv
+    report = await fv.reverse_reaction(current, reaction_id, body.reason.strip())
+    await _audit(current, "fire_reverse_reaction", {"report": report})
+    return {"ok": True, **report}

@@ -31,7 +31,9 @@ from core.db import db
 log = logging.getLogger("ourrealm.fire")
 
 # ── Flags (all default OFF — founder toggles per environment) ──────────
-FIRE_FLAG_KEYS = ["fire_reactions", "boosted_fire", "fire_ranked_feed", "fire_notifications", "fire_wallet_enabled"]
+FIRE_FLAG_KEYS = ["fire_reactions", "boosted_fire", "fire_ranked_feed", "fire_notifications", "fire_wallet_enabled",
+                  "fire_collection_enabled", "fire_pending_enabled", "fire_collectable_enabled",
+                  "fire_wallet_history_enabled", "fire_admin_tools_enabled"]
 FIRE_FLAG_DEFAULTS = {k: False for k in FIRE_FLAG_KEYS}
 
 POOL_WINDOW_HOURS = 24
@@ -186,12 +188,13 @@ async def pool_status(user: dict, cfg: Optional[dict] = None) -> dict:
             "next_recovery_amount": next_recovery_amount}
 
 
-async def _paid_active_for_reaction(reaction_id: str) -> int:
+async def _reserved_for_reaction(reaction_id: str) -> int:
+    """Net active pool reservation for a reaction (charges minus releases)."""
     agg = await db.fire_power_transactions.aggregate([
         {"$match": {"reaction_id": reaction_id, "status": "active"}},
         {"$group": {"_id": None, "paid": {"$sum": "$boosted_amount"}}},
     ]).to_list(1)
-    return int(agg[0]["paid"]) if agg else 0
+    return max(0, int(agg[0]["paid"])) if agg else 0
 
 
 # ── Core mutation ───────────────────────────────────────────────────────
@@ -217,6 +220,8 @@ async def react(user: dict, post_id: str, fire_value: int,
         raise HTTPException(status_code=400, detail="Fire is only available on public posts")
 
     uid = user["id"]
+    if user.get("fire_paused") or (await db.users.find_one({"id": uid}, {"_id": 0, "fire_paused": 1}) or {}).get("fire_paused"):
+        raise HTTPException(status_code=403, detail="Fire is paused on your account. Contact support.")
     cfg = await fire_config_for_user(user)
     if fire_value > 1:
         if not flags.get("boosted_fire"):
@@ -244,45 +249,81 @@ async def react(user: dict, post_id: str, fire_value: int,
     old_value = int(existing.get("fire_value") or 0) if (existing and existing.get("active")) else 0
     reaction_id = (existing or {}).get("id") or uuid.uuid4().hex
 
+    # ── 24h edit window (Phase 0.6) — deadline = created_at + 24h, edits
+    # never restart it. After the deadline the reaction is FINALIZED and
+    # immutable (only founder compensating tools may reverse).
+    now_dt = datetime.now(timezone.utc)
+    if existing:
+        deadline_iso = existing.get("edit_deadline")
+        if not deadline_iso and existing.get("created_at"):
+            try:
+                deadline_iso = (datetime.fromisoformat(existing["created_at"]) + timedelta(hours=24)).isoformat()
+            except (ValueError, TypeError):
+                deadline_iso = None
+        if deadline_iso and now_dt >= datetime.fromisoformat(deadline_iso):
+            if idem:
+                await db.fire_idempotency.delete_one({"_id": idem})
+            raise HTTPException(status_code=403, detail="Your Fire on this post is finalized and can no longer be edited")
+        edit_deadline = deadline_iso or (now_dt + timedelta(hours=24)).isoformat()
+    else:
+        edit_deadline = (now_dt + timedelta(hours=24)).isoformat()
+
+    # ── Difference-based pool accounting (Phase 0.6):
+    # reserved = net active pool reservation for this reaction.
+    # Increasing charges only the difference; lowering/removing releases
+    # the difference back to the pool (negative ledger row — the lazy
+    # expiry loop self-reverses both signs at the edit deadline).
     cost = 0
-    if fire_value > 1:
-        await _expire_transactions(uid)
-        paid = await _paid_active_for_reaction(reaction_id)
-        cost = max(max(fire_value - 1, 0) - paid, 0)
-        if cost > 0:
-            pool = cfg["daily_fire_pool"]
-            await db.fire_pool_counters.update_one(
-                {"_id": uid}, {"$setOnInsert": {"spent_active": 0}}, upsert=True)
-            # Atomic conditional spend — the concurrency + overspend guard.
-            res = await db.fire_pool_counters.update_one(
-                {"_id": uid, "spent_active": {"$lte": pool - cost}},
-                {"$inc": {"spent_active": cost}})
-            if res.modified_count != 1:
-                if idem:
-                    await db.fire_idempotency.delete_one({"_id": idem})
-                status = await pool_status(user, cfg)
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Not enough Fire Power — {status['available']} of {pool} boost fire available.")
-            now = datetime.now(timezone.utc)
-            await db.fire_power_transactions.insert_one({
-                "id": uuid.uuid4().hex, "user_id": uid, "post_id": post_id,
-                "reaction_id": reaction_id, "boosted_amount": cost,
-                "effective_at": now.isoformat(),
-                "expires_at": (now + timedelta(hours=POOL_WINDOW_HOURS)).isoformat(),
-                "status": "active", "idempotency_key": idem,
-            })
+    released = 0
+    await _expire_transactions(uid)
+    reserved = await _reserved_for_reaction(reaction_id)
+    new_boost = max(fire_value - 1, 0)
+    if new_boost > reserved:
+        cost = new_boost - reserved
+        pool = cfg["daily_fire_pool"]
+        await db.fire_pool_counters.update_one(
+            {"_id": uid}, {"$setOnInsert": {"spent_active": 0}}, upsert=True)
+        # Atomic conditional spend — the concurrency + overspend guard.
+        res = await db.fire_pool_counters.update_one(
+            {"_id": uid, "spent_active": {"$lte": pool - cost}},
+            {"$inc": {"spent_active": cost}})
+        if res.modified_count != 1:
+            if idem:
+                await db.fire_idempotency.delete_one({"_id": idem})
+            status = await pool_status(user, cfg)
+            raise HTTPException(
+                status_code=409,
+                detail=f"Not enough Fire Power — {status['available']} of {pool} boost fire available.")
+        await db.fire_power_transactions.insert_one({
+            "id": uuid.uuid4().hex, "user_id": uid, "post_id": post_id,
+            "reaction_id": reaction_id, "boosted_amount": cost,
+            "transaction_type": "pool_charge", "policy_version": "0.6",
+            "effective_at": now_dt.isoformat(),
+            "expires_at": edit_deadline,
+            "status": "active", "idempotency_key": idem,
+        })
+    elif new_boost < reserved:
+        released = reserved - new_boost
+        await db.fire_power_transactions.insert_one({
+            "id": uuid.uuid4().hex, "user_id": uid, "post_id": post_id,
+            "reaction_id": reaction_id, "boosted_amount": -released,
+            "transaction_type": "pool_release", "policy_version": "0.6",
+            "effective_at": now_dt.isoformat(),
+            "expires_at": edit_deadline,
+            "status": "active", "idempotency_key": idem,
+        })
+        await db.fire_pool_counters.update_one({"_id": uid}, {"$inc": {"spent_active": -released}})
+        await db.fire_pool_counters.update_one(
+            {"_id": uid, "spent_active": {"$lt": 0}}, {"$set": {"spent_active": 0}})
 
     now_iso = _now_iso()
-    # Fire Vault (Phase 0.5) — per-reaction high-water mark so the creator
-    # only earns on NET NEW fire above the historical max for this reaction.
     prev_high = max(int((existing or {}).get("max_fire_value") or 0), old_value)
     new_high = max(prev_high, fire_value)
     try:
         await db.post_fire_reactions.update_one(
             {"post_id": post_id, "user_id": uid},
             {"$set": {"fire_value": fire_value, "active": fire_value > 0,
-                      "max_fire_value": new_high,
+                      "max_fire_value": new_high, "edit_deadline": edit_deadline,
                       "updated_at": now_iso, "source": "user"},
              "$inc": {"boosted_cost": cost},
              "$setOnInsert": {"id": reaction_id, "created_at": now_iso}},
@@ -292,7 +333,7 @@ async def react(user: dict, post_id: str, fire_value: int,
         await db.post_fire_reactions.update_one(
             {"post_id": post_id, "user_id": uid},
             {"$set": {"fire_value": fire_value, "active": fire_value > 0,
-                      "max_fire_value": new_high,
+                      "max_fire_value": new_high, "edit_deadline": edit_deadline,
                       "updated_at": now_iso, "source": "user"},
              "$inc": {"boosted_cost": cost}})
 
@@ -304,14 +345,20 @@ async def react(user: dict, post_id: str, fire_value: int,
         await db.posts.update_one({"id": post_id, "fire_total": {"$lt": 0}}, {"$set": {"fire_total": 0}})
         await db.posts.update_one({"id": post_id, "fire_count": {"$lt": 0}}, {"$set": {"fire_count": 0}})
 
-    # Fire Vault earn hook (Phase 0.5) — creator earns the net-new fire
-    # into their pending balance. Always accrues (UI flag gates display
-    # only). Sender never earns. Non-fatal: never blocks the reaction.
-    earn = max(fire_value - prev_high, 0)
-    if earn > 0 and post.get("author_id") and post["author_id"] != uid:
+    # Fire Vault (Phase 0.6) — recipient Pending Fire mirrors the CURRENT
+    # active fire value live (difference-based): raises credit the delta,
+    # lowers/removals debit the delta. Recipient always earns the FULL
+    # fire value (never the boosted pool cost). Sender never earns.
+    delta = fire_value - old_value
+    if delta != 0 and post.get("author_id") and post["author_id"] != uid:
         try:
-            from services.fire_vault import credit_fire
-            await credit_fire(post["author_id"], uid, post_id, reaction_id, earn, idem)
+            from services.fire_vault import credit_fire, adjust_fire
+            if delta > 0:
+                await credit_fire(post["author_id"], uid, post_id, reaction_id,
+                                  delta, idem, finalize_at=edit_deadline)
+            else:
+                await adjust_fire(post["author_id"], uid, post_id, reaction_id,
+                                  delta, idem, finalize_at=edit_deadline)
         except Exception as e:  # noqa: BLE001
             log.warning(f"[fire] vault credit failed for post {post_id}: {e}")
 
@@ -328,7 +375,8 @@ async def react(user: dict, post_id: str, fire_value: int,
             pass
 
     state = await post_fire_state(post_id, uid)
-    return {**state, "charged": cost, "duplicate": False,
+    return {**state, "charged": cost, "released": released, "duplicate": False,
+            "edit_deadline": edit_deadline, "finalized": False,
             "pool": await pool_status(user, cfg)}
 
 

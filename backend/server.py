@@ -281,6 +281,14 @@ async def on_startup():
         logger.warning(f"[hashtags] startup index/migration error: {e}")
     _mod_task = asyncio.create_task(_moderation_loop())
 
+    # Fire Vault — background finalization (Pending → Collectable).
+    try:
+        from services import fire_vault as _fv
+        global _fire_finalize_task
+        _fire_finalize_task = asyncio.create_task(_fv.finalization_loop(600))
+    except Exception as e:
+        logger.warning(f"[fire-finalize] startup error: {e}")
+
     # Realm Pulse — ensure indexes + boot the hourly snapshot loop.
     try:
         from services import realm_pulse as rp
