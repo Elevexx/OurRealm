@@ -20,6 +20,8 @@ import ZipRequiredModal from "@/components/ZipRequiredModal";
 import { GENRES as ALL_GENRES } from "@/data/musicGenres";
 import { play as playerPlay, formatTime } from "@/lib/audioPlayer";
 import { TRENDING_TRACKS } from "@/data/mockData";
+import FireButton from "@/components/fire/FireButton";
+import { useFireStatus } from "@/lib/fireApi";
 
 // Tabs — unique color + icon per spec
 const TABS = [
@@ -72,9 +74,11 @@ function Dropdown({ label, options, value, onChange, testid }) {
 export default function Sounds() {
   useHeartbeat("sounds");
   const { user } = useAuth();
+  const fireStatus = useFireStatus(user?.id);
   const [tab, setTab] = useState("Music");
   const [genre, setGenre] = useState("All");
   const [chart, setChart] = useState("Top 100");
+  const [fireWindow, setFireWindow] = useState("24h");
   const [mood, setMood] = useState("Any");
   const [radius, setRadius] = useState("");     // "" = Any
   const [searchTerm, setSearchTerm] = useState("");
@@ -171,7 +175,9 @@ export default function Sounds() {
             category: tab,
             genre: genre !== "All" ? genre : undefined,
             mood:   mood  !== "Any" ? mood  : undefined,
-            chart,
+            chart: chart === "🔥 Top Fire" ? "Trending" : chart,
+            sort:   chart === "🔥 Top Fire" ? "fire" : undefined,
+            window: chart === "🔥 Top Fire" ? fireWindow : undefined,
             radius: radius || undefined,
             q: searchTerm || undefined,
             limit: 100,
@@ -185,7 +191,7 @@ export default function Sounds() {
       setTracks([]);
       setPageInfo({ page: 1, pages: 5, total: 0 });
     } finally { setLoading(false); }
-  }, [tab, genre, mood, chart, radius, searchTerm, page]);
+  }, [tab, genre, mood, chart, radius, searchTerm, page, fireWindow]);
 
   useEffect(() => { loadFeatured(); }, [loadFeatured]);
   useEffect(() => { loadMadeForYou(); }, [loadMadeForYou]);
@@ -310,6 +316,9 @@ export default function Sounds() {
           <div className="flex gap-2 mb-2 overflow-x-auto no-scrollbar items-center" data-testid="sounds-filters">
             <Dropdown label="Genre"  value={genre}  onChange={setGenre}  options={GENRES} testid="sounds-genre" />
             <Dropdown label="Charts" value={chart}  onChange={setChart}  options={CHARTS} testid="sounds-chart" />
+            {chart === "🔥 Top Fire" && (
+              <Dropdown label="Window" value={fireWindow} onChange={setFireWindow} options={FIRE_WINDOWS} testid="sounds-fire-window" />
+            )}
             <Dropdown label="Mood"   value={mood}   onChange={setMood}   options={MOODS}  testid="sounds-mood" />
           </div>
           {/* Search bar — debounced 300ms; never resets filters */}
@@ -452,6 +461,7 @@ export default function Sounds() {
                   key={t.id}
                   t={t}
                   user={user}
+                  fireStatus={fireStatus}
                   onPlay={() => onPlay(t)}
                   onLike={() => onLike(t)}
                   onShare={() => setShareTrack(t)}
@@ -554,8 +564,10 @@ function FeaturedCard({ t, onPlay, testid }) {
   );
 }
 
-function TrackCard({ t, user, onPlay, onLike, onShare, onUpdated, onDeleted }) {
+function TrackCard({ t, user, fireStatus, onPlay, onLike, onShare, onUpdated, onDeleted }) {
   const cover = t.cover_url || t.cover || null;
+  const firePost = t.post && fireStatus?.enabled
+    && ((t.post.audience?.visibility || "public") === "public") ? t.post : null;
   return (
     <div className="or-surface overflow-hidden" data-testid={`sounds-track-${t.id}`}>
       <div className="relative aspect-square overflow-hidden">
@@ -610,16 +622,24 @@ function TrackCard({ t, user, onPlay, onLike, onShare, onUpdated, onDeleted }) {
           onDeleted={onDeleted}
           testid={`sound-manage-${t.id}`}
         />
-        <button
-          onClick={onLike}
-          className="starbar-icon"
-          style={{ width: 36, height: 36, color: t.liked ? "var(--brand-green)" : "var(--text-muted)" }}
-          data-testid={`sounds-like-${t.id}`}
-          aria-label={t.liked ? "Unlike" : "Like"}
-          aria-pressed={!!t.liked}
-        >
-          <Heart size={16} fill={t.liked ? "currentColor" : "none"} />
-        </button>
+        {firePost ? (
+          <FireButton
+            post={firePost}
+            fireStatus={fireStatus}
+            testidPrefix={`sounds-fire-${t.id}`}
+          />
+        ) : (
+          <button
+            onClick={onLike}
+            className="starbar-icon"
+            style={{ width: 36, height: 36, color: t.liked ? "var(--brand-green)" : "var(--text-muted)" }}
+            data-testid={`sounds-like-${t.id}`}
+            aria-label={t.liked ? "Unlike" : "Like"}
+            aria-pressed={!!t.liked}
+          >
+            <Heart size={16} fill={t.liked ? "currentColor" : "none"} />
+          </button>
+        )}
       </div>
     </div>
   );

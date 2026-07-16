@@ -9,6 +9,7 @@ import { Link } from "react-router-dom";
 import { Flame, Clock, ChevronRight, ChevronDown, Sparkles, Lock } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
+import { CollapsibleHeader, useAccordionState } from "@/components/progression/CollapsibleHeader";
 
 const FIRE = "#FF7A1A";
 const GOLD = "#F4C84A";
@@ -39,8 +40,11 @@ function StatTile({ label, value, accent, testid, sub }) {
   );
 }
 
-export default function FireWalletCard({ compact = false }) {
+export default function FireWalletCard({ compact = false, collapsible = false }) {
   const [data, setData] = useState(null);
+  // Profile accordion — same behavior as Creator Progress / Progression
+  // Badges: always collapsed on open, never persisted across visits.
+  const [expanded, setExpanded] = useAccordionState("fire-wallet", false);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -105,16 +109,30 @@ export default function FireWalletCard({ compact = false }) {
 
   return (
     <div className="or-surface p-4 sm:p-6 mb-5 overflow-hidden relative" data-testid="fire-wallet-card">
-      {/* Section 1 — title */}
-      <div className="mb-5">
-        <h2 className="flex items-center gap-2.5 text-xl sm:text-2xl font-bold tracking-tight" style={{ color: FIRE, fontFamily: "var(--font-display)" }}>
-          <Flame size={24} fill={FIRE} /> FIRE WALLET
-        </h2>
-        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-          Earn Fire from the community by creating great content.
-        </p>
-      </div>
+      {/* Section 1 — title (collapsible on profiles, static elsewhere) */}
+      {collapsible ? (
+        <CollapsibleHeader
+          icon={<Flame size={16} style={{ color: FIRE }} fill={FIRE} aria-hidden="true" />}
+          title="Fire Power"
+          expanded={expanded}
+          onToggle={() => setExpanded((e) => !e)}
+          testid="fire-wallet-header"
+          titleTestid="fire-wallet-title"
+          arrowTestid="fire-wallet-toggle"
+        />
+      ) : (
+        <div className="mb-5">
+          <h2 className="flex items-center gap-2.5 text-xl sm:text-2xl font-bold tracking-tight" style={{ color: FIRE, fontFamily: "var(--font-display)" }}>
+            <Flame size={24} fill={FIRE} /> FIRE WALLET
+          </h2>
+          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+            Earn Fire from the community by creating great content.
+          </p>
+        </div>
+      )}
 
+      {(!collapsible || expanded) && (
+      <div className={collapsible ? "mt-2.5" : ""}>
       {/* Section 2 — Daily Fire Pool */}
       <div className="p-4 rounded-2xl mb-4" style={{ border: "1px solid var(--border-col)" }} data-testid="fire-wallet-pool-section">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
@@ -257,6 +275,8 @@ export default function FireWalletCard({ compact = false }) {
             </div>
           )}
         </div>
+      )}
+      </div>
       )}
     </div>
   );

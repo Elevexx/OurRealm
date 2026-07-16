@@ -642,7 +642,7 @@ export default function Profile() {
           Rendered in BOTH view and edit modes — parity is mandatory. */}
       {!isGuest && user?.username && (
         <>
-          <FireWalletCard />
+          <FireWalletCard collapsible />
           <ProgressCard username={user.username} isOwner={true} />
           <ProgressionBadges username={user.username} isOwner={true} />
         </>

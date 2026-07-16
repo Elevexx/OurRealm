@@ -8,6 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { Flame, Lock } from "lucide-react";
 import apiClient from "@/api/client";
+import { CollapsibleHeader, useAccordionState } from "@/components/progression/CollapsibleHeader";
 
 const LABELS = [
   ["lifetime_fire", "Lifetime Fire"],
@@ -21,6 +22,9 @@ const LABELS = [
 
 export default function PublicFireStats({ username }) {
   const [data, setData] = useState(null);
+  // Same accordion behavior as Creator Progress / Progression Badges —
+  // always collapsed on open, resets per viewed profile, never persisted.
+  const [expanded, setExpanded] = useAccordionState(username, false);
   useEffect(() => {
     if (!username) return;
     let on = true;
@@ -34,11 +38,18 @@ export default function PublicFireStats({ username }) {
 
   return (
     <div className="or-surface p-4 mb-5" data-testid="public-fire-stats">
-      <div className="flex items-center gap-2 mb-3">
-        <Flame size={15} style={{ color: "#FF7A1A" }} fill="#FF7A1A" />
-        <span className="text-sm font-bold" style={{ color: "#FF7A1A" }}>Fire Stats</span>
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <CollapsibleHeader
+        icon={<Flame size={16} style={{ color: "#FF7A1A" }} fill="#FF7A1A" aria-hidden="true" />}
+        title="Fire Power"
+        expanded={expanded}
+        onToggle={() => setExpanded((e) => !e)}
+        testid="public-fire-stats-header"
+        titleTestid="public-fire-stats-title"
+        arrowTestid="public-fire-stats-toggle"
+      />
+      {expanded && (
+      <>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2.5">
         {LABELS.map(([key, label]) => {
           const s = data.stats[key] || { visible: false };
           return (
@@ -66,6 +77,8 @@ export default function PublicFireStats({ username }) {
           🔥 Most fired post: <b style={{ color: "#FF7A1A" }}>{data.stats.most_fired_post.value} 🔥</b>
           {" — "}{data.stats.most_fired_post.preview || "View post"}
         </div>
+      )}
+      </>
       )}
     </div>
   );

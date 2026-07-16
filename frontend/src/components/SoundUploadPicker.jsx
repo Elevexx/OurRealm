@@ -12,13 +12,24 @@ const ACCEPT = "audio/mpeg,audio/mp3,audio/mp4,audio/x-m4a,audio/aac,audio/wav,a
 const MAX_MB = 50;       // hard ceiling — server enforces a tighter 5 MB cap for non-founder
 const SOFT_MB = 5;       // cap enforced for normal users (matches services/upload_limits)
 
-export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCategory = "Music", testid = "sound-picker" }) {
+export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCategory = "Music", deferPost = false, testid = "sound-picker" }) {
   const [busy, setBusy] = useState(false);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [err, setErr] = useState("");
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState(defaultCategory);
+  // Shared classification list — same source as the Sounds page composer.
+  const [classifications, setClassifications] = useState([
+    { id: "music", name: "Music" }, { id: "podcasts", name: "Podcasts" }, { id: "fx", name: "FX" },
+  ]);
+  useEffect(() => {
+    if (!open) return;
+    apiClient.get("/sounds/classifications").then((r) => {
+      const rows = (r.data?.classifications || []).filter((c) => ["music", "podcasts", "fx"].includes(c.id));
+      if (rows.length) setClassifications(rows);
+    }).catch(() => {});
+  }, [open]);
   const [genre, setGenre] = useState("");
   const [mood, setMood] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
@@ -72,6 +83,9 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
       fd.append("file", file);
       fd.append("title", title.trim());
       fd.append("category", category);
+      const LEGACY_TO_ID = { Music: "music", Podcasts: "podcasts", FX: "fx" };
+      fd.append("classification_id", LEGACY_TO_ID[category] || "other");
+      if (deferPost) fd.append("defer_post", "true");
       fd.append("genre", genre || "");
       fd.append("mood", mood || "");
       if (coverUrl) fd.append("cover_url", coverUrl);
@@ -161,9 +175,10 @@ export default function SoundUploadPicker({ open, onClose, onUploaded, defaultCa
                 onChange={(e) => setCategory(e.target.value)}
                 data-testid={`${testid}-category`}
               >
-                <option>Music</option>
-                <option>Podcasts</option>
-                <option>FX</option>
+                {classifications.map((c) => {
+                  const legacy = { music: "Music", podcasts: "Podcasts", fx: "FX" }[c.id];
+                  return <option key={c.id} value={legacy}>{c.name}</option>;
+                })}
               </select>
             </div>
             <div>

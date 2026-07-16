@@ -626,6 +626,7 @@ export default function Feed() {
           setSoundPickerOpen(false);
         }}
         defaultCategory="Music"
+        deferPost
         testid="feed-sound-picker"
       />
       <PollComposer
