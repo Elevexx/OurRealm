@@ -91,11 +91,13 @@ async def public_summary(username: str, current: CurrentUser):
     if not ulp or not allowed("current_level"):
         return {"enabled": True, "visible": False}
     snap = await get_snapshot(ulp["current_level_id"], ulp["current_level_version"])
+    from services.progression.engine import live_graphics
     out = {
         "enabled": True, "visible": True,
         "level": {"id": ulp["current_level_id"], "name": (snap or {}).get("name"),
                   "level_number": ulp.get("current_level_number"),
-                  "graphics": (snap or {}).get("graphics") or {}},
+                  "graphics": await live_graphics(ulp["current_level_id"],
+                                                  (snap or {}).get("graphics"))},
         "status": ulp.get("status"),
     }
     if allowed("progress_card"):

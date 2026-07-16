@@ -1,38 +1,46 @@
 /**
- * LevelBadge — compact level pill shown beside display names.
- * Public summary endpoint respects backend visibility; renders nothing
- * when progression display is disabled or hidden. Never replaces or
- * interferes with existing badges (VIP/founder/verified pills).
+ * LevelBadge — compact current-level pill beside display names, rendered
+ * with the SAME canonical badge artwork assigned in the Level Builder
+ * (optimized thumb variant). Falls back to the star icon only when no
+ * artwork is assigned. Refreshes instantly after a level claim.
  */
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Star } from "lucide-react";
 import apiClient from "@/api/client";
 
 const cache = new Map(); // username -> {at, data}
+// Responsive artwork size: ~24px phone → ~36px desktop, no device detection.
+const ART_SIZE = "clamp(24px, 16px + 1.4vw, 36px)";
 
 export default function LevelBadge({ username, onClick, testid = "level-badge" }) {
   const [data, setData] = useState(cache.get(username)?.data || null);
   const [imgOk, setImgOk] = useState(true);
 
-  useEffect(() => {
+  const fetchSummary = useCallback((force = false) => {
     if (!username) return;
     const hit = cache.get(username);
-    if (hit && Date.now() - hit.at < 60000) { setData(hit.data); return; }
-    let cancelled = false;
+    if (!force && hit && Date.now() - hit.at < 60000) { setData(hit.data); return; }
     apiClient.get(`/progression/summary/${username}`)
       .then((r) => {
-        if (cancelled) return;
         cache.set(username, { at: Date.now(), data: r.data });
         setData(r.data);
+        setImgOk(true);
       })
       .catch(() => {});
-    return () => { cancelled = true; };
   }, [username]);
+
+  useEffect(() => { fetchSummary(); }, [fetchSummary]);
+  useEffect(() => {
+    const onClaim = () => fetchSummary(true);
+    window.addEventListener("or-progression-claimed", onClaim);
+    return () => window.removeEventListener("or-progression-claimed", onClaim);
+  }, [fetchSummary]);
 
   if (!data?.enabled || !data?.visible || !data?.level?.name) return null;
   const g = data.level.graphics || {};
   const accent = g.accent_color || "var(--primary)";
-  const icon = g.badge_url || g.icon_url;
+  const glow = g.glow_color || accent;
+  const art = g.badge_thumb_url || g.badge_url || g.icon_url;
 
   return (
     <button
@@ -50,9 +58,12 @@ export default function LevelBadge({ username, onClick, testid = "level-badge" }
       title={`${data.level.name} — tap for progression details`}
       data-testid={testid}
     >
-      {icon && imgOk
-        ? <img src={icon} alt="" onError={() => setImgOk(false)}
-               style={{ width: 14, height: 14, borderRadius: 3, objectFit: "cover" }} />
+      {art && imgOk
+        ? <img src={art} alt="" onError={() => setImgOk(false)}
+               style={{
+                 width: ART_SIZE, height: ART_SIZE, objectFit: "contain",
+                 flexShrink: 0, filter: `drop-shadow(0 0 3px ${glow})`,
+               }} />
         : <Star size={11} style={{ color: accent }} aria-hidden="true" />}
       <span data-testid={`${testid}-name`}>{data.level.name}</span>
     </button>

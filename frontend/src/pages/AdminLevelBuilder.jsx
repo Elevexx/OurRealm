@@ -108,7 +108,9 @@ function LevelEditor({ level, onSaved, taskTypes, rewardTypes }) {
             <div key={k} className="flex items-center gap-2">
               <span className="w-32 shrink-0" style={{ color: "var(--text-muted)" }}>{k.replace(/_/g, " ")}</span>
               {(form.graphics || {})[k]
-                ? <img src={form.graphics[k]} alt="" style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover" }} />
+                ? <img src={form.graphics[k]} alt="" style={{
+                    width: k === "badge_url" ? 44 : 26, height: k === "badge_url" ? 44 : 26,
+                    borderRadius: 6, objectFit: "contain", background: "#0d1626" }} />
                 : <span style={{ color: "var(--text-muted)" }}>—</span>}
               <button className="or-chip" onClick={() => setPickerFor(k)} data-testid={`level-graphic-${k}`}>Upload</button>
               {(form.graphics || {})[k] && (
@@ -120,7 +122,19 @@ function LevelEditor({ level, onSaved, taskTypes, rewardTypes }) {
             <input type="color" value={(form.graphics || {}).accent_color || "#2EA0FF"}
               onChange={(e) => setGraphics("accent_color", e.target.value)} style={{ width: 36, height: 26 }} />
           </label>
+          <label className="flex items-center gap-2">Glow color
+            <input type="color" value={(form.graphics || {}).glow_color || (form.graphics || {}).accent_color || "#2EA0FF"}
+              onChange={(e) => setGraphics("glow_color", e.target.value)} style={{ width: 36, height: 26 }}
+              data-testid="level-graphic-glow-color" />
+          </label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={!!(form.graphics || {}).glow} onChange={(e) => setGraphics("glow", e.target.checked)} /> Glow effect</label>
+          <label className="flex items-center gap-2">Locked treatment
+            <select className="or-input" style={{ width: 130 }} value={(form.graphics || {}).locked_treatment || "darken"}
+              onChange={(e) => setGraphics("locked_treatment", e.target.value)} data-testid="level-graphic-locked-treatment">
+              <option value="darken">Darkened art</option>
+              <option value="icon">Lock icon only</option>
+            </select>
+          </label>
           <Field label="Alt text"><input className="or-input" value={(form.graphics || {}).alt_text || ""} onChange={(e) => setGraphics("alt_text", e.target.value)} /></Field>
         </div>
       </div>

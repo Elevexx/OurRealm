@@ -8,6 +8,41 @@ import { Award, Lock, Star, TrendingUp, Trophy } from "lucide-react";
 import apiClient from "@/api/client";
 import { CollapsibleHeader, useAccordionState } from "./CollapsibleHeader";
 
+function BadgeArt({ g, name, locked, isCurrent, earned, accent }) {
+  const [ok, setOk] = useState(true);
+  const art = g.badge_thumb_url || g.badge_url;
+  if (!art || !ok) {
+    return locked ? <Lock size={20} style={{ color: "var(--text-muted)" }} />
+      : isCurrent ? <Star size={20} style={{ color: accent }} />
+        : <Trophy size={20} style={{ color: accent }} />;
+  }
+  const glow = g.glow_color || accent;
+  const gi = g.glow_intensity || 1;
+  const filter = locked
+    ? (g.locked_treatment === "icon" ? "none" : "grayscale(0.85) brightness(0.45)")
+    : isCurrent ? `drop-shadow(0 0 ${Math.round(9 * gi)}px ${glow})`
+      : earned ? `drop-shadow(0 0 ${Math.round(4 * gi)}px ${glow})` : "none";
+  if (locked && g.locked_treatment === "icon") {
+    return <Lock size={20} style={{ color: "var(--text-muted)" }} />;
+  }
+  return (
+    <span style={{ position: "relative", width: 56, height: 56, display: "block", flexShrink: 0 }}>
+      <img src={art} alt={g.alt_text || `${name} level badge`} loading="lazy"
+        width={56} height={56} onError={() => setOk(false)}
+        style={{ width: 56, height: 56, objectFit: "contain", filter, opacity: locked ? 0.8 : 1 }} />
+      {locked && (
+        <span style={{
+          position: "absolute", right: -3, bottom: -3, width: 18, height: 18,
+          borderRadius: "50%", background: "var(--surface)", border: "1px solid var(--border-col)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }} aria-hidden="true">
+          <Lock size={10} style={{ color: "var(--text-muted)" }} />
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function ProgressionBadges({ username, isOwner }) {
   const navigate = useNavigate();
   const [ladder, setLadder] = useState(null);
@@ -53,29 +88,33 @@ export default function ProgressionBadges({ username, isOwner }) {
         {ladder.map((l) => {
           const earned = completedByName[l.name];
           const isCurrent = l.name === currentName;
-          const accent = (l.graphics || {}).accent_color || "var(--primary)";
+          const g = l.graphics || {};
+          const accent = g.accent_color || "var(--primary)";
+          const glow = g.glow_color || accent;
+          const gi = g.glow_intensity || 1;
           const locked = !earned && !isCurrent;
           return (
             <button key={l.id} type="button"
               onClick={() => setDetail(detail?.id === l.id ? null : { ...l, earned, isCurrent })}
-              className="flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-lg w-full"
+              className="flex flex-col items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg w-full"
               style={{
-                minHeight: 76,
-                border: `1px solid ${locked ? "var(--border-col)" : accent}`,
+                minHeight: 104,
+                border: isCurrent ? `2px solid ${accent}` : `1px solid ${locked ? "var(--border-col)" : accent}`,
                 background: isCurrent ? `color-mix(in srgb, ${accent} 12%, transparent)` : "var(--surface-2)",
-                opacity: locked ? 0.55 : 1,
+                boxShadow: isCurrent ? `0 0 ${Math.round(14 * gi)}px color-mix(in srgb, ${glow} 45%, transparent)`
+                  : earned ? `0 0 ${Math.round(6 * gi)}px color-mix(in srgb, ${glow} 25%, transparent)` : "none",
+                opacity: locked ? 0.7 : 1,
               }}
               aria-label={`${l.name} badge ${earned ? "earned" : isCurrent ? "current" : "locked"}`}
               data-testid={`progression-badge-${l.level_number}`}>
-              {(l.graphics || {}).badge_url
-                ? <img src={l.graphics.badge_url} alt="" style={{ width: 26, height: 26, borderRadius: "50%", objectFit: "cover" }} />
-                : locked ? <Lock size={20} style={{ color: "var(--text-muted)" }} />
-                  : isCurrent ? <Star size={20} style={{ color: accent }} />
-                    : <Trophy size={20} style={{ color: accent }} />}
+              <BadgeArt g={g} name={l.name} locked={locked} isCurrent={isCurrent} earned={earned} accent={accent} />
               <span className="text-[11px] font-semibold text-center leading-tight break-words w-full"
                 style={{ color: locked ? "var(--text-muted)" : "var(--text-main)" }}>
                 {l.name}
               </span>
+              {isCurrent && (
+                <span className="text-[9px] uppercase tracking-widest font-bold" style={{ color: accent }}>current</span>
+              )}
             </button>
           );
         })}

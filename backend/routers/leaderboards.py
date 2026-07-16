@@ -143,6 +143,8 @@ async def _compute_rows(category: str, period: str) -> list[dict]:
             "is_vip": bool(u.get("is_vip")), "role": u.get("role"),
             "level_name": lname.get("name"), "level_number": lvl.get("current_level_number"),
             "level_accent": (lname.get("graphics") or {}).get("accent_color"),
+            "level_badge_url": (lname.get("graphics") or {}).get("badge_thumb_url")
+                or (lname.get("graphics") or {}).get("badge_url"),
             "reputation": int(u.get("reputation_points") or 0),
         })
     if settings.get("tie_breaker") == "alphabetical":

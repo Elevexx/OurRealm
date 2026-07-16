@@ -120,8 +120,12 @@ export default function Leaderboards() {
                   <span className="block text-xs truncate" style={{ color: "var(--text-muted)" }}>
                     @{r.username}
                     {r.level_name && (
-                      <span className="ml-1.5 px-1.5 py-px rounded-full text-[10px]"
+                      <span className="ml-1.5 px-1.5 py-px rounded-full text-[10px] inline-flex items-center gap-1 align-middle"
                         style={{ border: `1px solid ${r.level_accent || "var(--primary)"}`, color: r.level_accent || "var(--primary)" }}>
+                        {r.level_badge_url && (
+                          <img src={r.level_badge_url} alt="" loading="lazy" width={14} height={14}
+                            style={{ width: 14, height: 14, objectFit: "contain", flexShrink: 0 }} />
+                        )}
                         {r.level_name}
                       </span>
                     )}

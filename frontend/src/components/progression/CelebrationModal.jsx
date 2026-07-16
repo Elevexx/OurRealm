@@ -49,8 +49,11 @@ export default function CelebrationModal({ result, onClose }) {
             boxShadow: `0 0 26px color-mix(in srgb, ${accent} 45%, transparent)`,
           }}
         >
-          {(done.graphics || {}).badge_url
-            ? <img src={done.graphics.badge_url} alt={`${done.name} badge`} style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover" }} />
+          {(done.graphics || {}).badge_thumb_url || (done.graphics || {}).badge_url
+            ? <img src={(done.graphics || {}).badge_thumb_url || done.graphics.badge_url}
+                   alt={`${done.name} badge`}
+                   style={{ width: 84, height: 84, objectFit: "contain",
+                            filter: `drop-shadow(0 0 10px ${(done.graphics || {}).glow_color || accent})` }} />
             : <Trophy size={32} style={{ color: accent }} aria-hidden="true" />}
         </div>
         <div className="text-xs uppercase tracking-[0.3em]" style={{ color: accent }}>Level Complete</div>

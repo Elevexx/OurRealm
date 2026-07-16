@@ -26,6 +26,13 @@ async def get_snapshot(level_id: str, version: int) -> dict | None:
     return (v or {}).get("snapshot")
 
 
+async def live_graphics(level_id: str, fallback: dict | None = None) -> dict:
+    """Cosmetic graphics always come from the LIVE level doc (no republish
+    needed for artwork changes); functional fields stay snapshot-frozen."""
+    doc = await db.progression_levels.find_one({"id": level_id}, {"_id": 0, "graphics": 1})
+    return {**(fallback or {}), **((doc or {}).get("graphics") or {})}
+
+
 async def published_levels() -> list[dict]:
     cur = db.progression_levels.find({"status": "published"}, {"_id": 0})
     levels = [l async for l in cur]
@@ -201,9 +208,11 @@ async def recalc_user(user: dict, persist: bool = True, source: str = "recalc") 
     }
     if persist:
         await db.user_level_progress.update_one({"user_id": user["id"]}, {"$set": summary})
-    return {"status": status, "level": {k: snap.get(k) for k in
-            ("id", "name", "level_number", "short_description", "graphics",
-             "progress_settings", "claim_mode", "config_version")},
+    lvl_payload = {k: snap.get(k) for k in
+                   ("id", "name", "level_number", "short_description", "graphics",
+                    "progress_settings", "claim_mode", "config_version")}
+    lvl_payload["graphics"] = await live_graphics(snap.get("id"), lvl_payload.get("graphics"))
+    return {"status": status, "level": lvl_payload,
             "summary": summary, "tasks": sorted(tasks_out, key=lambda t: t.get("sort_order") or 0),
             "changed": changed, "ulp": {**(ulp or {}), **summary}}
 
@@ -280,10 +289,12 @@ async def claim_level(user: dict, level_id: str, idempotency_key: str | None = N
         if prev:
             return {"ok": True, "idempotent": True, **(prev.get("response") or {})}
 
+    live_done_gfx = await live_graphics(snap["id"], snap.get("graphics"))
+    live_next_gfx = await live_graphics(nxt["id"], nxt.get("graphics")) if nxt else None
     await db.user_level_history.insert_one({
         "id": uuid.uuid4().hex, "user_id": user["id"], "level_id": level_id,
         "level_version": version, "level_number": snap.get("level_number"),
-        "level_name": snap.get("name"), "graphics": snap.get("graphics") or {},
+        "level_name": snap.get("name"), "graphics": live_done_gfx,
         "completed_at": _now(), "claim_id": claim["id"],
     })
     reward_results = await grant_rewards_for_claim(user["id"], snap, claim["id"])
@@ -300,11 +311,11 @@ async def claim_level(user: dict, level_id: str, idempotency_key: str | None = N
         "claim_id": claim["id"],
         "completed_level": {"id": snap["id"], "name": snap.get("name"),
                             "level_number": snap.get("level_number"),
-                            "graphics": snap.get("graphics") or {},
+                            "graphics": live_done_gfx,
                             "celebration_message": (snap.get("progress_settings") or {}).get("celebration_message")},
         "new_level": ({"id": nxt["id"], "name": nxt.get("name"),
                        "level_number": nxt.get("level_number"),
-                       "graphics": nxt.get("graphics") or {}} if nxt else None),
+                       "graphics": live_next_gfx} if nxt else None),
         "highest_level_reached": nxt is None,
         "rewards": reward_results,
         "next_progress": (next_progress or {}).get("summary"),
