@@ -348,18 +348,30 @@ async def post_fire_state(post_id: str, viewer_id: Optional[str] = None) -> dict
 
 
 async def attach_fire(items: list, viewer_id: Optional[str] = None) -> None:
-    """Attach `fire: {total, count, my_fire}` to each post dict in-place."""
+    """Attach `fire: {total, count, my_fire, my_fire_deadline,
+    my_fire_finalized}` to each post dict in-place. Deadline fields are
+    display-only (Phase 0.6 UI): created_at + 24h, edits never restart it."""
     ids = [p.get("id") for p in items if p.get("id")]
-    mine: dict[str, int] = {}
+    mine: dict[str, dict] = {}
     if viewer_id and ids:
         async for r in db.post_fire_reactions.find(
                 {"user_id": viewer_id, "post_id": {"$in": ids}, "active": True},
-                {"_id": 0, "post_id": 1, "fire_value": 1}):
-            mine[r["post_id"]] = int(r.get("fire_value") or 0)
+                {"_id": 0, "post_id": 1, "fire_value": 1, "created_at": 1}):
+            mine[r["post_id"]] = r
+    now = datetime.now(timezone.utc)
     for p in items:
-        p["fire"] = {"total": int(p.get("fire_total") or 0),
-                     "count": int(p.get("fire_count") or 0),
-                     "my_fire": mine.get(p.get("id"), 0)}
+        m = mine.get(p.get("id"))
+        fire = {"total": int(p.get("fire_total") or 0),
+                "count": int(p.get("fire_count") or 0),
+                "my_fire": int((m or {}).get("fire_value") or 0)}
+        if m and m.get("created_at"):
+            try:
+                deadline = datetime.fromisoformat(m["created_at"]) + timedelta(hours=24)
+                fire["my_fire_deadline"] = deadline.isoformat()
+                fire["my_fire_finalized"] = now >= deadline
+            except (ValueError, TypeError):
+                pass
+        p["fire"] = fire
 
 
 async def window_fire_map(post_ids: Iterable[str], window: str) -> Optional[dict]:

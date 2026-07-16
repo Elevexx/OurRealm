@@ -2804,3 +2804,26 @@ fireApi.js: auth-aware cached status + one-retry on aborted fetch. fire_given = 
 TESTED: iteration_81.json — backend 21/21 pytest (tests in /app/backend/tests/test_fire_vault_privacy.py), frontend 100% incl. 320–1920px responsive, friend-privacy flow, JSON/DOM leak audit. Cosmetic recovery-label rollover (22h 60m) fixed post-test.
 PREVIEW FLAGS: fire_reactions/boosted_fire/fire_ranked_feed/fire_wallet_enabled ON, fire_notifications OFF. PRODUCTION: all OFF, untouched.
 REMAINING: P1 fire notifications grouping + analytics, live fire updates, founder-editable privacy defaults, public creator metrics feature.
+
+## Iteration 84 — Fire Button UX Improvement (June 2026, self-tested)
+UI/UX only; no accounting/lifecycle changes.
+- Quick tap when NOT reacted → sends 1x instantly (unchanged). Tap with ANY existing fire (1x or boosted) now OPENS THE PICKER — never silently removes/downgrades. Removal is intentional via picker Remove button.
+- Picker additions: "Selected Fire / Boosted Pool Cost / Creator Receives" summary grid, edit-deadline countdown ("Editable for Xh Ym — then it finalizes"), current value pre-selected.
+- FINALIZED read-only picker state: if my reaction is >24h old (my_fire_finalized), picker shows "Nx 🔥 / Finalized / This Fire can no longer be edited" — slider/input/chips/remove hidden. DISPLAY-ONLY: backend does NOT yet enforce the 24h edit window (that's Phase 0.6 Part D). attach_fire() now returns my_fire_deadline (created_at+24h) + my_fire_finalized (additive).
+- Accessibility: 44px touch targets (negative-margin trick, no layout shift) on flame + caret, focus-visible outlines, aria labels updated.
+- FIXED RACE: fireApi.js cache writes now sequence-guarded (_seq/_writtenSeq) so a stale guest /fire/status can never overwrite an authed one; FireButton.openPicker fetches fresh status (fetchFireStatus(true)) and prefers it over the prop — picker config always correct.
+
+## PENDING (user's active spec): PHASE 0.6 — 3-part spec received (UI cleanup + full Fire lifecycle)
+Key items NOT yet implemented:
+- PART A: remove emoji reaction launcher (ReactionAttachment/picker) from ALL public post surfaces (Feed.jsx line ~833 reactions row, PostPopup) — keep for DM/group/realm/community messaging.
+- PART B: verify creator receives FULL fire value (current impl already credits full value — confirm + regression).
+- PART C/D/E/F: true lifecycle Active→Pending→Collectable→Collected Vault; 24h edit window ENFORCED server-side (deadline=created_at+24h, edits never restart); difference-based accounting: lowering releases pool reservation difference (CHANGES current no-refund rule!), pending mirrors current active value live; finalized reactions immutable (sender edits rejected).
+- PART G/H/I: pending fire live updates; collectable never expires; manual "COLLECT FIRE"/"COLLECT ALL FIRE" (never "Claim") atomic+idempotent; wallet collectable_balance + lifetime_fire_collected.
+- PART K: metrics separation (post fire live for feed rankings; vault rankings = collected only).
+- PART L/M/N/O/P: Fire Wallet premium redesign (7 sections incl. Future Utilities "Coming Later"), remove "not spendable yet" wording → "Permanent Fire Vault"; Public Fire Stats redesign (+unique supporters, most fired post, weekly fire, fire collected); picker/quick values polish (mostly done in iter 84).
+- PART R/S: grouped collectable notifications + wallet history with filters.
+- PART T/U/V/W: admin fire command center (dashboard totals, user fire inspector, post fire inspector, repair/reverse/pause tools with reason+audit).
+- PART X/Y/Z: ledger-first fields (edit_deadline, finalized_at, collectable_at, collected_at, policy_version), background finalization job (cron like purge_cron pattern in server.py startup ~line 400), atomic collection.
+- PART AB: new flags fire_collection_enabled, fire_pending_enabled, fire_collectable_enabled, fire_wallet_history_enabled, fire_admin_tools_enabled (default OFF).
+- Testing: full backend + frontend + viewports, completion report per PART AG.
+NOTES for implementation: pool release rows can be negative-amount active txns with expires_at=edit_deadline (lazy expiry math self-reverses); map legacy settled txns as collected; ReactionBar/ReactionAttachment used at Feed.jsx ~line 833; emit_notification(recipient_id, kind, actor_username, payload) in routers/notifications.py; DB test fixture: reaction da8c46b2 on post 8aec11dc backdated 30h for finalized-state testing.

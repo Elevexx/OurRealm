@@ -13,20 +13,28 @@ let _cache = null;
 let _at = 0;
 let _inflight = null;
 let _cacheUser;
+let _seq = 0;
+let _writtenSeq = 0;
+
+function _write(seq, data) {
+  if (seq >= _writtenSeq) { _writtenSeq = seq; _cache = data; _at = Date.now(); }
+  return _cache;
+}
 
 export async function fetchFireStatus(force = false) {
   const now = Date.now();
   if (!force && _cache && now - _at < 30000) return _cache;
   if (_inflight && !force) return _inflight;
+  const seq = ++_seq;
   _inflight = apiClient
     .get("/fire/status")
-    .then((r) => { _cache = r.data; _at = Date.now(); return _cache; })
+    .then((r) => _write(seq, r.data))
     .catch(async () => {
       // One retry — covers requests aborted by the login navigation.
       await new Promise((res) => setTimeout(res, 1500));
       try {
         const r2 = await apiClient.get("/fire/status");
-        _cache = r2.data; _at = Date.now(); return _cache;
+        return _write(seq, r2.data);
       } catch { return _cache || OFF; }
     })
     .finally(() => { _inflight = null; });

@@ -12,9 +12,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Flame, ChevronUp, X, Clock } from "lucide-react";
 import { toast } from "sonner";
-import apiClient from "@/api/client";
 import { usePostState, setPost } from "@/lib/postStore";
-import { sendFire, updateCachedPool } from "@/lib/fireApi";
+import { sendFire, fetchFireStatus } from "@/lib/fireApi";
 
 const PRESETS = [1, 2, 5, 10, 25, 50, 100];
 const FIRE_COLOR = "#FF7A1A";
@@ -32,7 +31,7 @@ function recoveryLabel(iso) {
 }
 
 /* ── Portal Boost Picker (bottom sheet ≤639px / centered dialog ≥640px) ── */
-function FirePickerSheet({ post, cfg, pool, myFire, busy, onApply, onClose, testidPrefix }) {
+function FirePickerSheet({ post, cfg, pool, myFire, deadline, finalized, busy, onApply, onClose, testidPrefix }) {
   const [value, setValue] = useState(Math.max(myFire, 1));
   const max = Math.max(1, cfg.max_fire_per_reaction || 1);
   const available = pool?.available ?? 0;
@@ -121,7 +120,17 @@ function FirePickerSheet({ post, cfg, pool, myFire, busy, onApply, onClose, test
           </div>
         )}
 
-        {simpleMode ? (
+        {finalized && myFire > 0 ? (
+          /* Read-only — 24h edit window has passed */
+          <div className="text-center py-4" data-testid={`${testidPrefix}-finalized`}>
+            <div className="text-3xl font-bold" style={{ color: FIRE_COLOR }}>{myFire}× 🔥</div>
+            <div className="text-xs font-bold uppercase tracking-widest mt-2"
+              style={{ color: "var(--text-muted)" }}>Finalized</div>
+            <div className="text-[11px] mt-2" style={{ color: "var(--text-muted)" }}>
+              This Fire can no longer be edited.
+            </div>
+          </div>
+        ) : simpleMode ? (
           /* Newbie state — direct 1x, no slider */
           <div className="text-center py-2" data-testid={`${testidPrefix}-simple-state`}>
             <div className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
@@ -197,6 +206,24 @@ function FirePickerSheet({ post, cfg, pool, myFire, busy, onApply, onClose, test
               </div>
             )}
 
+            {/* Selected / cost / creator-receives summary */}
+            <div className="grid grid-cols-3 gap-2 mb-3 text-center" data-testid={`${testidPrefix}-summary`}>
+              {[["Selected Fire", `${value}× 🔥`], ["Boosted Pool Cost", `${Math.max(value - 1, 0)}`],
+                ["Creator Receives", `${value} 🔥`]].map(([k, v]) => (
+                <div key={k} className="rounded-lg py-1.5 px-1" style={{ border: "1px solid var(--border-col)" }}>
+                  <div className="text-xs font-bold" style={{ color: FIRE_COLOR }}>{v}</div>
+                  <div className="text-[9px] uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{k}</div>
+                </div>
+              ))}
+            </div>
+
+            {myFire > 0 && deadline && (
+              <div className="text-[11px] mb-2 text-center" style={{ color: "var(--text-muted)" }}
+                data-testid={`${testidPrefix}-edit-deadline`}>
+                Editable for {recoveryLabel(deadline) || "moments"} — then it finalizes.
+              </div>
+            )}
+
             <button className="or-btn w-full" disabled={busy || overBudget || value === myFire}
               onClick={() => onApply(value)}
               style={{ opacity: overBudget || value === myFire ? 0.55 : 1 }}
@@ -207,7 +234,7 @@ function FirePickerSheet({ post, cfg, pool, myFire, busy, onApply, onClose, test
           </>
         )}
 
-        {myFire > 0 && !simpleMode && (
+        {myFire > 0 && !simpleMode && !finalized && (
           <button className="or-chip w-full justify-center mt-2" disabled={busy}
             onClick={() => onApply(0)} data-testid={`${testidPrefix}-pick-remove`}>
             Remove my {myFire}× 🔥
@@ -228,15 +255,21 @@ export default function FireButton({ post, fireStatus, isGuest, onGuestAction, t
   const live = usePostState(post.id, {});
   const myFire = live.my_fire ?? seed.my_fire ?? 0;
   const total = live.fire_total ?? seed.total ?? post.fire_total ?? 0;
+  const myDeadline = live.my_fire_deadline ?? seed.my_fire_deadline ?? null;
+  const myFinalized = (live.my_fire_finalized ?? seed.my_fire_finalized) === true;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pool, setPool] = useState(fireStatus?.pool || null);
+  const [fresh, setFresh] = useState(null);
   const [showHint, setShowHint] = useState(false);
   const holdTimer = useRef(null);
   const openedByHold = useRef(false);
 
-  const cfg = fireStatus?.config || { max_fire_per_reaction: 1, daily_fire_pool: 0, fire_enabled: false, level_number: 1 };
-  const boostAvailable = !!fireStatus?.boosted_enabled && cfg.fire_enabled !== false;
+  // Prefer the freshest authed status (fetched on picker open) over the
+  // possibly stale/guest module cache passed down as a prop.
+  const status = fresh || fireStatus;
+  const cfg = status?.config || { max_fire_per_reaction: 1, daily_fire_pool: 0, fire_enabled: false, level_number: 1 };
+  const boostAvailable = !!status?.boosted_enabled && cfg.fire_enabled !== false;
 
   // First-use hint (one card per session, dismissible, never repeats)
   useEffect(() => {
@@ -260,9 +293,9 @@ export default function FireButton({ post, fireStatus, isGuest, onGuestAction, t
     dismissHint();
     setPickerOpen(true);
     try {
-      const r = await apiClient.get("/fire/status");
-      setPool(r.data.pool);
-      updateCachedPool(r.data.pool);
+      const s = await fetchFireStatus(true);
+      setFresh(s);
+      if (s?.pool) setPool(s.pool);
     } catch { /* keep cached pool */ }
   };
 
@@ -290,9 +323,10 @@ export default function FireButton({ post, fireStatus, isGuest, onGuestAction, t
     if (openedByHold.current) { openedByHold.current = false; return; }
     if (isGuest) { onGuestAction?.("give Fire"); return; }
     dismissHint();
-    // Never silently downgrade an existing boost — open the picker instead.
-    if (myFire > 1) { openPicker(); return; }
-    apply(myFire > 0 ? 0 : 1);
+    // Any existing Fire (1x or boosted): never silently change/remove —
+    // open the picker so edits are always intentional.
+    if (myFire > 0) { openPicker(); return; }
+    apply(1);
   };
   const startHold = () => {
     if (!boostAvailable || isGuest) return;
@@ -310,9 +344,18 @@ export default function FireButton({ post, fireStatus, isGuest, onGuestAction, t
         onPointerLeave={endHold}
         onContextMenu={(e) => e.preventDefault()}
         aria-pressed={myFire > 0}
-        aria-label={myFire > 1 ? `Your ${myFire}x Fire — tap to adjust` : myFire === 1 ? "Remove your 1x Fire" : "Give 1x Fire"}
-        className="flex items-center gap-1.5"
-        style={{ color: myFire > 0 ? FIRE_COLOR : "var(--text-muted)", touchAction: "manipulation" }}
+        aria-label={
+          myFinalized && myFire > 0 ? `Your ${myFire}x Fire is finalized — tap for details`
+            : myFire > 0 ? `Your ${myFire}x Fire — tap to adjust`
+            : "Give 1x Fire"
+        }
+        className="flex items-center gap-1.5 rounded focus-visible:outline focus-visible:outline-2"
+        style={{
+          color: myFire > 0 ? FIRE_COLOR : "var(--text-muted)",
+          touchAction: "manipulation",
+          minHeight: 44, margin: "-12px 0", padding: "12px 4px 12px 0",
+          outlineColor: FIRE_COLOR,
+        }}
         disabled={busy}
       >
         <Flame size={16} fill={myFire > 0 ? FIRE_COLOR : "none"} />
@@ -334,8 +377,13 @@ export default function FireButton({ post, fireStatus, isGuest, onGuestAction, t
           aria-haspopup="dialog"
           aria-expanded={pickerOpen}
           title="Choose Fire Power"
-          className="flex items-center"
-          style={{ color: pickerOpen ? FIRE_COLOR : "var(--text-muted)", padding: "2px 3px", touchAction: "manipulation" }}
+          className="flex items-center justify-center rounded focus-visible:outline focus-visible:outline-2"
+          style={{
+            color: pickerOpen ? FIRE_COLOR : "var(--text-muted)",
+            touchAction: "manipulation",
+            minWidth: 32, minHeight: 44, margin: "-12px 0",
+            outlineColor: FIRE_COLOR,
+          }}
         >
           <ChevronUp size={13} style={{ transform: pickerOpen ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
         </button>
@@ -366,6 +414,8 @@ export default function FireButton({ post, fireStatus, isGuest, onGuestAction, t
           cfg={cfg}
           pool={pool}
           myFire={myFire}
+          deadline={myDeadline}
+          finalized={myFinalized}
           busy={busy}
           onApply={apply}
           onClose={() => setPickerOpen(false)}
