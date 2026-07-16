@@ -310,4 +310,7 @@ async def claim_level(user: dict, level_id: str, idempotency_key: str | None = N
         "next_progress": (next_progress or {}).get("summary"),
     }
     await db.progression_claims.update_one({"id": claim["id"]}, {"$set": {"response": response}})
+    # A claim changes reputation, level, and achievements — expire the
+    # leaderboard snapshots so rankings reflect it immediately.
+    await db.leaderboard_cache.delete_many({})
     return {"ok": True, "idempotent": False, **response}

@@ -4,7 +4,7 @@
  * (backend enforces visibility). Handles skeleton / error / paused /
  * archived / highest-level / no-next-level states.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CheckCircle2, Circle, ChevronDown, ChevronUp, History, Loader2,
@@ -13,6 +13,9 @@ import {
 import apiClient from "@/api/client";
 import CelebrationModal from "./CelebrationModal";
 import { invalidateLevelBadge } from "./LevelBadge";
+
+// Survives component remounts on the same page; cleared on full page load.
+const expandedMemory = new Map();
 
 function Bar({ pct, accent }) {
   return (
@@ -74,7 +77,16 @@ export default function ProgressCard({ username, isOwner }) {
   const [celebration, setCelebration] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState(null);
-  const [expanded, setExpanded] = useState(true);
+  // Expanded state persists across remounts on the same page (spec: no
+  // reset on ordinary React rerenders). Keyed per profile username.
+  const [expanded, setExpandedState] = useState(() =>
+    expandedMemory.has(username) ? expandedMemory.get(username) : true);
+  const setExpanded = (v) => {
+    const next = typeof v === "function" ? v(expandedMemory.get(username) ?? true) : v;
+    expandedMemory.set(username, next);
+    setExpandedState(next);
+  };
+  const claimingRef = useRef(false);
 
   const load = useCallback(async () => {
     setErr("");
@@ -93,18 +105,26 @@ export default function ProgressCard({ username, isOwner }) {
   useEffect(() => { load(); }, [load]);
 
   const claim = async () => {
+    if (claimingRef.current) return;         // hard double-submit guard
+    claimingRef.current = true;
     setClaiming(true); setErr("");
     try {
       const r = await apiClient.post("/progression/claim", {
         level_id: data.level.id,
         idempotency_key: `${data.level.id}:${Date.now()}`,
       });
-      setCelebration(r.data);          // only after backend confirmation
+      // Celebration only when the backend confirms a completed level
+      // (idempotent replays of an already-claimed level are safe no-ops).
+      if (r.data?.completed_level) setCelebration(r.data);
       invalidateLevelBadge(username);
-      await load();
+      setExpanded(true);                     // new current level opens expanded
+      // Let sibling components (badges, rank, leaderboards) refetch.
+      window.dispatchEvent(new CustomEvent("or-progression-claimed"));
+      try { await load(); } catch { /* refetch failure ≠ claim failure */ }
     } catch (e) {
       setErr(e?.response?.data?.detail || "Claim failed — please try again.");
     } finally {
+      claimingRef.current = false;
       setClaiming(false);
     }
   };
@@ -156,23 +176,37 @@ export default function ProgressCard({ username, isOwner }) {
         backgroundImage: `linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url(${g.card_background_url})`,
         backgroundSize: "cover", backgroundPosition: "center",
       } : undefined}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <Sparkles size={16} style={{ color: accent }} aria-hidden="true" />
-        <h3 className="font-semibold text-sm flex-1" style={{ color: "var(--text-main)" }} data-testid="progress-card-title">
-          {settings.progress_bar_label || `${level.name || "Level"} Progress`}
-        </h3>
-        <span className="text-xs font-semibold" style={{ color: accent }} data-testid="progress-card-count">
-          {summary.completed_task_count ?? 0}/{summary.required_task_count ?? 0} Tasks Completed
-        </span>
-        {isOwner && (
-          <button className="starbar-icon" style={{ width: 26, height: 26 }}
-            onClick={() => setExpanded((e) => !e)}
-            aria-label={expanded ? "Collapse progression card" : "Expand progression card"}
-            data-testid="progress-card-toggle">
-            {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-          </button>
-        )}
-      </div>
+      {isOwner ? (
+        <button type="button" className="w-full flex items-center gap-2 flex-wrap text-left"
+          style={{ minHeight: 44 }}
+          onClick={() => setExpanded((e) => !e)}
+          aria-expanded={expanded}
+          aria-label={`${settings.progress_bar_label || `${level.name || "Level"} Progress`} — ${expanded ? "collapse" : "expand"}`}
+          data-testid="progress-card-header">
+          <Sparkles size={16} style={{ color: accent }} aria-hidden="true" />
+          <h3 className="font-semibold text-sm flex-1" style={{ color: "var(--text-main)" }} data-testid="progress-card-title">
+            {settings.progress_bar_label || `${level.name || "Level"} Progress`}
+          </h3>
+          <span className="text-xs font-semibold" style={{ color: accent }} data-testid="progress-card-count">
+            {summary.completed_task_count ?? 0}/{summary.required_task_count ?? 0} Tasks Completed
+          </span>
+          <span className="starbar-icon" style={{ width: 30, height: 30 }} aria-hidden="true" data-testid="progress-card-toggle">
+            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </span>
+        </button>
+      ) : (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Sparkles size={16} style={{ color: accent }} aria-hidden="true" />
+          <h3 className="font-semibold text-sm flex-1" style={{ color: "var(--text-main)" }} data-testid="progress-card-title">
+            {settings.progress_bar_label || `${level.name || "Level"} Progress`}
+          </h3>
+          <span className="text-xs font-semibold" style={{ color: accent }} data-testid="progress-card-count">
+            {summary.completed_task_count ?? 0}/{summary.required_task_count ?? 0} Tasks Completed
+          </span>
+        </div>
+      )}
+      {(expanded || !isOwner) && (
+      <>
       <div className="mt-2.5"><Bar pct={pct} accent={accent} /></div>
 
       {status === "paused_level" && (
@@ -191,7 +225,7 @@ export default function ProgressCard({ username, isOwner }) {
         </div>
       )}
 
-      {isOwner && expanded && !highest && (
+      {isOwner && !highest && (
         <div className="mt-2 divide-y" style={{ borderColor: "var(--border-col)" }} data-testid="progress-card-tasks">
           {(data.tasks || []).map((t) => (
             <TaskRow key={t.id} t={t} accent={accent} navigate={navigate} />
@@ -242,6 +276,8 @@ export default function ProgressCard({ username, isOwner }) {
             </div>
           ))}
         </div>
+      )}
+      </>
       )}
 
       <CelebrationModal result={celebration} onClose={() => setCelebration(null)} />

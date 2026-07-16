@@ -10,6 +10,13 @@ const reduced = () =>
   window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 
 export default function CelebrationModal({ result, onClose }) {
+  React.useEffect(() => {
+    if (!result) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [result, onClose]);
+
   if (!result) return null;
   const done = result.completed_level || {};
   const next = result.new_level;
@@ -19,15 +26,15 @@ export default function CelebrationModal({ result, onClose }) {
   return (
     <div
       className="fixed inset-0 z-[320] flex items-center justify-center px-4"
-      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+      style={{ background: "rgba(0,0,0,0.45)" }}
       onClick={onClose}
       data-testid="level-celebration"
     >
       <div
-        className="or-surface w-full max-w-sm p-6 text-center relative overflow-hidden"
+        className="or-surface or-modal-card w-full max-w-sm p-6 text-center relative overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
         role="dialog" aria-modal="true" aria-label="Level up celebration"
-        style={anim ? { animation: "or-celebrate-pop 0.45s ease" } : undefined}
+        style={{ maxHeight: "85dvh", ...(anim ? { animation: "or-celebrate-pop 0.45s ease" } : {}) }}
       >
         <style>{`@keyframes or-celebrate-pop{0%{transform:scale(.92);opacity:0}100%{transform:scale(1);opacity:1}}`}</style>
         <button onClick={onClose} className="absolute top-3 right-3 starbar-icon" style={{ width: 30, height: 30 }} aria-label="Close" data-testid="level-celebration-close">

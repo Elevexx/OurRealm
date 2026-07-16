@@ -15,9 +15,15 @@ export default function ProgressionBadges({ username, isOwner }) {
   const [detail, setDetail] = useState(null);
 
   useEffect(() => {
-    apiClient.get("/progression/ladder").then((r) => setLadder(r.data.levels)).catch(() => setLadder([]));
-    apiClient.get(`/progression/summary/${username}`).then((r) => setSummary(r.data)).catch(() => {});
-    if (isOwner) apiClient.get("/leaderboards/me").then((r) => setRank(r.data)).catch(() => {});
+    const loadAll = () => {
+      apiClient.get("/progression/ladder").then((r) => setLadder(r.data.levels)).catch(() => setLadder([]));
+      apiClient.get(`/progression/summary/${username}`).then((r) => setSummary(r.data)).catch(() => {});
+      if (isOwner) apiClient.get("/leaderboards/me").then((r) => setRank(r.data)).catch(() => {});
+    };
+    loadAll();
+    // Refetch badges + rank the moment a level claim succeeds anywhere on the page.
+    window.addEventListener("or-progression-claimed", loadAll);
+    return () => window.removeEventListener("or-progression-claimed", loadAll);
   }, [username, isOwner]);
 
   if (!summary?.enabled || !summary?.visible || !ladder) return null;
