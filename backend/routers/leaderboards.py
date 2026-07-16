@@ -245,7 +245,7 @@ async def settings_patch(payload: dict, current: CurrentUser):
     if "cache_seconds" in clean:
         clean["cache_seconds"] = max(30, min(int(clean["cache_seconds"]), 86400))
     if "enabled_categories" in clean:
-        clean["enabled_categories"] = [c for c in clean["enabled_categories"] if c in CATEGORIES]
+        clean["enabled_categories"] = [c for c in CATEGORIES if c in clean["enabled_categories"]]
     if "tie_breaker" in clean and clean["tie_breaker"] not in ("reputation", "alphabetical"):
         clean["tie_breaker"] = "reputation"
     if "hidden_usernames" in clean:

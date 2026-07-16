@@ -2652,3 +2652,24 @@ Production (ourrealm.social) had: missing profile pictures after DB recovery, vi
 # July 2026 — Profile Level & Progression System (Iterations 76)
 Full spec implemented across 4 phases. See /app/memory/CHANGELOG.md ("Progression System") for the complete completion report, architecture, collections, API routes, flags, backfill results, and known limitations.
 Key state: seeded Newbie(3 tasks) + Explorer(5 tasks) published v1; 8 feature flags in db.progression_flags (preview: display/claims/calculations/builder ON; events/notifications/rewards-gate/analytics configurable); preview backfill completed (91 real users, 0 failures). PRODUCTION: deploy code → flags default OFF → founder runs Dry Run + backfill from /admin/level-builder Jobs tab → enable flags.
+
+---
+
+# July 2026 — Iteration 77: Leaderboards + Profile Progression Parity (COMPLETE, tested 100%)
+
+## Shipped (test report: /app/test_reports/iteration_77.json — 12/12 backend, 10/10 frontend)
+1. **Leaderboards backend** (`routers/leaderboards.py`): GET /api/leaderboards — 10 categories (reputation, level, achievements, posts, likes, comments, followers, realms, weekly_activity, alltime_activity) × 4 periods (all/month/week/today) × 3 audiences (global/friends/realm), search, pagination, cached snapshots (db.leaderboard_cache, default 300s). Real members only: excludes synthetic, null-username, purged/deleted accounts. GET /api/leaderboards/me = private rank summary.
+2. **Public /leaderboards page** (`pages/Leaderboards.jsx`): category/period/audience chips, my-rank banner, top-3 highlight, search, pagination, row tap → user profile. Mobile + desktop verified.
+3. **Profile parity**: ProgressCard + ProgressionBadges + VIEW LEADERBOARDS button render in BOTH edit and view mode on /profile, and on public profiles (FounderProfile.jsx). Badge tap → detail panel; level badge tap → scrolls to progress card.
+4. **ProgressionBadges** (`components/progression/ProgressionBadges.jsx`): earned/current/locked ladder badges, reputation + global-rank summary (owner), View Leaderboards button beneath.
+5. **Founder Leaderboard Settings** (`/admin/leaderboards`, `pages/AdminLeaderboardSettings.jsx` + admin endpoints): enable/disable categories (stable order), friends/realm boards, top-3 highlight, cache seconds (30–86400 clamp), tie-breaker (reputation|alphabetical, cache auto-invalidated on change), hidden users (public-exclusion ONLY — progression/reputation/rewards kept, private rank preserved via me.hidden=true, reversible), Clear cache. All changes audited in db.progression_audit_logs. AdminHub card added.
+6. **Founder policy**: founder appears on public boards by default; any account (incl. founder) can be hidden via settings.
+
+## Production rollout (user must click Deploy)
+1. Deploy to production. 2. Log in as founder → /admin/level-builder → Jobs tab → run Dry Run, then backfill. 3. Enable progression flags (display/claims/calculations). 4. Visit /admin/leaderboards → verify settings; POST refresh clears cache. Leaderboards need no backfill — computed live from existing data.
+
+## Backlog
+- P1: Rotate production JWT_SECRET + scope CORS_ORIGINS (currently *).
+- P1: Task-accuracy audit (self-likes, deleted posts, synthetic actors in progression counters).
+- P2: Leaderboard growth cliff: _compute_rows caps at 5000 users; Pydantic schema for settings PATCH.
+- P3: show_movement (rank delta arrows) setting exists but UI not implemented.
