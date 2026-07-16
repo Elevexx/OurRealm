@@ -2819,6 +2819,9 @@ All parts A–AB implemented + E2E verified. Emoji launchers fully removed from 
 ## Iteration 86 — SOUNDS ⇄ FOR YOU UNIFICATION COMPLETE (June 2026, iteration_83.json — backend 15/15) + collapsible Fire Power profile cards
 Canonical sound-post model (one post per track; fire/comments/audience on post), shared creation service both composers, Fire button on Sound cards (Heart removed), 🔥 Top Fire chart with windows, db-managed classifications, two-way sync + delete, founder migration dry-run/execute/rollback (preview executed: 5 tracks; production untouched). Fire Power cards on own+public profiles collapsed by default via CollapsibleHeader. See CHANGELOG July 2026.
 
+## Iteration 87 — FOUNDING VIP MEMBER REWARD COMPLETE (June 2026, iteration_84.json 21/24 + 2 bugs fixed & verified)
+Option 3 delivered: claim-based reward for member numbers 1–1000 (permanent, counter-based, signup hook) = VIP role + permanent Founding VIP badge + 1,000🔥 to vault on manual claim. Idempotent/concurrent-safe, corrections workflow, founder admin (stats/editor/versions/user mgmt/exports/audit), claim card + login popup + profile chip. Preview backfill executed (101 records). Production untouched — founder runs dry-run/execute post-deploy. See CHANGELOG.
+
 ## NEXT (user-approved): FOUNDING VIP MEMBER REWARD (Option 3 design)
 First 1,000 real members (permanent member_number 1–1000) get claim-based reward: existing VIP role + separate permanent "Founding VIP" badge + 1,000🔥 to permanent Vault on manual claim. Full spec in user message (member-number migration, claim card, login popup, founder admin on /admin/fire-power, editable content w/ versions, force-claim, corrections, exports, idempotent claim txn). Do NOT auto-deposit; do NOT double-grant; manually-awarded VIPs excluded by default.
 

@@ -215,9 +215,11 @@ async def next_member_number() -> int:
 
 async def assign_member_number(user_id: str) -> Optional[int]:
     """Assign a permanent number iff the user doesn't already have one."""
-    u = await db.users.find_one({"id": user_id}, {"_id": 0, "member_number": 1})
-    if not u or u.get("member_number") is not None:
-        return (u or {}).get("member_number")
+    u = await db.users.find_one({"id": user_id}, {"_id": 0, "id": 1, "member_number": 1})
+    if u is None:
+        return None
+    if u.get("member_number") is not None:
+        return u["member_number"]
     n = await next_member_number()
     r = await db.users.update_one(
         {"id": user_id, "member_number": {"$exists": False}},
@@ -449,7 +451,8 @@ async def claim(user_id: str, actor: dict, *, force: bool = False,
         raise PermissionError("This reward is not available")
     rec = flipped
     amount = int(rec.get("fire_amount") or cfg.get("fire_amount") or 1000)
-    idem = f"founding_vip:v{rec.get('rule_version') or 1}:{user_id}"
+    gen = int(rec.get("claim_generation") or 0)
+    idem = f"founding_vip:v{rec.get('rule_version') or 1}:{user_id}" + (f":g{gen}" if gen else "")
     wallet = await db.fire_wallets.find_one({"user_id": user_id}, {"_id": 0, "vault_balance": 1})
     prev_vault = int((wallet or {}).get("vault_balance") or 0)
     txn = {
@@ -590,10 +593,15 @@ async def reset_claim(founder: dict, username: str, *, reason: str,
     await db.founding_vip_corrections.insert_one(dict(correction))
     new_status = "eligible" if allow_reclaim else "corrected_no_reclaim"
     # Original claim data is PRESERVED on the record; only status moves.
-    await db.founding_vip_rewards.update_one({"id": rec["id"]}, {"$set": {
+    # allow_reclaim bumps claim_generation so a lawful re-claim gets a
+    # fresh idempotency key and actually re-deposits the Fire.
+    update_ops: dict = {"$set": {
         "status": new_status, "reversal_ref": correction["id"],
         "notification_sent": False if allow_reclaim else rec.get("notification_sent"),
-        "updated_at": now}})
+        "updated_at": now}}
+    if allow_reclaim:
+        update_ops["$inc"] = {"claim_generation": 1}
+    await db.founding_vip_rewards.update_one({"id": rec["id"]}, update_ops)
     await _audit(founder, "claim_correction", {
         "fire_reversed": reversed_fire, "allow_reclaim": allow_reclaim,
         "warning": warning}, target_user=username, reason=reason)
