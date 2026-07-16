@@ -866,3 +866,21 @@ html[data-mode="stealth"] .or-btn::after {
 @media (prefers-reduced-motion: reduce) {
   .fire-power-icon { animation: none; }
 }
+
+/* ── Founding VIP celebration (CSS-only) ── */
+.founding-vip-card { animation: fvip-pop 400ms ease-out; }
+@keyframes fvip-pop { from { transform: scale(0.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.founding-vip-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.founding-vip-confetti span {
+  position: absolute; top: -8px; left: calc(7% * var(--i));
+  width: 6px; height: 10px; border-radius: 2px;
+  background: hsl(calc(30 * var(--i)), 90%, 60%);
+  animation: fvip-fall 2.4s ease-in forwards;
+  animation-delay: calc(60ms * var(--i));
+}
+@keyframes fvip-fall {
+  to { transform: translateY(320px) rotate(540deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .founding-vip-card, .founding-vip-confetti span { animation: none; }
+}

@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import FoundingVipPopup from "@/components/fire/FoundingVipPopup";
 import MessagingPopupProvider from "@/contexts/MessagingPopupContext";
 import { PresenceProvider } from "@/contexts/PresenceContext";
 import Layout from "@/components/Layout";
@@ -86,7 +87,7 @@ function ShellRoute({ children }) {
       </div>
     );
   }
-  return <Layout>{children}</Layout>;
+  return <Layout><FoundingVipPopup />{children}</Layout>;
 }
 
 // Pending-deletion users get the restore prompt instead of any

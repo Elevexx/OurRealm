@@ -24,6 +24,7 @@ import LevelBadge from "@/components/progression/LevelBadge";
 import ProgressCard from "@/components/progression/ProgressCard";
 import ProgressionBadges from "@/components/progression/ProgressionBadges";
 import FireWalletCard from "@/components/fire/FireWalletCard";
+import FoundingVipCard from "@/components/fire/FoundingVipCard";
 import apiClient from "@/api/client";
 import AvatarPicker from "@/components/AvatarPicker";
 import BannerEditor, { BannerView } from "@/components/BannerEditor";
@@ -557,8 +558,15 @@ export default function Profile() {
           <div className="flex-1 min-w-0 sm:pt-3">
             {/* VIP badge always rendered next to identity, including edit mode */}
             {user?.is_vip && (
-              <div className="mb-1" data-testid="profile-vip-row">
+              <div className="mb-1 flex items-center gap-2 flex-wrap" data-testid="profile-vip-row">
                 <VipBadge joinedAt={user.vip_joined_at} testid="profile-vip-badge" />
+                {user?.founding_vip && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider"
+                    style={{ border: "1px solid #F4C84A", color: "#F4C84A" }}
+                    data-testid="profile-founding-vip-badge">
+                    🏆 Founding VIP #{user.founding_vip_member_number || ""}
+                  </span>
+                )}
               </div>
             )}
             {editing ? (
@@ -642,6 +650,7 @@ export default function Profile() {
           Rendered in BOTH view and edit modes — parity is mandatory. */}
       {!isGuest && user?.username && (
         <>
+          <FoundingVipCard />
           <FireWalletCard collapsible />
           <ProgressCard username={user.username} isOwner={true} />
           <ProgressionBadges username={user.username} isOwner={true} />

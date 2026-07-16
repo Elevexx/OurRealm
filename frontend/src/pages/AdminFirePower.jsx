@@ -438,6 +438,271 @@ function InspectorSection() {
   );
 }
 
+function FoundingVipAdminSection() {
+  const [stats, setStats] = useState(null);
+  const [cfg, setCfg] = useState(null);
+  const [versions, setVersions] = useState([]);
+  const [draft, setDraft] = useState({});
+  const [users, setUsers] = useState([]);
+  const [uSearch, setUSearch] = useState("");
+  const [uFilter, setUFilter] = useState("");
+  const [reason, setReason] = useState("");
+  const [dry, setDry] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [s, c] = await Promise.all([
+        apiClient.get("/founding-vip/admin/stats"),
+        apiClient.get("/founding-vip/admin/config"),
+      ]);
+      setStats(s.data);
+      setCfg(c.data.config);
+      setVersions(c.data.versions || []);
+      setDraft(c.data.config.draft || {});
+    } catch (e) { toast.error(e?.response?.data?.detail || "Load failed"); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const run = async (key, fn, ok) => {
+    setBusy(key);
+    try { await fn(); if (ok) toast.success(ok); } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
+    finally { setBusy(null); }
+  };
+  const loadUsers = () => run("users", async () => {
+    const r = await apiClient.get("/founding-vip/admin/users",
+      { params: { search: uSearch || undefined, status: uFilter || undefined, limit: 50 } });
+    setUsers(r.data.users || []);
+  });
+  const userAct = (username, action, extra) => run(`${action}-${username}`, async () => {
+    if (!reason.trim()) { toast.error("Reason required"); return; }
+    await apiClient.post(`/founding-vip/admin/users/${username}/${action}`,
+      { reason: reason.trim(), ...(extra || {}) });
+    await Promise.all([loadUsers(), load()]);
+  }, `${action} done`);
+
+  if (!stats) return <div className="or-surface p-4"><Loader2 size={16} className="animate-spin" /></div>;
+
+  const statRows = [
+    ["Member limit", stats.member_limit], ["Fire reward", `${stats.fire_reward} 🔥`],
+    ["Rule version", stats.rule_version], ["Accounts reviewed", stats.accounts_reviewed],
+    ["Qualifying users", stats.qualifying_existing_users], ["Eligible now", stats.currently_eligible],
+    ["Claimed", stats.already_claimed], ["Unclaimed", stats.still_unclaimed],
+    ["Expired", stats.expired], ["Excluded", stats.excluded],
+    ["Needs review", stats.needs_manual_review], ["Claim %", `${stats.claim_percentage}%`],
+    ["Fire distributed", stats.total_fire_distributed], ["Fire to claim", stats.total_fire_available_to_claim],
+    ["Spots remaining", stats.future_spots_remaining], ["Last member #", stats.last_member_number_assigned],
+    ["Last qualifying #", stats.last_qualifying_member_number], ["Corrections", stats.corrections],
+  ];
+  const editFields = [
+    ["card_title", "Card title"], ["card_description", "Short description"],
+    ["card_details", "Detailed info"], ["card_button_text", "Button text"],
+    ["card_button_color", "Button color"], ["card_accent_color", "Accent color"],
+    ["card_icon", "Icon"], ["card_terms", "Terms"],
+    ["popup_title", "Popup title"], ["popup_message", "Popup message"],
+    ["notification_title", "Notification title"], ["notification_message", "Notification message"],
+    ["claimed_message", "Claimed message"], ["expired_message", "Expired message"],
+    ["max_member_number", "Max member #"], ["fire_amount", "Fire amount"],
+    ["end_date", "End date (ISO, blank=none)"],
+  ];
+
+  return (
+    <div className="or-surface p-4" data-testid="founding-vip-admin">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <div className="text-sm font-semibold flex items-center gap-2">
+          🏆 Founding VIP Reward
+          <span className="or-chip" style={{ color: stats.enabled ? "#10E670" : "#ff8080" }}>
+            {stats.enabled ? "ENABLED" : "DISABLED"}
+          </span>
+          <span className="or-chip">{stats.published ? "Published" : "Unpublished"}</span>
+        </div>
+        <div className="flex gap-2">
+          <button className="or-chip" onClick={load} data-testid="fvip-refresh"><RefreshCw size={11} /> Refresh</button>
+          <button className="or-chip" onClick={() => setEditOpen((o) => !o)} data-testid="fvip-edit-toggle">
+            <Wand2 size={11} /> {editOpen ? "Close editor" : "Edit content"}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center mb-3" data-testid="fvip-stats">
+        {statRows.map(([k, v]) => (
+          <div key={k} className="p-2 rounded-xl" style={{ border: "1px solid var(--border-col)" }}>
+            <div className="text-sm font-bold" style={{ color: "#F4C84A" }}>{(v ?? 0).toLocaleString?.() ?? v}</div>
+            <div className="text-[8px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{k}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-3 text-xs">
+        <button className="or-chip" data-testid="fvip-dry-run"
+          onClick={() => run("dry", async () => {
+            const r = await apiClient.post("/founding-vip/admin/backfill/dry-run");
+            setDry(r.data);
+          })}>
+          {busy === "dry" ? <Loader2 size={11} className="animate-spin" /> : <Search size={11} />} Dry run
+        </button>
+        <button className="or-chip" data-testid="fvip-execute"
+          onClick={() => {
+            const p = window.prompt('Type "ACTIVATE FOUNDING VIP" to run the eligibility backfill (no Fire is deposited):');
+            if (p !== null) run("exec", async () => {
+              const r = await apiClient.post("/founding-vip/admin/backfill/execute", { confirmation_phrase: p });
+              setDry(r.data); await load();
+            }, "Backfill executed");
+          }}>
+          <ShieldAlert size={11} /> Execute backfill
+        </button>
+        <button className="or-chip" data-testid="fvip-toggle-enabled"
+          onClick={() => run("flag", async () => {
+            await apiClient.patch("/founding-vip/admin/config/draft", { changes: { enabled: !cfg.enabled } });
+            await apiClient.post("/founding-vip/admin/config/publish");
+            await load();
+          }, cfg?.enabled ? "Program disabled" : "Program enabled")}>
+          {cfg?.enabled ? "Disable program" : "Enable program"}
+        </button>
+        {["claimed", "unclaimed", "excluded", "all"].map((k) => (
+          <a key={k} className="or-chip" data-testid={`fvip-export-${k}`}
+            href={`${apiClient.defaults.baseURL}/founding-vip/admin/export/${k}`}
+            onClick={async (e) => {
+              e.preventDefault();
+              const r = await apiClient.get(`/founding-vip/admin/export/${k}`, { responseType: "blob" });
+              const url = URL.createObjectURL(r.data);
+              const a = document.createElement("a");
+              a.href = url; a.download = `founding_vip_${k}.csv`; a.click();
+              URL.revokeObjectURL(url);
+            }}>
+            Export {k}
+          </a>
+        ))}
+      </div>
+
+      {dry && (
+        <pre className="text-[10px] p-3 rounded-xl overflow-x-auto mb-3"
+          style={{ border: "1px solid var(--border-col)", color: "var(--text-muted)" }}
+          data-testid="fvip-dry-report">{JSON.stringify(dry, null, 1)}</pre>
+      )}
+
+      {editOpen && cfg && (
+        <div className="p-3 rounded-xl mb-3" style={{ border: "1px solid var(--border-col)" }} data-testid="fvip-editor">
+          <div className="grid sm:grid-cols-2 gap-2 text-xs mb-2">
+            {editFields.map(([k, label]) => (
+              <label key={k} className="block">
+                <span className="text-[9px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{label}</span>
+                <input className="or-input w-full" value={draft[k] ?? cfg[k] ?? ""}
+                  onChange={(e) => setDraft((d) => ({ ...d, [k]: e.target.value }))}
+                  data-testid={`fvip-edit-${k}`} />
+              </label>
+            ))}
+            <label className="block">
+              <span className="text-[9px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Rewards list (| separated)</span>
+              <input className="or-input w-full"
+                value={(draft.card_rewards ?? cfg.card_rewards ?? []).join(" | ")}
+                onChange={(e) => setDraft((d) => ({ ...d, card_rewards: e.target.value.split("|").map((x) => x.trim()).filter(Boolean) }))}
+                data-testid="fvip-edit-rewards" />
+            </label>
+            <label className="flex items-center gap-2 mt-4 text-xs">
+              <input type="checkbox" checked={draft.popup_enabled ?? cfg.popup_enabled}
+                onChange={(e) => setDraft((d) => ({ ...d, popup_enabled: e.target.checked }))}
+                data-testid="fvip-edit-popup-enabled" /> Login popup enabled
+            </label>
+            <label className="flex items-center gap-2 mt-4 text-xs">
+              <input type="checkbox" checked={draft.include_manual_vips ?? cfg.include_manual_vips}
+                onChange={(e) => setDraft((d) => ({ ...d, include_manual_vips: e.target.checked }))}
+                data-testid="fvip-edit-manual-vips" /> Manually-awarded non-founding VIPs qualify
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button className="or-chip" data-testid="fvip-save-draft"
+              onClick={() => run("draft", async () => {
+                const changes = { ...draft };
+                if (changes.max_member_number !== undefined) changes.max_member_number = parseInt(changes.max_member_number, 10);
+                if (changes.fire_amount !== undefined) changes.fire_amount = parseInt(changes.fire_amount, 10);
+                if (changes.end_date === "") changes.end_date = null;
+                await apiClient.patch("/founding-vip/admin/config/draft", { changes });
+              }, "Draft saved")}>
+              Save draft
+            </button>
+            <button className="or-chip" style={{ color: "#10E670" }} data-testid="fvip-publish"
+              onClick={() => run("pub", async () => {
+                await apiClient.post("/founding-vip/admin/config/publish"); await load();
+              }, "Published")}>
+              Publish
+            </button>
+            {versions.length > 0 && (
+              <select className="or-input text-xs" style={{ width: 220 }} data-testid="fvip-versions"
+                onChange={(e) => {
+                  const i = parseInt(e.target.value, 10);
+                  if (!Number.isNaN(i) && window.confirm("Restore this version?"))
+                    run("restore", async () => {
+                      await apiClient.post(`/founding-vip/admin/config/restore/${i}`); await load();
+                    }, "Version restored");
+                }}>
+                <option value="">Restore version…</option>
+                {versions.map((v) => (
+                  <option key={v.index} value={v.index}>v{v.version} — {(v.saved_at || "").slice(0, 16)}</option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
+        <input className="or-input" style={{ width: 150 }} placeholder="search username"
+          value={uSearch} onChange={(e) => setUSearch(e.target.value)} data-testid="fvip-user-search" />
+        <select className="or-input" style={{ width: 130 }} value={uFilter}
+          onChange={(e) => setUFilter(e.target.value)} data-testid="fvip-user-filter">
+          <option value="">All statuses</option>
+          {["eligible", "claimed", "excluded", "revoked", "expired"].map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <button className="or-chip" onClick={loadUsers} data-testid="fvip-user-load">
+          {busy === "users" ? <Loader2 size={11} className="animate-spin" /> : <Search size={11} />} Load users
+        </button>
+        <input className="or-input flex-1 min-w-[160px]" placeholder="reason (required for actions)"
+          value={reason} onChange={(e) => setReason(e.target.value)} data-testid="fvip-reason" />
+      </div>
+      {users.length > 0 && (
+        <div className="max-h-64 overflow-y-auto text-xs" data-testid="fvip-user-list">
+          {users.map((r) => (
+            <div key={r.id} className="py-1.5 flex flex-wrap items-center gap-2"
+              style={{ borderTop: "1px solid var(--border-col)", color: "var(--text-muted)" }}>
+              <b style={{ color: "var(--text-main)" }}>@{r.username}</b>
+              <span>#{r.member_number}</span>
+              <span className="or-chip" style={{ color: { eligible: "#F4C84A", claimed: "#10E670", excluded: "#ff8080", revoked: "#ff8080", expired: "var(--text-muted)" }[r.status] }}>{r.status}</span>
+              {r.status === "eligible" && (
+                <>
+                  <button className="or-chip" onClick={() => userAct(r.username, "force-claim")} data-testid={`fvip-force-${r.username}`}>Force-claim</button>
+                  <button className="or-chip" onClick={() => userAct(r.username, "exclude")} style={{ color: "#ff8080" }}>Exclude</button>
+                  <button className="or-chip" onClick={() => userAct(r.username, "revoke")} style={{ color: "#ff8080" }}>Revoke</button>
+                </>
+              )}
+              {(r.status === "excluded" || r.status === "revoked") && (
+                <button className="or-chip" onClick={() => userAct(r.username, "include")} style={{ color: "#10E670" }}>Include</button>
+              )}
+              {r.status === "claimed" && (
+                <button className="or-chip" style={{ color: "#ff8080" }} data-testid={`fvip-reset-${r.username}`}
+                  onClick={() => {
+                    const again = window.confirm("Allow this user to claim again after the correction? OK=yes, Cancel=no");
+                    run(`reset-${r.username}`, async () => {
+                      if (!reason.trim()) { toast.error("Reason required"); return; }
+                      const res = await apiClient.post(`/founding-vip/admin/users/${r.username}/reset-claim`,
+                        { reason: reason.trim(), allow_reclaim: again, reverse_fire: true });
+                      if (res.data.warning) toast.warning(res.data.warning);
+                      await Promise.all([loadUsers(), load()]);
+                    }, "Correction recorded");
+                  }}>
+                  Reset claim
+                </button>
+              )}
+              {r.status === "claimed" && <span className="ml-auto">{(r.claimed_at || "").slice(0, 16)}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminFirePower() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -538,6 +803,7 @@ export default function AdminFirePower() {
           {/* Phase 0.6 — command center */}
           <DashboardSection />
           <InspectorSection />
+          <FoundingVipAdminSection />
 
           {/* Migration */}
           <div className="or-surface p-4" data-testid="fire-admin-migration">

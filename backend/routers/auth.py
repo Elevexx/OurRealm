@@ -219,6 +219,12 @@ async def register(payload: RegisterPayload, response: Response):
         )
 
     await record_signup_event(True, "success", 200, email)
+    # Founding VIP — assign permanent member number + eligibility (no deposits).
+    try:
+        from services import founding_vip as _fvip
+        await _fvip.on_new_registration(user_id)
+    except Exception:
+        pass
     return {"user": serialize_user(doc), "access_token": access}
 
 
