@@ -423,6 +423,12 @@ async def delete_track(track_id: str, current: CurrentUser):
     if not _is_track_owner_or_founder(track, current):
         raise HTTPException(status_code=403, detail="Only the owner or founder can delete this sound")
     await db.tracks.delete_one({"id": track_id})
+    # Canonical post + comments go with the sound (no broken feed entries).
+    try:
+        from services import sound_posts as sp
+        await sp.delete_canonical_for_track(track_id)
+    except Exception:  # noqa: BLE001
+        pass
     # Best-effort cleanup of the audio file on disk. We swallow errors so a
     # missing-file (e.g. pod restart wiped /uploads) never blocks deletion.
     try:

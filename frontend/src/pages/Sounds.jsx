@@ -31,7 +31,8 @@ const TABS = [
   { id: "AI",       Icon: Wand2,     color: "#3CFFB0" },
 ];
 const GENRES = ["All", ...ALL_GENRES];
-const CHARTS = ["Top 100", "Trending", "New Releases", "Up & Coming", "Editor's Picks"];
+const CHARTS = ["🔥 Top Fire", "Top 100", "Trending", "New Releases", "Up & Coming", "Editor's Picks"];
+const FIRE_WINDOWS = ["1h", "12h", "24h", "1w", "1m", "all"];
 const MOODS  = ["Any", "Energetic", "Chill", "Dark", "Uplifting", "Focus", "Party"];
 const RADII  = ["10", "20", "50", "100", "250", "500"];   // "Any" handled by the chip toggle
 

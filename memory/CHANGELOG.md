@@ -63,3 +63,16 @@ Founder (all require_founder + audited): /api/admin/progression/{flags, task-typ
 - FireButton.jsx picker header: replaced level_badge_url/placeholder img with the official icon (.fire-power-icon in 44px wrap, 86% fill, drop-shadow orange glow).
 - index.css: fire-power-flicker keyframes (transform/opacity only, 2.6s) + prefers-reduced-motion off-switch.
 - Verified mobile 390 + desktop 1920: icon loads, crisp, no white box.
+
+## July 2026 — Sounds ⇄ For You unification (iteration 83, 15/15 backend pass)
+- Canonical model: every track gets ONE post (media_type/content_type "sound", is_canonical_sound, sound_track_id). Fire/comments/caption/hashtags/audience live on the post; db.tracks stays the audio asset.
+- NEW services/sound_posts.py: create_canonical_post (idempotent), attach_posts_to_tracks (batch fire embed), sync track⇄post (title/cover/audience), delete both directions, db-managed sound_classifications (music/podcasts/fx/other, admin-renameable PATCH /api/sounds/admin/classifications/{id}), migration dry-run/execute("MIGRATE SOUNDS TO POSTS")/rollback("ROLLBACK SOUND MIGRATION") with sound_migration_log; likes→1x fire (source sound_migration, no pool charge).
+- sounds.py: upload creates canonical post (defer_post=true for For You composer), GET /classifications, feed sort=fire&window (1h/12h/24h/1w/1m/all), top100/by-user embed t.post, PATCH/DELETE sync canonical.
+- posts.py: create_post marks canonical when owner+first post for track (source_composer foryou), global canonical dedupe in track merge, delete canonical post deletes track+file, audience sync post→track.
+- Frontend: Sounds cards show FireButton (sounds-fire-{id}-btn) replacing Heart (Heart fallback for legacy no-post tracks); "🔥 Top Fire" chart + Window dropdown (sounds-fire-window); SoundUploadPicker loads shared classifications + sends classification_id/defer_post; Feed composer passes deferPost.
+- Preview migration EXECUTED: 5 tracks backfilled, idempotent re-run (0 created/5 skipped). PRODUCTION untouched.
+- fire_vault post_inspector projection extended with sound fields. server.py seeds classifications + indexes (posts by_sound_track, by_media_created).
+- Bugs fixed post-test: delete_track canonical cleanup + CHARTS/FIRE_WINDOWS consts (edits had been reverted); useFireStatus ordering crash on Sounds.
+
+## July 2026 — Collapsible Fire Power profile cards (UI-only)
+- FireWalletCard (collapsible prop, used on /profile) + PublicFireStats now use progression CollapsibleHeader/useAccordionState: title "Fire Power", ALWAYS collapsed on open, not persisted, same animation as Creator Progress/Progression Badges. Testids: fire-wallet-header/-toggle, public-fire-stats-header/-toggle. HomeDashboard compact wallet unchanged.
