@@ -2759,3 +2759,31 @@ CRITICAL PIPELINE BUG FIXED (production-relevant): services/image_store.py save_
 VIEWPORTS TESTED: 375/390/768/820/1024/1280/1366/1440/1600/1920 on both profile pages — 0 overflow, banner heights correct, overlap 50-52% everywhere.
 EDGE CASE: preview test user clmc8069d has a pre-fix avatar pointing at a wiped local file (broken img) — data casualty of ephemeral disk, not code; future uploads are durable.
 DEPLOY NOTE: after redeploy, production founder should re-run "Apply Badge Artwork"? NO — production artwork applied there will use the FIXED pipeline; if production was already applied with broken thumbs, clear+reapply may be needed (frontend fallback chain covers it either way).
+
+## Iteration 82 — FIRE POWER Reaction System, Phases 1–4 COMPLETE (June 2026, verified iter_80.json full pass)
+REPLACES Likes on PUBLIC posts with progression-gated Fire reactions. Private/DM/group/community emoji reactions (routers/reactions.py) UNTOUCHED. Legacy likes NEVER deleted.
+
+ACCOUNTING RULES (backend authoritative, services/fire_power.py):
+- 1x Fire always unlimited/free. Boosted (2x+) cost = max(fire_value - 1, 0) against rolling 24h Daily Fire Pool.
+- Each boost spend expires exactly 24h later (per-transaction expiry, no midnight reset) — lazy expiry decrements fire_pool_counters.spent_active.
+- Concurrency: atomic conditional update {spent_active: {$lte: pool - cost}} + $inc — verified with 10 parallel requests, zero overspend.
+- Idempotency: fire_idempotency collection (_id = client key); duplicate returns duplicate:true, no double charge; key released on 409 so retry works.
+- Lowering/removing fire = NO pool refund (anti pump-and-dump); re-raising charges only delta above still-paid amount for that reaction.
+
+COLLECTIONS: post_fire_reactions (uniq post_id+user_id; fire_value, boosted_cost, active, source user|migration), fire_power_transactions (reaction_id, boosted_amount, effective_at, expires_at, status active|expired), fire_pool_counters (_id=user_id, spent_active), fire_flags (singleton), fire_idempotency, fire_migration_log, fire_audit_logs. Posts get denormalised fire_total/fire_count.
+
+FLAGS (db.fire_flags, ALL DEFAULT OFF; founder-only /admin/fire-power UI): fire_reactions, boosted_fire, fire_ranked_feed, fire_notifications. PRODUCTION = all OFF (untouched). PREVIEW currently: first 3 ON for testing, notifications OFF.
+
+LEVEL FIRE DEFAULTS (progression_levels.fire_settings; editable in Level Builder + /admin/fire-power): L1 Newbie 1x/0, L2 Explorer 2x/10, L3 Creator 5x/25, L4 Rising Star 10x/50, L5 Influencer 20x/100, L6 Elite 35x/200, L7 Master 50x/350, L8 Legend 100x/500. Seed defaults via POST /api/fire/admin/seed-defaults (fills only missing).
+
+API: GET /api/fire/status (OptionalUser; flags+config+pool), POST /api/fire/react {post_id, fire_value, idempotency_key}, GET /api/fire/post/{id}; founder admin: GET /api/fire/admin/overview, PATCH /admin/flags, PATCH /admin/levels/{id}, POST /admin/seed-defaults, POST /admin/migration/{dry-run|execute|rollback|reconcile}. Feed: GET /api/posts?sort=fire&window=1h|12h|24h|1w|1m|all (gated on fire_ranked_feed; pinned post stays first; fire{total,count,my_fire} attached when fire_reactions on).
+
+MIGRATION WORKFLOW (founder-only, phrase-guarded): dry-run (read-only totals) → execute (phrase "MIGRATE LIKES TO FIRE"; converts public liked_by→1x fire source=migration via $setOnInsert only; 0 pool consumed; idempotent; likes untouched) → reconcile (fix:true repairs denormalised counters) → rollback (phrase "ROLLBACK FIRE MIGRATION"; deletes ONLY source=migration reactions + recompute). Preview: 8 legacy likes migrated + rollback tested + re-executed. PRODUCTION: NOT run (awaiting founder approval after dry-run review).
+
+FRONTEND: components/fire/FireButton.jsx (flame tap=1x toggle, long-press/chevron=Fire Picker with multiplier chips, Fire Meter available/pool bar + next-recovery countdown), lib/fireApi.js (auth-aware cached /fire/status), Feed.jsx (FireButton swap on public posts only, Latest/🔥Top Fire + window chips), PostPopup.jsx (same swap), pages/AdminFirePower.jsx (/admin/fire-power: stats, flags, level table, migration console), AdminLevelBuilder LevelEditor Fire Power section, AdminHub card. When flags OFF → UI falls back to legacy Likes automatically (production-safe).
+
+PRODUCTION ACTIVATION STEPS (when founder approves): 1) deploy 2) /admin/fire-power → Seed defaults 3) Dry Run → review totals 4) Execute migration (phrase) 5) Reconcile (expect 0 mismatches) 6) enable fire_reactions flag 7) optionally boosted_fire, fire_ranked_feed, fire_notifications. ROLLBACK = flags OFF (UI reverts to Likes instantly, data preserved) + optional migration rollback.
+
+TESTED: iteration_80.json — backend 22/22, frontend 12/12 flows, no regressions (legacy like + emoji reactions verified unchanged).
+
+REMAINING (P1 backlog): Fire notifications grouping ("X and 3 others fired your post"), Fire analytics dashboard, live fire count updates (websocket), Fire on profile My Feed widget (still shows likes there).
