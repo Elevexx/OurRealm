@@ -42,3 +42,15 @@ Founder (all require_founder + audited): /api/admin/progression/{flags, task-typ
 - Functional republish flow verified: Creator required_task_count 5→4 triggered confirmation gate, published v2, migrated 1 user; stealth claimed Creator → celebration modal → advanced to Rising Star (3/5, rep 300, 3 completed levels).
 - Screenshots verified: desktop profile (Neon), mobile profile (Millennium), progress card + history, claim celebration with rewards, Level Builder levels list (8 levels), task builder + reward editor, analytics dashboard, jobs/repair with dry-run history.
 - Preview DB note: 90/91 real users genuinely have empty avatar_url (this is preview data; production differs — founder Dry Run in production shows real counts).
+
+## July 2026 — Phase 0.6 Fire Power lifecycle completion (iteration 82)
+
+### Session fixes (fork continuation)
+- AdminFirePower.jsx: removed 134 lines of orphaned duplicate JSX after component close (was breaking webpack compile of the whole frontend).
+- AdminFirePower.jsx: implemented the missing `DashboardSection` (12-KPI live dashboard, GET /api/fire/admin/dashboard) and `InspectorSection` (user/post inspector + pause/restore/force-finalize/collect-on-behalf/reverse-reaction controls) that were referenced but undefined.
+
+### Phase 0.6 certification (testing_agent iteration_82.json)
+- Backend 19/19 pytest pass (/app/backend/tests/test_fire_phase06.py): full-value recipient accounting (5x → pool −4, pending +5, post +5), 24h edit window bound to created_at (4 edits → identical edit_deadline), difference-based edit accounting, 403 read-only after deadline, force-finalize pending→collectable, manual collect →vault, 5 parallel collects never double-credit, idempotency duplicate:true no-delta, founder-only 403 guard on all /fire/admin/*, dashboard/inspect/pause/restore/reverse (reason required), recalculate zero-drift, fire-ranked feed desc by fire_total, DM emoji reactions endpoint preserved.
+- Frontend verified: /feed 47 fire buttons + 0 emoji launchers on public posts; picker desktop dialog + mobile bottom sheet (390px, no overflow); fire-wallet-card premium UI on /profile; admin command center all testids; non-founder guard; privacy JSON leak audit pass (hidden fields have NO value key).
+- Preview flags all ON (fire_reactions, boosted_fire, fire_ranked_feed, fire_wallet_enabled, fire_collection_enabled, fire_pending_enabled, fire_collectable_enabled, fire_wallet_history_enabled, fire_admin_tools_enabled). PRODUCTION untouched — no migration executed, flags remain OFF in prod until founder activates.
+- Background finalization loop: server.py starts fire_vault.finalization_loop(600) — pending→collectable every 10 min even while users are offline.
