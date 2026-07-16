@@ -44,6 +44,10 @@ function LevelEditor({ level, onSaved, taskTypes, rewardTypes }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setSettings = (k, v) => set("progress_settings", { ...(form.progress_settings || {}), [k]: v });
   const setGraphics = (k, v) => set("graphics", { ...(form.graphics || {}), [k]: v });
+  const setFire = (k, v) => set("fire_settings", {
+    max_fire_per_reaction: 1, daily_fire_pool: 0, fire_enabled: true,
+    ...(form.fire_settings || {}), [k]: v,
+  });
 
   const save = async () => {
     setSaving(true);
@@ -52,7 +56,7 @@ function LevelEditor({ level, onSaved, taskTypes, rewardTypes }) {
       ["name", "internal_name", "level_number", "display_order", "short_description",
        "long_description", "is_starting_level", "claim_mode", "repeatable",
        "mode_availability", "active_from", "expires_at", "graphics",
-       "progress_settings", "rewards"].forEach((k) => { body[k] = form[k]; });
+       "progress_settings", "rewards", "fire_settings"].forEach((k) => { body[k] = form[k]; });
       const r = await apiClient.patch(`/admin/progression/levels/${level.id}`, body);
       toast.success(r.data.functional_change
         ? "Saved — functional change; publish a new version to apply to users."
@@ -151,6 +155,30 @@ function LevelEditor({ level, onSaved, taskTypes, rewardTypes }) {
           <Field label="Celebration message"><input className="or-input" value={(form.progress_settings || {}).celebration_message || ""} onChange={(e) => setSettings("celebration_message", e.target.value)} /></Field>
           <Field label="No-next-level message"><input className="or-input" value={(form.progress_settings || {}).no_next_level_message || ""} onChange={(e) => setSettings("no_next_level_message", e.target.value)} /></Field>
           <Field label="Paused message"><input className="or-input" value={(form.progress_settings || {}).paused_message || ""} onChange={(e) => setSettings("paused_message", e.target.value)} /></Field>
+        </div>
+      </div>
+
+      <div className="or-surface p-3" data-testid="level-fire-settings">
+        <div className="text-xs font-semibold mb-2" style={{ color: "#FF7A1A" }}>🔥 Fire Power (per-level reaction limits)</div>
+        <div className="grid sm:grid-cols-3 gap-2">
+          <Field label="Max Fire per reaction (×)">
+            <input type="number" min={1} className="or-input" data-testid="level-fire-max"
+              value={(form.fire_settings || {}).max_fire_per_reaction ?? 1}
+              onChange={(e) => setFire("max_fire_per_reaction", parseInt(e.target.value || "1", 10))} />
+          </Field>
+          <Field label="Daily Fire Pool (rolling 24h)">
+            <input type="number" min={0} className="or-input" data-testid="level-fire-pool"
+              value={(form.fire_settings || {}).daily_fire_pool ?? 0}
+              onChange={(e) => setFire("daily_fire_pool", parseInt(e.target.value || "0", 10))} />
+          </Field>
+          <label className="flex items-center gap-2 text-xs mt-4">
+            <input type="checkbox" data-testid="level-fire-enabled"
+              checked={(form.fire_settings || {}).fire_enabled !== false}
+              onChange={(e) => setFire("fire_enabled", e.target.checked)} /> Boosted Fire enabled
+          </label>
+        </div>
+        <div className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+          1× Fire is always unlimited. Boosts consume the pool at cost = fire − 1, replenishing exactly 24h after each spend.
         </div>
       </div>
 

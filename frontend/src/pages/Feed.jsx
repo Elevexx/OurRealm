@@ -29,11 +29,17 @@ import ImageLightbox from "@/components/ImageLightbox";
 import VideoUploadPicker from "@/components/VideoUploadPicker";
 import PostManagementMenu from "@/components/PostManagementMenu";
 import ReportButton from "@/components/ReportButton";
+import FireButton from "@/components/fire/FireButton";
+import { useFireStatus } from "@/lib/fireApi";
 import { getPostCharacterLimit } from "@/lib/postLimits";
 
 const FILTER_KEY = "ourrealm.feedMedia";
 const INTEREST_KEY = "ourrealm.interests";
 const RADIUS_KEY = "ourrealm.feedRadius";
+const FIRE_WINDOW_OPTIONS = [
+  { id: "1h", label: "1h" }, { id: "12h", label: "12h" }, { id: "24h", label: "24h" },
+  { id: "1w", label: "1w" }, { id: "1m", label: "1mo" }, { id: "all", label: "All" },
+];
 const RADIUS_OPTIONS = [
   { id: "any", label: "Any" },
   { id: "10",  label: "10 mi" },
@@ -56,6 +62,9 @@ export default function Feed() {
   useHeartbeat("feed");
   const { user, isGuest } = useAuth();
   const navigate = useNavigate();
+  const fireStatus = useFireStatus(user?.id);
+  const [fireSort, setFireSort] = useState(false);
+  const [fireWindow, setFireWindow] = useState("24h");
   const charLimit = getPostCharacterLimit(user);
   const [media, setMedia] = useState(() => {
     try { return JSON.parse(localStorage.getItem(FILTER_KEY) || "[]"); } catch { return []; }
@@ -129,6 +138,10 @@ export default function Feed() {
       if (Array.isArray(media) && media.length === 1) {
         params.media_type = media[0];
       }
+      if (fireSort && fireStatus?.ranked_feed_enabled) {
+        params.sort = "fire";
+        params.window = fireWindow;
+      }
       if (radius && radius !== "any") {
         if (!user?.zip_code) {
           setRadius("any");
@@ -143,7 +156,7 @@ export default function Feed() {
       setServerPosts(data.posts || []);
     } catch { setServerPosts([]); }
   };
-  useEffect(() => { loadPosts(); }, [radius, JSON.stringify(media), user?.zip_code, user?.username]);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadPosts(); }, [radius, JSON.stringify(media), user?.zip_code, user?.username, fireSort, fireWindow, fireStatus?.ranked_feed_enabled]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Real database posts only (June 2026 audit — mock post padding removed).
   const allPosts = useMemo(() => {
@@ -537,6 +550,39 @@ export default function Feed() {
       </div>
 
       <div className="mt-5 space-y-4">
+        {fireStatus?.ranked_feed_enabled && (
+          <div className="flex items-center gap-2 flex-wrap" data-testid="feed-fire-rank-bar">
+            <button
+              className="or-chip"
+              data-active={!fireSort}
+              onClick={() => setFireSort(false)}
+              data-testid="feed-sort-latest"
+            >
+              Latest
+            </button>
+            <button
+              className="or-chip"
+              data-active={fireSort}
+              onClick={() => setFireSort(true)}
+              data-testid="feed-sort-fire"
+              style={fireSort ? { color: "#FF7A1A", borderColor: "#FF7A1A" } : undefined}
+            >
+              🔥 Top Fire
+            </button>
+            {fireSort && FIRE_WINDOW_OPTIONS.map((w) => (
+              <button
+                key={w.id}
+                className="or-chip"
+                data-active={fireWindow === w.id}
+                onClick={() => setFireWindow(w.id)}
+                data-testid={`feed-fire-window-${w.id}`}
+                style={fireWindow === w.id ? { color: "#FF7A1A", borderColor: "#FF7A1A" } : undefined}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+        )}
         {allPosts.length === 0 && (
           <div className="or-surface p-8 text-center" data-testid="feed-empty-state">
             <div className="text-2xl mb-2">✨</div>
@@ -556,6 +602,7 @@ export default function Feed() {
           <FeedCard
             key={p.id}
             p={p}
+            fireStatus={fireStatus}
             onGuestAction={(label) => onAction(label)}
             isGuest={!user || isGuest}
             onPostDeleted={(id) => setServerPosts((s) => s.filter((x) => x.id !== id))}
@@ -599,7 +646,7 @@ export default function Feed() {
 
 function isVideoFile(u) { return !!u && /\.(mp4|webm|ogg)$/i.test(u); }
 
-function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
+function FeedCard({ p, fireStatus, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
   const { user } = useAuth();
   const [shareOpen, setShareOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -740,15 +787,25 @@ function FeedCard({ p, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
       )}
       {p.poll && <PollDisplay post={p} />}
       <footer className="flex gap-5 text-sm" style={{ color: "var(--text-muted)" }}>
-        <button
-          data-testid={`feed-like-${p.id}`}
-          onClick={onLike}
-          aria-pressed={live.liked}
-          className="flex items-center gap-1.5"
-          style={{ color: live.liked ? "#FF3F5A" : "var(--text-muted)" }}
-        >
-          <Heart size={16} fill={live.liked ? "#FF3F5A" : "none"} /> <span data-testid={`feed-like-count-${p.id}`}>{live.likes}</span>
-        </button>
+        {fireStatus?.enabled && ((p.audience?.visibility || "public") === "public") && !p.is_sound_track ? (
+          <FireButton
+            post={p}
+            fireStatus={fireStatus}
+            isGuest={isGuest}
+            onGuestAction={onGuestAction}
+            testidPrefix={`feed-fire-${p.id}`}
+          />
+        ) : (
+          <button
+            data-testid={`feed-like-${p.id}`}
+            onClick={onLike}
+            aria-pressed={live.liked}
+            className="flex items-center gap-1.5"
+            style={{ color: live.liked ? "#FF3F5A" : "var(--text-muted)" }}
+          >
+            <Heart size={16} fill={live.liked ? "#FF3F5A" : "none"} /> <span data-testid={`feed-like-count-${p.id}`}>{live.likes}</span>
+          </button>
+        )}
         <button data-testid={`feed-comment-${p.id}`} onClick={onComment} className="flex items-center gap-1.5">
           <MessageCircle size={16} /> <span data-testid={`feed-comment-count-${p.id}`}>{live.comments}</span>
         </button>

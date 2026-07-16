@@ -9,6 +9,8 @@
  */
 import React, { useEffect, useState, useCallback } from "react";
 import { X, Heart, MessageCircle, Send, Loader2, Link2, Video as VideoIcon, Reply, Flag, Share2, UserPlus, Check } from "lucide-react";
+import FireButton from "@/components/fire/FireButton";
+import { useFireStatus } from "@/lib/fireApi";
 import apiClient from "@/api/client";
 import { registerPopupSetter } from "@/lib/postPopupController";
 import { setPost, getPost, usePostState } from "@/lib/postStore";
@@ -199,6 +201,7 @@ export default function PostPopup() {
   const [imageLightbox, setImageLightbox] = useState(false);
   const [posting, setPosting] = useState(false);
   const { user } = useAuth();
+  const fireStatus = useFireStatus(user?.id);
   const viewerLiked = !!(user?.id && Array.isArray(post?.liked_by) && post.liked_by.includes(user.id));
   const live = usePostState(post?.id, {
     liked: viewerLiked,
@@ -526,15 +529,25 @@ export default function PostPopup() {
               )}
 
               <div className="flex items-center gap-4 text-sm pt-1" style={{ color: "var(--text-muted)" }}>
-                <button
-                  onClick={onLike}
-                  className="flex items-center gap-1.5"
-                  data-testid="post-popup-like"
-                  style={{ background: "transparent", padding: 0, color: live.liked ? "#FF3F5A" : "var(--text-muted)" }}
-                  aria-pressed={live.liked}
-                >
-                  <Heart size={16} fill={live.liked ? "#FF3F5A" : "none"} /> <span data-testid="post-popup-like-count">{live.likes}</span>
-                </button>
+                {fireStatus?.enabled && post?.id && ((post?.audience?.visibility || "public") === "public") ? (
+                  <FireButton
+                    post={post}
+                    fireStatus={fireStatus}
+                    isGuest={!user}
+                    onGuestAction={() => {}}
+                    testidPrefix="post-popup-fire"
+                  />
+                ) : (
+                  <button
+                    onClick={onLike}
+                    className="flex items-center gap-1.5"
+                    data-testid="post-popup-like"
+                    style={{ background: "transparent", padding: 0, color: live.liked ? "#FF3F5A" : "var(--text-muted)" }}
+                    aria-pressed={live.liked}
+                  >
+                    <Heart size={16} fill={live.liked ? "#FF3F5A" : "none"} /> <span data-testid="post-popup-like-count">{live.likes}</span>
+                  </button>
+                )}
                 <div className="flex items-center gap-1.5" data-testid="post-popup-comment-count">
                   <MessageCircle size={16} /> {live.comments}
                 </div>

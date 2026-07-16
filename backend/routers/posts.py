@@ -340,6 +340,8 @@ async def list_posts(
     limit: int = 50,
     radius: Optional[str] = None,
     viewer: Optional[str] = None,
+    sort: Optional[str] = None,
+    window: str = "24h",
 ):
     """List posts. Phase-2: optional `?radius=10|20|50|100|250|500|any`.
 
@@ -357,6 +359,9 @@ async def list_posts(
             {"username": (viewer or "").lower()},
             {"_id": 0, "id": 1, "zip_lat": 1, "zip_lng": 1, "friends": 1},
         )
+    # Fire-ranked feeds need a wider chronological slice to rank within.
+    if sort == "fire":
+        limit = max(limit, 200)
 
     query: dict = {}
     if media_type and media_type != "all":
@@ -546,6 +551,34 @@ async def list_posts(
     except Exception as e:
         log.warning(f"[reactions] post summary attach failed: {e}")
 
+    # Fire Power — attach summaries + optional fire-ranked ordering.
+    # Both are founder-flag gated (default OFF) so production behaviour
+    # is unchanged until explicitly activated.
+    try:
+        from services.fire_power import get_fire_flags, attach_fire, window_fire_map
+        fflags = await get_fire_flags()
+        if fflags.get("fire_reactions"):
+            await attach_fire(items, viewer_id)
+            if sort == "fire" and fflags.get("fire_ranked_feed"):
+                pinned = [p for p in items if p.get("is_pinned")]
+                rest = [p for p in items if not p.get("is_pinned")]
+                fmap = await window_fire_map([p.get("id") for p in rest], window)
+
+                def _fire_of(p):
+                    if fmap is None:  # window == "all" → lifetime totals
+                        return int(p.get("fire_total") or 0)
+                    return fmap.get(p.get("id"), 0)
+
+                def _created(p):
+                    v = p.get("created_at")
+                    return v.isoformat() if isinstance(v, datetime) else (v or "")
+
+                rest.sort(key=_created, reverse=True)
+                rest.sort(key=_fire_of, reverse=True)
+                items = pinned + rest
+    except Exception as e:
+        log.warning(f"[fire] feed attach/rank failed: {e}")
+
     return {"posts": items}
 
 
@@ -673,6 +706,12 @@ async def get_post(post_id: str, viewer: Optional[str] = None):
         public["reactions"] = await reaction_summary_for("post", post_id, viewer_id=viewer_id)
     except Exception as e:
         log.warning(f"[reactions] single post attach failed: {e}")
+    try:
+        from services.fire_power import get_fire_flags, attach_fire
+        if (await get_fire_flags()).get("fire_reactions"):
+            await attach_fire([public], viewer_id)
+    except Exception as e:
+        log.warning(f"[fire] single post attach failed: {e}")
     return {"post": public}
 
 

@@ -113,6 +113,12 @@ class LevelPayload(BaseModel):
     graphics: Optional[dict] = None
     progress_settings: Optional[dict] = None
     rewards: Optional[list] = None
+    fire_settings: Optional[dict] = None
+
+
+def _clean_fire(fs):
+    from services.fire_power import clean_fire_settings
+    return clean_fire_settings(fs)
 
 
 def _validate_rewards(rewards):
@@ -141,6 +147,7 @@ async def level_create(payload: LevelPayload, current: CurrentUser):
         "active_from": payload.active_from, "expires_at": payload.expires_at,
         "graphics": payload.graphics or {}, "progress_settings": payload.progress_settings or {},
         "rewards": payload.rewards or [], "status": "draft", "config_version": 0,
+        "fire_settings": (_clean_fire(payload.fire_settings) if payload.fire_settings else None),
         "created_by": current["id"], "created_at": _now(),
         "updated_by": current["id"], "updated_at": _now(),
         "published_by": None, "published_at": None,
@@ -161,6 +168,8 @@ async def level_update(level_id: str, payload: LevelPayload, current: CurrentUse
         _validate_rewards(updates["rewards"])
     if "claim_mode" in updates and updates["claim_mode"] not in ("manual", "auto"):
         raise HTTPException(status_code=400, detail="claim_mode must be manual or auto")
+    if updates.get("fire_settings") is not None:
+        updates["fire_settings"] = _clean_fire(updates["fire_settings"])
     updates.update(updated_by=current["id"], updated_at=_now())
     await db.progression_levels.update_one({"id": level_id}, {"$set": updates})
     functional = bool(FUNCTIONAL_FIELDS & set(updates)) or \

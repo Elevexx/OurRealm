@@ -16,7 +16,7 @@ import { Link } from "react-router-dom";
 import {
   BarChart3, Zap, Hash, Headphones, HelpCircle, LifeBuoy,
   Crown, ShieldCheck, ChevronRight, Loader2, Sparkles, LayoutGrid, Database,
-  Image as ImageIcon, Trophy,
+  Image as ImageIcon, Trophy, Flame,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -92,6 +92,16 @@ const CARDS = [
     description: "Configure progression levels, tasks, rewards, and rollout flags.",
     Icon: Trophy,
     accent: "#F4C84A",
+    badge: "NEW",
+    roles: ["founder"],
+    statKey: null,
+  },
+  {
+    to: "/admin/fire-power",
+    title: "Fire Power",
+    description: "Fire reaction flags, level limits, and the Like → Fire migration workflow.",
+    Icon: Flame,
+    accent: "#FF7A1A",
     badge: "NEW",
     roles: ["founder"],
     statKey: null,
