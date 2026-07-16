@@ -14,7 +14,7 @@ export default function ProgressionBadges({ username, isOwner }) {
   const [summary, setSummary] = useState(null);
   const [rank, setRank] = useState(null);
   const [detail, setDetail] = useState(null);
-  const [expanded, setExpanded] = useAccordionState(`badges:${username}`, true);
+  const [expanded, setExpanded] = useAccordionState(`badges:${username}`, false);
 
   useEffect(() => {
     const loadAll = () => {

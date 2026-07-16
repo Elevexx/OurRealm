@@ -2733,3 +2733,9 @@ Certified at 18 viewports 320x568→2560x1440: 0px horizontal overflow, min badg
 - ProgressCard refactored to use it (no lookalike duplication); ProgressionBadges now uses the SAME component — header matches Progress card exactly (computed styles verified: 14px/600/same color/44px), whole row tappable, aria-expanded, ChevronDown rotates 180°.
 - Collapsed badges section hides grid + reputation + weekly + rank + View Leaderboards with zero residual height (78px section = padding+header); state persists across profile Save rerenders (keys progress:${username} / badges:${username}).
 - Testids: progression-badges-header/-title/-toggle. Needs user redeploy to reach production.
+
+## Iteration 79c — Progression accordions default COLLAPSED (Task 6, verified)
+- useAccordionState: no persistence (no Map/storage); default false; resets on key change (viewed username) and on remount. Manual toggles survive ordinary rerenders only.
+- ProgressCard: single CollapsibleHeader for owner AND non-owner (public profiles now toggleable too); body gated by expanded only; claim success sets expanded=false (new level stays collapsed per spec).
+- ProgressionBadges default collapsed (title + arrow only when closed).
+- Verified E2E: own profile / refresh / other user / return-to-first all open collapsed; manual expand works; collapsed shows name+count+bar+arrow only. Needs redeploy to reach production.

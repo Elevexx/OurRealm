@@ -75,9 +75,9 @@ export default function ProgressCard({ username, isOwner }) {
   const [celebration, setCelebration] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState(null);
-  // Expanded state persists across remounts on the same page (spec: no
-  // reset on ordinary React rerenders). Keyed per profile username.
-  const [expanded, setExpanded] = useAccordionState(`progress:${username}`, true);
+  // Always opens COLLAPSED on profile open / user switch / remount; only
+  // an intentional header tap expands it (spec: no auto-expansion).
+  const [expanded, setExpanded] = useAccordionState(`progress:${username}`, false);
   const claimingRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -109,7 +109,7 @@ export default function ProgressCard({ username, isOwner }) {
       // (idempotent replays of an already-claimed level are safe no-ops).
       if (r.data?.completed_level) setCelebration(r.data);
       invalidateLevelBadge(username);
-      setExpanded(true);                     // new current level opens expanded
+      setExpanded(false);                    // new level stays collapsed (spec)
       // Let sibling components (badges, rank, leaderboards) refetch.
       window.dispatchEvent(new CustomEvent("or-progression-claimed"));
       try { await load(); } catch { /* refetch failure ≠ claim failure */ }
@@ -168,34 +168,22 @@ export default function ProgressCard({ username, isOwner }) {
         backgroundImage: `linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url(${g.card_background_url})`,
         backgroundSize: "cover", backgroundPosition: "center",
       } : undefined}>
-      {isOwner ? (
-        <CollapsibleHeader
-          icon={<Sparkles size={16} style={{ color: accent }} aria-hidden="true" />}
-          title={settings.progress_bar_label || `${level.name || "Level"} Progress`}
-          right={
-            <span className="text-xs font-semibold" style={{ color: accent }} data-testid="progress-card-count">
-              {summary.completed_task_count ?? 0}/{summary.required_task_count ?? 0} Tasks Completed
-            </span>
-          }
-          expanded={expanded}
-          onToggle={() => setExpanded((e) => !e)}
-          testid="progress-card-header"
-          titleTestid="progress-card-title"
-          arrowTestid="progress-card-toggle"
-        />
-      ) : (
-        <div className="flex items-center gap-2 flex-wrap">
-          <Sparkles size={16} style={{ color: accent }} aria-hidden="true" />
-          <h3 className="font-semibold text-sm flex-1" style={{ color: "var(--text-main)" }} data-testid="progress-card-title">
-            {settings.progress_bar_label || `${level.name || "Level"} Progress`}
-          </h3>
+      <CollapsibleHeader
+        icon={<Sparkles size={16} style={{ color: accent }} aria-hidden="true" />}
+        title={settings.progress_bar_label || `${level.name || "Level"} Progress`}
+        right={
           <span className="text-xs font-semibold" style={{ color: accent }} data-testid="progress-card-count">
             {summary.completed_task_count ?? 0}/{summary.required_task_count ?? 0} Tasks Completed
           </span>
-        </div>
-      )}
+        }
+        expanded={expanded}
+        onToggle={() => setExpanded((e) => !e)}
+        testid="progress-card-header"
+        titleTestid="progress-card-title"
+        arrowTestid="progress-card-toggle"
+      />
       <div className="mt-2.5"><Bar pct={pct} accent={accent} /></div>
-      {(expanded || !isOwner) && (
+      {expanded && (
       <>
 
       {status === "paused_level" && (

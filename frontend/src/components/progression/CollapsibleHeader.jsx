@@ -6,19 +6,13 @@
 import React from "react";
 import { ChevronDown } from "lucide-react";
 
-// Survives remounts during in-page navigation; cleared on full page load.
-const memory = new Map();
-
-export function useAccordionState(key, initial = true) {
-  const [open, setOpenState] = React.useState(() =>
-    memory.has(key) ? memory.get(key) : initial);
-  const setOpen = React.useCallback((v) => {
-    setOpenState((prev) => {
-      const next = typeof v === "function" ? v(prev) : v;
-      memory.set(key, next);
-      return next;
-    });
-  }, [key]);
+// Profile progression sections ALWAYS open collapsed (default false) and
+// reset whenever the key (viewed profile) changes or the route remounts.
+// State intentionally lives only in component memory — no storage, no
+// cross-visit persistence.
+export function useAccordionState(key, initial = false) {
+  const [open, setOpen] = React.useState(initial);
+  React.useEffect(() => { setOpen(initial); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   return [open, setOpen];
 }
 
