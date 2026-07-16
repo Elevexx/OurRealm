@@ -25,8 +25,9 @@ function recoveryLabel(iso) {
   if (!iso) return null;
   const ms = new Date(iso).getTime() - Date.now();
   if (ms <= 0) return "moments";
-  const h = Math.floor(ms / 3600000);
-  const m = Math.ceil((ms % 3600000) / 60000);
+  const totalMin = Math.ceil(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
