@@ -103,6 +103,17 @@ export const ActivationChecklist = () => {
     finally { setBusy(""); }
   };
 
+  const applyArtwork = async () => {
+    setBusy("art");
+    try {
+      const r = await apiClient.post("/admin/progression/apply-badge-artwork");
+      const d = r.data;
+      toast.success(`Badge artwork — applied: ${d.applied.length}, already had: ${d.already_had_artwork.length}`);
+      await load();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Artwork apply failed"); }
+    finally { setBusy(""); }
+  };
+
   const doInspect = async () => {
     setBusy("inspect");
     try {
@@ -165,6 +176,9 @@ export const ActivationChecklist = () => {
         </div>
         <button className="or-btn" onClick={seedLaunch} disabled={busy === "seed"} data-testid="seed-launch-levels-button">
           {busy === "seed" ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />} SEED LAUNCH LEVELS
+        </button>
+        <button className="or-chip ml-2" onClick={applyArtwork} disabled={busy === "art"} data-testid="apply-badge-artwork-button">
+          {busy === "art" ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />} Apply Premium Badge Artwork
         </button>
         {seedResult && (
           <div className="mt-2" data-testid="seed-launch-result">

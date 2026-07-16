@@ -694,6 +694,50 @@ async def reseed(current: CurrentUser):
     return {"ok": True, "created": created}
 
 
+# Bundled premium badge artwork (ships with every deployment) — applied
+# into the environment's own media pipeline on demand, idempotently.
+BADGE_ART = {
+    "Newbie":      ("newbie.webp",      "glowing cyan sprout medallion",    "#4DD2FF", 1.00),
+    "Explorer":    ("explorer.webp",    "emerald compass rose medallion",   "#10E670", 1.05),
+    "Creator":     ("creator.webp",     "violet paintbrush medallion",      "#C26BFF", 1.10),
+    "Rising Star": ("rising_star.webp", "blue shooting star medallion",     "#4DD2FF", 1.15),
+    "Influencer":  ("influencer.webp",  "orange megaphone winged crest",    "#FF7A18", 1.20),
+    "Elite":       ("elite.webp",       "golden laurel chevron shield",     "#F4C84A", 1.25),
+    "Master":      ("master.webp",      "crimson crossed swords and crown", "#FF3F5A", 1.30),
+    "Legend":      ("legend.webp",      "radiant green phoenix over crown", "#00FF66", 1.40),
+}
+
+
+@router.post("/apply-badge-artwork")
+async def apply_badge_artwork(current: CurrentUser):
+    """Founder-only, idempotent: imports the bundled premium badge set into
+    THIS environment's media store and assigns it to any launch level that
+    doesn't already have artwork. Cosmetic only — no user data touched."""
+    require_founder(current)
+    from pathlib import Path
+    from services.image_store import save_bytes
+    root = Path(__file__).resolve().parent.parent / "assets" / "badges"
+    applied, skipped, missing = [], [], []
+    for name, (fname, alt_sfx, glow, tier) in BADGE_ART.items():
+        lvl = await db.progression_levels.find_one({"name": name}, {"_id": 0, "id": 1, "graphics": 1})
+        if not lvl:
+            missing.append(name); continue
+        g = lvl.get("graphics") or {}
+        if g.get("badge_url") and g.get("badge_thumb_url"):
+            skipped.append(name); continue
+        rec = await save_bytes((root / fname).read_bytes(), current["id"], declared_mime="image/webp")
+        graphics = {**g, "badge_url": rec.original_url, "badge_thumb_url": rec.thumbnail_url,
+                    "alt_text": f"{name} level badge — {alt_sfx}", "glow_color": glow,
+                    "glow_intensity": tier, "locked_treatment": g.get("locked_treatment") or "darken"}
+        await db.progression_levels.update_one(
+            {"id": lvl["id"]},
+            {"$set": {"graphics": graphics, "updated_at": _now(), "updated_by": current["id"]}})
+        applied.append(name)
+    await _audit(current, "apply_badge_artwork", "system", "badge_artwork",
+                 extra={"applied": applied, "skipped": skipped, "missing": missing})
+    return {"ok": True, "applied": applied, "already_had_artwork": skipped, "levels_missing": missing}
+
+
 # ── Production activation (founder-driven rollout) ────────────────────
 class SeedLaunchPayload(BaseModel):
     confirm: bool = False
