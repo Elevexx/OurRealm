@@ -495,7 +495,7 @@ export default function Profile() {
             <Icons.Settings size={14} /> Settings
           </button>
         )}
-        <div className="h-24 sm:h-32 relative overflow-hidden" data-testid="profile-banner-area" style={{
+        <div className="or-profile-banner relative overflow-hidden" data-testid="profile-banner-area" style={{
           background: "linear-gradient(135deg, color-mix(in srgb, var(--primary) 50%, transparent), color-mix(in srgb, var(--secondary) 50%, transparent))",
         }}>
           {user?.banner_url && (
@@ -519,8 +519,8 @@ export default function Profile() {
             </button>
           )}
         </div>
-        <div className="px-4 sm:px-6 pb-4 -mt-10 sm:-mt-12 flex flex-col sm:flex-row sm:items-end gap-3">
-          <div className="relative shrink-0">
+        <div className="px-4 sm:px-6 lg:px-10 pb-4 md:pb-6 lg:pb-8 flex flex-col sm:flex-row sm:items-start gap-3 md:gap-5">
+          <div className="relative shrink-0 -mt-12 sm:-mt-[50px]">
             <UserAvatar
               user={user}
               size={96}
@@ -553,7 +553,7 @@ export default function Profile() {
               </button>
             )}
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 sm:pt-3">
             {/* VIP badge always rendered next to identity, including edit mode */}
             {user?.is_vip && (
               <div className="mb-1" data-testid="profile-vip-row">
@@ -583,15 +583,15 @@ export default function Profile() {
                   )}
                 </h2>
                 {user?.username && (
-                  <div className="flex items-center gap-2 mt-1" data-testid="profile-username-row">
+                  <div className="flex items-center gap-2 mt-1.5" data-testid="profile-username-row">
                     <span className="text-sm" style={{ color: "var(--text-muted)" }}>@{user.username}</span>
                   </div>
                 )}
                 {user?.username && <ProfileBadges username={user.username} />}
-                <div className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }} data-testid="profile-bio">
+                <div className="text-sm mt-2" style={{ color: "var(--text-muted)" }} data-testid="profile-bio">
                   {user?.bio || (isGuest ? "Browsing as guest." : "Tap edit to add a bio.")}
                 </div>
-                <div className="mt-2 flex gap-4 text-xs" style={{ color: "var(--text-muted)" }} data-testid="profile-counts">
+                <div className="mt-3 flex gap-5 text-xs" style={{ color: "var(--text-muted)" }} data-testid="profile-counts">
                   <span><b style={{ color: "var(--text-main)" }} data-testid="profile-follower-count">{user?.follower_count ?? 0}</b> followers</span>
                   <span><b style={{ color: "var(--text-main)" }} data-testid="profile-following-count">{user?.following_count ?? 0}</b> following</span>
                   <span><b style={{ color: "var(--text-main)" }} data-testid="profile-widgets-count">{user?.widgets_count ?? widgets.length}</b> widgets</span>
@@ -601,7 +601,7 @@ export default function Profile() {
           </div>
           {/* Only "Edit" and "Edit Widgets" remain per Phase A spec.
               "View as Public", "+ Add widget", and "Library" were removed. */}
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap sm:pt-3">
             {!isGuest && user && (
               editing
                 ? <button className="or-btn" onClick={saveLayout} data-testid="profile-save">Save</button>

@@ -14,7 +14,7 @@ const ART_SIZE = "clamp(24px, 16px + 1.4vw, 36px)";
 
 export default function LevelBadge({ username, onClick, testid = "level-badge" }) {
   const [data, setData] = useState(cache.get(username)?.data || null);
-  const [imgOk, setImgOk] = useState(true);
+  const [artIdx, setArtIdx] = useState(0);
 
   const fetchSummary = useCallback((force = false) => {
     if (!username) return;
@@ -24,7 +24,7 @@ export default function LevelBadge({ username, onClick, testid = "level-badge" }
       .then((r) => {
         cache.set(username, { at: Date.now(), data: r.data });
         setData(r.data);
-        setImgOk(true);
+        setArtIdx(0);
       })
       .catch(() => {});
   }, [username]);
@@ -40,7 +40,8 @@ export default function LevelBadge({ username, onClick, testid = "level-badge" }
   const g = data.level.graphics || {};
   const accent = g.accent_color || "var(--primary)";
   const glow = g.glow_color || accent;
-  const art = g.badge_thumb_url || g.badge_url || g.icon_url;
+  const sources = [g.badge_thumb_url, g.badge_url, g.icon_url].filter(Boolean);
+  const art = sources[artIdx];
 
   return (
     <button
@@ -58,8 +59,8 @@ export default function LevelBadge({ username, onClick, testid = "level-badge" }
       title={`${data.level.name} — tap for progression details`}
       data-testid={testid}
     >
-      {art && imgOk
-        ? <img src={art} alt="" onError={() => setImgOk(false)}
+      {art
+        ? <img src={art} alt="" onError={() => setArtIdx((i) => i + 1)}
                style={{
                  width: ART_SIZE, height: ART_SIZE, objectFit: "contain",
                  flexShrink: 0, filter: `drop-shadow(0 0 3px ${glow})`,

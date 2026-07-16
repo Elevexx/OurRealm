@@ -292,7 +292,7 @@ export default function FounderProfile() {
   return (
     <div className="max-w-7xl mx-auto" data-testid="founder-profile-page">
       <div className="or-surface overflow-hidden mb-5">
-        <div className="h-24 sm:h-32 relative" style={{
+        <div className="or-profile-banner relative" style={{
           background: "linear-gradient(135deg, rgba(0,255,102,0.25), rgba(46,160,255,0.20), rgba(176,38,255,0.20))",
         }}>
           <div className="absolute inset-0" style={{
@@ -310,8 +310,8 @@ export default function FounderProfile() {
             />
           )}
         </div>
-        <div className="px-4 sm:px-6 pb-4 -mt-10 sm:-mt-12 flex flex-col sm:flex-row sm:items-end gap-3">
-          <div className="relative shrink-0">
+        <div className="px-4 sm:px-6 lg:px-10 pb-4 md:pb-6 lg:pb-8 flex flex-col sm:flex-row sm:items-start gap-3 md:gap-5">
+          <div className="relative shrink-0 -mt-12 sm:-mt-[50px]">
             <UserAvatar
               user={{ ...profile, avatar_url: profile.avatar_url }}
               size={96}
@@ -328,7 +328,7 @@ export default function FounderProfile() {
               </span>
             )}
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0 sm:pt-3">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl sm:text-2xl" style={{ fontFamily: "var(--font-display)" }} data-testid="founder-name">{profile.name}</h1>
               <LevelBadge username={profile.username} testid="public-level-badge" />

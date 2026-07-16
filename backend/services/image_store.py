@@ -185,11 +185,11 @@ async def save_bytes(raw: bytes, owner_id: str, declared_mime: Optional[str] = N
     rec.original_url = mirror_to_cloud(
         "images", f"{image_id}.{ext}", ROOT / f"{image_id}.{ext}", rec.original_url,
     )
+    # Use the ACTUAL thumbnail filename — alpha sources produce PNG thumbs
+    # (a hardcoded .jpg here previously left PNG thumbs un-mirrored).
+    thumb_name = rec.thumbnail_url.rsplit("/", 1)[-1]
     rec.thumbnail_url = mirror_to_cloud(
-        "images",
-        f"{image_id}_thumb.{'gif' if ext == 'gif' else 'jpg'}",
-        ROOT / f"{image_id}_thumb.{'gif' if ext == 'gif' else 'jpg'}",
-        rec.thumbnail_url,
+        "images", thumb_name, ROOT / thumb_name, rec.thumbnail_url,
     )
     await db.images.insert_one(rec.to_dict())
     logger.info(f"Stored image {image_id} ({mime}, {width}x{height}, {bytes_written}b) for {owner_id}")

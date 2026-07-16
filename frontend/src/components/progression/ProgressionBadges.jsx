@@ -4,44 +4,10 @@
  */
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Award, Lock, Star, TrendingUp, Trophy } from "lucide-react";
+import { Award, TrendingUp, Trophy } from "lucide-react";
 import apiClient from "@/api/client";
 import { CollapsibleHeader, useAccordionState } from "./CollapsibleHeader";
-
-function BadgeArt({ g, name, locked, isCurrent, earned, accent }) {
-  const [ok, setOk] = useState(true);
-  const art = g.badge_thumb_url || g.badge_url;
-  if (!art || !ok) {
-    return locked ? <Lock size={20} style={{ color: "var(--text-muted)" }} />
-      : isCurrent ? <Star size={20} style={{ color: accent }} />
-        : <Trophy size={20} style={{ color: accent }} />;
-  }
-  const glow = g.glow_color || accent;
-  const gi = g.glow_intensity || 1;
-  const filter = locked
-    ? (g.locked_treatment === "icon" ? "none" : "grayscale(0.85) brightness(0.45)")
-    : isCurrent ? `drop-shadow(0 0 ${Math.round(9 * gi)}px ${glow})`
-      : earned ? `drop-shadow(0 0 ${Math.round(4 * gi)}px ${glow})` : "none";
-  if (locked && g.locked_treatment === "icon") {
-    return <Lock size={20} style={{ color: "var(--text-muted)" }} />;
-  }
-  return (
-    <span style={{ position: "relative", width: 56, height: 56, display: "block", flexShrink: 0 }}>
-      <img src={art} alt={g.alt_text || `${name} level badge`} loading="lazy"
-        width={56} height={56} onError={() => setOk(false)}
-        style={{ width: 56, height: 56, objectFit: "contain", filter, opacity: locked ? 0.8 : 1 }} />
-      {locked && (
-        <span style={{
-          position: "absolute", right: -3, bottom: -3, width: 18, height: 18,
-          borderRadius: "50%", background: "var(--surface)", border: "1px solid var(--border-col)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }} aria-hidden="true">
-          <Lock size={10} style={{ color: "var(--text-muted)" }} />
-        </span>
-      )}
-    </span>
-  );
-}
+import { ProgressionBadgeCard } from "./ProgressionBadgeCard";
 
 export default function ProgressionBadges({ username, isOwner }) {
   const navigate = useNavigate();
@@ -88,34 +54,18 @@ export default function ProgressionBadges({ username, isOwner }) {
         {ladder.map((l) => {
           const earned = completedByName[l.name];
           const isCurrent = l.name === currentName;
-          const g = l.graphics || {};
-          const accent = g.accent_color || "var(--primary)";
-          const glow = g.glow_color || accent;
-          const gi = g.glow_intensity || 1;
-          const locked = !earned && !isCurrent;
+          const currentNumber = (ladder.find((x) => x.name === currentName) || {}).level_number;
+          const isNext = !earned && !isCurrent && currentNumber != null && l.level_number === currentNumber + 1;
+          const status = isCurrent ? "current" : earned ? "completed" : isNext ? "next" : "locked";
+          const prog = summary?.summary;
+          const progressText = isNext && prog?.required_task_count
+            ? `${prog.completed_task_count ?? 0}/${prog.required_task_count} Tasks`
+            : null;
           return (
-            <button key={l.id} type="button"
+            <ProgressionBadgeCard key={l.id} level={l} status={status}
+              progressText={progressText}
               onClick={() => setDetail(detail?.id === l.id ? null : { ...l, earned, isCurrent })}
-              className="flex flex-col items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg w-full"
-              style={{
-                minHeight: 104,
-                border: isCurrent ? `2px solid ${accent}` : `1px solid ${locked ? "var(--border-col)" : accent}`,
-                background: isCurrent ? `color-mix(in srgb, ${accent} 12%, transparent)` : "var(--surface-2)",
-                boxShadow: isCurrent ? `0 0 ${Math.round(14 * gi)}px color-mix(in srgb, ${glow} 45%, transparent)`
-                  : earned ? `0 0 ${Math.round(6 * gi)}px color-mix(in srgb, ${glow} 25%, transparent)` : "none",
-                opacity: locked ? 0.7 : 1,
-              }}
-              aria-label={`${l.name} badge ${earned ? "earned" : isCurrent ? "current" : "locked"}`}
-              data-testid={`progression-badge-${l.level_number}`}>
-              <BadgeArt g={g} name={l.name} locked={locked} isCurrent={isCurrent} earned={earned} accent={accent} />
-              <span className="text-[11px] font-semibold text-center leading-tight break-words w-full"
-                style={{ color: locked ? "var(--text-muted)" : "var(--text-main)" }}>
-                {l.name}
-              </span>
-              {isCurrent && (
-                <span className="text-[9px] uppercase tracking-widest font-bold" style={{ color: accent }}>current</span>
-              )}
-            </button>
+              testid={`progression-badge-${l.level_number}`} />
           );
         })}
       </div>
