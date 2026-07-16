@@ -146,15 +146,12 @@ function FirePickerSheet({ post, cfg, pool, myFire, deadline, finalized, busy, o
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header — level identity */}
+        {/* Header — official Fire Power symbol */}
         <div className="flex items-center gap-3 mb-3">
-          {cfg.level_badge_url ? (
-            <img src={cfg.level_badge_url} alt={cfg.level_name || "Level badge"}
-              style={{ width: 38, height: 38, objectFit: "contain" }}
-              data-testid={`${testidPrefix}-picker-badge`} />
-          ) : (
-            <Flame size={26} style={{ color: FIRE_COLOR }} fill={FIRE_COLOR} />
-          )}
+          <div className="fire-power-icon-wrap" aria-hidden="true">
+            <img src="/fire-power-icon.png" alt="" className="fire-power-icon"
+              draggable="false" data-testid={`${testidPrefix}-picker-badge`} />
+          </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm font-bold" style={{ color: FIRE_COLOR }}>Fire Power</div>
             <div className="text-[11px]" style={{ color: "var(--text-muted)" }} data-testid={`${testidPrefix}-picker-level`}>

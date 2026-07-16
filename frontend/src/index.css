@@ -839,3 +839,30 @@ html[data-mode="stealth"] .or-btn::after {
   }
 }
 
+
+/* ── Fire Power official icon (Phase 0.6.1) ── */
+.fire-power-icon-wrap {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fire-power-icon {
+  width: 86%;
+  height: 86%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 6px rgba(255, 122, 26, 0.45));
+  animation: fire-power-flicker 2.6s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+@keyframes fire-power-flicker {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  27% { transform: scale(1.03) translateY(-0.5px); opacity: 0.96; }
+  52% { transform: scale(0.985); opacity: 1; }
+  74% { transform: scale(1.02) translateY(-0.5px); opacity: 0.97; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fire-power-icon { animation: none; }
+}

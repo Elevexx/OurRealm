@@ -57,3 +57,9 @@ Founder (all require_founder + audited): /api/admin/progression/{flags, task-typ
 
 ## July 2026 — Phase 0.6.1 Fire Pool Education (UI-only)
 - FireButton.jsx only: ⓘ Info icon beside Daily Fire Pool bar in the Fire picker (data-testid {prefix}-pool-help-open) opens FirePoolHelpSheet portal (z-320, bottom sheet mobile / centered dialog desktop, Escape + backdrop + X close, testids {prefix}-pool-help / -pool-help-close). Content: Unlimited 1x, Boost cost = fire−1, rolling 24h pool, rationale, coming soon. No backend/API/DB/logic/flag changes. Verified mobile 390 + desktop 1920; closing help returns to picker intact.
+
+## July 2026 — Premium 3D Fire Power icon (UI-only)
+- Generated 3D flame asset (yellow core / orange body / deep red edges / blue-purple glow) via Gemini image gen; converted black-bg render to true RGBA via luminance→alpha; saved /app/frontend/public/fire-power-icon.png (512px, 353KB).
+- FireButton.jsx picker header: replaced level_badge_url/placeholder img with the official icon (.fire-power-icon in 44px wrap, 86% fill, drop-shadow orange glow).
+- index.css: fire-power-flicker keyframes (transform/opacity only, 2.6s) + prefers-reduced-motion off-switch.
+- Verified mobile 390 + desktop 1920: icon loads, crisp, no white box.
