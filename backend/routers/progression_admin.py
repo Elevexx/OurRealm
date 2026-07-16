@@ -13,7 +13,9 @@ from core.permissions import require_founder
 from core.analytics_filters import real_member_filter
 from services.progression.flags import get_flags, set_flag, FLAG_KEYS
 from services.progression.registry import list_task_types, get_task_type, ALLOWED_APP_EVENT_KEYS
-from services.progression.seed import publish_level, ensure_progression_seed
+from services.progression.seed import (publish_level, ensure_progression_seed,
+                                       seed_launch_ladder, ensure_progression_indexes,
+                                       LAUNCH_LEVEL_NAMES)
 from services.progression.engine import recalc_user, get_snapshot, published_levels
 from services.progression.rewards import retry_grant, revoke_grant, REWARD_TYPES
 from services.progression import backfill
@@ -58,6 +60,13 @@ async def flags_set(payload: FlagPayload, current: CurrentUser):
     require_founder(current)
     if payload.key not in FLAG_KEYS:
         raise HTTPException(status_code=400, detail="Unknown flag")
+    if payload.key in ("claims", "rewards") and payload.value:
+        done = await db.progression_recalculation_jobs.find_one(
+            {"dry_run": False, "type": "backfill", "status": "completed"}, {"_id": 0, "id": 1})
+        if not done:
+            raise HTTPException(status_code=400,
+                                detail="Claims/rewards can only be enabled after a successful full backfill. "
+                                       "Complete Steps 4-5 of the Activation checklist first.")
     before = await get_flags()
     flags = await set_flag(payload.key, payload.value, current.get("username") or current["id"])
     await _audit(current, "flag_change", "flag", payload.key,
@@ -683,3 +692,89 @@ async def reseed(current: CurrentUser):
     created = await ensure_progression_seed()
     await _audit(current, "seed", "system", "seed", extra={"created": created})
     return {"ok": True, "created": created}
+
+
+# ── Production activation (founder-driven rollout) ────────────────────
+class SeedLaunchPayload(BaseModel):
+    confirm: bool = False
+
+
+@router.post("/seed-launch")
+async def seed_launch(payload: SeedLaunchPayload, current: CurrentUser):
+    """Idempotent full 8-level launch seed. Never touches existing levels,
+    tasks, rewards, versions, or ANY user data. Founder-only + audited."""
+    require_founder(current)
+    if not payload.confirm:
+        raise HTTPException(status_code=400,
+                            detail="Confirmation required — send {\"confirm\": true} to seed the launch ladder.")
+    result = await seed_launch_ladder(current.get("username") or current["id"])
+    indexes = await ensure_progression_indexes()
+    await _audit(current, "seed_launch", "system", "launch_ladder",
+                 extra={**result, "indexes_ensured": len(indexes)})
+    return {"ok": True, **result, "indexes": indexes}
+
+
+@router.get("/activation")
+async def activation_status(current: CurrentUser):
+    """Production activation checklist — read-only status of every rollout step."""
+    require_founder(current)
+    from services.progression.eligibility import progression_eligible_user_filter
+
+    levels = []
+    for name in LAUNCH_LEVEL_NAMES:
+        l = await db.progression_levels.find_one(
+            {"name": name}, {"_id": 0, "id": 1, "status": 1, "config_version": 1, "level_number": 1})
+        task_count = await db.progression_tasks.count_documents(
+            {"level_id": l["id"], "status": {"$ne": "archived"}}) if l else 0
+        levels.append({"name": name, "exists": bool(l),
+                       "status": (l or {}).get("status"),
+                       "version": (l or {}).get("config_version"),
+                       "task_count": task_count})
+    seeded = all(x["exists"] and x["status"] == "published" for x in levels)
+
+    idx = await db.user_level_progress.index_information()
+    indexes_present = any("user_id" in str(v.get("key")) for v in idx.values())
+
+    async def _last_job(q):
+        j = await db.progression_recalculation_jobs.find_one(
+            q, {"_id": 0, "id": 1, "status": 1, "dry_run": 1, "totals": 1,
+                "started_at": 1, "finished_at": 1, "samples": 1, "errors": 1},
+            sort=[("started_at", -1)])
+        return j
+
+    last_dry = await _last_job({"dry_run": True, "status": "completed"})
+    last_backfill = await _last_job({"dry_run": False, "type": "backfill", "status": "completed"})
+    running = await _last_job({"status": "running"})
+
+    eligible = await db.users.count_documents(progression_eligible_user_filter())
+    tracked = await db.user_level_progress.count_documents({})
+    reconciled = bool(last_backfill
+                      and (last_backfill.get("totals") or {}).get("failed", 1) == 0
+                      and (last_backfill.get("totals") or {}).get("scanned", 0) >= eligible
+                      and tracked >= eligible)
+
+    flags = await get_flags()
+    lb_rows = await db.leaderboard_cache.count_documents({})
+
+    return {
+        "levels": levels,
+        "checklist": {
+            "levels_seeded": seeded,
+            "indexes_present": indexes_present,
+            "dry_run_completed": bool(last_dry),
+            "backfill_completed": bool(last_backfill),
+            "reconciliation_ok": reconciled,
+            "calculations_enabled": flags.get("calculations", False),
+            "display_enabled": flags.get("display", False),
+            "events_enabled": flags.get("events", False),
+            "notifications_enabled": flags.get("notifications", False),
+            "claims_enabled": flags.get("claims", False),
+            "rewards_enabled": flags.get("rewards", False),
+            "leaderboards_verified": seeded and flags.get("display", False) and lb_rows > 0,
+        },
+        "flags": flags,
+        "jobs": {"last_dry_run": last_dry, "last_backfill": last_backfill, "running": running},
+        "reconciliation": {"eligible_users": eligible, "tracked_users": tracked,
+                           "failed_in_last_backfill": (last_backfill or {}).get("totals", {}).get("failed")},
+        "claims_rewards_gate": bool(last_backfill),
+    }

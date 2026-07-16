@@ -2673,3 +2673,29 @@ Key state: seeded Newbie(3 tasks) + Explorer(5 tasks) published v1; 8 feature fl
 - P1: Task-accuracy audit (self-likes, deleted posts, synthetic actors in progression counters).
 - P2: Leaderboard growth cliff: _compute_rows caps at 5000 users; Pydantic schema for settings PATCH.
 - P3: show_movement (rank delta arrows) setting exists but UI not implemented.
+
+---
+
+# July 2026 — Iteration 78: Production Activation Workflow (Option C — founder-driven, no credential sharing)
+
+## Root cause of "production shows old profile" (VERIFIED, not guessed)
+- Production ourrealm.social HAS the latest code: bundle main.dfdaaab7.js contains progression-badges/view-leaderboards-button/admin-leaderboard-settings; /api/leaderboards + /api/progression/* return 401 (exists) not 404.
+- Cache/SW healthy: index.html no-store, hashed assets immutable, network-first SW with skipWaiting. NOT a cache issue.
+- Actual cause: production DATABASE (separate from preview by design) has progression flags OFF (default), no seeded levels, no backfill. display=false → /api/progression/me returns enabled:false → UI hides → "old profile".
+- Production login for stealth uses a DIFFERENT password than preview (1 login attempt made, rejected, no retries). NEVER ask for or store the production password (user directive).
+
+## Shipped (self-tested in preview + fresh-DB simulation)
+1. `seed.py`: `LAUNCH_LADDER` (full founder-approved 8-level spec incl. tasks + rewards + reputation 100→5000), `seed_launch_ladder()` (idempotent by level NAME — existing levels never touched), `ensure_progression_indexes()` (8 backward-compatible indexes).
+2. `progression_admin.py`: `POST /api/admin/progression/seed-launch` (founder-only, requires {"confirm":true}, audited, returns created/existed/indexes) + `GET /api/admin/progression/activation` (13-step checklist status: levels, indexes, last dry-run/backfill jobs, reconciliation eligible-vs-tracked, flags, leaderboard readiness).
+3. Flags gate: PATCH /flags now REJECTS enabling claims or rewards until a completed non-dry-run backfill job exists.
+4. `components/admin/ActivationChecklist.jsx` + "Activation" tab in /admin/level-builder: guided 13 steps — Seed → Dry Run → Review → Backfill (RECALCULATE ALL phrase) → Reconcile → Inspect @stealth → enable calculations/display/events/notifications/claims/rewards in order → Verify leaderboards. Job polling every 3s.
+
+## Test evidence
+- Fresh-DB simulation (scratch db, dropped after): created 8 published levels/38 tasks/8 versions/1 starting level, correct rep ladder, 2nd run created 0.
+- Preview: seed-launch without confirm → 400; with confirm → existed:8 created:0. Activation tab renders all 13 steps, inspect @stealth works (Rising Star 3/5), leaderboard verify shows 77 ranked.
+
+## PRODUCTION RUNBOOK (user executes after redeploy)
+Route: https://ourrealm.social/admin/level-builder → "Activation" tab. Click steps 1→13 in order. builder+calculations flags default ON so the page is reachable. Claims/rewards blocked until backfill succeeds.
+
+## Backlog (unchanged, deferred per user)
+- P1 JWT_SECRET rotation + CORS scoping; P1 task-accuracy audit; P2/P3 as before. NO new feature work until production activation verified by user.

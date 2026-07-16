@@ -8,11 +8,12 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowDown, ArrowUp, Archive, BarChart3, CheckCircle2, ChevronLeft, Copy,
   Flag, Image as ImageIcon, ListChecks, Loader2, PauseCircle, Play, Plus,
-  RefreshCw, ScrollText, Search, Trash2, Trophy, Wrench, X,
+  RefreshCw, Rocket, ScrollText, Search, Trash2, Trophy, Wrench, X,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import ImageUploadPicker from "@/components/ImageUploadPicker";
+import { ActivationChecklist } from "@/components/admin/ActivationChecklist";
 import { toast } from "sonner";
 
 const STATUS_COLORS = { draft: "#9aa4b2", published: "#10E670", paused: "#F4C84A", archived: "#ff8080" };
@@ -393,7 +394,8 @@ export default function AdminLevelBuilder() {
       </p>
 
       <div className="flex gap-2 mb-4 flex-wrap">
-        {[["levels", "Levels", ListChecks], ["analytics", "Analytics", BarChart3],
+        {[["levels", "Levels", ListChecks], ["activation", "Activation", Rocket],
+          ["analytics", "Analytics", BarChart3],
           ["jobs", "Jobs & Repair", Wrench], ["logs", "Audit Logs", ScrollText],
           ["flags", "Flags", Flag]].map(([k, label, Icon]) => (
           <button key={k} className="or-chip" data-active={tab === k} onClick={() => setTab(k)} data-testid={`lb-tab-${k}`}>
@@ -455,6 +457,8 @@ export default function AdminLevelBuilder() {
           ))}
         </>
       )}
+
+      {tab === "activation" && <ActivationChecklist />}
 
       {tab === "analytics" && (
         !analytics ? <Loader2 className="animate-spin" /> : (
