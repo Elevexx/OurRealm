@@ -382,6 +382,24 @@ function InspectorSection() {
               {busy === "col" ? <Loader2 size={11} className="animate-spin" /> : <Flame size={11} />} Collect on behalf
             </button>
           </div>
+          {uData.fire_up && (
+            <div className="mb-2 text-[11px] p-2 rounded-lg" style={{ border: "1px solid var(--border-col)", color: "var(--text-muted)" }} data-testid="fire-inspect-fireup">
+              <b style={{ color: "var(--text-main)" }}>Fire Up:</b>{" "}
+              {uData.fire_up.eligible ? "eligible now" : `unavailable (${uData.fire_up.reason})`}
+              {" · "}Last: {uData.fire_up.last_fire_up_at ? uData.fire_up.last_fire_up_at.slice(0, 16).replace("T", " ") : "never"}
+              {uData.fire_up.next_fire_up_at && <> · Next eligible: {uData.fire_up.next_fire_up_at.slice(0, 16).replace("T", " ")}</>}
+              {uData.fire_up.last_transfer && <> · Last transfer: {uData.fire_up.last_transfer.amount} 🔥</>}
+              {(uData.fire_up.history || []).length > 0 && (
+                <div className="mt-1 max-h-24 overflow-y-auto" data-testid="fire-inspect-fireup-history">
+                  {uData.fire_up.history.map((h) => (
+                    <div key={h.id} style={{ borderTop: "1px solid var(--border-col)" }}>
+                      {h.created_at?.slice(0, 16).replace("T", " ")} · {h.amount} 🔥 · vault {h.vault_balance_before}→{h.vault_balance_after} · pool {h.daily_available_before}→{h.daily_available_after}/{h.daily_pool_max} · L{h.level_number}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <div className="font-semibold mb-1">Active reactions (latest 15)</div>
           <div className="max-h-40 overflow-y-auto" data-testid="fire-inspect-user-reactions">
             {(uData.active_reactions || []).length === 0 ? <div style={{ color: "var(--text-muted)" }}>None</div>

@@ -67,6 +67,7 @@ async def my_wallet(current: CurrentUser):
             "fire_given": await fv.fire_given_total(current["id"]),
             "fire_received": wallet["lifetime_fire_received"],
             "recent": await fv.recent_earnings(current["id"], 5),
+            "fire_up": await fv._fire_up_state(current),
             "features": {
                 "pending": flags.get("fire_pending_enabled", False),
                 "collectable": flags.get("fire_collectable_enabled", False),
@@ -102,6 +103,33 @@ async def wallet_history(current: CurrentUser, filter: str = "all", limit: int =
         raise HTTPException(status_code=403, detail="Wallet history is not enabled yet")
     from services import fire_vault as fv
     return {"history": await fv.wallet_history(current, filter, limit)}
+
+
+# ── FIRE UP — Vault → Daily Pool refill (owner-only, 24h cooldown) ──────
+@router.get("/fire-up/preview")
+async def fire_up_preview(current: CurrentUser):
+    """Server-authoritative Fire Up eligibility for the CALLER only."""
+    flags = await fp.get_fire_flags()
+    if not flags.get("fire_wallet_enabled"):
+        return {"enabled": False}
+    from services import fire_vault as fv
+    return {"enabled": True, **await fv._fire_up_state(current)}
+
+
+class FireUpBody(BaseModel):
+    idempotency_key: Optional[str] = None
+
+
+@router.post("/fire-up")
+async def fire_up_execute(body: FireUpBody, current: CurrentUser):
+    """FIRE UP 🔥 — atomic idempotent Vault → Daily Pool transfer. All
+    amounts/limits/eligibility are computed server-side; the client only
+    supplies an idempotency key."""
+    flags = await fp.get_fire_flags()
+    if not flags.get("fire_wallet_enabled"):
+        raise HTTPException(status_code=403, detail="Fire wallet is not enabled yet")
+    from services import fire_vault as fv
+    return await fv.fire_up(current, body.idempotency_key)
 
 
 # ── Fire Wallet Privacy (Phase 1) ───────────────────────────────────────

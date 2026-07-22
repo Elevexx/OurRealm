@@ -258,6 +258,183 @@ async def resolve_fire_ready_notifications(uid: str) -> None:
 finalize_due = settle_due  # canonical Phase 0.6 name
 
 
+# ── FIRE UP — Vault → Daily Pool transfer (rolling 24h cooldown) ────────
+FIRE_UP_COOLDOWN_HOURS = 24
+
+
+async def _fire_up_state(user: dict) -> dict:
+    """Server-authoritative Fire Up eligibility snapshot. Uses the user's
+    CURRENT progression level + live pool + live vault balance."""
+    from services import fire_power as fp
+    uid = user["id"]
+    udoc = await db.users.find_one({"id": uid}, {"_id": 0, "fire_paused": 1}) or {}
+    cfg = await fp.fire_config_for_user(user)
+    pool = await fp.pool_status(user, cfg)
+    w = await db.fire_wallets.find_one(
+        {"user_id": uid}, {"_id": 0, "vault_balance": 1, "last_fire_up_at": 1}) or {}
+    vault = max(0, int(w.get("vault_balance") or 0))
+    missing = max(0, int(pool["pool_max"]) - int(pool["available"]))
+    amount = min(missing, vault)
+    last = w.get("last_fire_up_at")
+    next_at, cooldown_s = None, 0
+    if last:
+        try:
+            nxt = datetime.fromisoformat(last) + timedelta(hours=FIRE_UP_COOLDOWN_HOURS)
+            cooldown_s = max(0, int((nxt - _now()).total_seconds()))
+            next_at = nxt.isoformat()
+        except Exception:  # noqa: BLE001
+            pass
+    eligible, reason = True, None
+    if udoc.get("fire_paused"):
+        eligible, reason = False, "wallet_paused"
+    elif cooldown_s > 0:
+        eligible, reason = False, "cooldown"
+    elif vault <= 0:
+        eligible, reason = False, "vault_empty"
+    elif missing <= 0:
+        eligible, reason = False, "pool_full"
+    elif amount <= 0:
+        eligible, reason = False, "nothing_to_transfer"
+    return {
+        "eligible": eligible, "reason": reason,
+        "current_vault_balance": vault,
+        "current_daily_available": int(pool["available"]),
+        "daily_pool_max": int(pool["pool_max"]),
+        "calculated_transfer_amount": amount if eligible else 0,
+        "resulting_daily_available": min(int(pool["pool_max"]), int(pool["available"]) + amount) if eligible else int(pool["available"]),
+        "resulting_vault_balance": vault - amount if eligible else vault,
+        "is_partial_refill": bool(eligible and amount < missing),
+        "last_fire_up_at": last,
+        "next_fire_up_at": next_at,
+        "cooldown_seconds_remaining": cooldown_s,
+    }
+
+
+def _fire_up_replay(txn: dict) -> dict:
+    return {"success": True, "idempotent_replay": True,
+            "transferred_amount": int(txn["amount"]),
+            "vault_balance_before": txn.get("vault_balance_before"),
+            "vault_balance_after": txn.get("vault_balance_after"),
+            "daily_available_before": txn.get("daily_available_before"),
+            "daily_available_after": txn.get("daily_available_after"),
+            "daily_pool_max": txn.get("daily_pool_max"),
+            "last_fire_up_at": txn.get("created_at"),
+            "next_fire_up_at": txn.get("next_fire_up_at"),
+            "transaction_id": txn.get("id")}
+
+
+async def fire_up(user: dict, idempotency_key: Optional[str] = None,
+                  session_id: Optional[str] = None) -> dict:
+    """FIRE UP 🔥 — atomic, idempotent Vault → Daily Pool transfer.
+    Concurrency gate: the conditional flip of `last_fire_up_at` past the
+    24h cutoff acts as a per-user lock — exactly ONE request can win it
+    per cooldown window (double-taps / multi-tab / multi-device all lose
+    the conditional update and get the cooldown response)."""
+    from services import fire_power as fp
+    uid = user["id"]
+    await ensure_vault_indexes()
+    # Idempotent replay — same key returns the already-completed transfer.
+    if idempotency_key:
+        prev = await db.fire_wallet_transactions.find_one(
+            {"user_id": uid, "type": "fire_up", "idempotency_key": idempotency_key},
+            {"_id": 0})
+        if prev:
+            return _fire_up_replay(prev)
+    udoc = await db.users.find_one({"id": uid}, {"_id": 0, "fire_paused": 1}) or {}
+    if udoc.get("fire_paused"):
+        raise HTTPException(status_code=403, detail="Fire Up is temporarily unavailable for this account.")
+    w = await db.fire_wallets.find_one(
+        {"user_id": uid}, {"_id": 0, "vault_balance": 1, "last_fire_up_at": 1}) or {}
+    prev_last = w.get("last_fire_up_at")
+    if max(0, int(w.get("vault_balance") or 0)) <= 0:
+        raise HTTPException(status_code=400, detail="You need Fire in your Vault before you can Fire Up.")
+    now = _now()
+    now_iso = now.isoformat()
+    cutoff = (now - timedelta(hours=FIRE_UP_COOLDOWN_HOURS)).isoformat()
+    # ── Cooldown gate + concurrency lock (single conditional update) ──
+    gate = await db.fire_wallets.update_one(
+        {"user_id": uid,
+         "$or": [{"last_fire_up_at": {"$exists": False}},
+                 {"last_fire_up_at": None},
+                 {"last_fire_up_at": {"$lte": cutoff}}]},
+        {"$set": {"last_fire_up_at": now_iso}})
+    if not gate.modified_count:
+        st = await _fire_up_state(user)
+        raise HTTPException(status_code=409, detail={
+            "message": "You can Fire Up again later.", "reason": "cooldown",
+            "next_fire_up_at": st.get("next_fire_up_at"),
+            "cooldown_seconds_remaining": st.get("cooldown_seconds_remaining")})
+
+    async def _rollback():
+        await db.fire_wallets.update_one(
+            {"user_id": uid, "last_fire_up_at": now_iso},
+            {"$set": {"last_fire_up_at": prev_last}})
+
+    # ── Recompute EVERYTHING inside the lock with the CURRENT level ──
+    cfg = await fp.fire_config_for_user(user)
+    pool = await fp.pool_status(user, cfg)
+    pool_max = int(pool["pool_max"])
+    available_before = int(pool["available"])
+    missing = max(0, pool_max - available_before)
+    if missing <= 0:
+        await _rollback()
+        raise HTTPException(status_code=400, detail="Your Daily Fire Pool is already full.")
+    wallet = await db.fire_wallets.find_one({"user_id": uid}, {"_id": 0, "vault_balance": 1}) or {}
+    vault_before = max(0, int(wallet.get("vault_balance") or 0))
+    amount = min(missing, vault_before)
+    if amount <= 0:
+        await _rollback()
+        raise HTTPException(status_code=400, detail="You need Fire in your Vault before you can Fire Up.")
+    # ── Conditional vault deduction (never below zero) ──
+    ded = await db.fire_wallets.update_one(
+        {"user_id": uid, "vault_balance": {"$gte": amount}},
+        {"$inc": {"vault_balance": -amount}})
+    if not ded.modified_count:
+        await _rollback()
+        raise HTTPException(status_code=409, detail="Fire Up could not be completed. Your balances were not changed.")
+    # ── Daily Pool credit (reduce active spend; clamp guards overflow) ──
+    await db.fire_pool_counters.update_one(
+        {"_id": uid}, {"$inc": {"spent_active": -amount}}, upsert=True)
+    await db.fire_pool_counters.update_one(
+        {"_id": uid, "spent_active": {"$lt": 0}}, {"$set": {"spent_active": 0}})
+    vault_after = vault_before - amount
+    available_after = min(pool_max, available_before + amount)
+    next_at = (now + timedelta(hours=FIRE_UP_COOLDOWN_HOURS)).isoformat()
+    txn = {
+        "id": uuid.uuid4().hex, "user_id": uid, "type": "fire_up",
+        "status": "fire_up", "amount": amount,
+        "vault_balance_before": vault_before, "vault_balance_after": vault_after,
+        "daily_available_before": available_before, "daily_available_after": available_after,
+        "daily_pool_max": pool_max,
+        "level_number": cfg.get("level_number"), "level_name": cfg.get("level_name"),
+        "created_at": now_iso, "next_fire_up_at": next_at,
+        "idempotency_key": idempotency_key, "session_id": session_id,
+        "success": True,
+    }
+    await db.fire_wallet_transactions.insert_one({**txn})
+    # One confirmation notification per transfer (never duplicated —
+    # keyed to this txn id).
+    try:
+        existing = await db.notifications.find_one(
+            {"recipient_id": uid, "kind": "fire_up_complete", "payload.transaction_id": txn["id"]})
+        if not existing:
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()), "recipient_id": uid, "kind": "fire_up_complete",
+                "actor_username": None,
+                "payload": {"transaction_id": txn["id"], "amount": amount,
+                            "message": f"🔥 Fire Up complete! {amount} Fire was moved from your Vault to your Daily Pool."},
+                "created_at": now_iso, "seen": False, "resolved": True})
+    except Exception:  # noqa: BLE001
+        pass
+    return {"success": True, "idempotent_replay": False,
+            "transferred_amount": amount,
+            "vault_balance_before": vault_before, "vault_balance_after": vault_after,
+            "daily_available_before": available_before, "daily_available_after": available_after,
+            "daily_pool_max": pool_max,
+            "last_fire_up_at": now_iso, "next_fire_up_at": next_at,
+            "transaction_id": txn["id"]}
+
+
 # ── Collection (Collectable → Permanent Vault, manual) ─────────────────
 async def collect_fire(user: dict, txn_ids: Optional[list] = None) -> dict:
     """COLLECT FIRE — moves finalized Collectable Fire into the permanent
@@ -359,8 +536,16 @@ async def recalculate_wallet(user_id: str) -> dict:
     pending = max(0, int(by_status.get("pending", {}).get("total") or 0))
     collectable = max(0, int(by_status.get("collectable", {}).get("total") or 0))
     # Legacy Phase 0.5 "settled" rows live in the Vault (auto-settled).
+    # Fire Up transfers (type=fire_up) SPEND Vault Fire into the Daily
+    # Pool, so they are subtracted from the rebuilt vault balance.
+    fire_up_agg = await db.fire_wallet_transactions.aggregate([
+        {"$match": {"user_id": user_id, "type": "fire_up"}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+    ]).to_list(1)
+    fire_up_total = int(fire_up_agg[0]["total"]) if fire_up_agg else 0
     vault = max(0, int(by_status.get("collected", {}).get("total") or 0)
-                + int(by_status.get("settled", {}).get("total") or 0))
+                + int(by_status.get("settled", {}).get("total") or 0)
+                - fire_up_total)
     lifetime_received = collectable + vault
     lifetime_collected = vault
     largest = max((int(r.get("largest") or 0) for r in by_status.values()), default=0)
@@ -738,9 +923,17 @@ async def user_inspector(username: str) -> dict:
     history = [t async for t in db.fire_wallet_transactions.find(
         {"$or": [{"user_id": u["id"]}, {"sender_id": u["id"]}]},
         {"_id": 0}).sort("created_at", -1).limit(20)]
+    # Fire Up audit block — last transfer, cooldown, history
+    fire_up_state = await _fire_up_state(u)
+    fire_up_history = [t async for t in db.fire_wallet_transactions.find(
+        {"user_id": u["id"], "type": "fire_up"},
+        {"_id": 0}).sort("created_at", -1).limit(10)]
     return {"user": {"username": u["username"], "user_id": u["id"],
                      "fire_paused": bool(u.get("fire_paused"))},
             "config": cfg, "pool": pool, "wallet": wallet, "fire_given": given,
+            "fire_up": {**fire_up_state,
+                        "last_transfer": fire_up_history[0] if fire_up_history else None,
+                        "history": fire_up_history},
             "active_reactions": reactions, "recent_transactions": history}
 
 

@@ -19,6 +19,7 @@ const ICONS = {
   realm_join: Users,
   event_reminder: Calendar,
   fire_collectable: Flame,
+  fire_up_complete: Flame,
   fire: Flame,
 };
 
@@ -77,7 +78,7 @@ export default function Notifications() {
       actor: n.actor_username || "someone",
       body: n.kind === "realm_activity"
         ? `${n.payload?.unread_count || 0} new activity${(n.payload?.unread_count || 0) === 1 ? "" : ""}`
-        : n.kind === "fire_collectable"
+        : ["fire_collectable", "founding_vip_claimed", "fire_up_complete"].includes(n.kind)
         ? (n.payload?.message || "🔥 You have Fire ready to collect.")
         : n.payload?.preview || "",
       unread: !n.seen,
@@ -146,6 +147,7 @@ export default function Notifications() {
         return;
       }
       case "fire_collectable":
+      case "fire_up_complete":
         // One-shot deep link: own public profile opens with the Fire
         // widget expanded + highlighted. Flag is consumed on arrival so
         // normal visits stay collapsed.
@@ -235,7 +237,7 @@ export default function Notifications() {
                 <Icon size={18} style={{ color: "var(--primary)" }} />
               </div>
               <div className="flex-1 text-sm" style={{ color: "var(--text-main)" }}>
-                {n.type === "fire_collectable" || n.type === "founding_vip_claimed" ? (
+                {n.type === "fire_collectable" || n.type === "founding_vip_claimed" || n.type === "fire_up_complete" ? (
                   <span className="font-semibold" data-testid={`notification-fire-msg-${n.id}`}>
                     {n.body || "🔥 You have Fire ready to collect."}
                   </span>
