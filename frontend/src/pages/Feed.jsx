@@ -649,6 +649,7 @@ function isVideoFile(u) { return !!u && /\.(mp4|webm|ogg)$/i.test(u); }
 
 function FeedCard({ p, fireStatus, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [shareOpen, setShareOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const viewerLiked = !!(user?.id && Array.isArray(p.liked_by) && p.liked_by.includes(user.id));

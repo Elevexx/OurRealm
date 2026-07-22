@@ -230,18 +230,18 @@ function ChatsTab({ me }) {
   useEffect(() => {
     const dm = searchParams.get("dm") || searchParams.get("to") || searchParams.get("user");
     if (!dm || !me?.id || active) return;
-    if (dm === me.username) {
-      const p = new URLSearchParams(searchParams);
-      p.delete("dm"); p.delete("to"); p.delete("user");
-      setSearchParams(p, { replace: true });
-      return; // can't message yourself
-    }
-    let cancelled = false;
+    // Strip the params FIRST (synchronously) so refreshing doesn't reopen
+    // the modal AND so the StrictMode double-mount / param-change effect
+    // re-run can never cancel the in-flight profile fetch below.
+    const p = new URLSearchParams(searchParams);
+    p.delete("dm"); p.delete("to"); p.delete("user");
+    setSearchParams(p, { replace: true });
+    if (dm === me.username) return; // can't message yourself
     (async () => {
       try {
         const { data } = await apiClient.get(`/profile/by-username/${dm}`);
         const peer = data?.user || data;
-        if (cancelled || !peer?.id) return;
+        if (!peer?.id) return;
         setActive({
           conv_id: [me.id, peer.id].sort().join(":"),
           peer,
@@ -251,14 +251,8 @@ function ChatsTab({ me }) {
         });
       } catch (e) {
         console.warn("dm deep link failed", e);
-      } finally {
-        // Strip the params so refreshing doesn't reopen the same modal.
-        const p = new URLSearchParams(searchParams);
-        p.delete("dm"); p.delete("to"); p.delete("user");
-        setSearchParams(p, { replace: true });
       }
     })();
-    return () => { cancelled = true; };
   }, [searchParams, me?.id, active, setSearchParams]);
 
   const onStartChat = useCallback((friend) => {
