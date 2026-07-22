@@ -114,3 +114,10 @@ Founder (all require_founder + audited): /api/admin/progression/{flags, task-typ
 - Notification: one fire_up_complete per transfer (keyed to txn id), deep-links to own profile w/ widget expanded once. Admin inspector fire_up audit block (AdminFirePower.jsx + user_inspector).
 - Tests: iter86 11/11 backend + 6/6 UI (100%). Suite: /app/backend/tests/test_fire_up_iter86.py.
 - PRODUCTION: deployed build includes Fire widget upgrade + View Fire Powered Posts (verified via anon smoke: 401s, privacy filters, public_summary, sort=fire). FIRE UP requires REDEPLOY. fire_notifications flag NOT yet enabled in production (prod founder credentials differ — founder must toggle in Admin → Fire Power).
+
+## Jul 22, 2026 — Fire Power UX polish (UI only, no backend changes)
+- Fire Up hint reworded: "Restore your Daily Pool using X 🔥 from your Fire Vault."
+- Cooldown state: "✅ You've already restored your Daily Pool today." + "Available again <date/time>." line kept
+- Success toast: "🔥 Daily Pool fully restored! Ready to send boosted Fire again." (partial variant keeps amount text). ROOT CAUSE FIX: sonner <Toaster> was never mounted app-wide — added to App.js (top-center, theme-var styled). All existing toast() calls now render.
+- 400ms ease-out count animations (useAnimatedNumber rAF hook): vault balance, pool available (+progress bar fill), boosted-used countdown
+- Vault card secondary stat "Daily Pool: X / Y" (testid fire-wallet-vault-pool-stat), uses existing wallet payload — no new requests

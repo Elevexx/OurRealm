@@ -31,6 +31,28 @@ function timeLeft(iso) {
 }
 const fmt = (n) => (n ?? 0).toLocaleString();
 
+/** Smoothly animates a number toward its new value (~400ms, rAF). */
+function useAnimatedNumber(value, dur = 400) {
+  const [disp, setDisp] = useState(value);
+  const prev = useRef(value);
+  useEffect(() => {
+    const from = prev.current;
+    prev.current = value;
+    if (from == null || value == null || from === value) { setDisp(value); return; }
+    let raf;
+    const t0 = performance.now();
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / dur);
+      const e = 1 - Math.pow(1 - p, 3); // ease-out
+      setDisp(Math.round(from + (value - from) * e));
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value, dur]);
+  return disp ?? value;
+}
+
 /** FIRE UP 🔥 — Vault → Daily Pool refill. All amounts are computed
  * server-side; the confirm POST carries only an idempotency key. */
 function FireUpSection({ fireUp, onDone }) {
@@ -59,7 +81,10 @@ function FireUpSection({ fireUp, onDone }) {
     if (!keyRef.current) keyRef.current = (crypto.randomUUID ? crypto.randomUUID() : `fu-${Date.now()}`);
     try {
       const { data } = await apiClient.post("/fire/fire-up", { idempotency_key: keyRef.current });
-      toast.success(`🔥 FIRE UP COMPLETE — ${fmt(data.transferred_amount)} 🔥 moved to your Daily Pool (${fmt(data.daily_available_after)} / ${fmt(data.daily_pool_max)}).`);
+      const full = data.daily_available_after >= data.daily_pool_max;
+      toast.success(full
+        ? "🔥 Daily Pool fully restored! Ready to send boosted Fire again."
+        : `🔥 ${fmt(data.transferred_amount)} 🔥 moved to your Daily Pool (${fmt(data.daily_available_after)} / ${fmt(data.daily_pool_max)}).`);
       onDone(data);
     } catch (e) {
       const d = e?.response?.data?.detail;
@@ -73,8 +98,8 @@ function FireUpSection({ fireUp, onDone }) {
       <div className="mt-3 pt-3" style={{ borderTop: `1px solid color-mix(in srgb, ${FIRE} 30%, transparent)` }} data-testid="fire-up-section">
         <div className="text-[11px] mb-2" style={{ color: "var(--text-muted)" }} data-testid="fire-up-hint">
           {fireUp.is_partial_refill
-            ? `Use your remaining ${fmt(amt)} 🔥 to restore your Daily Pool to ${fmt(fireUp.resulting_daily_available)} / ${fmt(fireUp.daily_pool_max)}.`
-            : `Use ${fmt(amt)} 🔥 from your Vault to restore your Daily Pool to ${fmt(fireUp.resulting_daily_available)} / ${fmt(fireUp.daily_pool_max)}.`}
+            ? `Restore your Daily Pool using your remaining ${fmt(amt)} 🔥 from your Fire Vault.`
+            : `Restore your Daily Pool using ${fmt(amt)} 🔥 from your Fire Vault.`}
         </div>
         <button className="or-btn w-full font-bold" style={{ background: FIRE, color: "#160A02", minHeight: 46 }}
           onClick={() => setConfirmOpen(true)} disabled={busy} data-testid="fire-up-btn">
@@ -120,8 +145,8 @@ function FireUpSection({ fireUp, onDone }) {
     const abs = new Date(fireUp.next_fire_up_at);
     msg = (
       <span data-testid="fire-up-cooldown">
-        FIRE UP AVAILABLE IN <b style={{ color: FIRE }}>{timeLeft(fireUp.next_fire_up_at)}</b>
-        <span className="block text-[10px] mt-0.5">
+        ✅ You've already restored your Daily Pool today.
+        <span className="block text-[10px] mt-0.5 normal-case tracking-normal">
           Available again {abs.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.
         </span>
       </span>
@@ -131,7 +156,7 @@ function FireUpSection({ fireUp, onDone }) {
   else if (fireUp.reason === "wallet_paused") msg = <span data-testid="fire-up-paused">Fire Up is temporarily unavailable for this account.</span>;
   if (!msg) return null;
   return (
-    <div className="mt-3 pt-3 text-[11px] uppercase tracking-widest" data-testid="fire-up-section"
+    <div className="mt-3 pt-3 text-[11px]" data-testid="fire-up-section"
       style={{ borderTop: `1px solid color-mix(in srgb, ${FIRE} 30%, transparent)`, color: "var(--text-muted)" }}>
       {msg}
     </div>
@@ -165,6 +190,10 @@ export default function FireWalletCard({ compact = false, collapsible = false })
   const [filter, setFilter] = useState("all");
   const [highlight, setHighlight] = useState(false);
   const rootRef = useRef(null);
+  // UI-polish: 300–500ms count animations after Fire Up (display only).
+  const animVault = useAnimatedNumber(data?.wallet?.vault_balance);
+  const animAvailable = useAnimatedNumber(data?.pool?.available);
+  const animSpent = useAnimatedNumber(data?.pool?.spent);
 
   const load = () => apiClient.get("/fire/wallet")
     .then((r) => setData(r.data))
@@ -237,7 +266,6 @@ export default function FireWalletCard({ compact = false, collapsible = false })
     finally { setBusy(false); setConfirming(false); }
   };
 
-  const poolPct = pool?.pool_max > 0 ? Math.min(100, (pool.available / pool.pool_max) * 100) : 0;
   const collectable = wallet?.collectable_balance || 0;
 
   // Fire Up completion / countdown-expiry: apply server response
@@ -297,14 +325,17 @@ export default function FireWalletCard({ compact = false, collapsible = false })
         <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
           <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Daily Fire Pool</span>
           <span className="text-sm font-bold" data-testid="fire-wallet-pool">
-            {fmt(pool?.available)} <span style={{ color: "var(--text-muted)" }}>/ {fmt(pool?.pool_max)} available</span>
+            {fmt(animAvailable)} <span style={{ color: "var(--text-muted)" }}>/ {fmt(pool?.pool_max)} available</span>
           </span>
         </div>
         <div className="h-2 rounded-full overflow-hidden mb-2" style={{ background: "color-mix(in srgb, var(--text-muted) 16%, transparent)" }}>
-          <div className="h-full rounded-full" style={{ width: `${poolPct}%`, background: FIRE, transition: "width 500ms" }} />
+          <div className="h-full rounded-full" style={{
+            width: `${pool?.pool_max > 0 ? Math.min(100, ((animAvailable ?? 0) / pool.pool_max) * 100) : 0}%`,
+            background: FIRE, transition: "width 400ms ease-out",
+          }} />
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
-          <span>Boosted used: <b style={{ color: "var(--text-main)" }}>{fmt(pool?.spent)}</b></span>
+          <span>Boosted used: <b style={{ color: "var(--text-main)" }}>{fmt(animSpent)}</b></span>
           <span>Max reaction: <b style={{ color: FIRE }}>{config?.max_fire_per_reaction}× 🔥</b></span>
           {config?.level_name && <span>Level {config.level_number} · {config.level_name}</span>}
           {pool?.next_recovery_at && (
@@ -329,7 +360,10 @@ export default function FireWalletCard({ compact = false, collapsible = false })
           style={{ width: 64, height: 64, objectFit: "contain", filter: `drop-shadow(0 0 14px color-mix(in srgb, ${FIRE} 60%, transparent))` }} />
         <div className="text-[11px] font-bold uppercase tracking-widest mb-1" style={{ color: FIRE }}>🔥 Fire Vault</div>
         <div className="text-4xl sm:text-5xl font-bold" style={{ color: FIRE, textShadow: `0 0 22px color-mix(in srgb, ${FIRE} 45%, transparent)` }} data-testid="fire-wallet-vault">
-          {fmt(wallet?.vault_balance)} 🔥
+          {fmt(animVault)} 🔥
+        </div>
+        <div className="text-[10px] mt-1 uppercase tracking-widest" style={{ color: "var(--text-muted)" }} data-testid="fire-wallet-vault-pool-stat">
+          Daily Pool: <b style={{ color: "var(--text-main)" }}>{fmt(animAvailable)} / {fmt(pool?.pool_max)}</b>
         </div>
         <div className="text-[11px] mt-2" style={{ color: "var(--text-muted)" }}>
           Collected Fire you have saved. Use it to Fire Up your Daily Pool.

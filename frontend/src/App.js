@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import FoundingVipPopup from "@/components/fire/FoundingVipPopup";
 import MessagingPopupProvider from "@/contexts/MessagingPopupContext";
 import { PresenceProvider } from "@/contexts/PresenceContext";
+import { Toaster } from "sonner";
 import Layout from "@/components/Layout";
 import Landing from "@/pages/Landing";
 import SignUp from "@/pages/SignUp";
@@ -183,6 +184,14 @@ function App() {
           </Routes>
           </RestoreGate>
           <PostPopup />
+          <Toaster position="top-center" richColors closeButton={false}
+            toastOptions={{
+              style: {
+                background: "var(--surface-1, #101826)",
+                color: "var(--text-main, #e8f0ff)",
+                border: "1px solid var(--border-col, rgba(255,255,255,0.12))",
+              },
+            }} />
           <MiniPlayer />
           <InstallPrompt trigger="auto" />
         </BrowserRouter>
