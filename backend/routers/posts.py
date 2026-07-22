@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from core.db import db
-from core.deps import CurrentUser
+from core.deps import CurrentUser, OptionalUser
 from core.geo import parse_radius, radius_filter
 from models.schemas import PostCreate
 from routers.notifications import emit_notification
@@ -322,15 +322,29 @@ def _visibility_query(viewer: Optional[dict], author_id: Optional[str] = None) -
 
 
 @router.get("/feed/by-user/{username}")
-async def feed_by_user(username: str, limit: int = 100):
-    """My Feed widget data — list of posts by a single user, newest first,
-    respecting audience visibility (anonymous viewer = only public)."""
+async def feed_by_user(username: str, current: OptionalUser, limit: int = 100,
+                       sort: Optional[str] = None):
+    """My Feed widget data — list of posts by a single user, respecting
+    audience visibility (anonymous viewer = only public; authenticated
+    viewers additionally see friend/custom-audience posts they qualify
+    for). `?sort=fire` returns the author's Fire-powered posts ranked by
+    fire_total (existing Fire-ranked logic; posts with 0 fire excluded)."""
     user = await db.users.find_one({"username": username.lower()},
                                     {"_id": 0, "id": 1})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    query = _visibility_query(None, author_id=user["id"])
-    cursor = db.posts.find(query, {"_id": 0}).sort("created_at", -1).limit(limit)
+    viewer_doc = None
+    if current:
+        viewer_doc = await db.users.find_one(
+            {"id": current["id"]},
+            {"_id": 0, "id": 1, "friends": 1, "username": 1, "is_founder": 1})
+    query = _visibility_query(viewer_doc, author_id=user["id"])
+    if sort == "fire":
+        query = {"$and": [query, {"fire_total": {"$gt": 0}}]}
+        cursor = db.posts.find(query, {"_id": 0}).sort(
+            [("fire_total", -1), ("created_at", -1)]).limit(min(limit, 100))
+    else:
+        cursor = db.posts.find(query, {"_id": 0}).sort("created_at", -1).limit(limit)
     items = []
     async for p in cursor:
         if isinstance(p.get("created_at"), str):

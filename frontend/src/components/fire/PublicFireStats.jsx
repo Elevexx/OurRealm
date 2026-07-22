@@ -8,14 +8,81 @@
  * FireWalletCard instead).
  */
 import React, { useEffect, useState } from "react";
-import { Flame, Lock } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Flame, Lock, X } from "lucide-react";
 import apiClient from "@/api/client";
+import { openPostPopupById } from "@/lib/postPopupController";
 import { CollapsibleHeader, useAccordionState } from "@/components/progression/CollapsibleHeader";
 
 const FIRE = "#FF7A1A";
 
+/** Lazy modal listing the profile owner's Fire-powered posts. Fetches
+ * ONLY when opened (zero extra requests on profile load). Backend
+ * enforces audience/visibility/moderation rules per viewer. */
+function FirePostsModal({ username, onClose }) {
+  const [posts, setPosts] = useState(null);
+  useEffect(() => {
+    let on = true;
+    apiClient.get(`/posts/feed/by-user/${username}`, { params: { sort: "fire", limit: 20 } })
+      .then((r) => { if (on) setPosts(r.data.posts || []); })
+      .catch(() => { if (on) setPosts([]); });
+    return () => { on = false; };
+  }, [username]);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return createPortal(
+    <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4"
+      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+      onClick={onClose} data-testid="fire-posts-modal-overlay">
+      <div className="or-surface w-full sm:max-w-md max-h-[78vh] overflow-y-auto p-4 rounded-t-2xl sm:rounded-2xl"
+        style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+        onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true"
+        data-testid="fire-posts-modal">
+        <div className="flex items-center gap-2 mb-3">
+          <Flame size={16} style={{ color: FIRE }} fill={FIRE} />
+          <h3 className="font-semibold text-sm flex-1" style={{ color: "var(--text-main)" }}>
+            Fire Powered Posts · @{username}
+          </h3>
+          <button className="starbar-icon" style={{ width: 32, height: 32 }} onClick={onClose}
+            aria-label="Close" data-testid="fire-posts-modal-close">
+            <X size={14} />
+          </button>
+        </div>
+        {posts === null ? (
+          <div className="text-xs py-4 text-center" style={{ color: "var(--text-muted)" }}>Loading…</div>
+        ) : posts.length === 0 ? (
+          <div className="text-xs py-4 text-center" style={{ color: "var(--text-muted)" }} data-testid="fire-posts-empty">
+            No Fire-powered posts yet.
+          </div>
+        ) : posts.map((p) => (
+          <button key={p.id} type="button"
+            className="w-full text-left py-2.5 px-2 flex items-center gap-3 rounded-xl"
+            style={{ borderTop: "1px solid var(--border-col)", minHeight: 48 }}
+            onClick={() => { onClose(); openPostPopupById(p.id); }}
+            data-testid={`fire-post-row-${p.id}`}>
+            <span className="shrink-0 text-sm font-bold" style={{ color: FIRE }}>
+              {(p.fire_total || 0).toLocaleString()} 🔥
+            </span>
+            <span className="flex-1 min-w-0 text-xs truncate" style={{ color: "var(--text-main)" }}>
+              {p.content || p.media_type || "View post"}
+            </span>
+            <span className="shrink-0 text-[10px]" style={{ color: "var(--text-muted)" }}>
+              {(String(p.created_at || "")).slice(0, 10)}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function PublicFireStats({ username }) {
   const [data, setData] = useState(null);
+  const [postsOpen, setPostsOpen] = useState(false);
   // Same accordion behavior as Creator Progress / Progression Badges —
   // always collapsed on open, resets per viewed profile, never persisted.
   const [expanded, setExpanded] = useAccordionState(username, false);
@@ -102,6 +169,11 @@ export default function PublicFireStats({ username }) {
       <div className="mt-3 text-[11px]" style={{ color: "var(--text-muted)" }} data-testid="public-fire-explainer">
         Fire Power grows through community reactions. Members earn Fire from the community by creating great content.
       </div>
+      <button type="button" className="or-chip mt-3" style={{ minHeight: 36 }}
+        onClick={() => setPostsOpen(true)} data-testid="public-fire-view-posts-btn">
+        <Flame size={12} style={{ color: FIRE }} fill={FIRE} /> View Fire Powered Posts
+      </button>
+      {postsOpen && <FirePostsModal username={username} onClose={() => setPostsOpen(false)} />}
       <div className="mt-2 pt-2 text-[10px]" style={{ color: "var(--text-muted)", borderTop: "1px solid var(--border-col)" }} data-testid="public-fire-footer">
         This is a public Fire Power summary.<br />
         Only the account owner can manage their Fire Power.
