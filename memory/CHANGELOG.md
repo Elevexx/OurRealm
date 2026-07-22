@@ -96,3 +96,13 @@ Founder (all require_founder + audited): /api/admin/progression/{flags, task-typ
 - FIX2 Profile "Message" button: deep-link effect in `Messages.jsx ChatsTab` had a React 18 StrictMode race — the `cancelled` cleanup flag + `finally`-block param strip cancelled BOTH effect instances, so the DM overlay never opened. Rewrote effect: strip `?dm/to/user` params synchronously first, removed cancellation flag (`/app/frontend/src/pages/Messages.jsx`). Verified desktop+mobile: DM overlay opens with correct peer.
 - FIX3 Mobile poll composer: max-h/overflow/min-w-0 clamps verified — modal fits 390px viewport, no horizontal scroll (scrollWidth=390).
 - FIX4 Widget persistence: `Array.isArray(user?.widgets)` state init verified — saved single-widget layout renders after reload, no revert to DEFAULT_WIDGETS. Backend PATCH /profile/me + GET /auth/me round-trip confirmed.
+
+## Jul 22, 2026 — Fire Power Widget Upgrade + Secure Public Profile Version (COMPLETE, iter85 100%)
+- Redesigned FireWalletCard: section order Pool → Vault(centerpiece w/ 3D flame art + PERMANENT badge + glow) → Pending → Collectable(+COLLECT ALL) → Statistics → Wallet History. Future Utilities section REMOVED. No money/crypto wording.
+- Owner's own public profile (/profile/<self>) now renders the FULL FireWalletCard (shared component with Edit Profile); other viewers get the new PublicFireStats summary (Level+badge, Fire Received privacy-filtered, Max Fire/Reaction, 2-line public footer). FounderProfile.jsx branches on isOwner.
+- Grouped 🔥-ready notification: fire_vault.upsert_fire_ready_notification (single unresolved row per user, updated in place) + resolve_fire_ready_notifications on collect (message → 'Fire collected into your Vault.'). New cycle → new row. fire_notifications flag ENABLED in preview via founder admin endpoint.
+- Deep link: Notifications.jsx fire_collectable click sets sessionStorage 'ourrealm.fire.deeplink'=1 → own profile → FireWalletCard consumes flag once → auto-expand + scroll + 2.6s highlight. Normal visits stay collapsed.
+- /api/fire/wallet/stats/{username} now returns public_summary {level_number, level_name, level_badge_url, max_fire_per_reaction} (progression facts only).
+- Notifications page: added Flame icon + message rendering for fire_collectable + founding_vip_claimed kinds, 'fired your post 🔥' verb for pre-existing blank 'fire' rows.
+- Backend accounting UNTOUCHED (only notification emission + stats response shape changed). Wallet endpoints anon→401, non-owner privacy {visible:false} with no value key verified.
+- Tests: iter85 6/6 backend pytest + 9/9 UI flows (test file /app/backend/tests/test_fire_widget_iter85.py).
