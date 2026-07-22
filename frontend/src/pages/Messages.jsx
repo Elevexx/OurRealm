@@ -224,11 +224,18 @@ function ChatsTab({ me }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Phase B — deep link: /messages?dm=<username> auto-opens the DM
-  // overlay with that peer (used by /profile/support → "Create Ticket").
+  // Phase B — deep link: /messages?dm=<username> (also accepts ?to= and
+  // ?user=) auto-opens the DM overlay with that peer. Existing threads
+  // share the deterministic conv_id, so no duplicates are created.
   useEffect(() => {
-    const dm = searchParams.get("dm");
+    const dm = searchParams.get("dm") || searchParams.get("to") || searchParams.get("user");
     if (!dm || !me?.id || active) return;
+    if (dm === me.username) {
+      const p = new URLSearchParams(searchParams);
+      p.delete("dm"); p.delete("to"); p.delete("user");
+      setSearchParams(p, { replace: true });
+      return; // can't message yourself
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -245,9 +252,9 @@ function ChatsTab({ me }) {
       } catch (e) {
         console.warn("dm deep link failed", e);
       } finally {
-        // Strip the param so refreshing doesn't reopen the same modal.
+        // Strip the params so refreshing doesn't reopen the same modal.
         const p = new URLSearchParams(searchParams);
-        p.delete("dm");
+        p.delete("dm"); p.delete("to"); p.delete("user");
         setSearchParams(p, { replace: true });
       }
     })();

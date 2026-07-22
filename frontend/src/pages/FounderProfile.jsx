@@ -279,11 +279,12 @@ export default function FounderProfile() {
   const onMessage = () => {
     setChatErr("");
     if (!user) { navigate("/signin"); return; }
-    if (friendStatus !== "friends" && friendStatus !== "self") {
+    if (friendStatus === "self") return; // can't message yourself
+    if (friendStatus !== "friends") {
       setChatErr("You can only message friends. Send a friend request first.");
       return;
     }
-    navigate(`/messages?to=${profile.username}`);
+    navigate(`/messages?dm=${profile.username}`);
   };
 
   if (loading) return <div className="text-center py-12" style={{ color: "var(--text-muted)" }}>Loading profile…</div>;

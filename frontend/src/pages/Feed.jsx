@@ -697,6 +697,7 @@ function FeedCard({ p, fireStatus, onGuestAction, isGuest, onPostDeleted, onPost
         <UserAvatar
           user={{ id: p.author_id, username: p.author_username, name: p.author_name, avatar_url: p.author_avatar }}
           size={40}
+          onClick={p.author_username ? () => navigate(`/profile/${p.author_username}`) : undefined}
           testid={`feed-post-${p.id}-avatar`}
         />
         <div className="flex-1 min-w-0">

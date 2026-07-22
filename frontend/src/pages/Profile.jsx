@@ -408,7 +408,9 @@ export default function Profile() {
   const [searchParams] = useSearchParams();
   const [editing, setEditing] = useState(searchParams.get("edit") !== "0");
   const [form, setForm] = useState({ name: "", bio: "" });
-  const [widgets, setWidgets] = useState(user?.widgets?.length ? user.widgets : DEFAULT_WIDGETS);
+  // Empty widget lists are VALID saved state — only fall back to the
+  // defaults when the field is truly absent (brand-new/unsaved profile).
+  const [widgets, setWidgets] = useState(Array.isArray(user?.widgets) ? user.widgets : DEFAULT_WIDGETS);
   const [addOpen, setAddOpen] = useState(false);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [bannerEditorOpen, setBannerEditorOpen] = useState(false);

@@ -52,7 +52,8 @@ export default function PollComposer({ open, initial, onClose, onSave, testid = 
       data-testid={`${testid}-overlay`}
     >
       <div
-        className="or-surface w-full max-w-md p-4"
+        className="or-surface w-full max-w-md p-4 max-h-[82vh] overflow-y-auto overflow-x-hidden"
+        style={{ boxSizing: "border-box" }}
         onClick={(e) => e.stopPropagation()}
         role="dialog" aria-modal="true"
         data-testid={testid}
@@ -81,7 +82,7 @@ export default function PollComposer({ open, initial, onClose, onSave, testid = 
           {options.map((v, i) => (
             <div key={i} className="flex items-center gap-2">
               <input
-                className="or-input flex-1"
+                className="or-input flex-1 min-w-0"
                 placeholder={`Option ${i + 1}`}
                 maxLength={100}
                 value={v}
