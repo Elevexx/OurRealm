@@ -207,24 +207,52 @@ async def settle_due(user_id: Optional[str] = None) -> int:
         clamp_q["user_id"] = user_id
     for f in ("pending_balance", "collectable_balance", "lifetime_fire_received", "lifetime_fire_earned"):
         await db.fire_wallets.update_many({**clamp_q, f: {"$lt": 0}}, {"$set": {f: 0}})
-    # Grouped collectable notifications (flag-gated, one per user per run)
+    # Grouped collectable notifications (flag-gated). ONE live row per
+    # user — updated in place when the amount changes, never spammed.
     try:
         from services.fire_power import get_fire_flags
         flags = await get_fire_flags()
         if flags.get("fire_notifications"):
-            from routers.notifications import emit_notification
             for uid, net in per_user.items():
                 if net > 0:
-                    w = await db.fire_wallets.find_one({"user_id": uid}, {"_id": 0, "collectable_balance": 1})
-                    total = int((w or {}).get("collectable_balance") or 0)
-                    await emit_notification(
-                        uid, "fire_collectable",
-                        payload={"amount": net, "collectable_total": total,
-                                 "message": f"{net} 🔥 is ready to collect — you have {total} 🔥 waiting.",
-                                 "cta": "View Fire Wallet"})
+                    await upsert_fire_ready_notification(uid)
     except Exception:  # noqa: BLE001
         pass
     return finalized
+
+
+async def upsert_fire_ready_notification(uid: str) -> None:
+    """Single grouped '🔥 ready to collect' notification per user.
+    Updates the existing unresolved row (amount + unread flag) instead of
+    inserting duplicates. Resolved rows are never reused — a fresh cycle
+    of collectable Fire creates a fresh notification."""
+    w = await db.fire_wallets.find_one({"user_id": uid}, {"_id": 0, "collectable_balance": 1})
+    total = int((w or {}).get("collectable_balance") or 0)
+    if total <= 0:
+        return
+    now = _now_iso()
+    payload = {"collectable_total": total,
+               "message": f"🔥 You have {total} Fire ready to collect.",
+               "cta": "View Fire Power"}
+    r = await db.notifications.update_one(
+        {"recipient_id": uid, "kind": "fire_collectable", "resolved": {"$ne": True}},
+        {"$set": {"payload": payload, "seen": False, "updated_at": now}})
+    if not r.matched_count:
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()), "recipient_id": uid, "kind": "fire_collectable",
+            "actor_username": None, "payload": payload,
+            "created_at": now, "updated_at": now, "seen": False, "resolved": False})
+
+
+async def resolve_fire_ready_notifications(uid: str) -> None:
+    """Once the Collectable balance hits zero, the grouped notification
+    resolves (marked seen + resolved). Future collectable Fire creates a
+    brand-new notification via upsert_fire_ready_notification()."""
+    await db.notifications.update_many(
+        {"recipient_id": uid, "kind": "fire_collectable", "resolved": {"$ne": True}},
+        {"$set": {"resolved": True, "seen": True, "resolved_at": _now_iso(),
+                  "payload.message": "🔥 Fire collected into your Vault.",
+                  "payload.collectable_total": 0}})
 
 
 finalize_due = settle_due  # canonical Phase 0.6 name
@@ -259,6 +287,13 @@ async def collect_fire(user: dict, txn_ids: Optional[list] = None) -> dict:
             count += 1
     for f in ("collectable_balance", "vault_balance", "lifetime_fire_collected"):
         await db.fire_wallets.update_many({"user_id": uid, f: {"$lt": 0}}, {"$set": {f: 0}})
+    # Resolve the grouped 'ready to collect' notification when empty.
+    try:
+        w = await db.fire_wallets.find_one({"user_id": uid}, {"_id": 0, "collectable_balance": 1})
+        if int((w or {}).get("collectable_balance") or 0) <= 0:
+            await resolve_fire_ready_notifications(uid)
+    except Exception:  # noqa: BLE001
+        pass
     return {"collected": max(collected, 0), "transactions": count}
 
 

@@ -1,18 +1,24 @@
 /**
- * FireWalletCard — premium Fire economy interface (Phase 0.6).
- * Full card on own Profile; `compact` summary on Home. Flag-gated by
- * fire_wallet_enabled; sections additionally gated by pending /
- * collectable / collection / history flags from the backend.
+ * FireWalletCard — premium Fire Power interface (owner-only).
+ * Full interactive card on the owner's own profiles (Edit Profile +
+ * public profile when viewing yourself); `compact` summary on Home.
+ * Flag-gated by fire_wallet_enabled; sections additionally gated by
+ * pending / collectable / collection / history flags from the backend.
+ * Supports a one-shot deep link (sessionStorage "ourrealm.fire.deeplink")
+ * set by the 🔥-ready notification: expands, scrolls into view and
+ * briefly highlights — then the flag is consumed so normal visits
+ * always open collapsed.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Flame, Clock, ChevronRight, ChevronDown, Sparkles, Lock } from "lucide-react";
+import { Flame, Clock, ChevronRight, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { CollapsibleHeader, useAccordionState } from "@/components/progression/CollapsibleHeader";
 
 const FIRE = "#FF7A1A";
 const GOLD = "#F4C84A";
+const GREEN = "#10E670";
 
 function timeLeft(iso) {
   if (!iso) return null;
@@ -24,17 +30,16 @@ function timeLeft(iso) {
 }
 const fmt = (n) => (n ?? 0).toLocaleString();
 
-const FUTURE = ["Marketplace", "Portal Unlocks", "Staking", "Crafting", "Realm Upgrades", "Creator Rewards"];
 const HISTORY_FILTERS = ["all", "pending", "collectable", "collected", "given", "received", "reversed"];
 
 function StatTile({ label, value, accent, testid, sub }) {
   return (
-    <div className="p-3 rounded-xl" style={{
+    <div className="p-3 rounded-xl min-w-0" style={{
       border: `1px solid ${accent ? `color-mix(in srgb, ${accent} 40%, transparent)` : "var(--border-col)"}`,
       background: accent ? `color-mix(in srgb, ${accent} 7%, transparent)` : "transparent",
     }}>
       <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)" }}>{label}</div>
-      <div className="text-xl font-bold" style={{ color: accent || "var(--text-main)" }} data-testid={testid}>{value}</div>
+      <div className="text-lg sm:text-xl font-bold break-words" style={{ color: accent || "var(--text-main)" }} data-testid={testid}>{value}</div>
       {sub && <div className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</div>}
     </div>
   );
@@ -50,11 +55,30 @@ export default function FireWalletCard({ compact = false, collapsible = false })
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState(null);
   const [filter, setFilter] = useState("all");
+  const [highlight, setHighlight] = useState(false);
+  const rootRef = useRef(null);
 
   const load = () => apiClient.get("/fire/wallet")
     .then((r) => setData(r.data))
     .catch(() => setData({ enabled: false }));
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // One-shot notification deep link: expand + scroll + brief highlight.
+  // Consumed immediately so refreshes / normal visits stay collapsed.
+  useEffect(() => {
+    if (compact || !data?.enabled) return;
+    let wanted = false;
+    try {
+      wanted = sessionStorage.getItem("ourrealm.fire.deeplink") === "1";
+      if (wanted) sessionStorage.removeItem("ourrealm.fire.deeplink");
+    } catch { /* ignore */ }
+    if (!wanted) return;
+    setExpanded(true);
+    setHighlight(true);
+    const t1 = setTimeout(() => rootRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 250);
+    const t2 = setTimeout(() => setHighlight(false), 2600);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [compact, data?.enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!historyOpen || !data?.features?.history) return;
@@ -83,7 +107,7 @@ export default function FireWalletCard({ compact = false, collapsible = false })
           </span>
         )}
         {features.collectable && (wallet?.collectable_balance || 0) > 0 && (
-          <span className="text-xs font-bold" style={{ color: "#10E670" }} data-testid="fire-wallet-compact-collectable">
+          <span className="text-xs font-bold" style={{ color: GREEN }} data-testid="fire-wallet-compact-collectable">
             {fmt(wallet.collectable_balance)} 🔥 ready
           </span>
         )}
@@ -95,10 +119,11 @@ export default function FireWalletCard({ compact = false, collapsible = false })
   }
 
   const collectAll = async () => {
+    if (busy) return; // double-click / multi-tab guard (backend is also idempotent)
     setBusy(true);
     try {
       const r = await apiClient.post("/fire/wallet/collect", { collect_all: true });
-      toast.success(`${fmt(r.data.collected)} 🔥 Collected!`);
+      toast.success(`${fmt(r.data.collected)} 🔥 Collected into your Vault!`);
       setData((d) => ({ ...d, wallet: r.data.wallet }));
     } catch (e) { toast.error(e?.response?.data?.detail || "Collection failed"); }
     finally { setBusy(false); setConfirming(false); }
@@ -108,8 +133,14 @@ export default function FireWalletCard({ compact = false, collapsible = false })
   const collectable = wallet?.collectable_balance || 0;
 
   return (
-    <div className="or-surface p-4 sm:p-6 mb-5 overflow-hidden relative" data-testid="fire-wallet-card">
-      {/* Section 1 — title (collapsible on profiles, static elsewhere) */}
+    <div ref={rootRef} className="or-surface p-4 sm:p-6 mb-5 overflow-hidden relative"
+      data-testid="fire-wallet-card"
+      style={highlight ? {
+        outline: `2px solid ${FIRE}`,
+        boxShadow: `0 0 28px color-mix(in srgb, ${FIRE} 45%, transparent)`,
+        transition: "box-shadow 400ms, outline-color 400ms",
+      } : undefined}>
+      {/* Title (collapsible on profiles, static elsewhere) */}
       {collapsible ? (
         <CollapsibleHeader
           icon={<Flame size={16} style={{ color: FIRE }} fill={FIRE} aria-hidden="true" />}
@@ -123,7 +154,7 @@ export default function FireWalletCard({ compact = false, collapsible = false })
       ) : (
         <div className="mb-5">
           <h2 className="flex items-center gap-2.5 text-xl sm:text-2xl font-bold tracking-tight" style={{ color: FIRE, fontFamily: "var(--font-display)" }}>
-            <Flame size={24} fill={FIRE} /> FIRE WALLET
+            <Flame size={24} fill={FIRE} /> FIRE POWER
           </h2>
           <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
             Earn Fire from the community by creating great content.
@@ -133,7 +164,7 @@ export default function FireWalletCard({ compact = false, collapsible = false })
 
       {(!collapsible || expanded) && (
       <div className={collapsible ? "mt-2.5" : ""}>
-      {/* Section 2 — Daily Fire Pool */}
+      {/* 1 — Daily Fire Pool */}
       <div className="p-4 rounded-2xl mb-4" style={{ border: "1px solid var(--border-col)" }} data-testid="fire-wallet-pool-section">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
           <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Daily Fire Pool</span>
@@ -155,42 +186,50 @@ export default function FireWalletCard({ compact = false, collapsible = false })
           )}
         </div>
         <div className="text-[10px] mt-2" style={{ color: "var(--text-muted)" }}>
-          Boosts recover exactly 24h after each spend · Standard 1× Fire is always unlimited.
+          Boosted Fire recovers exactly 24 hours after each spend. Standard 1× Fire is always unlimited.
         </div>
       </div>
 
-      {/* Section 3 — Permanent Fire Vault */}
-      <div className="p-5 rounded-2xl mb-4 text-center" data-testid="fire-wallet-vault-section" style={{
-        border: `1px solid color-mix(in srgb, ${FIRE} 45%, transparent)`,
-        background: `linear-gradient(160deg, color-mix(in srgb, ${FIRE} 12%, transparent), transparent 70%)`,
+      {/* 2 — Permanent Fire Vault (centerpiece) */}
+      <div className="p-5 sm:p-6 rounded-2xl mb-4 text-center relative overflow-hidden" data-testid="fire-wallet-vault-section" style={{
+        border: `1px solid color-mix(in srgb, ${FIRE} 55%, transparent)`,
+        background: `radial-gradient(120% 100% at 50% 0%, color-mix(in srgb, ${FIRE} 18%, transparent), transparent 65%)`,
+        boxShadow: `inset 0 0 40px color-mix(in srgb, ${FIRE} 8%, transparent)`,
       }}>
+        <span className="absolute top-3 right-3 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
+          style={{ border: `1px solid ${FIRE}`, color: FIRE, background: `color-mix(in srgb, ${FIRE} 10%, transparent)` }}
+          data-testid="fire-wallet-vault-badge">
+          Permanent
+        </span>
+        <img src="/fire-power-icon.png" alt="" aria-hidden="true"
+          className="mx-auto mb-1"
+          style={{ width: 64, height: 64, objectFit: "contain", filter: `drop-shadow(0 0 14px color-mix(in srgb, ${FIRE} 60%, transparent))` }} />
         <div className="text-[11px] font-bold uppercase tracking-widest mb-1" style={{ color: FIRE }}>Permanent Fire Vault</div>
-        <div className="text-3xl sm:text-4xl font-bold" style={{ color: FIRE }} data-testid="fire-wallet-vault">
+        <div className="text-4xl sm:text-5xl font-bold" style={{ color: FIRE, textShadow: `0 0 22px color-mix(in srgb, ${FIRE} 45%, transparent)` }} data-testid="fire-wallet-vault">
           {fmt(wallet?.vault_balance)} 🔥
         </div>
         <div className="text-[11px] mt-2" style={{ color: "var(--text-muted)" }}>
-          Permanent Fire you have collected. It never expires.<br />
-          Future OurRealm phases will unlock additional Fire utility.
+          Permanent Fire you have collected. It never expires.
         </div>
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3 mb-4">
-        {/* Section 4 — Pending */}
+        {/* 3 — Pending */}
         {features.pending && (
           <div data-testid="fire-wallet-pending-section">
             <StatTile label="Pending Fire" accent={GOLD} testid="fire-wallet-pending"
               value={`${fmt(wallet?.pending_balance)} 🔥`}
               sub={wallet?.next_finalization_at
-                ? `Next Fire finalizes in ${timeLeft(wallet.next_finalization_at)} · ${wallet.pending_count} pending`
-                : "Fire you receive appears here while senders can still edit."} />
+                ? `Fire appears here temporarily while senders can still edit or remove their Fire. Next finalizes in ${timeLeft(wallet.next_finalization_at)} · ${wallet.pending_count} pending`
+                : "Fire appears here temporarily while senders can still edit or remove their Fire."} />
           </div>
         )}
-        {/* Section 5 — Collectable */}
+        {/* 4 — Collectable */}
         {features.collectable && (
           <div data-testid="fire-wallet-collectable-section">
-            <StatTile label="Collectable Fire" accent="#10E670" testid="fire-wallet-collectable"
+            <StatTile label="Collectable Fire" accent={GREEN} testid="fire-wallet-collectable"
               value={`${fmt(collectable)} 🔥`}
-              sub={collectable > 0 ? "Ready to Collect" : "Finalized Fire waits here — it never expires."} />
+              sub={collectable > 0 ? "Ready to collect." : "Finalized Fire waits here — it never expires."} />
           </div>
         )}
       </div>
@@ -198,7 +237,7 @@ export default function FireWalletCard({ compact = false, collapsible = false })
       {features.collection && collectable > 0 && (
         <div className="mb-4" data-testid="fire-wallet-collect-controls">
           {confirming ? (
-            <div className="p-3 rounded-xl flex items-center gap-2 flex-wrap" style={{ border: "1px solid #10E670" }}>
+            <div className="p-3 rounded-xl flex items-center gap-2 flex-wrap" style={{ border: `1px solid ${GREEN}` }}>
               <span className="text-xs" style={{ color: "var(--text-main)" }}>
                 Collect {fmt(collectable)} 🔥 into your Permanent Fire Vault?
               </span>
@@ -208,37 +247,22 @@ export default function FireWalletCard({ compact = false, collapsible = false })
               <button className="or-chip" onClick={() => setConfirming(false)} data-testid="fire-collect-cancel">Cancel</button>
             </div>
           ) : (
-            <button className="or-btn w-full" onClick={() => setConfirming(true)} disabled={busy}
-              style={{ background: "#10E670", color: "#08130B" }} data-testid="fire-collect-all-btn">
-              <Flame size={14} /> COLLECT ALL FIRE ({fmt(collectable)} 🔥)
+            <button className="or-btn w-full text-sm sm:text-base font-bold" onClick={() => setConfirming(true)} disabled={busy}
+              style={{ background: GREEN, color: "#08130B", minHeight: 48 }} data-testid="fire-collect-all-btn">
+              <Flame size={16} /> COLLECT ALL FIRE ({fmt(collectable)} 🔥)
             </button>
           )}
         </div>
       )}
 
-      {/* Section 6 — Lifetime */}
-      <div className="grid grid-cols-3 gap-3 mb-4" data-testid="fire-wallet-lifetime-section">
-        <StatTile label="Received" value={`${fmt(wallet?.lifetime_fire_received)} 🔥`} testid="fire-wallet-lifetime" />
-        <StatTile label="Given" value={`${fmt(data.fire_given)} 🔥`} testid="fire-wallet-given" />
-        <StatTile label="Collected" value={`${fmt(wallet?.lifetime_fire_collected)} 🔥`} testid="fire-wallet-collected" />
+      {/* 5 — Statistics */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-4" data-testid="fire-wallet-lifetime-section">
+        <StatTile label="Fire Received" value={`${fmt(wallet?.lifetime_fire_received)} 🔥`} testid="fire-wallet-lifetime" />
+        <StatTile label="Fire Given" value={`${fmt(data.fire_given)} 🔥`} testid="fire-wallet-given" />
+        <StatTile label="Fire Collected" value={`${fmt(wallet?.lifetime_fire_collected)} 🔥`} testid="fire-wallet-collected" />
       </div>
 
-      {/* Section 7 — future utilities */}
-      <div className="mb-2" data-testid="fire-wallet-future-section">
-        <div className="text-[11px] font-bold uppercase tracking-widest mb-2 flex items-center gap-1.5" style={{ color: "var(--text-muted)" }}>
-          <Sparkles size={11} /> Future Utilities
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {FUTURE.map((f) => (
-            <span key={f} className="text-[10px] px-2.5 py-1 rounded-full flex items-center gap-1"
-              style={{ border: "1px solid var(--border-col)", color: "var(--text-muted)" }}>
-              <Lock size={8} /> {f} · Coming Later
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* Wallet history (flag-gated) */}
+      {/* 6 — Wallet history (flag-gated, unchanged behavior) */}
       {features.history && (
         <div className="mt-4" data-testid="fire-wallet-history-section">
           <button className="or-chip" onClick={() => setHistoryOpen((o) => !o)} data-testid="fire-wallet-history-toggle">
@@ -265,7 +289,7 @@ export default function FireWalletCard({ compact = false, collapsible = false })
                       <b style={{ color: t.amount >= 0 ? FIRE : "#ff8080" }}>{t.amount >= 0 ? "+" : ""}{t.amount} 🔥</b>
                       <span>{t.direction === "given" ? `to @${t.receiver_username || "member"}` : `from @${t.sender_username || "member"}`}</span>
                       <span className="px-1.5 rounded-full text-[9px] uppercase font-bold" style={{
-                        color: { pending: GOLD, collectable: "#10E670", collected: FIRE, settled: FIRE, reversed: "#ff8080" }[t.status] || "var(--text-muted)",
+                        color: { pending: GOLD, collectable: GREEN, collected: FIRE, settled: FIRE, reversed: "#ff8080" }[t.status] || "var(--text-muted)",
                         border: "1px solid var(--border-col)",
                       }}>{t.status}</span>
                       <span className="ml-auto">{(t.created_at || "").slice(0, 10)}</span>

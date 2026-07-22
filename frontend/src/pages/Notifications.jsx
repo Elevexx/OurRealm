@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, UserPlus, AtSign, Mail, Share2, Users, Bell, Calendar, Check, CheckCheck, Bookmark } from "lucide-react";
+import { Heart, MessageCircle, UserPlus, AtSign, Mail, Share2, Users, Bell, Calendar, Check, CheckCheck, Bookmark, Flame } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { NOTIFICATION_CATEGORIES } from "@/data/mockData";
@@ -18,6 +18,8 @@ const ICONS = {
   realm_post: Users,
   realm_join: Users,
   event_reminder: Calendar,
+  fire_collectable: Flame,
+  fire: Flame,
 };
 
 // Defensive client-side filter — server already strips these kinds in
@@ -75,6 +77,8 @@ export default function Notifications() {
       actor: n.actor_username || "someone",
       body: n.kind === "realm_activity"
         ? `${n.payload?.unread_count || 0} new activity${(n.payload?.unread_count || 0) === 1 ? "" : ""}`
+        : n.kind === "fire_collectable"
+        ? (n.payload?.message || "🔥 You have Fire ready to collect.")
         : n.payload?.preview || "",
       unread: !n.seen,
       created_at: n.updated_at || n.created_at,
@@ -125,6 +129,7 @@ export default function Notifications() {
       case "share":
       case "save":
       case "mention":
+      case "fire":
         if (n.post_id) { openPostPopupById(n.post_id); return; }
         navigate("/feed");
         return;
@@ -140,6 +145,13 @@ export default function Notifications() {
         else navigate("/realms");
         return;
       }
+      case "fire_collectable":
+        // One-shot deep link: own public profile opens with the Fire
+        // widget expanded + highlighted. Flag is consumed on arrival so
+        // normal visits stay collapsed.
+        try { sessionStorage.setItem("ourrealm.fire.deeplink", "1"); } catch { /* ignore */ }
+        navigate(user?.username ? `/profile/${user.username}` : "/feed");
+        return;
       default:
         return;
     }
@@ -223,6 +235,11 @@ export default function Notifications() {
                 <Icon size={18} style={{ color: "var(--primary)" }} />
               </div>
               <div className="flex-1 text-sm" style={{ color: "var(--text-main)" }}>
+                {n.type === "fire_collectable" || n.type === "founding_vip_claimed" ? (
+                  <span className="font-semibold" data-testid={`notification-fire-msg-${n.id}`}>
+                    {n.body || "🔥 You have Fire ready to collect."}
+                  </span>
+                ) : (<>
                 <span className="font-semibold">@{n.actor}</span>{" "}
                 <span style={{ color: "var(--text-muted)" }}>
                   {n.type === "like" && "liked"}
@@ -231,6 +248,7 @@ export default function Notifications() {
                   {n.type === "mention" && "mentioned you"}
                   {n.type === "message" && "messaged you"}
                   {n.type === "share" && "shared"}
+                  {n.type === "fire" && "fired your post 🔥"}
                   {n.type === "friend_request" && "sent a friend request"}
                   {n.type === "realm_post" && "posted in"}
                   {n.type === "realm_join" && "—"}
@@ -238,6 +256,7 @@ export default function Notifications() {
                 </span>
                 {n.target && <span> {n.target}</span>}
                 <span className="text-[10px] uppercase tracking-widest ml-2 px-1.5 py-0.5 rounded" style={{ background: "color-mix(in srgb, var(--primary) 16%, transparent)", color: "var(--primary)" }}>{n.category}</span>
+                </>)}
               </div>
               <div className="text-xs whitespace-nowrap shrink-0" style={{ color: "var(--text-muted)" }}>{n.when}</div>
               {n.unread && (

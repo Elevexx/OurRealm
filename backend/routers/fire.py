@@ -142,7 +142,17 @@ async def public_wallet_stats(username: str, current: OptionalUser):
     if not owner:
         raise HTTPException(status_code=404, detail="User not found")
     out = await fv.public_fire_stats(owner, current)
-    return {"enabled": True, "username": owner["username"], **out}
+    # Public progression facts (level / badge / max reaction) — earned
+    # through progression and safe to display on any profile. NO wallet
+    # balances, pool state or private values are ever included here.
+    cfg = await fp.fire_config_for_user({"id": owner["id"]})
+    return {"enabled": True, "username": owner["username"], **out,
+            "public_summary": {
+                "level_number": cfg.get("level_number"),
+                "level_name": cfg.get("level_name"),
+                "level_badge_url": cfg.get("level_badge_url"),
+                "max_fire_per_reaction": cfg.get("max_fire_per_reaction"),
+            }}
 
 
 class ReactBody(BaseModel):

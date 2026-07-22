@@ -1,0 +1,38 @@
+{
+  "summary": "Iter85 — Fire Power Widget Upgrade + Public Profile (Phase upgrade). Backend + full UI E2E validation. 6/6 backend pytest cases PASS (anon 401 gating, non-friend privacy filter with no 'value' key, owner sees all values, full notification lifecycle upsert/resolve/new-cycle, accounting regression, idempotent double-collect). Full UI Playwright validation PASS (owner FireWalletCard w/ correct section order + collapsed-by-default + reload-collapse, public PublicFireStats with correct footer + no forbidden words, notification deep-link auto-expand with sessionStorage one-shot consumption + collapse-on-reload, live COLLECT flow POST /fire/wallet/collect 200 with vault +N & collectable→0 & button gone, mobile 390px scrollWidth==390 no overflow, /profile Edit page + /home compact widget regression). NO backend or frontend defects found for this scope.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_fire_widget_iter85.py",
+    "/app/test_reports/pytest/iter85_fire_widget.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "FireWalletCard.jsx (307 lines) — clean, well-commented; deep-link consume useEffect correctly consumes sessionStorage on mount and clears highlight timeouts on unmount. useAccordionState('fire-wallet', false) ensures always-collapsed-on-open (matches Creator Progress / Progression Badges pattern).",
+    "PublicFireStats.jsx (113 lines) — safely renders {visible:false} without any 'value' fallback that would leak private numbers. Level badge falls back to /fire-power-icon.png. Good defensive design.",
+    "routers/fire.py::public_wallet_stats — public_summary contains only progression facts (level_number, level_name, level_badge_url, max_fire_per_reaction); no wallet balances or pool state ever leaked.",
+    "services/fire_vault.py::upsert_fire_ready_notification — correctly upserts a single unresolved fire_collectable notification per user; resolve_fire_ready_notifications flips resolved+seen and rewrites the message to '🔥 Fire collected into your Vault.'; a fresh collectable cycle after resolution correctly creates a NEW id (confirmed by test).",
+    "collect_fire is atomic per-transaction, idempotent (status-guarded flips), and returns collected=0 on a repeated call. High-water-mark on post_fire_reactions prevents remove/re-send farming (confirmed during test setup — repeatedly firing the same post with a lower value credits 0 delta).",
+    "Notifications.jsx onSelect('fire_collectable') writes sessionStorage 'ourrealm.fire.deeplink'='1' and navigates to /profile/<own-username>; FireWalletCard consumes+removes the flag on mount so refresh stays collapsed — verified end-to-end."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_fire_widget_iter85.py"
+  ],
+  "success_rate": {
+    "backend": "6/6 (100%)",
+    "frontend": "9/9 UI checks (100%)"
+  },
+  "test_credentials": "stealth/Password1$ (founder), auditcheckreal/Password1$ (regular), tftwo/pass1234 (non-friend viewer)",
+  "seed_data_creation": "Created a small number of throwaway posts by auditcheckreal (content prefix 'iter85 ...'); fired them from stealth to seed pending → collectable → collected transitions. auditcheckreal vault_balance advanced by ~13 fire net during this run (from 1055 to ~1063 after final collect). No config or flag changes beyond ensuring fire_reactions/fire_wallet_enabled/fire_pending_enabled/fire_collectable_enabled/fire_collection_enabled/fire_notifications remain ON (they were already ON — PATCH is idempotent). Third-cycle test seeded on a new post so high-water-mark did not block credit.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite for this feature lives at /app/backend/tests/test_fire_widget_iter85.py (6 tests). Rerunning is safe: the lifecycle test always collects any residual collectable balance for auditcheckreal at start, then reseeds. Uses public REACT_APP_BACKEND_URL. Frontend selectors used: fire-wallet-card, fire-wallet-header, fire-wallet-pool-section, fire-wallet-vault-section, fire-wallet-vault-badge, fire-wallet-pending-section, fire-wallet-collectable-section, fire-wallet-lifetime-section, fire-wallet-history-toggle, fire-collect-all-btn, fire-collect-confirm, public-fire-stats, public-fire-stats-header, public-fire-level, public-fire-stat-fire_received, public-fire-stat-max_reaction, public-fire-footer, notification-fire-msg-{id}, fire-wallet-compact. IMPORTANT: when clicking fire-collect-all-btn use a plain playwright .click() WITHOUT force=True — force clicks appeared to bubble to the bottom-nav '+' FAB and open the composer modal in one run (testing-agent artifact, not a product bug).",
+  "rca of the issue": "No issues found. All backend security gating (anon 401, non-friend {visible:false} without leaking a 'value' key, public_summary progression-only), notification lifecycle (single unresolved upsert → resolve→ new-cycle), accounting (vault += collectable, collectable→0, lifetime_fire_collected += N, double-collect returns 0), owner widget (collapsed-by-default, section order Daily Pool → Permanent Vault → Pending → Collectable → Statistics → Wallet History, no forbidden Future Utilities/Marketplace/Staking/money/crypto/token/invest words, no PublicFireStats rendered), public widget (no Vault/Pending/Collectable/Fire Given/Wallet History/Daily Fire Pool/Collect words, correct 2-line footer), notification deep-link (auto-expand + reload-collapse via sessionStorage consumption), live COLLECT flow, mobile 390px no horizontal overflow (scrollWidth == 390), and /profile & /home regressions ALL verified working exactly as specified."
+}
