@@ -804,12 +804,21 @@ async def migrate_rename_top8_titles():
                   "button_label": "Edit Inner Realm",
                   "description": "Add users to your Inner Realm"}},
     )
-    if r.modified_count or r2.modified_count or r3.modified_count:
+    # Published level snapshots embed task copies — rename those too.
+    r4 = await db.progression_level_versions.update_many(
+        {"snapshot.tasks.name": {"$in": ["Complete your Top 8", "Complete your Inner 8"]}},
+        {"$set": {"snapshot.tasks.$[el].name": "Complete your Inner Realm",
+                  "snapshot.tasks.$[el].button_label": "Edit Inner Realm",
+                  "snapshot.tasks.$[el].description": "Add users to your Inner Realm"}},
+        array_filters=[{"el.name": {"$in": ["Complete your Top 8", "Complete your Inner 8"]}}],
+    )
+    if r.modified_count or r2.modified_count or r3.modified_count or r4.modified_count:
         from services.widget_hydration import invalidate_widget_registry_cache
         invalidate_widget_registry_cache()
         log.info(
             f"Inner Realm rename: {r.modified_count} profiles, "
-            f"{r2.modified_count} registry rows"
+            f"{r2.modified_count} registry rows, {r3.modified_count} tasks, "
+            f"{r4.modified_count} level snapshots"
         )
 
 

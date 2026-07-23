@@ -120,17 +120,37 @@ export default function Top8Editor() {
 
   return (
     <div className="or-surface p-4 sm:p-5 mb-5" data-testid="profile-top8-editor">
-      <div className="flex items-center justify-between gap-2 mb-3">
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <h3 className="text-base sm:text-lg flex items-center gap-2" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>
-          <Sparkles size={16} /> Top 8
+          <Sparkles size={16} /> Inner Realm
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>auto-saves</span>
         </h3>
-        {busy && <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>Saving…</span>}
+        <div className="flex items-center gap-2">
+          {busy && <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>Saving…</span>}
+          <label className="flex items-center gap-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            Size
+            <select
+              value={size}
+              onChange={(e) => changeSize(Number(e.target.value))}
+              className="rounded-lg px-2 py-1 text-xs"
+              style={{ background: "var(--surface-2)", color: "var(--text-main)", border: "1px solid var(--border-col)" }}
+              data-testid="inner-realm-size-select"
+              aria-label="Inner Realm size"
+            >
+              {[4, 8, 12, 24].map((n) => <option key={n} value={n}>{n} Members</option>)}
+            </select>
+          </label>
+        </div>
       </div>
+      {hiddenCount > 0 && (
+        <div className="text-[10px] mb-2" style={{ color: "var(--text-muted)" }} data-testid="inner-realm-hidden-note">
+          {hiddenCount} saved member{hiddenCount === 1 ? "" : "s"} hidden — increase your Inner Realm size to show them again.
+        </div>
+      )}
       {err && <div className="text-[11px] mb-2" data-testid="top8-err" style={{ color: "#FF8080" }}>{err}</div>}
-      <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-4 place-items-center">
+      <div className={`grid ${size === 4 ? "grid-cols-4" : size === 12 ? "grid-cols-4 sm:grid-cols-6" : "grid-cols-4 sm:grid-cols-8"} gap-2 sm:gap-4 place-items-center`}>
         {slots.map((id, i) => {
-          const ring = RING_COLORS[i];
+          const ring = RING_COLORS[i % RING_COLORS.length];
           if (!id) {
             return (
               <button
@@ -212,7 +232,7 @@ export default function Top8Editor() {
               <h3 className="text-base" style={{ fontFamily: "var(--font-display)" }}>
                 {picker.replaceIndex != null && ids[picker.replaceIndex]
                   ? `Replace slot #${picker.replaceIndex + 1}`
-                  : "Add to Top 8"}
+                  : "Add to Inner Realm"}
               </h3>
               <button type="button" className="starbar-icon" style={{ width: 32, height: 32 }} onClick={() => setPicker({ open: false, replaceIndex: null })} data-testid="top8-picker-close"><X size={14} /></button>
             </div>
