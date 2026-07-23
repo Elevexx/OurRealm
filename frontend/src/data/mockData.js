@@ -93,7 +93,7 @@ export const MARKETPLACE_ADS = Array.from({ length: 8 }).map((_, i) => ({
 // AND on PATCH. Adding a new type requires updating BOTH files.
 export const WIDGET_TYPES = [
   { id: "myfeed",    label: "My Feed",         icon: "Sparkles",    default_size: "large",  cat: "feed" },
-  { id: "top8",      label: "Top 8 Friends",   icon: "Users",       default_size: "medium", cat: "social" },
+  { id: "top8",      label: "Inner Realm",     icon: "Users",       default_size: "medium", cat: "social" },
   { id: "live",      label: "Live Stream",     icon: "Radio",       default_size: "large",  cat: "content" },
   { id: "videos",    label: "Videos",          icon: "PlayCircle",  default_size: "medium", cat: "content" },
   { id: "music",     label: "Music",           icon: "Music",       default_size: "medium", cat: "content" },

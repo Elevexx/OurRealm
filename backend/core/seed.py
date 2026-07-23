@@ -427,6 +427,7 @@ async def run_startup():
     await migrate_inject_myfeed_widget()
     await migrate_inject_top8_widget()
     await migrate_reorder_top8_above_myfeed()
+    await migrate_rename_top8_titles()
     await migrate_strip_deprecated_widgets()
     await migrate_text_posts_to_thoughts()
     await migrate_video_urls_to_relative()
@@ -617,7 +618,20 @@ async def migrate_inject_myfeed_widget():
     import logging
     log = logging.getLogger("ourrealm.seed")
     n = 0
-    async for u in db.users.find({}, {"_id": 0, "id": 1, "widgets": 1}):
+    # NEVER touch profiles with a deliberately saved layout
+    # (profile_widgets_customized=True) or the founder — removed widgets
+    # must STAY removed across restarts/redeploys.
+    cursor = db.users.find(
+        {
+            "username": {"$ne": FOUNDER_USERNAME.lower()},
+            "$or": [
+                {"profile_widgets_customized": {"$exists": False}},
+                {"profile_widgets_customized": False},
+            ],
+        },
+        {"_id": 0, "id": 1, "widgets": 1},
+    )
+    async for u in cursor:
         widgets = u.get("widgets") or []
         has_mf = any((w or {}).get("type") == MYFEED_WIDGET_TYPE for w in widgets)
         if has_mf:
@@ -733,7 +747,19 @@ async def migrate_inject_top8_widget():
     import logging
     log = logging.getLogger("ourrealm.seed")
     n = 0
-    async for u in db.users.find({}, {"_id": 0, "id": 1, "widgets": 1}):
+    # Same guard as My Feed injection — customized layouts + founder are
+    # sacred; only never-customized profiles receive the default widget.
+    cursor = db.users.find(
+        {
+            "username": {"$ne": FOUNDER_USERNAME.lower()},
+            "$or": [
+                {"profile_widgets_customized": {"$exists": False}},
+                {"profile_widgets_customized": False},
+            ],
+        },
+        {"_id": 0, "id": 1, "widgets": 1},
+    )
+    async for u in cursor:
         widgets = u.get("widgets") or []
         if any((w or {}).get("type") == TOP8_WIDGET_TYPE for w in widgets):
             continue
@@ -751,6 +777,40 @@ async def migrate_inject_top8_widget():
         n += 1
     if n:
         log.info(f"Injected Top 8 widget into {n} existing profiles")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# INNER REALM RENAME (Jul 2026) — title-only normalization. Existing
+# saved widget rows carry legacy titles ("Top 8 Friends") which render
+# as the widget header. Rename to "Inner Realm" WITHOUT touching order,
+# size, visibility or any other layout data. Idempotent.
+# ─────────────────────────────────────────────────────────────────────
+async def migrate_rename_top8_titles():
+    import logging
+    log = logging.getLogger("ourrealm.seed")
+    r = await db.users.update_many(
+        {"widgets.title": {"$in": ["Top 8 Friends", "Top 8", "Inner 8"]}},
+        {"$set": {"widgets.$[el].title": "Inner Realm"}},
+        array_filters=[{"el.title": {"$in": ["Top 8 Friends", "Top 8", "Inner 8"]}}],
+    )
+    r2 = await db.widget_registry.update_many(
+        {"name": {"$in": ["Top 8 Friends", "Top 8", "Inner 8"]}},
+        {"$set": {"name": "Inner Realm"}},
+    )
+    # Progression task labels (user-facing): "Complete your Top 8" etc.
+    r3 = await db.progression_tasks.update_many(
+        {"name": {"$in": ["Complete your Top 8", "Complete your Inner 8"]}},
+        {"$set": {"name": "Complete your Inner Realm",
+                  "button_label": "Edit Inner Realm",
+                  "description": "Add users to your Inner Realm"}},
+    )
+    if r.modified_count or r2.modified_count or r3.modified_count:
+        from services.widget_hydration import invalidate_widget_registry_cache
+        invalidate_widget_registry_cache()
+        log.info(
+            f"Inner Realm rename: {r.modified_count} profiles, "
+            f"{r2.modified_count} registry rows"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────

@@ -51,18 +51,21 @@ async def update_profile(update: ProfileUpdate, current: CurrentUser):
         "public", "friends", "private",
     ):
         raise HTTPException(status_code=400, detail="Invalid visibility")
-    # Cap Inner-8 at 8 entries
+    # Inner Realm — storage cap 24 (largest selectable size). Members
+    # beyond the user's chosen display size stay stored but hidden.
     if "inner_8" in set_doc:
-        if len(set_doc["inner_8"]) > 8:
+        if len(set_doc["inner_8"]) > 24:
             raise HTTPException(
                 status_code=400,
-                detail="Remove a friend from Inner 8 to add a new one",
+                detail="Remove a friend from your Inner Realm to add a new one",
             )
         # Make sure each entry is actually a friend
         friend_ids = set(current.get("friends") or [])
         for uid in set_doc["inner_8"]:
             if uid not in friend_ids:
-                raise HTTPException(status_code=400, detail="Inner 8 entry is not a friend")
+                raise HTTPException(status_code=400, detail="Inner Realm entry is not a friend")
+    if "inner_realm_size" in set_doc and set_doc["inner_realm_size"] not in (4, 8, 12, 24):
+        raise HTTPException(status_code=400, detail="Inner Realm size must be 4, 8, 12 or 24")
     # Phase-2 — ZIP code validation + coords resolution. The 5-digit
     # prefix is geocoded server-side via pgeocode; lat/lng is stored in
     # private fields used by the radius-filter helpers. Pass an empty

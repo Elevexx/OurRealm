@@ -173,7 +173,7 @@ LAUNCH_LADDER = [
                ("Receive 100 valid likes", "likes_received", 100, {}),
                ("Create posts on 7 unique days", "post_unique_days", 7, {}),
                ("Join 3 Realms", "join_realm", 3, {}),
-               ("Complete your Top 8", "top8_add", 8, {})],
+               ("Complete your Inner Realm", "top8_add", 8, {})],
      "rewards": [_reward("completion_badge", "Rising Star Completed", badge_key="lvl_rising_star_complete", icon="Trophy", color="#4DD2FF"),
                  _reward("level_badge", "Influencer Current-Level Badge"),
                  _reward("profile_frame", "Rising Star Profile Frame", unlock_key="frame_rising_star")]},

@@ -45,14 +45,15 @@ export default function Friends() {
   const { user, refreshMe } = useAuth();
   const { openDM } = useMessagingPopups();
 
-  // Phase 5 — quick "Add to Top 8" action surfaced on every friend card.
+  // Phase 5 — quick "Add to Inner Realm" action surfaced on every friend card.
   // Uses the existing PATCH /profile/me { inner_8: [...] } API.
   const innerIds = user?.inner_8 || [];
+  const innerRealmSize = [4, 8, 12, 24].includes(user?.inner_realm_size) ? user.inner_realm_size : 8;
   const isInTop8 = (id) => innerIds.includes(id);
   const addToTop8 = async (id) => {
     if (isInTop8(id)) return;
-    if (innerIds.length >= 8) {
-      setActionErr("Please remove friend from top 8 to add more");
+    if (innerIds.length >= innerRealmSize) {
+      setActionErr("Remove a friend from your Inner Realm to add more");
       return;
     }
     setActionErr("");
@@ -60,7 +61,7 @@ export default function Friends() {
       await apiClient.patch("/profile/me", { inner_8: [...innerIds, id] });
       if (refreshMe) await refreshMe();
     } catch (e) {
-      setActionErr(e?.response?.data?.detail || "Could not add to Top 8");
+      setActionErr(e?.response?.data?.detail || "Could not add to Inner Realm");
     }
   };
 
@@ -194,9 +195,9 @@ export default function Friends() {
             className="or-chip"
             onClick={manageTop8}
             data-testid="friends-manage-top8"
-            title="Manage your Top 8"
+            title="Manage your Inner Realm"
           >
-            <Star size={12} /> <span className="hidden sm:inline">Manage Top 8</span><span className="sm:hidden">Top 8</span>
+            <Star size={12} /> <span className="hidden sm:inline">Manage Inner Realm</span><span className="sm:hidden">Inner Realm</span>
           </button>
           <span className="mode-badge hidden sm:inline-flex">{friends.length} connections</span>
         </div>
@@ -294,7 +295,7 @@ export default function Friends() {
                     data-testid={`friend-in-top8-${f.username}`}
                     style={{ width: "100%", justifyContent: "center", opacity: 0.85 }}
                   >
-                    <Star size={12} style={{ fill: "currentColor" }} /> In Top 8
+                    <Star size={12} style={{ fill: "currentColor" }} /> In Inner Realm
                   </button>
                 ) : (
                   <button
@@ -303,9 +304,9 @@ export default function Friends() {
                     onClick={() => addToTop8(f.id)}
                     data-testid={`friend-add-top8-${f.username}`}
                     style={{ width: "100%", justifyContent: "center" }}
-                    title="Add to Top 8"
+                    title="Add to Inner Realm"
                   >
-                    <Star size={12} /> Add to Top 8
+                    <Star size={12} /> Add to Inner Realm
                   </button>
                 )
               )}
@@ -443,18 +444,23 @@ function InnerEight({ friends, onChange, manageToken = 0 }) {
 
   useEffect(() => { if (!pickerOpen) setPickerQuery(""); }, [pickerOpen]);
 
-  // Parent ("Manage Top 8" CTA) bumps manageToken — we enter edit mode and,
-  // if there's still room, open the friend picker so the user can add right away.
+  // Parent ("Manage Inner Realm" CTA) bumps manageToken — we enter edit mode
+  // and, if there's still room, open the friend picker so the user can add right away.
   useEffect(() => {
     if (!manageToken) return;
     setEditing(true);
-    const hasRoom = (user?.inner_8?.length || 0) < 8;
+    const sz = [4, 8, 12, 24].includes(user?.inner_realm_size) ? user.inner_realm_size : 8;
+    const hasRoom = (user?.inner_8?.length || 0) < sz;
     if (hasRoom) setPickerOpen(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manageToken]);
 
   const idToFriend = new Map(friends.map((f) => [f.id, f]));
-  const ids = (user?.inner_8 || []).filter((id) => idToFriend.has(id)).slice(0, 8);
+  // Inner Realm display size — members beyond it stay stored but hidden,
+  // and reappear in their original order when the size is raised again.
+  const size = [4, 8, 12, 24].includes(user?.inner_realm_size) ? user.inner_realm_size : 8;
+  const allIds = user?.inner_8 || [];
+  const ids = allIds.filter((id) => idToFriend.has(id)).slice(0, size);
   const ringColors = ["#10E670", "#2EA0FF", "#FF8AC2", "#FFD24A", "#FF3F5A", "#B26BFF", "#22D3EE", "#9EE800"];
 
   const save = async (next) => {
@@ -464,27 +470,29 @@ function InnerEight({ friends, onChange, manageToken = 0 }) {
       if (refreshMe) await refreshMe();
       if (onChange) await onChange();
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Could not save Inner 8");
+      setErr(e?.response?.data?.detail || "Could not save Inner Realm");
     } finally { setBusy(false); }
   };
-  const remove = (id) => save(ids.filter((x) => x !== id));
+  // Mutations operate on the FULL stored list so hidden members beyond
+  // the display size are never dropped.
+  const remove = (id) => save(allIds.filter((x) => x !== id));
   const add = (id) => {
-    if (ids.length >= 8) { setErr("Please remove friend from top 8 to add more"); return; }
-    save([...ids, id]);
+    if (allIds.length >= size) { setErr("Remove a friend from your Inner Realm to add more"); return; }
+    save([...allIds, id]);
     setPickerOpen(false);
   };
   const move = (id, dir) => {
-    const i = ids.indexOf(id); const j = i + dir;
-    if (j < 0 || j >= ids.length) return;
-    const next = [...ids]; [next[i], next[j]] = [next[j], next[i]];
+    const i = allIds.indexOf(id); const j = i + dir;
+    if (j < 0 || j >= allIds.length) return;
+    const next = [...allIds]; [next[i], next[j]] = [next[j], next[i]];
     save(next);
   };
   const pressTimer = useRef(null);
   const onPressDown = (id) => { if (!editing) return; pressTimer.current = setTimeout(() => remove(id), 600); };
   const onPressUp = () => { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; } };
 
-  const slots = Array.from({ length: 8 }, (_, i) => ids[i] || null);
-  const candidates = friends.filter((f) => !ids.includes(f.id));
+  const slots = Array.from({ length: size }, (_, i) => ids[i] || null);
+  const candidates = friends.filter((f) => !allIds.includes(f.id));
   const filteredCandidates = pickerQuery.trim()
     ? candidates.filter((f) => {
         const term = pickerQuery.trim().toLowerCase();
@@ -497,16 +505,16 @@ function InnerEight({ friends, onChange, manageToken = 0 }) {
     <div className="or-surface p-4 sm:p-5 mb-5" data-testid="friends-inner-eight">
       <div className="flex items-center justify-between mb-3 gap-2">
         <h3 className="text-base sm:text-lg flex items-center gap-2" style={{ fontFamily: "var(--font-display)", color: "var(--primary)" }}>
-          <Sparkles size={16} /> Close Realm <span className="text-xs" style={{ color: "var(--text-muted)" }}>Your inner 8</span>
+          <Sparkles size={16} /> Inner Realm <span className="text-xs" style={{ color: "var(--text-muted)" }}>Your closest {size}</span>
         </h3>
         <button className="or-chip" onClick={() => setEditing((v) => !v)} data-active={editing} data-testid="inner8-edit-toggle">
           <Edit3 size={12} /> {editing ? "Done" : "Edit"}
         </button>
       </div>
       {err && <div className="text-[11px] mb-2" data-testid="inner8-err" style={{ color: "#FF8080" }}>{err}</div>}
-      <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 sm:gap-4 place-items-center">
+      <div className={`grid ${size === 4 ? "grid-cols-4" : "grid-cols-4 sm:grid-cols-8"} gap-2 sm:gap-4 place-items-center`}>
         {slots.map((id, i) => {
-          const ring = ringColors[i];
+          const ring = ringColors[i % ringColors.length];
           if (!id) {
             return (
               <button key={`empty-${i}`} onClick={() => setPickerOpen(true)} className="flex flex-col items-center gap-1.5 min-w-0 w-full" data-testid={`inner8-add-slot-${i}`} style={{ opacity: 0.85 }}>
@@ -520,7 +528,7 @@ function InnerEight({ friends, onChange, manageToken = 0 }) {
           const f = idToFriend.get(id);
           return (
             <div key={id} className="flex flex-col items-center gap-1.5 min-w-0 w-full" data-testid={`inner8-slot-${f.username}`} onPointerDown={() => onPressDown(id)} onPointerUp={onPressUp} onPointerLeave={onPressUp}>
-              <button onClick={() => editing ? null : navigate(`/messages?to=${f.username}`)} className="rounded-full p-[3px] relative aspect-square w-full" style={{ background: ring, boxShadow: `0 0 14px ${ring}66`, maxWidth: 80 }} aria-label={`Inner 8 #${i + 1}: @${f.username}`}>
+              <button onClick={() => editing ? null : navigate(`/messages?to=${f.username}`)} className="rounded-full p-[3px] relative aspect-square w-full" style={{ background: ring, boxShadow: `0 0 14px ${ring}66`, maxWidth: 80 }} aria-label={`Inner Realm #${i + 1}: @${f.username}`}>
                 <UserAvatar user={f} size={70} style={{ border: "3px solid var(--bgc)", width: "100%", height: "100%" }} testid={`inner8-avatar-${f.username}`} />
                 <span className="absolute -top-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[8px] font-extrabold" style={{ background: ring, color: "#fff", letterSpacing: "0.06em" }}>#{i + 1}</span>
                 {editing && (
@@ -546,7 +554,7 @@ function InnerEight({ friends, onChange, manageToken = 0 }) {
         <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center px-3 pb-24 sm:pb-0" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)" }} onClick={() => setPickerOpen(false)} data-testid="inner8-picker">
           <div className="or-surface w-full max-w-md max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between p-3" style={{ borderBottom: "1px solid var(--border-col)" }}>
-              <h3 className="text-base" style={{ fontFamily: "var(--font-display)" }}>Add to Top 8</h3>
+              <h3 className="text-base" style={{ fontFamily: "var(--font-display)" }}>Add to Inner Realm</h3>
               <button className="starbar-icon" style={{ width: 32, height: 32 }} onClick={() => setPickerOpen(false)} data-testid="inner8-picker-close"><X size={14} /></button>
             </div>
             <div className="px-3 pt-3">
@@ -568,7 +576,7 @@ function InnerEight({ friends, onChange, manageToken = 0 }) {
               {filteredCandidates.length === 0 ? (
                 <div className="text-sm text-center" style={{ color: "var(--text-muted)" }}>
                   {candidates.length === 0
-                    ? "All your friends are already in Top 8."
+                    ? "All your friends are already in your Inner Realm."
                     : "No matches."}
                 </div>
               ) : filteredCandidates.map((f) => (

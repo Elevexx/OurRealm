@@ -105,8 +105,11 @@ class ProfileUpdate(BaseModel):
     profile_visibility: Optional[str] = None
     # Wallet payment placeholders (stored as-is, no real ACH)
     wallet: Optional[dict] = None
-    # Inner-8 / Top-8 friends ordered list of user_ids (max 8)
+    # Inner Realm ordered list of friend user_ids (display capped by
+    # inner_realm_size; storage cap 24 so hidden members are preserved)
     inner_8: Optional[List[str]] = None
+    # Inner Realm display size — one of 4 / 8 / 12 / 24 (default 8)
+    inner_realm_size: Optional[int] = None
     # Phase-2: presence indicator visibility (default true). When false the
     # animated radar dot is hidden on the public profile.
     presence_visible: Optional[bool] = None
@@ -243,6 +246,7 @@ def serialize_user(doc: dict) -> dict:
         "profile_visibility": doc.get("profile_visibility", "public"),
         "wallet": doc.get("wallet", {}),
         "inner_8": doc.get("inner_8", []),
+        "inner_realm_size": doc.get("inner_realm_size", 8),
         # Phase-2 — presence indicator visibility (default ON).
         "presence_visible": doc.get("presence_visible", True),
         # Phase C — Real-Time Presence System

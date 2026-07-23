@@ -25,6 +25,8 @@ import { CSS } from "@dnd-kit/utilities";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import FireWalletCard from "@/components/fire/FireWalletCard";
+import ProgressCard from "@/components/progression/ProgressCard";
+import ProgressionBadges from "@/components/progression/ProgressionBadges";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { listGroups, listRealms } from "@/lib/messaging";
 import FriendMultiPicker from "@/components/FriendMultiPicker";
@@ -65,7 +67,7 @@ const SIZE_ORDER = ["sm", "md", "lg", "xl"];
 const RESIZE_STEP_PX = 70;  // px of pointer delta required to advance one size
 
 export default function HomeDashboard() {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const [widgets, setWidgets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [edit, setEdit] = useState(false);
@@ -145,7 +147,15 @@ export default function HomeDashboard() {
         </button>
       </header>
 
-      <FireWalletCard compact />
+      {/* Personal progression sections — identical shared components to the
+          profile page (single source of truth). Hidden for guests. */}
+      {user && !isGuest && (
+        <>
+          <FireWalletCard collapsible />
+          <ProgressCard username={user.username} isOwner={true} />
+          <ProgressionBadges username={user.username} isOwner={true} />
+        </>
+      )}
 
       {loading ? (
         <div className="or-surface p-10 text-center" style={{ color: "var(--text-muted)" }}>Loading your dashboard…</div>

@@ -75,10 +75,10 @@ _reg("send_message", "Send a valid message", "social", "messages_sent",
      button="Open Messages", dest="/messages")
 _reg("join_group", "Join a group", "social", "group_membership",
      config={"community_type": "group"}, button="Browse Groups", dest="/realms")
-_reg("top8_add", "Add users to Top 8", "social", "list_field_count",
-     config={"field": "top_8"}, button="Edit Top 8", dest="/profile")
-_reg("inner8_add", "Add users to Inner 8", "social", "list_field_count",
-     config={"field": "inner_8"}, button="Edit Inner 8", dest="/profile")
+_reg("top8_add", "Add users to your Inner Realm", "social", "list_field_count",
+     config={"field": "top_8"}, button="Edit Inner Realm", dest="/profile")
+_reg("inner8_add", "Add users to your Inner Realm", "social", "list_field_count",
+     config={"field": "inner_8"}, button="Edit Inner Realm", dest="/profile")
 _reg("unique_interactions", "Interact with unique real users", "social", "interactions_given",
      config={"unique": "user"}, button="Explore Feed", dest="/feed", unique="user")
 

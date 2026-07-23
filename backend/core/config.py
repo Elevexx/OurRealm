@@ -43,7 +43,7 @@ def default_top8_widget() -> dict:
         "id": "w-top8",
         "type": TOP8_WIDGET_TYPE,
         "size": "medium",
-        "title": "Top 8 Friends",
+        "title": "Inner Realm",
     }
 
 

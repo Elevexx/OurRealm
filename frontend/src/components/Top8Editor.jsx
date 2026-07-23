@@ -48,7 +48,20 @@ export default function Top8Editor() {
   }, []);
 
   const idToFriend = new Map(friends.map((f) => [f.id, f]));
-  const slots = Array.from({ length: 8 }, (_, i) => ids[i] || null);
+  // Inner Realm display size (4/8/12/24). Members beyond the size stay
+  // stored (hidden) and reappear in order when the size is raised again.
+  const size = [4, 8, 12, 24].includes(user?.inner_realm_size) ? user.inner_realm_size : 8;
+  const slots = Array.from({ length: size }, (_, i) => ids[i] || null);
+  const hiddenCount = Math.max(0, ids.length - size);
+  const changeSize = async (n) => {
+    setBusy(true); setErr("");
+    try {
+      await apiClient.patch("/profile/me", { inner_realm_size: n });
+      await refreshMe?.();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Could not save Inner Realm size");
+    } finally { setBusy(false); }
+  };
   const candidates = (replaceIndex) =>
     friends.filter((f) =>
       // For replace: allow swapping in any friend not currently in another
@@ -78,7 +91,7 @@ export default function Top8Editor() {
       await apiClient.patch("/profile/me", { inner_8: next });
       await refreshMe?.();
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Could not save Top 8");
+      setErr(e?.response?.data?.detail || "Could not save Inner Realm");
       setIds(user?.inner_8 || []); // rollback
     } finally { setBusy(false); }
   };
@@ -86,7 +99,7 @@ export default function Top8Editor() {
   const add = (id, index = null) => {
     let next;
     if (index === null) {
-      if (ids.length >= 8) { setErr("Please remove friend from top 8 to add more"); return; }
+      if (ids.length >= size) { setErr("Remove a friend from your Inner Realm to add more"); return; }
       next = [...ids, id];
     } else {
       next = [...ids];
@@ -162,7 +175,7 @@ export default function Top8Editor() {
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPicker({ open: true, replaceIndex: i }); } }}
                 className="rounded-full p-[3px] relative aspect-square w-full cursor-pointer"
                 style={{ background: ring, boxShadow: `0 0 14px ${ring}66`, maxWidth: 80 }}
-                aria-label={`Top 8 #${i + 1}: @${f.username} (tap to replace)`}
+                aria-label={`Inner Realm #${i + 1}: @${f.username} (tap to replace)`}
               >
                 <img src={avatar} alt="" className="w-full h-full rounded-full object-cover" style={{ border: "3px solid var(--bgc)" }} />
                 <span className="absolute -top-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[8px] font-extrabold" style={{ background: ring, color: "#fff", letterSpacing: "0.06em" }}>#{i + 1}</span>
@@ -226,7 +239,7 @@ export default function Top8Editor() {
                     ? "Add some friends first."
                     : pickerQuery.trim()
                       ? "No matches."
-                      : "All your friends are already in Top 8."}
+                      : "All your friends are already in your Inner Realm."}
                 </div>
               ) : filteredCandidates.map((f) => (
                 <button

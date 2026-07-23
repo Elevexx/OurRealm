@@ -1,0 +1,89 @@
+{
+  "summary": "Iter87 — Inner Realm rename + size + widget persistence QA. Backend 16/17 pytest cases PASS (1 SKIP for widget registry alt endpoints). Widget PERSISTENCE across backend restart works PERFECTLY: PATCH widgets=[top8] then supervisor restart backend + GET /auth/me still exactly [top8]; PATCH widgets=[] persists as empty across restart; fresh-registered account still gets default [myfeed,top8] with title 'Inner Realm'; PATCH bio does NOT clobber widgets. inner_realm_size validation PASS: 4/8/12/24 all accept + persist; 7 → 400 with exact msg 'Inner Realm size must be 4, 8, 12 or 24'; non-friend uuid → 400; storage cap 24; lowering size preserves inner_8 order. HOWEVER two CRITICAL frontend defects + one backend data-migration miss violate the review spec: (A) Top8Editor.jsx L125 hard-codes 'Top 8 auto-saves' heading — NOT 'Inner Realm' — visible on /profile edit and view for every user with a top8 widget; L215 picker modal title 'Add to Top 8'; L131 grid-cols hard-coded 4/8 (not size-aware for 12/24); (B) Top8Editor.jsx ships NO Size selector UI — `changeSize` is defined but never rendered, `data-testid=inner-realm-size-select` is completely absent from DOM; hidden-note is also missing (`data-testid=inner-realm-hidden-note`); (C) migrate_rename_top8_titles only touches db.progression_tasks — the actual live tasks come from progression_level_versions[i].snapshot.tasks[] which still contain name='Complete your Top 8', description='Add users to Top 8', button_label='Edit Top 8' on Rising Star level_id 34e8263eb3484e458b696691b1817940 (v2). Home /home shows 3 collapsible sections (Fire Power / Rising Star Progress / Progression Badges) all collapsed on load, mobile scrollWidth==390 no overflow — PASS. Public visitor and logged-out flow deferred to main-agent-verified behaviour.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "migrate_rename_top8_titles (core/seed.py L788)",
+        "issue": "Only renames db.progression_tasks; the user-facing tasks that /api/progression/me returns are stored inside progression_level_versions[i].snapshot.tasks[] and still say 'Complete your Top 8' / 'Add users to Top 8' / button_label='Edit Top 8'. Confirmed via progression_level_versions doc level_id=34e8263eb3484e458b696691b1817940 v=2 (Rising Star, level 4). Any user on this level (e.g. stealth, auditcheckreal) sees the old label.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Top8Editor.jsx",
+        "issue": "Line 125 hardcodes 'Top 8' as the editor heading (`<Sparkles size={16} /> Top 8 auto-saves`). Should read 'Inner Realm'. Violates review requirement '/profile Edit Profile editor heading (Top8Editor)'.",
+        "selector": "[data-testid=profile-top8-editor] h3",
+        "priority": "HIGH"
+      },
+      {
+        "component": "Top8Editor.jsx",
+        "issue": "Line 215 picker modal title 'Add to Top 8' should read 'Add to Inner Realm'.",
+        "selector": "[data-testid=top8-picker] h3",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "Top8Editor.jsx",
+        "issue": "Inner Realm Size selector UI is completely missing. The review spec mandates `data-testid=\"inner-realm-size-select\"` with options '4 Members' / '8 Members' / '12 Members' / '24 Members'. The `changeSize` handler is defined (L56) and `size` is read from `user.inner_realm_size` (L53) — but no <select> is ever rendered.",
+        "selector": "[data-testid=inner-realm-size-select]",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "Top8Editor.jsx",
+        "issue": "Hidden-note UI is missing (`data-testid=\"inner-realm-hidden-note\"`). `hiddenCount` is computed on L55 but never rendered. Users who lower the display size will not see any indication that members are hidden.",
+        "selector": "[data-testid=inner-realm-hidden-note]",
+        "priority": "HIGH"
+      },
+      {
+        "component": "Top8Editor.jsx",
+        "issue": "Grid on L131 hardcodes `grid-cols-4 sm:grid-cols-8` — not size-aware. When size=12 or size=24 the grid still wraps at 8 columns per row on desktop; not aligned to the sizes 4/8/12/24 required by spec.",
+        "selector": "[data-testid=profile-top8-editor] > div.grid",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "TopEightWidget saved title",
+        "issue": "The widget header on /profile currently reads 'Top 8 auto-saves' because Top8Editor is rendered in-place instead of TopEightWidget. Even though the DB row's `w.title` is 'Inner Realm', the editor's hardcoded heading takes precedence.",
+        "selector": "profile widget header",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_inner_realm_iter87.py",
+    "/app/test_reports/pytest/iter87_inner_realm.xml"
+  ],
+  "action_items": [
+    "Top8Editor.jsx L125: replace `Top 8` heading text with `Inner Realm`.",
+    "Top8Editor.jsx L215: replace `Add to Top 8` picker title with `Add to Inner Realm`.",
+    "Top8Editor.jsx: render an actual <select data-testid=\"inner-realm-size-select\"> that calls the existing `changeSize` handler with 4/8/12/24 as options; wire label to say 'Members'.",
+    "Top8Editor.jsx: render an `<div data-testid=\"inner-realm-hidden-note\">` when `hiddenCount > 0` (message like `${hiddenCount} member(s) hidden — raise the size to see them again`).",
+    "Top8Editor.jsx L131: make the grid columns size-aware. Suggestion: `grid-cols-4` for size 4, `sm:grid-cols-8` for size 8, `sm:grid-cols-6` for 12, `sm:grid-cols-8` for 24 with row-wrap.",
+    "core/seed.py migrate_rename_top8_titles: extend to also rewrite `progression_level_versions.snapshot.tasks[]` entries where task_type_key='top8_add' — replace name → 'Complete your Inner Realm', description → 'Add users to your Inner Realm', button_label → 'Edit Inner Realm'. Same rewrite for any admin-facing progression_tasks docs that reference top8.",
+    "Verify /home logged-out gating on a hard-refresh — my automation cleared localStorage but the SPA still rendered the widget cluster (may be a testing artifact from cached auth token; main agent already verified this passes in a clean session)."
+  ],
+  "critical_code_review_comments": [
+    "Backend widget persistence architecture is correct: migrate_inject_myfeed_widget & migrate_inject_top8_widget now guard on `profile_widgets_customized` and skip the founder — verified across two live supervisor restarts within the test run.",
+    "routers/profile.py update_profile flips `profile_widgets_customized=True` inside the same $set doc as the widgets — atomic; no window where a mid-restart could see customized=false with a saved layout.",
+    "inner_realm_size validation is tight: exactly one Python `in (4,8,12,24)` check + a stable error string — clients can match on it.",
+    "inner_8 friend-only guard (L64) correctly iterates and 400s on the first non-friend id — good; consider adding the failing id to the error detail for debuggability.",
+    "migrate_rename_top8_titles is inherently incomplete: level-config live data lives in `progression_level_versions.snapshot.tasks` (Level Builder snapshots each publish) — a title-only rename that ignores this collection cannot cover all user-facing task labels. See DB dump above.",
+    "Top8Editor.jsx is a partial implementation of the Inner Realm spec: has the friend picker, add/remove/reorder, correct save-side inner_8 PATCH & size-aware `slots`; but the size <select>, hidden-note, and Inner-Realm rename in the heading + picker title were not shipped. `changeSize` is dead code today."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_inner_realm_iter87.py"
+  ],
+  "success_rate": {
+    "backend": "16/17 (94%) — 1 SKIP registry alt endpoints. All widget-persistence + size validation asserts PASS.",
+    "frontend": "3/6 checks PASS (home 3 sections + mobile no-overflow + widget stored title=Inner Realm on API). 3 FAIL (editor heading, size selector missing, hidden-note missing)."
+  },
+  "test_credentials": "stealth/Password1$ · auditcheckreal/Password1$ · tftwo/pass1234 — all working. iter87_<hex>@example.com throwaway account created + self-deleted by test_fresh_account_gets_defaults.",
+  "seed_data_creation": "During tests: auditcheckreal ended with widgets=[top8,myfeed]  (restored after test flow). stealth inner_realm_size reset to 8 (default). stealth's inner_8 was overwritten with up-to-24 of stealth's own friend_ids during test_inner_8_up_to_24_friends — order preserved. No user data destroyed. One throwaway iter87_<hex> account soft-deleted.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Regression suite for this feature: /app/backend/tests/test_inner_realm_iter87.py (17 tests, ~11s incl. two live supervisor restarts). The restart tests use `sudo supervisorctl restart backend` — safe. Frontend selectors verified: profile-top8-editor, top8-add-slot-N, top8-picker, top8-picker-close, top8-picker-search, top8-pick-<user>, top8-remove-<user>, top8-slot-<user>, top8-up-<user>, top8-down-<user>, fire-wallet-card, fire-wallet-vault-section (present, count=0 when collapsed). Missing selectors requested by review spec but ABSENT from the DOM: inner-realm-size-select, inner-realm-hidden-note. The Rising Star progression level (level_id=34e8263eb3484e458b696691b1817940 v=2) still contains legacy 'Top 8' labels inside `progression_level_versions.snapshot.tasks[]` — rerunning the seed migration will NOT fix it as currently written. Home /home 3-section behavior + mobile-390 no-overflow verified fresh. Public /profile/<user> visitor and logged-out /home cases were only partially verified due to caching artifacts — main agent's prior curl+screenshot verification is trusted for those.",
+  "rca of the issue": "Root cause A (editor heading & picker title): Top8Editor.jsx was created for the older 'Top 8' spec and only partially migrated to Inner Realm terminology (added Inner Realm in aria-labels + error messages + widget-registry rename migration, but not in the two visible strings on L125 and L215). Fix: two-line change in Top8Editor.jsx. Root cause B (size selector + hidden-note missing): the developer wrote the `changeSize` and `hiddenCount` scaffolding but never wired the UI. Fix: add ~20 lines of JSX inside the header row. Root cause C (progression task rename incomplete): migrate_rename_top8_titles only updates db.progression_tasks and db.widget_registry, but Level Builder's Publish flow snapshots the current task rows into progression_level_versions.snapshot.tasks. Once a level is published, /api/progression/me reads from the snapshot, not from progression_tasks. Fix: extend the migration to iterate progression_level_versions, walk `snapshot.tasks`, and $set name/description/button_label for any task_type_key=='top8_add' entry (or matching legacy strings). Idempotent — run once. Reproduction for A/B: sign in as auditcheckreal → /profile → open Edit Profile. Body text shows 'Top 8 auto-saves' and no size selector. Reproduction for C: sign in as any user on Rising Star level (level 4) → GET /api/progression/me → find task with task_type_key='top8_add' — name is still 'Complete your Top 8'."
+}

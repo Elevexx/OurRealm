@@ -402,7 +402,7 @@ def _snapshot_version(existing: dict, current_user: dict) -> List[dict]:
 # spec's category list (feed/friends/media/music/podcast/events/...).
 SYSTEM_WIDGETS = [
     {"key": "myfeed",    "name": "My Feed",          "category": "feed",     "icon": "Sparkles",      "default_size": "large",  "sort_order": 10},
-    {"key": "top8",      "name": "Top 8 Friends",    "category": "friends",  "icon": "Users",         "default_size": "medium", "sort_order": 20},
+    {"key": "top8",      "name": "Inner Realm",      "category": "friends",  "icon": "Users",         "default_size": "medium", "sort_order": 20},
     {"key": "live",      "name": "Live Stream",      "category": "media",    "icon": "Radio",         "default_size": "large",  "sort_order": 30},
     {"key": "videos",    "name": "Videos",           "category": "media",    "icon": "PlayCircle",    "default_size": "medium", "sort_order": 40},
     {"key": "music",     "name": "Music",            "category": "music",    "icon": "Music",         "default_size": "medium", "sort_order": 50},

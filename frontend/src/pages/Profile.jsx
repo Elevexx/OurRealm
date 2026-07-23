@@ -408,9 +408,16 @@ export default function Profile() {
   const [searchParams] = useSearchParams();
   const [editing, setEditing] = useState(searchParams.get("edit") !== "0");
   const [form, setForm] = useState({ name: "", bio: "" });
-  // Empty widget lists are VALID saved state — only fall back to the
-  // defaults when the field is truly absent (brand-new/unsaved profile).
-  const [widgets, setWidgets] = useState(Array.isArray(user?.widgets) ? user.widgets : DEFAULT_WIDGETS);
+  // Empty widget lists are VALID saved state for customized profiles —
+  // fall back to defaults ONLY when the account has never saved a layout
+  // (widgets absent, or empty without the customized flag). This is the
+  // root fix for removed widgets "returning" after save/refresh/login.
+  const resolveSavedWidgets = (u) => {
+    if (!u || !Array.isArray(u.widgets)) return null;
+    if (u.widgets.length === 0 && !u.profile_widgets_customized) return null;
+    return u.widgets;
+  };
+  const [widgets, setWidgets] = useState(() => resolveSavedWidgets(user) ?? DEFAULT_WIDGETS);
   const [addOpen, setAddOpen] = useState(false);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [bannerEditorOpen, setBannerEditorOpen] = useState(false);
@@ -418,8 +425,9 @@ export default function Profile() {
   useEffect(() => { if (searchParams.get("edit") === "1") setEditing(true); }, [searchParams]);
   useEffect(() => {
     if (user) setForm({ name: user.name || "", bio: user.bio || "" });
-    if (user?.widgets?.length) setWidgets(user.widgets);
-  }, [user]);
+    const saved = resolveSavedWidgets(user);
+    if (saved) setWidgets(saved);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
