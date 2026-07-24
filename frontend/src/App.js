@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import FoundingVipPopup from "@/components/fire/FoundingVipPopup";
@@ -7,7 +7,7 @@ import MessagingPopupProvider from "@/contexts/MessagingPopupContext";
 import { PresenceProvider } from "@/contexts/PresenceContext";
 import { Toaster } from "sonner";
 import Layout from "@/components/Layout";
-import Landing from "@/pages/Landing";
+
 import SignUp from "@/pages/SignUp";
 import SignIn from "@/pages/SignIn";
 import Home from "@/pages/Home";
@@ -80,7 +80,8 @@ function PortalsAdminGate({ children }) {
 }
 
 function ShellRoute({ children }) {
-  const { isLoading } = useAuth();
+  const { user, isLoading } = useAuth();
+  const location = useLocation();
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ color: "var(--text-muted)" }}>
@@ -88,7 +89,23 @@ function ShellRoute({ children }) {
       </div>
     );
   }
+  if (!user) {
+    const dest = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/signup?next=${dest}`} replace />;
+  }
   return <Layout><FoundingVipPopup />{children}</Layout>;
+}
+
+// Root — no public landing page. Logged-in users continue to their feed
+// (honoring any ?next deep link); anonymous visitors go to /signup.
+function RootRedirect() {
+  const { user, isLoading } = useAuth();
+  const [searchParams] = useSearchParams();
+  if (isLoading) return null;
+  const raw = searchParams.get("next") || searchParams.get("to") || "";
+  const next = raw.startsWith("/") && !raw.startsWith("//") ? raw : "";
+  if (user) return <Navigate to={next || "/feed"} replace />;
+  return <Navigate to={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"} replace />;
 }
 
 // Pending-deletion users get the restore prompt instead of any
@@ -111,9 +128,10 @@ function App() {
           <YouTubeRouteCleanup />
           <RestoreGate>
           <Routes>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={<RootRedirect />} />
             <Route path="/signup" element={<SignUp />} />
             <Route path="/signin" element={<SignIn />} />
+            <Route path="/login" element={<SignIn />} />
             <Route path="/home" element={<ShellRoute><HomeDashboard /></ShellRoute>} />
             <Route path="/home/legacy" element={<ShellRoute><Home /></ShellRoute>} />
             <Route path="/interests" element={<ShellRoute><Home /></ShellRoute>} />

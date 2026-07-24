@@ -37,8 +37,6 @@ export default function ReactionAttachment({
   summary,        // [{emoji, count}]
   myReaction,     // emoji string or null
   // UX knobs.
-  isGuest = false,
-  onGuestAction,
   pickerAlign = "left",
   pickerPosition = "below",
   barAlign = "start",
@@ -87,10 +85,6 @@ export default function ReactionAttachment({
   };
 
   const submit = async (emoji) => {
-    if (isGuest) {
-      onGuestAction?.("react");
-      return;
-    }
     if (busy) return;
     setBusy(true);
     applyOptimistic(emoji);
@@ -138,7 +132,6 @@ export default function ReactionAttachment({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              if (isGuest) { onGuestAction?.("react"); return; }
               setPickerOpen((v) => !v);
             }}
             data-testid={`${testIdPrefix}-trigger-${targetId}`}

@@ -1,0 +1,37 @@
+{
+  "summary": "Iter88 — Guest browsing removal + global auth enforcement QA. BACKEND 25/25 PASS (10 protected GETs return 401 anon, 3 /api/v1 alias paths return 401 anon, fire endpoints 401, 4 public endpoints work anon incl. /api/, /api/auth/username/check, /api/auth/forgot-password, /api/auth/login; 6 authenticated calls incl. /api/auth/me, /api/posts, /api/profile/by-username/stealth, /api/hashtags/trending, /api/users/featured, /api/v1/posts with X-API-Version=v1). FRONTEND 12/12 PASS: '/' anon → /signup; /leaderboards anon → /signup?next=%2Fleaderboards; signup-signin-link href preserves next; /feed anon → /signup?next=%2Ffeed; /login alias renders SignIn (signin-page visible); /terms & /privacy load anon without redirect; no 'Browse as Guest' / 'Continue as Guest' / GuestPrompt phrasing on signup or signin; sign in as stealth with next=%2Fleaderboards lands on /leaderboards; /feed logged-in loads 200+ post-composer + post-card elements incl. feed-post-*, feed-composer-submit; /home logged-in renders Fire Power + Rising Star Progress; /profile logged-in renders banner + Rising Star + Inner Realm widget + EDIT WIDGETS; bottom nav 'bottom-create' button present. No critical issues found. GuestPrompt/Landing removal is complete and consistent with the spec.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth_guard_iter88.py",
+    "/app/test_reports/pytest/iter88_auth_guard.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py L176 global_auth_guard middleware order is correct: api_v1_alias is registered AFTER the guard, and in Starlette the last-registered middleware runs first — so /api/v1/* is rewritten to /api/* BEFORE the guard reads request.scope['path']. Verified end-to-end: GET /api/v1/posts anon returns 401 and X-API-Version=v1 is emitted for authenticated calls.",
+    "PUBLIC_API_PATHS allow-list is tight and matches the spec exactly (health + all recovery/OTP paths). No accidental wildcards.",
+    "App.js RootRedirect only forwards ?next when it starts with '/' and NOT '//' (open-redirect guard) — good; SignIn/SignUp use the same guard for their nextPath.",
+    "Middleware calls get_current_user which itself allows deleted_pending_restore users through (confirmed via prior iterations) — so pending-deletion logins reach the app and see RestoreAccountPrompt as expected.",
+    "Static legal pages /terms and /privacy are registered OUTSIDE ShellRoute so they render for anon users — matches spec (compliance links on signup work)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_auth_guard_iter88.py"
+  ],
+  "success_rate": {
+    "backend": "25/25 (100%)",
+    "frontend": "12/12 (100%)"
+  },
+  "test_credentials": "stealth / Password1$ used for authenticated tests. No lockout hit. No throwaway users created.",
+  "seed_data_creation": "None. Anon endpoint calls did not mutate any DB rows.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Regression file /app/backend/tests/test_auth_guard_iter88.py covers all 25 backend paths incl. /api/v1 alias + fire status. To rerun anon-flow FE checks: use wait_until='domcontentloaded' (NOT networkidle) because the SPA continuously receives 401 responses during anon renders which keeps the network non-idle indefinitely. Public routes now visible for anon: /signup, /signin, /login (SignIn alias), /terms, /terms-conditions, /privacy, /community, /dmca, /copyright, /safety, /cookies, /account-deletion. Every other route is ShellRoute-guarded and will 302 to /signup?next=<encoded-original-path>. The `?next` param is honored by both SignIn.jsx (default '/feed' fallback) and SignUp.jsx (default '/interests' fallback). Bottom-nav create testid is `bottom-create` — opens a `create-overlay` with `create-${id}` workflow buttons.",
+  "rca of the issue": "N/A — feature works as spec'd."
+}

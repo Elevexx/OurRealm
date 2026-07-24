@@ -12,7 +12,7 @@ load_dotenv(ROOT_DIR / ".env")
 import logging
 import os
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, HTTPException
 from starlette.middleware.cors import CORSMiddleware
 
 from core import seed as seed_mod
@@ -155,6 +155,37 @@ async def validation_exception_handler(request, exc: RequestValidationError):
             pass
         return JSONResponse(status_code=422, content={"detail": message})
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+# ─── Global auth enforcement ────────────────────────────────────────────
+# Every /api endpoint requires an authenticated session except the
+# explicit public allow-list below (health + auth/recovery only).
+PUBLIC_API_PATHS = {
+    "/api",
+    "/api/auth/register",
+    "/api/auth/username/check",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/refresh",
+    "/api/auth/otp/request",
+    "/api/auth/otp/verify",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+}
+
+
+@app.middleware("http")
+async def global_auth_guard(request, call_next):
+    path = (request.scope.get("path", "") or "").rstrip("/") or "/"
+    if (request.method == "OPTIONS" or not path.startswith("/api")
+            or path in PUBLIC_API_PATHS):
+        return await call_next(request)
+    from core.deps import get_current_user
+    try:
+        await get_current_user(request)
+    except HTTPException as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,

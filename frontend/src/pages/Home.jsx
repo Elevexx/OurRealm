@@ -79,7 +79,7 @@ function buildFeaturedCards(featuredApi, staticInterests) {
 
 export default function Home() {
   const navigate = useNavigate();
-  const { user, isGuest, updateProfile } = useAuth();
+  const { user, updateProfile } = useAuth();
   const [media, setMedia] = useState(() => {
     try { return JSON.parse(localStorage.getItem(MEDIA_STORAGE) || "[]"); } catch { return []; }
   });
@@ -127,7 +127,7 @@ export default function Home() {
       // Re-writing the closure value clobbers a freshly-toggled chip when
       // the user taps Next before React re-renders.
     } catch { /* */ }
-    if (user && !isGuest) {
+    if (user) {
       await updateProfile({ interests: arr });
     }
     navigate("/feed");

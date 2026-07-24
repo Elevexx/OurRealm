@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Logo from "@/components/Logo";
 import ModeSwitcher from "@/components/ModeSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,9 +20,14 @@ export default function SignUp() {
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const allAccepted = acceptedTos && acceptedConditions && acceptedPrivacy && ageConfirmed;
-  const { register, user, isGuest, logout } = useAuth();
+  const { register, user, logout } = useAuth();
   const navigate = useNavigate();
-  const isLoggedIn = !!user && !isGuest;
+  const [searchParams] = useSearchParams();
+  const isLoggedIn = !!user;
+
+  // Deep-link destination — same-origin paths only.
+  const nextRaw = searchParams.get("next") || searchParams.get("to") || "";
+  const nextPath = (nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//")) ? nextRaw : "";
 
   // Debounced username availability check
   useEffect(() => {
@@ -63,7 +68,7 @@ export default function SignUp() {
       policy_version: "2026-02-1",
     });
     setLoading(false);
-    if (res.ok) navigate("/interests");
+    if (res.ok) navigate(nextPath || "/interests");
     else setError(res.error);
   };
 
@@ -213,11 +218,8 @@ export default function SignUp() {
             (Google, Apple, X, Discord, Facebook) coming soon.
           </p>
           <div className="text-center text-sm mt-5" style={{ color: "var(--text-muted)" }}>
-            Already a member? <Link to="/signin" className="underline" data-testid="signup-signin-link" style={{ color: "var(--primary)" }}>Sign in</Link>
+            Already a member? <Link to={nextPath ? `/signin?next=${encodeURIComponent(nextPath)}` : "/signin"} className="underline" data-testid="signup-signin-link" style={{ color: "var(--primary)" }}>Sign in</Link>
           </div>
-        </div>
-        <div className="text-center mt-4 text-xs" style={{ color: "var(--text-muted)" }}>
-          <Link to="/" className="underline">← Back to landing</Link>
         </div>
       </div>
     </div>

@@ -327,7 +327,7 @@ function FirePickerSheet({ post, cfg, pool, myFire, deadline, finalized, busy, o
 }
 
 /* ── Button ─────────────────────────────────────────────────────────── */
-export default function FireButton({ post, fireStatus, isGuest, onGuestAction, testidPrefix }) {
+export default function FireButton({ post, fireStatus, testidPrefix }) {
   const seed = post.fire || {};
   const live = usePostState(post.id, {});
   const myFire = live.my_fire ?? seed.my_fire ?? 0;
@@ -350,7 +350,7 @@ export default function FireButton({ post, fireStatus, isGuest, onGuestAction, t
 
   // First-use hint (one card per session, dismissible, never repeats)
   useEffect(() => {
-    if (isGuest || hintClaimed || !boostAvailable) return;
+    if (hintClaimed || !boostAvailable) return;
     try {
       if (localStorage.getItem(HINT_KEY)) return;
     } catch { return; }
@@ -359,7 +359,7 @@ export default function FireButton({ post, fireStatus, isGuest, onGuestAction, t
     const t = setTimeout(() => dismissHint(), 8000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isGuest, boostAvailable]);
+  }, [boostAvailable]);
 
   const dismissHint = () => {
     setShowHint(false);
@@ -377,7 +377,6 @@ export default function FireButton({ post, fireStatus, isGuest, onGuestAction, t
   };
 
   const apply = async (value) => {
-    if (isGuest) { onGuestAction?.("give Fire"); return; }
     if (busy) return;
     setBusy(true);
     const prev = { my_fire: myFire, fire_total: total };
@@ -398,7 +397,6 @@ export default function FireButton({ post, fireStatus, isGuest, onGuestAction, t
   const quickTap = (e) => {
     e?.stopPropagation();
     if (openedByHold.current) { openedByHold.current = false; return; }
-    if (isGuest) { onGuestAction?.("give Fire"); return; }
     dismissHint();
     // Any existing Fire (1x or boosted): never silently change/remove —
     // open the picker so edits are always intentional.
@@ -406,7 +404,7 @@ export default function FireButton({ post, fireStatus, isGuest, onGuestAction, t
     apply(1);
   };
   const startHold = () => {
-    if (!boostAvailable || isGuest) return;
+    if (!boostAvailable) return;
     holdTimer.current = setTimeout(() => { openedByHold.current = true; openPicker(); }, 450);
   };
   const endHold = () => clearTimeout(holdTimer.current);

@@ -4,38 +4,24 @@ import apiClient, { formatApiErrorDetail } from "@/api/client";
 const AuthContext = createContext({
   user: null,
   isLoading: true,
-  isGuest: false,
   login: async () => {},
   register: async () => {},
   logout: async () => {},
-  setGuest: () => {},
   updateProfile: async () => {},
 });
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isGuest, setIsGuestState] = useState(() => {
-    try { return localStorage.getItem("ourrealm.guest") === "1"; } catch { return false; }
-  });
   // Phase-Restore — populated when login (or refreshMe) detects the
   // user is in the 30-day pending-deletion window. App.js renders the
   // restore prompt route gate while this is non-null.
   const [pendingDeletion, setPendingDeletion] = useState(null);
 
-  const setGuest = useCallback((v) => {
-    setIsGuestState(v);
-    try {
-      if (v) localStorage.setItem("ourrealm.guest", "1");
-      else localStorage.removeItem("ourrealm.guest");
-    } catch { /* ignore */ }
-  }, []);
-
   const refreshMe = useCallback(async () => {
     try {
       const { data } = await apiClient.get("/auth/me");
       setUser(data.user);
-      setGuest(false);
       // Detect pending-deletion on any refresh (e.g. page reload while
       // the restore window is still open).
       if (data.user?.account_status === "deleted_pending_restore") {
@@ -52,7 +38,7 @@ export function AuthProvider({ children }) {
     } finally {
       setIsLoading(false);
     }
-  }, [setGuest]);
+  }, []);
 
   useEffect(() => { refreshMe(); }, [refreshMe]);
 
@@ -65,7 +51,6 @@ export function AuthProvider({ children }) {
       const { data } = await apiClient.post("/auth/login", { email, password });
       persistToken(data.access_token);
       setUser(data.user);
-      setGuest(false);
       if (data.restore_required) {
         setPendingDeletion(data.pending_deletion || { account_status: "deleted_pending_restore" });
       } else {
@@ -75,7 +60,7 @@ export function AuthProvider({ children }) {
     } catch (e) {
       return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) || e.message };
     }
-  }, [setGuest]);
+  }, []);
 
   const register = useCallback(async (email, password, name, username, compliance = {}) => {
     try {
@@ -89,7 +74,6 @@ export function AuthProvider({ children }) {
       });
       persistToken(data.access_token);
       setUser(data.user);
-      setGuest(false);
       return { ok: true };
     } catch (e) {
       if (!e.response) {
@@ -97,7 +81,7 @@ export function AuthProvider({ children }) {
       }
       return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) || e.message };
     }
-  }, [setGuest]);
+  }, []);
 
   const logout = useCallback(async () => {
     // Phase H — fully clear ALL client-side authentication state. The
@@ -124,9 +108,8 @@ export function AuthProvider({ children }) {
       });
     } catch { /* ignore */ }
     setUser(null);
-    setGuest(false);
     setPendingDeletion(null);
-  }, [setGuest]);
+  }, []);
 
   const updateProfile = useCallback(async (patch) => {
     try {
@@ -141,7 +124,7 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider
       value={{
-        user, isLoading, isGuest, login, register, logout, setGuest, updateProfile, refreshMe,
+        user, isLoading, login, register, logout, updateProfile, refreshMe,
         pendingDeletion, setPendingDeletion,
       }}
     >

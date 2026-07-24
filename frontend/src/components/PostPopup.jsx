@@ -172,7 +172,6 @@ function CommentBody({ c, isOwn, onLike, onToggleReply, targetType, compact = fa
             targetId={c.id}
             summary={c.reactions?.summary}
             myReaction={c.reactions?.my_reaction}
-            isGuest={false}
             pickerAlign="left"
             pickerPosition="above"
             barSize="xs"
@@ -533,8 +532,6 @@ export default function PostPopup() {
                   <FireButton
                     post={post}
                     fireStatus={fireStatus}
-                    isGuest={!user}
-                    onGuestAction={() => {}}
                     testidPrefix="post-popup-fire"
                   />
                 ) : (

@@ -67,7 +67,7 @@ const SIZE_ORDER = ["sm", "md", "lg", "xl"];
 const RESIZE_STEP_PX = 70;  // px of pointer delta required to advance one size
 
 export default function HomeDashboard() {
-  const { user, isGuest } = useAuth();
+  const { user } = useAuth();
   const [widgets, setWidgets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [edit, setEdit] = useState(false);
@@ -149,7 +149,7 @@ export default function HomeDashboard() {
 
       {/* Personal progression sections — identical shared components to the
           profile page (single source of truth). Hidden for guests. */}
-      {user && !isGuest && (
+      {user && (
         <>
           <FireWalletCard collapsible />
           <ProgressCard username={user.username} isOwner={true} />

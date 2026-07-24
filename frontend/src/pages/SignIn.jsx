@@ -138,12 +138,9 @@ export default function SignIn() {
 
           {!otpMode && (
             <div className="text-center text-sm mt-5" style={{ color: "var(--text-muted)" }}>
-              New to OurRealm? <Link to="/signup" className="underline" data-testid="signin-signup-link" style={{ color: "var(--primary)" }}>Create an account</Link>
+              New to OurRealm? <Link to={nextRaw ? `/signup?next=${encodeURIComponent(nextPath)}` : "/signup"} className="underline" data-testid="signin-signup-link" style={{ color: "var(--primary)" }}>Create an account</Link>
             </div>
           )}
-        </div>
-        <div className="text-center mt-4 text-xs" style={{ color: "var(--text-muted)" }}>
-          <Link to="/" className="underline">← Back to landing</Link>
         </div>
         <div className="text-center mt-2 text-[11px]" data-testid="signin-legal-links" style={{ color: "var(--text-muted)" }}>
           By signing in you agree to our {" "}

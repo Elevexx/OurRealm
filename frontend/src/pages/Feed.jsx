@@ -5,7 +5,6 @@ import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, User
 import ReactionAttachment from "@/components/ReactionAttachment";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
-import GuestPrompt from "@/components/GuestPrompt";
 import MediaTypeBar from "@/components/MediaTypeBar";
 import AudiencePicker from "@/components/AudiencePicker";
 import UsernameLink from "@/components/UsernameLink";
@@ -60,7 +59,7 @@ function timeAgo(iso) {
 
 export default function Feed() {
   useHeartbeat("feed");
-  const { user, isGuest } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const fireStatus = useFireStatus(user?.id);
   const [fireSort, setFireSort] = useState(false);
@@ -103,7 +102,6 @@ export default function Feed() {
   });
   const [zipRequiredOpen, setZipRequiredOpen] = useState(false);
   useEffect(() => { try { localStorage.setItem(RADIUS_KEY, radius); } catch { /* ignore */ } }, [radius]);
-  const [guestPrompt, setGuestPrompt] = useState(null);
   const [posting, setPosting] = useState(false);
   // VIP tooltip peek — toggled on tap (mobile) or always-visible at ≥260 chars (desktop).
   const [vipPeek, setVipPeek] = useState(false);
@@ -190,7 +188,7 @@ export default function Feed() {
   }, [serverPosts, media, interests]);
 
   const submitPost = async () => {
-    if (!user || isGuest) { setGuestPrompt("post a thought"); return; }
+    if (!user) return;
     // Allow media-only posts (the previous text-required guard broke video
     // uploads in production — backend now accepts empty text iff at least
     // one of content / media_url / image_url / video_url / link_url / poll
@@ -248,7 +246,6 @@ export default function Feed() {
       alert(detail);
     } finally { setPosting(false); }
   };
-  const onAction = (label) => { if (!user || isGuest) setGuestPrompt(label); };
 
   return (
     <div className="max-w-3xl mx-auto" data-testid="feed-page">
@@ -314,7 +311,7 @@ export default function Feed() {
               data-testid="feed-composer-input"
               value={composeText}
               onChange={(e) => setComposeText(e.target.value)}
-              placeholder={isGuest || !user ? "Sign up to share a thought…" : "What's happening in your Realm?"}
+              placeholder="What's happening in your Realm?"
               rows={2}
               className="or-input resize-none"
               style={{ background: "transparent" }}
@@ -603,15 +600,12 @@ export default function Feed() {
             key={p.id}
             p={p}
             fireStatus={fireStatus}
-            onGuestAction={(label) => onAction(label)}
-            isGuest={!user || isGuest}
             onPostDeleted={(id) => setServerPosts((s) => s.filter((x) => x.id !== id))}
             onPostUpdated={(updated) => setServerPosts((s) => s.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))}
           />
         ))}
       </div>
 
-      <GuestPrompt open={!!guestPrompt} onClose={() => setGuestPrompt(null)} action={guestPrompt || "do this"} />
       <AudiencePicker
         open={audiencePickerOpen}
         value={composeAudience}
@@ -647,7 +641,7 @@ export default function Feed() {
 
 function isVideoFile(u) { return !!u && /\.(mp4|webm|ogg)$/i.test(u); }
 
-function FeedCard({ p, fireStatus, onGuestAction, isGuest, onPostDeleted, onPostUpdated }) {
+function FeedCard({ p, fireStatus, onPostDeleted, onPostUpdated }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [shareOpen, setShareOpen] = useState(false);
@@ -657,7 +651,6 @@ function FeedCard({ p, fireStatus, onGuestAction, isGuest, onPostDeleted, onPost
   const openPopup = () => openPostPopup(p);
   const onLike = async (e) => {
     e?.stopPropagation();
-    if (isGuest) { onGuestAction("like a post"); return; }
     const willLike = !live.liked;
     setPost(p.id, { liked: willLike, likes: Math.max(0, live.likes + (willLike ? 1 : -1)) });
     try {
@@ -667,7 +660,6 @@ function FeedCard({ p, fireStatus, onGuestAction, isGuest, onPostDeleted, onPost
   };
   const onComment = (e) => {
     e?.stopPropagation();
-    if (isGuest) { onGuestAction("comment"); return; }
     openPopup();
   };
   const mediaImg = p.image_url || (p.media_type === "image" ? p.media_url : null);
@@ -711,7 +703,7 @@ function FeedCard({ p, fireStatus, onGuestAction, isGuest, onPostDeleted, onPost
             {timeAgo(p.created_at)} · {p.media_type}
           </div>
         </div>
-        <button onClick={(e) => { e.stopPropagation(); onGuestAction("follow"); }} className="or-chip" data-testid={`feed-follow-${p.id}`}>+ Follow</button>
+        <button onClick={(e) => e.stopPropagation()} className="or-chip" data-testid={`feed-follow-${p.id}`}>+ Follow</button>
         {user && user.id !== p.author_id && (
           <ReportButton contentType="post" contentId={p.id} testid={`feed-report-${p.id}`} />
         )}
@@ -794,8 +786,6 @@ function FeedCard({ p, fireStatus, onGuestAction, isGuest, onPostDeleted, onPost
           <FireButton
             post={p}
             fireStatus={fireStatus}
-            isGuest={isGuest}
-            onGuestAction={onGuestAction}
             testidPrefix={`feed-fire-${p.id}`}
           />
         ) : (
@@ -816,17 +806,14 @@ function FeedCard({ p, fireStatus, onGuestAction, isGuest, onPostDeleted, onPost
           data-testid={`feed-share-${p.id}`}
           onClick={(e) => {
             e.stopPropagation();
-            if (isGuest) { onGuestAction("share"); return; }
             setShareOpen(true);
           }}
-          disabled={isGuest}
-          title={isGuest ? "Sign in to share" : "Share with a friend"}
+          title="Share with a friend"
           className="flex items-center gap-1.5"
-          style={isGuest ? { opacity: 0.55, cursor: "not-allowed" } : undefined}
         >
           <Share2 size={16} /> Share
         </button>
-        <button data-testid={`feed-save-${p.id}`} onClick={(e) => { e.stopPropagation(); onGuestAction("save"); }} className="flex items-center gap-1.5 ml-auto">
+        <button data-testid={`feed-save-${p.id}`} onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5 ml-auto">
           <Bookmark size={16} />
         </button>
       </footer>
@@ -844,8 +831,6 @@ function FeedCard({ p, fireStatus, onGuestAction, isGuest, onPostDeleted, onPost
             targetId={p.id}
             summary={p.reactions?.summary}
             myReaction={p.reactions?.my_reaction}
-            isGuest={isGuest}
-            onGuestAction={(why) => onGuestAction(why || "react")}
             pickerAlign="left"
             pickerPosition="above"
             testIdPrefix={`feed-reaction-${p.id}`}

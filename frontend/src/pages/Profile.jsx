@@ -402,7 +402,7 @@ function AddWidgetPicker({ open, onClose, onPickMany, viewer }) {
 /* ============================================================ */
 export default function Profile() {
   useHeartbeat("profile");
-  const { user, isGuest, updateProfile, refreshMe } = useAuth();
+  const { user, updateProfile, refreshMe } = useAuth();
   const { mode } = useTheme();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -479,7 +479,7 @@ export default function Profile() {
     setEditing(false);
   };
 
-  if (!user && !isGuest) {
+  if (!user) {
     return (
       <div className="max-w-md mx-auto or-surface p-8 text-center" data-testid="profile-guard">
         <h2 className="text-xl mb-2" style={{ fontFamily: "var(--font-display)" }}>Sign in to view your profile</h2>
@@ -518,7 +518,7 @@ export default function Profile() {
               testid="profile-banner-img"
             />
           )}
-          {editing && !isGuest && (
+          {editing && (
             <button
               type="button"
               onClick={() => setBannerEditorOpen(true)}
@@ -543,7 +543,7 @@ export default function Profile() {
                 Sits on the bottom-right; the presence bubble (also bottom-
                 right) is naturally hidden behind it during edit mode, which
                 is fine because the change-button is the active control. */}
-            {editing && !isGuest && (
+            {editing && (
               <button
                 type="button"
                 onClick={() => setAvatarPickerOpen(true)}
@@ -608,7 +608,7 @@ export default function Profile() {
                 )}
                 {user?.username && <ProfileBadges username={user.username} />}
                 <div className="text-sm mt-2" style={{ color: "var(--text-muted)" }} data-testid="profile-bio">
-                  {user?.bio || (isGuest ? "Browsing as guest." : "Tap edit to add a bio.")}
+                  {user?.bio || "Tap edit to add a bio."}
                 </div>
                 <div className="mt-3 flex gap-5 text-xs" style={{ color: "var(--text-muted)" }} data-testid="profile-counts">
                   <span><b style={{ color: "var(--text-main)" }} data-testid="profile-follower-count">{user?.follower_count ?? 0}</b> followers</span>
@@ -621,14 +621,14 @@ export default function Profile() {
           {/* Only "Edit" and "Edit Widgets" remain per Phase A spec.
               "View as Public", "+ Add widget", and "Library" were removed. */}
           <div className="flex gap-2 flex-wrap sm:pt-3">
-            {!isGuest && user && (
+            {user && (
               editing
                 ? <button className="or-btn" onClick={saveLayout} data-testid="profile-save">Save</button>
                 : <button className="or-btn or-btn-ghost" onClick={() => setEditing(true)} data-testid="profile-edit">
                     <Icons.Edit3 size={14} /> Edit
                   </button>
             )}
-            {!isGuest && user && (
+            {user && (
               <button
                 className="or-btn or-btn-ghost"
                 onClick={() => navigate("/profile/support")}
@@ -638,7 +638,7 @@ export default function Profile() {
                 <Icons.LifeBuoy size={14} /> Support
               </button>
             )}
-            {!isGuest && user && (
+            {user && (
               <button
                 className="or-btn or-btn-ghost"
                 onClick={() => { setEditing(true); setAddOpen(true); }}
@@ -654,11 +654,11 @@ export default function Profile() {
 
       {/* Phase-2: Top 8 management inline in Edit Profile.
           Auto-saves; instant; reflects on the Top-8 widget after refreshMe. */}
-      {editing && !isGuest && user && <Top8Editor />}
+      {editing && user && <Top8Editor />}
 
       {/* Level & progression card (backend-gated by the display flag).
           Rendered in BOTH view and edit modes — parity is mandatory. */}
-      {!isGuest && user?.username && (
+      {user?.username && (
         <>
           <FoundingVipCard />
           <FireWalletCard collapsible />
@@ -699,7 +699,7 @@ export default function Profile() {
                 own profile so the spec-mandated 3rd tile renders even
                 for users with no saved widgets. Click opens the existing
                 AddWidgetPicker. Hidden for guests / non-owners. */}
-            {!isGuest && user && (
+            {user && (
               <button
                 type="button"
                 onClick={() => { setEditing(true); setAddOpen(true); }}

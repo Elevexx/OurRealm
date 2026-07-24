@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Home, Sparkles, Plus, Music2 as SoundsIcon, Users, User, Radio, Video, Image as ImageIcon, MessageSquare, X, Music2, Send, Globe2, Users as UsersIcon, Lock, UserCheck } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
-import GuestPrompt from "@/components/GuestPrompt";
 import VideoUploadPicker from "@/components/VideoUploadPicker";
 import SoundUploadPicker from "@/components/SoundUploadPicker";
 import AlbumPicker from "@/components/composer/AlbumPicker";
@@ -305,10 +304,9 @@ export default function BottomNav() {
   const { user } = useAuth();
   const [showCreate, setShowCreate] = useState(false);
   const [activeWorkflow, setActiveWorkflow] = useState(null);
-  const [guestPrompt, setGuestPrompt] = useState(null);
 
   const onCreateClick = () => {
-    if (!user) { setGuestPrompt("create content"); return; }
+    if (!user) return;
     setShowCreate(true);
   };
 
@@ -414,8 +412,6 @@ export default function BottomNav() {
         onClose={() => setActiveWorkflow(null)}
         onDone={() => { setActiveWorkflow(null); navigate("/feed"); }}
       />
-
-      <GuestPrompt open={!!guestPrompt} onClose={() => setGuestPrompt(null)} action={guestPrompt || "do this"} />
     </>
   );
 }
