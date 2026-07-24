@@ -2839,3 +2839,15 @@ Original key items (ALL DONE, see Iteration 85):
 - PART AB: new flags fire_collection_enabled, fire_pending_enabled, fire_collectable_enabled, fire_wallet_history_enabled, fire_admin_tools_enabled (default OFF).
 - Testing: full backend + frontend + viewports, completion report per PART AG.
 NOTES for implementation: pool release rows can be negative-amount active txns with expires_at=edit_deadline (lazy expiry math self-reverses); map legacy settled txns as collected; ReactionBar/ReactionAttachment used at Feed.jsx ~line 833; emit_notification(recipient_id, kind, actor_username, payload) in routers/notifications.py; DB test fixture: reaction da8c46b2 on post 8aec11dc backdated 30h for finalized-state testing.
+
+## July 24, 2026 — Guest Browsing Removed + Global Auth Enforcement (P0, TESTED iteration_88: 25/25 backend, 12/12 frontend)
+- **Landing page and guest mode DELETED**: `Landing.jsx`, `GuestPrompt.jsx` removed; `isGuest`/`setGuest`/`ourrealm.guest` localStorage removed from `AuthContext.jsx`; all guest branches removed from Feed, Profile, Home, HomeDashboard, BottomNav, PostPopup, FireButton, ReactionAttachment, SignUp.
+- **Frontend route guard**: `ShellRoute` (App.js) redirects anonymous users to `/signup?next=<encoded-path>`. `/` → `RootRedirect` (anon → /signup, authed → /feed, honors ?next). `/login` alias added for SignIn. Deep linking: SignIn/SignUp read `?next` (same-origin only) and return the user to the original URL after auth (SignIn fallback /feed, SignUp fallback /interests). Sign-in/sign-up cross links preserve ?next.
+- **Backend lockdown**: `global_auth_guard` middleware in `server.py` — every `/api/*` path requires a valid session (via `get_current_user`, 401 otherwise) EXCEPT allow-list: `/api` health, `/api/auth/{register,username/check,login,logout,refresh,otp/request,otp/verify,forgot-password,reset-password}`. Covers `/api/v1/*` alias too (alias middleware rewrites path before guard). Pending-deletion users still pass (restore flow intact). OPTIONS preflight skipped.
+- **Kept public (compliance)**: static legal pages /terms, /terms-conditions, /privacy, /community, /dmca, /safety, /cookies, /account-deletion — required by signup compliance checkboxes; contain no user data.
+- Regression test file: `/app/backend/tests/test_auth_guard_iter88.py`.
+
+### Remaining backlog (unchanged)
+- P1: Fire Power Analytics & Grouped Notifications
+- P2: JWT_SECRET rotation, CORS_ORIGINS scoping to custom domain, Task Accuracy Validation, Mini profile hover-card
+- Do NOT implement until instructed: Fire Marketplace, Portal unlocks, Realm unlock costs, Fire gifting, Fire quests, Creator economy
