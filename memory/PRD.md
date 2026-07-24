@@ -2851,3 +2851,7 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 - P1: Fire Power Analytics & Grouped Notifications
 - P2: JWT_SECRET rotation, CORS_ORIGINS scoping to custom domain, Task Accuracy Validation, Mini profile hover-card
 - Do NOT implement until instructed: Fire Marketplace, Portal unlocks, Realm unlock costs, Fire gifting, Fire quests, Creator economy
+
+## July 24, 2026 — Signed-in /signin panel restored + header logo → /signin (TESTED via screenshot flow)
+- SignIn.jsx: logged-in users see "Continue as @username" (→ ?next or /feed) and "Sign Out" (logs out, stays on /signin showing the form). No guest option restored.
+- TopStarBar.jsx: header logo click now navigates to /signin (was "/").

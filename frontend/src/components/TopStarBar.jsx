@@ -62,14 +62,13 @@ export default function TopStarBar() {
       data-testid="topstar-bar"
     >
       <div className="flex items-center gap-2 sm:gap-3 max-w-full">
-        {/* Logo — clicking the logo always routes to the landing page.
-            When logged in, Landing/SignUp surface a "Continue as @x" and a
-            "Sign Out" CTA (no auto-redirect away from those pages). */}
+        {/* Logo — clicking the logo routes to /signin. When logged in,
+            SignIn surfaces "Continue as @x" and "Sign Out" CTAs. */}
         <button
           className="flex items-center shrink-0"
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/signin")}
           data-testid="header-logo"
-          aria-label="OurRealm landing"
+          aria-label="OurRealm sign in"
           style={{ background: "transparent", padding: 0 }}
         >
           <Logo size={44} />

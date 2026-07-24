@@ -9,7 +9,7 @@ export default function SignIn() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login, refreshMe } = useAuth();
+  const { login, refreshMe, user, logout } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -72,7 +72,28 @@ export default function SignIn() {
             Sign in to enter your Realm.
           </p>
 
-          {!otpMode && (
+          {user && (
+            <div className="space-y-3" data-testid="signin-signed-in-panel">
+              <button
+                type="button"
+                className="or-btn w-full"
+                onClick={() => navigate(nextPath, { replace: true })}
+                data-testid="signin-continue-as"
+              >
+                Continue as @{user.username}
+              </button>
+              <button
+                type="button"
+                className="or-btn or-btn-ghost w-full"
+                onClick={async () => { try { await logout(); } catch { /* ignore */ } }}
+                data-testid="signin-sign-out"
+              >
+                Sign Out
+              </button>
+            </div>
+          )}
+
+          {!user && !otpMode && (
             <form onSubmit={onSubmit} className="space-y-3">
               <input
                 type="text" placeholder="Email or username" required
@@ -106,7 +127,7 @@ export default function SignIn() {
             </form>
           )}
 
-          {otpMode && (
+          {otpMode && !user && (
             <div className="space-y-3" data-testid="signin-otp-panel">
               {otpDisplayed && (
                 <div className="or-surface p-3 text-center" style={{ background: "color-mix(in srgb, var(--primary) 12%, transparent)", border: "1px solid var(--primary)" }} data-testid="signin-otp-displayed">
@@ -136,7 +157,7 @@ export default function SignIn() {
             </div>
           )}
 
-          {!otpMode && (
+          {!user && !otpMode && (
             <div className="text-center text-sm mt-5" style={{ color: "var(--text-muted)" }}>
               New to OurRealm? <Link to={nextRaw ? `/signup?next=${encodeURIComponent(nextPath)}` : "/signup"} className="underline" data-testid="signin-signup-link" style={{ color: "var(--primary)" }}>Create an account</Link>
             </div>
