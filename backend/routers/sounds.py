@@ -991,6 +991,32 @@ async def media_rights_execute(body: MediaRightsExecuteBody, current: CurrentUse
                                    migration_version=MIGRATION_VERSION)
 
 
+# ── Phase 3 — Media Sound Selector: browse Sounds for attachment ────────
+@router.get("/browse")
+async def browse_sounds_for_attachment(
+    current: CurrentUser,
+    use_type: str = "image_posts",
+    q: str = "",
+    category: str = "",
+    genre: str = "",
+    mood: str = "",
+    sort: str = "trending",
+    tab: str = "all",
+    limit: int = 30,
+    include_facets: int = 0,
+):
+    from services.sound_attachments import browse_sounds
+    if use_type not in ("image_posts", "video_posts"):
+        use_type = "image_posts"
+    if sort not in ("trending", "newest"):
+        sort = "trending"
+    if tab not in ("all", "saved", "mine", "recent"):
+        tab = "all"
+    return await browse_sounds(current, use_type, q=q, category=category, genre=genre,
+                               mood=mood, sort=sort, tab=tab, limit=limit,
+                               include_facets=bool(include_facets))
+
+
 # ── Sound reuse permissions (Phase 2 — Where this Sound may be used) ────
 @router.get("/{track_id}/reuse-permissions")
 async def get_reuse_permissions(track_id: str, current: CurrentUser):

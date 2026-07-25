@@ -15,8 +15,10 @@
  *   />
  */
 import React, { useEffect, useRef, useState } from "react";
-import { Upload, X, Loader2, Video as VideoIcon, AlertCircle } from "lucide-react";
+import { Upload, X, Loader2, Video as VideoIcon, AlertCircle, Music } from "lucide-react";
 import apiClient from "@/api/client";
+import SoundAttachPicker from "@/components/SoundAttachPicker";
+import SoundAttachmentEditor from "@/components/SoundAttachmentEditor";
 
 const BACKEND = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
 const ACCEPT = "video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm";
@@ -47,7 +49,7 @@ function probeDuration(file) {
   });
 }
 
-export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-picker" }) {
+export default function VideoUploadPicker({ videoUrl, onChange, onSoundAttachment, testid = "video-picker" }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [progress, setProgress] = useState(0);
@@ -57,6 +59,11 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
   const [audioChoice, setAudioChoice] = useState("mute");
   const [rightsChecked, setRightsChecked] = useState(false);
   const [audioNote, setAudioNote] = useState("");
+  // Phase 3 — Replace with an OurRealm Sound.
+  const [soundPickOpen, setSoundPickOpen] = useState(false);
+  const [attachedSound, setAttachedSound] = useState(null);
+  const [soundSettings, setSoundSettings] = useState({ start_seconds: 0, duration_seconds: null, volume: 1, fade_in: 0, fade_out: 0 });
+  const [processingSound, setProcessingSound] = useState(false);
   const inputRef = useRef(null);
 
   // Best-effort quota fetch so the user sees "N left today" before they pick.
@@ -99,6 +106,10 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
 
   const doUpload = async () => {
     if (!pending || busy) return;
+    if (audioChoice === "replace" && !attachedSound) {
+      setErr("Choose an OurRealm Sound first, or switch to Publish Muted.");
+      return;
+    }
     setErr(""); setBusy(true);
     try {
       const fd = new FormData();
@@ -113,16 +124,44 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
           if (evt.total) setProgress(Math.round((evt.loaded / evt.total) * 100));
         },
       });
-      const next = data?.url || data?.video?.url;
+      let next = data?.url || data?.video?.url;
       if (!next) throw new Error("Upload returned no URL");
+      // Phase 3 — replace flow: render the processed derivative with the
+      // attached Sound. The server revalidates owner reuse permission.
+      if (audioChoice === "replace" && attachedSound && data?.video?.id) {
+        setProcessingSound(true);
+        try {
+          const { data: rep } = await apiClient.post(`/videos/${data.video.id}/replace-audio`, {
+            track_id: attachedSound.id,
+            start_seconds: soundSettings.start_seconds || 0,
+            duration_seconds: soundSettings.duration_seconds || null,
+            volume: soundSettings.volume ?? 1,
+            fade_in: soundSettings.fade_in || 0,
+            fade_out: soundSettings.fade_out || 0,
+          });
+          next = rep?.url || next;
+          setAudioNote(`Published with "${attachedSound.title}" replacing the original audio.`);
+          onSoundAttachment?.({
+            track_id: attachedSound.id,
+            start_seconds: soundSettings.start_seconds || 0,
+            duration_seconds: soundSettings.duration_seconds || null,
+            volume: soundSettings.volume ?? 1,
+            fade_in: soundSettings.fade_in || 0,
+            fade_out: soundSettings.fade_out || 0,
+          });
+        } finally { setProcessingSound(false); }
+      }
       if (localPreview) URL.revokeObjectURL(localPreview);
       setLocalPreview(null);
       setPending(null);
       setProgress(100);
-      if (data?.audio?.audio_detected && !data?.audio?.audio_published) {
-        setAudioNote("Published with the original audio muted.");
-      } else if (data?.audio?.audio_published) {
-        setAudioNote("Published with the original audio (rights confirmed).");
+      if (audioChoice !== "replace") {
+        onSoundAttachment?.(null);
+        if (data?.audio?.audio_detected && !data?.audio?.audio_published) {
+          setAudioNote("Published with the original audio muted.");
+        } else if (data?.audio?.audio_published) {
+          setAudioNote("Published with the original audio (rights confirmed).");
+        }
       }
       // Persist as a RELATIVE path (works in both preview and production).
       const stripped = next.startsWith("http")
@@ -151,6 +190,9 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
     setProgress(0);
     setErr("");
     setAudioNote("");
+    setAttachedSound(null);
+    setAudioChoice("mute");
+    onSoundAttachment?.(null);
     onChange?.("");
   };
 
@@ -255,12 +297,33 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
             <span><b>🔇 Publish Muted</b><br />
               <span style={{ color: "var(--text-muted)" }}>Remove or mute this video's original audio.</span></span>
           </label>
-          <label className="flex items-start gap-2" style={{ opacity: 0.6 }}>
-            <input type="radio" name={`${testid}-audio`} disabled
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="radio" name={`${testid}-audio`} checked={audioChoice === "replace"}
+              onChange={() => { setAudioChoice("replace"); setRightsChecked(false); if (!attachedSound) setSoundPickOpen(true); }}
               data-testid={`${testid}-audio-replace`} className="mt-0.5" />
             <span><b>🎵 Replace with an OurRealm Sound</b><br />
-              <span style={{ color: "var(--text-muted)" }}>Remove the original audio and add a Sound from OurRealm — arriving with the OurRealm Media Studio Sound browser.</span></span>
+              <span style={{ color: "var(--text-muted)" }}>Remove the original audio and add a Sound whose owner enabled video reuse.</span></span>
           </label>
+          {audioChoice === "replace" && (
+            <div className="pl-5 space-y-2">
+              {attachedSound ? (
+                <SoundAttachmentEditor
+                  sound={attachedSound}
+                  settings={soundSettings}
+                  onChange={setSoundSettings}
+                  onRemove={() => { setAttachedSound(null); setAudioChoice("mute"); }}
+                  onReplace={() => setSoundPickOpen(true)}
+                  mode="video"
+                  testid={`${testid}-sound-editor`}
+                />
+              ) : (
+                <button type="button" className="or-chip" onClick={() => setSoundPickOpen(true)}
+                  data-testid={`${testid}-choose-sound`}>
+                  <Music size={12} /> Choose a Sound
+                </button>
+              )}
+            </div>
+          )}
           <label className="flex items-start gap-2 cursor-pointer">
             <input type="radio" name={`${testid}-audio`} checked={audioChoice === "original"}
               onChange={() => setAudioChoice("original")}
@@ -286,13 +349,23 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
             type="button"
             className="or-btn w-full"
             onClick={doUpload}
-            disabled={busy}
+            disabled={busy || (audioChoice === "replace" && !attachedSound)}
             data-testid={`${testid}-confirm-upload`}
           >
-            {busy ? <><Loader2 size={13} className="animate-spin" /> Uploading…</> : "Upload video"}
+            {busy
+              ? <><Loader2 size={13} className="animate-spin" /> {processingSound ? "Adding Sound…" : "Uploading…"}</>
+              : "Upload video"}
           </button>
         </div>
       )}
+
+      <SoundAttachPicker
+        open={soundPickOpen}
+        onClose={() => setSoundPickOpen(false)}
+        useType="video_posts"
+        onSelect={(s) => { setAttachedSound(s); setSoundPickOpen(false); setAudioChoice("replace"); }}
+        testid={`${testid}-sound-picker`}
+      />
 
       {audioNote && (
         <p className="text-[11px]" style={{ color: "var(--text-muted)" }} data-testid={`${testid}-audio-note`}>

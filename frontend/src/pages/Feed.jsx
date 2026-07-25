@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import useHeartbeat from "@/hooks/useHeartbeat";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, Users as UsersIcon, Lock, UserCheck, MessageSquare, Image as ImageIcon, Video, Link2, BarChart3, Music2 } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, Sliders, Sparkles, Globe2, Users as UsersIcon, Lock, UserCheck, MessageSquare, Image as ImageIcon, Video, Link2, BarChart3, Music2, Music as MusicIcon } from "lucide-react";
 import ReactionAttachment from "@/components/ReactionAttachment";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,6 +27,9 @@ import ShareToUserModal from "@/components/ShareToUserModal";
 import { dedupePosts } from "@/lib/dedupePosts";
 import ImageLightbox from "@/components/ImageLightbox";
 import VideoUploadPicker from "@/components/VideoUploadPicker";
+import SoundAttachPicker from "@/components/SoundAttachPicker";
+import SoundAttachmentEditor from "@/components/SoundAttachmentEditor";
+import PostSoundBadge from "@/components/PostSoundBadge";
 import PostManagementMenu from "@/components/PostManagementMenu";
 import ReportButton from "@/components/ReportButton";
 import FireButton from "@/components/fire/FireButton";
@@ -97,6 +100,14 @@ export default function Feed() {
   // Sound attachment — populated by SoundUploadPicker (the same picker
   // used on the Sounds page) when the user picks "Sound" in the composer.
   const [composeSound, setComposeSound] = useState(null);
+  // Phase 3 — OurRealm Sound attached to an IMAGE post (permission-gated).
+  const [imageSoundOpen, setImageSoundOpen] = useState(false);
+  const [imageSound, setImageSound] = useState(null);
+  const [imageSoundSettings, setImageSoundSettings] = useState({ start_seconds: 0, duration_seconds: null, volume: 1, fade_in: 0, fade_out: 0, loop: false });
+  // Phase 3 — Sound replacement metadata forwarded by VideoUploadPicker.
+  const [videoSoundAtt, setVideoSoundAtt] = useState(null);
+  // Duplicate-publish idempotency token — one per compose session.
+  const [clientToken, setClientToken] = useState(() => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`));
   // Phase-2 — Radius filter ("any" | "10" | "20" | "50" | "100" | "250" | "500").
   const [radius, setRadius] = useState(() => {
     try { return localStorage.getItem(RADIUS_KEY) || "any"; } catch { return "any"; }
@@ -222,6 +233,14 @@ export default function Feed() {
         body.sound_cover_url = composeSound.cover_url || null;
         body.sound_duration = composeSound.duration_seconds || null;
       }
+      // Phase 3 — attach the selected OurRealm Sound. The server
+      // revalidates the owner's reuse permission at publication time.
+      body.client_token = clientToken;
+      if (body.media_type === "image" && imageSound) {
+        body.sound_attachment = { track_id: imageSound.id, ...imageSoundSettings };
+      } else if (body.media_type === "video" && videoSoundAtt) {
+        body.sound_attachment = videoSoundAtt;
+      }
       await apiClient.post("/posts", body);
       setComposeText("");
       setComposeMediaType("thought");
@@ -231,6 +250,10 @@ export default function Feed() {
       setComposeAudience({ visibility: "public", user_ids: [] });
       setComposePoll(null);
       setComposeSound(null);
+      setImageSound(null);
+      setImageSoundSettings({ start_seconds: 0, duration_seconds: null, volume: 1, fade_in: 0, fade_out: 0, loop: false });
+      setVideoSoundAtt(null);
+      setClientToken(crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
       await loadPosts();
     } catch (e) {
       // Surface the server's reason so users don't see a silently-closed
@@ -372,6 +395,27 @@ export default function Feed() {
                   accent="var(--primary)"
                   testidPrefix="feed-composer-image"
                 />
+                {composeImages.length > 0 && (
+                  <div className="mt-2" data-testid="feed-composer-image-sound">
+                    {imageSound ? (
+                      <SoundAttachmentEditor
+                        sound={imageSound}
+                        settings={imageSoundSettings}
+                        onChange={setImageSoundSettings}
+                        onRemove={() => setImageSound(null)}
+                        onReplace={() => setImageSoundOpen(true)}
+                        mode="image"
+                        testid="feed-composer-image-sound-editor"
+                      />
+                    ) : (
+                      <button type="button" className="or-chip text-xs"
+                        onClick={() => setImageSoundOpen(true)}
+                        data-testid="feed-composer-add-image-sound">
+                        <MusicIcon size={12} /> Add an OurRealm Sound
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {composeMediaType === "video" && composeMediaUrl && (
@@ -383,6 +427,7 @@ export default function Feed() {
               <VideoUploadPicker
                 videoUrl={composeMediaUrl}
                 onChange={(url) => setComposeMediaUrl(url)}
+                onSoundAttachment={setVideoSoundAtt}
                 testid="feed-composer-video-upload"
               />
             )}
@@ -618,6 +663,13 @@ export default function Feed() {
         deferPost
         testid="feed-sound-picker"
       />
+      <SoundAttachPicker
+        open={imageSoundOpen}
+        onClose={() => setImageSoundOpen(false)}
+        useType="image_posts"
+        onSelect={(s) => { setImageSound(s); setImageSoundOpen(false); }}
+        testid="feed-image-sound-picker"
+      />
       <PollComposer
         open={pollComposerOpen}
         initial={composePoll ? {
@@ -759,6 +811,15 @@ function FeedCard({ p, fireStatus, onPostDeleted, onPostUpdated }) {
             className="w-full h-72 sm:h-96 object-cover cursor-zoom-in"
             data-testid={`feed-image-${p.id}`}
             onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
+          />
+        </div>
+      )}
+      {p.sound_attachment && (mediaImg || mediaImgs || mediaVid) && (
+        <div className="mb-3 -mt-1.5">
+          <PostSoundBadge
+            attachment={p.sound_attachment}
+            mode={mediaVid ? "video" : "image"}
+            testid={`feed-post-sound-${p.id}`}
           />
         </div>
       )}

@@ -76,6 +76,13 @@ def _build_poll(payload_poll) -> Optional[dict]:
 
 @router.post("")
 async def create_post(payload: PostCreate, current: CurrentUser):
+    # Duplicate-publish idempotency (Phase 3) — repeated Publish taps /
+    # network retries with the same client_token return the existing post.
+    if payload.client_token:
+        existing = await db.posts.find_one(
+            {"author_id": current["id"], "client_token": payload.client_token}, {"_id": 0})
+        if existing:
+            return {"post": _public_post(existing, viewer_id=current["id"])}
     # Reject truly empty posts (no text, no media, no poll). This replaces
     # the previous schema-level `min_length=1` on content so video/image/
     # link uploads with no caption are still allowed.
@@ -130,6 +137,24 @@ async def create_post(payload: PostCreate, current: CurrentUser):
         "author_lng": current.get("zip_lng"),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    if payload.client_token:
+        doc["client_token"] = payload.client_token
+    # Phase 3 — Sound attached to an image/video post. Eligibility is
+    # revalidated server-side at THIS moment (not trusted from the
+    # browser or an earlier search result) and a frozen permission
+    # snapshot is stored with the use.
+    if payload.sound_attachment and doc["media_type"] in ("image", "video"):
+        from services.sound_attachments import (attachment_doc, record_recent_use,
+                                                sanitize_settings, validate_attachment)
+        use_type = "image_posts" if doc["media_type"] == "image" else "video_posts"
+        track, snapshot = await validate_attachment(
+            payload.sound_attachment.track_id, use_type, current)
+        settings = sanitize_settings(payload.sound_attachment.model_dump(), track, use_type)
+        owner = await db.users.find_one({"id": track.get("user_id")},
+                                        {"_id": 0, "username": 1})
+        doc["sound_attachment"] = attachment_doc(
+            track, (owner or {}).get("username"), snapshot, settings, use_type)
+        await record_recent_use(current["id"], track["id"])
     # Canonical Sound unification — a For You sound post becomes THE
     # canonical record for its track when the uploader posts it and no
     # canonical post exists yet. Re-posts (own or others') stay regular

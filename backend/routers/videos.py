@@ -20,6 +20,7 @@ import logging
 from fastapi import APIRouter, File, Form, HTTPException, Request
 from fastapi import UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
+from pydantic import BaseModel
 
 from core.db import db
 from core.deps import CurrentUser, require_admin
@@ -77,6 +78,48 @@ async def upload_video(
                                                      "audio_published": 1,
                                                      "audio_rights_status": 1})
     return {"video": rec.to_dict(), "url": rec.url, "audio": meta or {}}
+
+
+# ── Phase 3 — Replace video audio with an eligible OurRealm Sound ──────
+class ReplaceAudioBody(BaseModel):
+    track_id: str
+    start_seconds: float = 0.0
+    duration_seconds: Optional[float] = None
+    volume: float = 1.0
+    fade_in: float = 0.0
+    fade_out: float = 0.0
+
+
+@router.post("/{video_id}/replace-audio")
+async def replace_audio(video_id: str, body: ReplaceAudioBody, current: CurrentUser):
+    """Creates a NEW derivative video whose audio is the selected Sound.
+    The base video (and any private original) is never modified. Server
+    revalidates the Sound owner's reuse permission here — never trusts
+    the browser's earlier search result."""
+    from services.sound_attachments import sanitize_settings, validate_attachment
+    from services.video_store import create_sound_replaced_derivative
+    video = await db.videos.find_one({"id": video_id}, {"_id": 0})
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    if video.get("user_id") != current["id"]:
+        raise HTTPException(status_code=403, detail="You can only edit your own videos")
+    if video.get("derived_from"):
+        raise HTTPException(status_code=400, detail="This video is already a processed derivative")
+    track, snapshot = await validate_attachment(body.track_id, "video_posts", current)
+    settings = sanitize_settings(body.model_dump(), track, "video_posts")
+    try:
+        doc = await create_sound_replaced_derivative(video, track, settings, snapshot,
+                                                     current["id"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "video": {k: doc.get(k) for k in ("id", "ext", "bytes", "mime", "created_at", "url")},
+        "url": doc.get("url"),
+        "audio": {"audio_detected": True, "audio_published": True,
+                  "audio_rights_status": "replaced_with_ourrealm_sound"},
+        "sound": {"track_id": track["id"], "title": track.get("title"),
+                  "settings": settings},
+    }
 
 
 @router.get("/me/list")

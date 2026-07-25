@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess
 import uuid
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
@@ -295,3 +296,149 @@ def is_safe_video_filename(name: str) -> bool:
     if len(stem) != 32 or not all(c in "abcdef0123456789" for c in stem):
         return False
     return True
+
+
+# ── Phase 3 — Sound-replaced derivative (video audio replacement) ──────
+def _probe_duration_seconds(path: Path) -> Optional[float]:
+    import re
+    try:
+        proc = subprocess.run([_ffmpeg(), "-hide_banner", "-i", str(path)],
+                              capture_output=True, timeout=60)
+        m = re.search(rb"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", proc.stderr)
+        if m:
+            h, mnt, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
+            return h * 3600 + mnt * 60 + s
+    except Exception:
+        pass
+    return None
+
+
+def _fetch_from_cloud(kind: str, filename: str, dest: Path) -> bool:
+    """Pull a mirrored media file back to local disk for processing."""
+    try:
+        from services.storage_adapter import get_storage_adapter, S3CompatibleAdapter
+        adapter = get_storage_adapter()
+        if not isinstance(adapter, S3CompatibleAdapter):
+            return False
+        url = adapter.presigned_get(kind, filename, ttl=600)
+        import urllib.request
+        urllib.request.urlretrieve(url, dest)
+        return dest.exists() and dest.stat().st_size > 0
+    except Exception as e:
+        logger.warning(f"[replace-audio] cloud fetch failed {kind}/{filename}: {e}")
+        return False
+
+
+async def create_sound_replaced_derivative(video_doc: dict, track: dict,
+                                           settings: dict, snapshot: dict,
+                                           owner_id: str) -> dict:
+    """Create a NEW processed derivative: base video's VIDEO STREAM ONLY
+    (original audio structurally excluded via -map 0:v:0) + the licensed
+    OurRealm Sound. The base video and any private original are never
+    overwritten. Idempotent per (base, track, settings)."""
+    import asyncio as _aio
+    import hashlib
+
+    start = float(settings.get("start_seconds") or 0.0)
+    seg = settings.get("duration_seconds")
+    vol = float(settings.get("volume") or 1.0)
+    fi = float(settings.get("fade_in") or 0.0)
+    fo = float(settings.get("fade_out") or 0.0)
+    key = (f"{video_doc['id']}|{track['id']}|{start:.3f}|{(seg or 0):.3f}"
+           f"|{vol:.3f}|{fi:.3f}|{fo:.3f}")
+    params_hash = hashlib.sha256(key.encode()).hexdigest()
+
+    existing = await db.videos.find_one(
+        {"derived_from": video_doc["id"], "replace_params_hash": params_hash,
+         "user_id": owner_id}, {"_id": 0})
+    if existing:
+        return existing
+
+    ext = video_doc.get("ext") or "mp4"
+    base = video_dir() / f"{video_doc['id']}.{ext}"
+    if not base.exists() and not _fetch_from_cloud("videos", base.name, base):
+        raise ValueError("The base video file is unavailable. Please re-upload the video.")
+
+    from services.audio_store import audio_dir
+    audio_name = (track.get("file_url") or "").rsplit("/", 1)[-1]
+    if not audio_name or "/" in audio_name or ".." in audio_name:
+        raise ValueError("That Sound's audio file is unavailable.")
+    audio = audio_dir() / audio_name
+    if not audio.exists() and not _fetch_from_cloud("audio", audio_name, audio):
+        raise ValueError("That Sound's audio file is unavailable. Please select another Sound.")
+
+    video_dur = await _aio.to_thread(_probe_duration_seconds, base) or 60.0
+    effective_seg = min(seg, video_dur) if seg else video_dur
+
+    new_id = uuid.uuid4().hex
+    out = video_dir() / f"{new_id}.{ext}"
+    af = f"volume={vol}"
+    if fi > 0:
+        af += f",afade=t=in:st=0:d={fi}"
+    if fo > 0:
+        af += f",afade=t=out:st={max(0.0, effective_seg - fo):.3f}:d={fo}"
+    args = [_ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
+            "-i", str(base),
+            "-ss", f"{start:.3f}", "-t", f"{effective_seg:.3f}", "-i", str(audio),
+            "-filter:a", af,
+            "-map", "0:v:0", "-map", "1:a:0",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+            "-movflags", "+faststart", "-shortest", str(out)]
+
+    def _render():
+        proc = subprocess.run(args, capture_output=True, timeout=300)
+        return proc.returncode == 0 and out.exists() and out.stat().st_size > 0
+
+    ok = await _aio.to_thread(_render)
+    if not ok:
+        out.unlink(missing_ok=True)
+        raise ValueError("Could not combine the video with that Sound. Please try again.")
+
+    now = datetime.now(timezone.utc).isoformat()
+    rec = VideoRecord(id=new_id, user_id=owner_id, ext=ext, bytes=out.stat().st_size,
+                      mime=video_doc.get("mime") or f"video/{ext}", created_at=now)
+    from services.r2_mirror import mirror_to_cloud
+    cloud = mirror_to_cloud("videos", f"{new_id}.{ext}", out, "")
+    if cloud and (cloud.startswith("http") or cloud.startswith("/api/media/")):
+        rec.cloud_url = cloud
+    doc = {
+        "id": rec.id, "user_id": rec.user_id, "ext": rec.ext, "bytes": rec.bytes,
+        "mime": rec.mime, "created_at": rec.created_at, "url": rec.url,
+        "upload_session_id": None,
+        "audio_detected": True,
+        "audio_published": True,
+        "audio_rights_status": "replaced_with_ourrealm_sound",
+        "derived_from": video_doc["id"],
+        "sound_track_id": track["id"],
+        "replace_params_hash": params_hash,
+        "sound_settings": settings,
+    }
+    await db.videos.insert_one(doc)
+    await db.video_audio_rights.insert_one({
+        "id": uuid.uuid4().hex,
+        "user_id": owner_id,
+        "video_id": rec.id,
+        "post_id": None,
+        "upload_session_id": None,
+        "original_filename": None,
+        "audio_detected": True,
+        "audio_choice": "replace",
+        "rights_confirmed": False,
+        "rights_confirmed_at": None,
+        "terms_version": TERMS_VERSION,
+        "rights_source": "ourrealm_sound_reuse",
+        "replacement_sound_id": track["id"],
+        "original_audio_volume": 0.0,
+        "replacement_sound_volume": vol,
+        "permission_snapshot": snapshot,
+        "original_asset_ref": None,
+        "derived_from": video_doc["id"],
+        "public_derivative_id": f"{rec.id}.{ext}",
+        "processing_status": "completed",
+        "created_at": now,
+        "updated_at": now,
+    })
+    doc.pop("_id", None)
+    logger.info(f"[replace-audio] derivative {rec.id}.{ext} from {video_doc['id']} "
+                f"with sound {track['id']} for user={owner_id}")
+    return doc

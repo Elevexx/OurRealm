@@ -163,6 +163,16 @@ class PollPayload(BaseModel):
     duration_hours: int = 0   # 0 = no expiration; 24/72/168/720 supported
 
 
+class SoundAttachmentPayload(BaseModel):
+    track_id: str
+    start_seconds: float = 0.0
+    duration_seconds: Optional[float] = None
+    volume: float = 1.0
+    fade_in: float = 0.0
+    fade_out: float = 0.0
+    loop: bool = False
+
+
 class PostCreate(BaseModel):
     # Hard ceiling that mirrors POST_LIMITS["founder"] in services/post_limits.py.
     # Role-based cap (founder 2000 / VIP 500 / default 300) is enforced
@@ -198,6 +208,13 @@ class PostCreate(BaseModel):
     tags: List[str] = []
     audience: Optional[AudiencePayload] = None
     poll: Optional[PollPayload] = None   # Phase 4B — optional poll attached
+    # Phase 3 (Media Sound Selector) — optional Sound attached to an
+    # image/video post. Server revalidates owner reuse permissions at
+    # publication time and stores a frozen permission snapshot.
+    sound_attachment: Optional[SoundAttachmentPayload] = None
+    # Duplicate-publish idempotency — same author + same token returns
+    # the already-created post instead of inserting a second one.
+    client_token: Optional[str] = Field(default=None, max_length=64)
 
 
 class UserOut(BaseModel):
