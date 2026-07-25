@@ -24,6 +24,7 @@ import PollDisplay from "@/components/PollDisplay";
 import AutoplayVideo from "@/components/AutoplayVideo";
 import VideoEmbed from "@/components/VideoEmbed";
 import ShareToUserModal from "@/components/ShareToUserModal";
+import { dedupePosts } from "@/lib/dedupePosts";
 import ImageLightbox from "@/components/ImageLightbox";
 import VideoUploadPicker from "@/components/VideoUploadPicker";
 import PostManagementMenu from "@/components/PostManagementMenu";
@@ -145,13 +146,13 @@ export default function Feed() {
           setRadius("any");
           setZipRequiredOpen(true);
           const { data } = await apiClient.get("/posts", { params });
-          setServerPosts(data.posts || []);
+          setServerPosts(dedupePosts(data.posts || []));
           return;
         }
         params.radius = radius;
       }
       const { data } = await apiClient.get("/posts", { params });
-      setServerPosts(data.posts || []);
+      setServerPosts(dedupePosts(data.posts || []));
     } catch { setServerPosts([]); }
   };
   useEffect(() => { loadPosts(); }, [radius, JSON.stringify(media), user?.zip_code, user?.username, fireSort, fireWindow, fireStatus?.ranked_feed_enabled]);  // eslint-disable-line react-hooks/exhaustive-deps

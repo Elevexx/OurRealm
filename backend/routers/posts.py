@@ -321,6 +321,26 @@ def _visibility_query(viewer: Optional[dict], author_id: Optional[str] = None) -
     return q
 
 
+def _dedupe_post_items(items: list) -> list:
+    """Strict feed uniqueness — every post id may appear only ONCE per
+    response, and a Sound may surface through only ONE canonical post
+    (intentional creator reposts are non-canonical and unaffected).
+    Items are already ranked, so the first (highest-ranked) copy wins."""
+    seen_ids, seen_canon_tracks, deduped = set(), set(), []
+    for p in items:
+        pid = p.get("id")
+        if pid and pid in seen_ids:
+            continue
+        if p.get("is_canonical_sound") and p.get("sound_track_id"):
+            if p["sound_track_id"] in seen_canon_tracks:
+                continue
+            seen_canon_tracks.add(p["sound_track_id"])
+        if pid:
+            seen_ids.add(pid)
+        deduped.append(p)
+    return deduped
+
+
 @router.get("/feed/by-user/{username}")
 async def feed_by_user(username: str, current: OptionalUser, limit: int = 100,
                        sort: Optional[str] = None):
@@ -353,7 +373,7 @@ async def feed_by_user(username: str, current: OptionalUser, limit: int = 100,
             except Exception:
                 pass
         items.append(_public_post(p))
-    return {"posts": items}
+    return {"posts": _dedupe_post_items(items)}
 
 
 def _public_post(p: dict, viewer_id: Optional[str] = None) -> dict:
@@ -619,22 +639,8 @@ async def list_posts(
     except Exception as e:
         log.warning(f"[fire] feed attach/rank failed: {e}")
 
-    # Strict feed uniqueness — every post id may appear only ONCE per
-    # response, and a Sound may surface through only ONE canonical post
-    # (intentional creator reposts are non-canonical and unaffected).
-    # Items are already ranked, so the first (highest-ranked) copy wins.
-    seen_ids, seen_canon_tracks, deduped = set(), set(), []
-    for p in items:
-        pid = p.get("id")
-        if pid and pid in seen_ids:
-            continue
-        if p.get("is_canonical_sound") and p.get("sound_track_id"):
-            if p["sound_track_id"] in seen_canon_tracks:
-                continue
-            seen_canon_tracks.add(p["sound_track_id"])
-        if pid:
-            seen_ids.add(pid)
-        deduped.append(p)
+    # Strict feed uniqueness — shared safety net (see _dedupe_post_items).
+    deduped = _dedupe_post_items(items)
     return {"posts": deduped}
 
 

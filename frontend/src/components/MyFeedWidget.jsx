@@ -6,6 +6,7 @@ import { openPostPopup } from "@/lib/postPopupController";
 import { usePostState } from "@/lib/postStore";
 import { useAuth } from "@/contexts/AuthContext";
 import PostManagementMenu from "@/components/PostManagementMenu";
+import { dedupePosts } from "@/lib/dedupePosts";
 
 /**
  * MyFeedWidget — renders the owner's posts newest-first.
@@ -34,7 +35,7 @@ export default function MyFeedWidget({ username, isOwner = false, dense = false 
       setLoading(true);
       try {
         const { data } = await apiClient.get(`/posts/feed/by-user/${username}`);
-        if (!cancelled) setPosts(data.posts || []);
+        if (!cancelled) setPosts(dedupePosts(data.posts || []));
       } catch { if (!cancelled) setPosts([]); }
       finally { if (!cancelled) setLoading(false); }
     })();

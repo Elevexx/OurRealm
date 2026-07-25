@@ -255,6 +255,8 @@ async def hashtag_feed(tag: str, limit: int = 30, before: Optional[str] = None):
         filt["created_at"] = {"$lt": before}
     cursor = db.posts.find(filt, {"_id": 0}).sort([("created_at", -1)]).limit(limit)
     posts = [p async for p in cursor]
+    from routers.posts import _dedupe_post_items
+    posts = _dedupe_post_items(posts)
     total = await db.posts.count_documents({"hashtags": norm})
     return {"tag": norm, "total": total, "posts": posts}
 

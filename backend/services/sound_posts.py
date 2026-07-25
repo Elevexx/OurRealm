@@ -389,39 +389,50 @@ async def _merge_post_engagement(keep_id: str, dup_id: str) -> None:
 
 
 async def repair_duplicate_sound_posts() -> int:
-    """Merge duplicate canonical Sound posts (and demoted migration
-    artifacts) into the OLDEST valid canonical, migrating all engagement,
-    then delete the duplicates. Idempotent."""
+    """Merge duplicate Sound posts into the OLDEST valid canonical,
+    migrating all engagement, then delete the duplicates. Handles:
+      - multiple canonical posts per track (race-era duplicates),
+      - demoted migration artifacts from earlier repairs,
+      - pre-unification same-author copies with no distinct caption
+        (upload + share era created two rows for one logical post).
+    Creator reposts carrying their own caption are LEGITIMATE and kept.
+    Idempotent."""
     from services.fire_power import recompute_post_fire
     repaired = 0
     track_ids: set = set()
-    # Groups of >1 canonical posts per track.
     pipeline = [
-        {"$match": {"is_canonical_sound": True, "sound_track_id": {"$ne": None}}},
+        {"$match": {"media_type": "sound", "sound_track_id": {"$ne": None}}},
         {"$group": {"_id": "$sound_track_id", "n": {"$sum": 1}}},
         {"$match": {"n": {"$gt": 1}}},
     ]
     async for row in db.posts.aggregate(pipeline):
         track_ids.add(row["_id"])
-    # Demoted artifacts from earlier repairs (never user reposts — those
-    # carry no migration_source) whose track already has a canonical.
-    async for p in db.posts.find(
-            {"is_canonical_sound": {"$ne": True}, "sound_track_id": {"$ne": None},
-             "migration_source": {"$in": ["sound_backfill", "feed_heal", "lazy_heal"]}},
-            {"_id": 0, "sound_track_id": 1}):
-        track_ids.add(p["sound_track_id"])
     for tid in track_ids:
         group = [p async for p in db.posts.find(
-            {"sound_track_id": tid,
-             "$or": [{"is_canonical_sound": True},
-                     {"migration_source": {"$in": ["sound_backfill", "feed_heal", "lazy_heal"]}}]},
-            {"_id": 0, "id": 1, "created_at": 1, "deleted_at": 1, "is_canonical_sound": 1})]
-        if len(group) < 2:
+            {"sound_track_id": tid}, {"_id": 0, "id": 1, "created_at": 1, "deleted_at": 1,
+                                      "is_canonical_sound": 1, "author_id": 1, "content": 1,
+                                      "sound_title": 1, "migration_source": 1})]
+        canon = [p for p in group if p.get("is_canonical_sound")]
+        if not canon:
             continue
-        valid = [p for p in group if not p.get("deleted_at")] or group
+        valid = [p for p in canon if not p.get("deleted_at")] or canon
         keep = sorted(valid, key=lambda p: p.get("created_at") or "")[0]
+        keep_content = (keep.get("content") or "").strip()
+        keep_title = (keep.get("sound_title") or "").strip()
         for dup in group:
             if dup["id"] == keep["id"]:
+                continue
+            if dup.get("is_canonical_sound"):
+                mergeable = True  # only one canonical may exist
+            elif dup.get("migration_source") in ("sound_backfill", "feed_heal", "lazy_heal"):
+                mergeable = True  # artifact from an earlier repair
+            else:
+                # Same-author copy with no distinct caption = same logical
+                # post. Different author or a unique caption = legitimate.
+                c = (dup.get("content") or "").strip()
+                mergeable = (dup.get("author_id") == keep.get("author_id")
+                             and (not c or c == keep_content or c == keep_title))
+            if not mergeable:
                 continue
             await _merge_post_engagement(keep["id"], dup["id"])
             await db.posts.delete_one({"id": dup["id"]})

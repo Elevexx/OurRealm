@@ -2902,3 +2902,9 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 - ShareToUserModal now has a "Share post link" button at top (single logic for every surface — Feed + PostPopup cover Home/profiles/Sounds/hashtags/search since all use the same modal). Friend-DM sharing unchanged.
 - Recipient flow verified: logged-out visit → /signup?next=/feed?post=id → signin → lands on exact post popup. Server enforces permissions on the shared post (deleted/private/blocked return errors in popup).
 - Preview DB hygiene: removed 29 orphan sound posts (old TEST_iter83 artifacts whose tracks were deleted).
+
+## July 25, 2026 — P0 duplicate posts across all feeds (TESTED: 14/14 pytest + endpoint + UI checks)
+- Backend safety net centralized: _dedupe_post_items() in routers/posts.py applied to list_posts, feed_by_user (profile/MyFeed/PublicFireStats), and hashtags feed. Realms use community_hub_posts (single-query, no dup path). Unique canonical index remains the DB-level guarantee.
+- Repair extended (sound_posts.repair_duplicate_sound_posts): now scans ALL same-track sound posts, merging (engagement → oldest valid canonical, then delete) (a) extra canonicals, (b) earlier-repair artifacts, (c) pre-unification same-author copies with NO distinct caption. Captioned creator reposts and other users' posts are always kept. Runs automatically at startup — production repairs itself on redeploy.
+- Frontend safety net: lib/dedupePosts.js applied in Feed.jsx (serverPosts), HashtagFeed, MyFeedWidget — duplicate API data can never render duplicate cards.
+- Regression tests: test_all_feed_endpoints_unique (fails if ANY feed returns a post id twice), test_same_author_captionless_copy_merged_but_captioned_repost_kept, plus prior race/index/merge suites. Verified live: 176-item feed unique, 200 rendered cards 0 duplicates.

@@ -12,6 +12,7 @@ import apiClient from "@/api/client";
 import HashtagText from "@/components/HashtagText";
 import UserAvatar from "@/components/UserAvatar";
 import { openPostPopup } from "@/lib/postPopupController";
+import { dedupePosts } from "@/lib/dedupePosts";
 
 function timeAgo(iso) {
   if (!iso) return "";
@@ -36,7 +37,7 @@ export default function HashtagFeed() {
     (async () => {
       try {
         const { data: d } = await apiClient.get(`/hashtags/${encodeURIComponent(t)}/feed?limit=50`);
-        if (!cancelled) setData(d);
+        if (!cancelled) setData({ ...d, posts: dedupePosts(d.posts || []) });
       } catch {
         if (!cancelled) setData({ posts: [], total: 0, tag: t });
       } finally { if (!cancelled) setLoading(false); }

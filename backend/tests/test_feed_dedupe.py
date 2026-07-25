@@ -173,3 +173,58 @@ def test_single_sound_appears_exactly_once(token):
         return await db.posts.count_documents(
             {"sound_track_id": "e8e5aa8b39454b23b044f314411d3bb4", "is_canonical_sound": True})
     assert _run(db_check()) == 1
+
+
+def test_all_feed_endpoints_unique(token):
+    """P0 — every feed endpoint must return each post id at most once."""
+    h = {"Authorization": f"Bearer {token}"}
+    endpoints = [
+        ("/api/posts", {"limit": 200}),
+        ("/api/posts", {"limit": 200, "media_type": "sound"}),
+        ("/api/posts", {"limit": 200, "sort": "fire"}),
+        ("/api/posts/feed/by-user/stealth", {}),
+        ("/api/posts/feed/by-user/stealth", {"sort": "fire", "limit": 20}),
+        ("/api/posts/feed/by-user/auditcheckreal", {}),
+    ]
+    for path, params in endpoints:
+        r = requests.get(f"{BASE_URL}{path}", params=params, headers=h, timeout=30)
+        assert r.status_code == 200, f"{path}: {r.status_code}"
+        _assert_unique(r.json()["posts"])
+    # hashtag feed (first trending tag if any, else known tag)
+    tags = requests.get(f"{BASE_URL}/api/hashtags/trending", headers=h, timeout=30).json().get("hashtags") or []
+    for tag in ([t.get("tag") for t in tags[:3]] or ["popuptest"]):
+        r = requests.get(f"{BASE_URL}/api/hashtags/{tag}/feed?limit=100", headers=h, timeout=30)
+        if r.status_code == 200:
+            _assert_unique(r.json().get("posts") or [])
+
+
+def test_same_author_captionless_copy_merged_but_captioned_repost_kept():
+    async def go():
+        from core.db import db
+        from services.sound_posts import repair_duplicate_sound_posts
+        founder = await db.users.find_one({"username": "stealth"}, {"_id": 0, "id": 1})
+        member = await db.users.find_one({"username": "auditcheckreal"}, {"_id": 0, "id": 1})
+        tid = uuid.uuid4().hex
+        canon_id, copy_id, repost_id, other_id = (uuid.uuid4().hex for _ in range(4))
+        base = {"media_type": "sound", "sound_track_id": tid, "author_id": member["id"],
+                "sound_title": "Copy Merge Test", "audience": {"visibility": "public"}}
+        await db.posts.insert_one({**base, "id": canon_id, "is_canonical_sound": True,
+                                   "content": "", "created_at": "2026-01-01T00:00:00+00:00"})
+        # pre-unification captionless copy by same author -> must merge
+        await db.posts.insert_one({**base, "id": copy_id, "content": "",
+                                   "created_at": "2026-02-01T00:00:00+00:00"})
+        # captioned repost by same author -> legitimate, must be kept
+        await db.posts.insert_one({**base, "id": repost_id, "content": "my remix drop 🔥",
+                                   "created_at": "2026-03-01T00:00:00+00:00"})
+        # another user's share-style post -> kept
+        await db.posts.insert_one({**base, "id": other_id, "author_id": founder["id"],
+                                   "content": "", "created_at": "2026-03-02T00:00:00+00:00"})
+        await repair_duplicate_sound_posts()
+        remaining = {p["id"] async for p in db.posts.find({"sound_track_id": tid}, {"_id": 0, "id": 1})}
+        await db.posts.delete_many({"sound_track_id": tid})
+        return remaining, canon_id, copy_id, repost_id, other_id
+    remaining, canon_id, copy_id, repost_id, other_id = _run(go())
+    assert canon_id in remaining, "canonical must survive"
+    assert copy_id not in remaining, "captionless same-author copy must merge"
+    assert repost_id in remaining, "captioned repost is legitimate and must be kept"
+    assert other_id in remaining, "other user's post must never be deleted"
