@@ -145,7 +145,7 @@ class TestBoostedAccounting:
         avail0, spent0 = _pool_avail(stealth_token)
         w0 = _wallet(receiver["token"])["wallet"]
         # Check post fire_total baseline
-        p0 = requests.get(f"{API}/fire/post/{pid}", timeout=20).json()
+        p0 = requests.get(f"{API}/fire/post/{pid}", headers=_hdr(stealth_token), timeout=20).json()
         ft0 = int(p0["fire_total"])
 
         r = requests.post(f"{API}/fire/react", headers=_hdr(stealth_token),
@@ -159,7 +159,7 @@ class TestBoostedAccounting:
         avail1, spent1 = _pool_avail(stealth_token)
         assert spent1 - spent0 == 4, f"sender pool delta expected +4, got {spent1 - spent0}"
 
-        p1 = requests.get(f"{API}/fire/post/{pid}", timeout=20).json()
+        p1 = requests.get(f"{API}/fire/post/{pid}", headers=_hdr(stealth_token), timeout=20).json()
         assert int(p1["fire_total"]) - ft0 == 5, "post fire_total should +5 (full)"
 
         w1 = _wallet(receiver["token"])["wallet"]
@@ -231,7 +231,7 @@ class TestEditAccounting:
         assert int(w_d["pending_balance"]) == pen0
 
         # Post fire_total is 0
-        p = requests.get(f"{API}/fire/post/{pid}", timeout=20).json()
+        p = requests.get(f"{API}/fire/post/{pid}", headers=_hdr(stealth_token), timeout=20).json()
         assert int(p["fire_total"]) == 0
 
 
@@ -509,7 +509,7 @@ class TestAdminCommandCenter:
         assert rep["ok"] is True
         assert rep["reaction_id"] == rxn_id
         # Post fire_total drops to 0 for this reaction alone (only one reaction)
-        p = requests.get(f"{API}/fire/post/{pid}", timeout=20).json()
+        p = requests.get(f"{API}/fire/post/{pid}", headers=_hdr(stealth_token), timeout=20).json()
         assert int(p["fire_total"]) == 0
 
 
@@ -528,8 +528,8 @@ class TestReconciliation:
 
 # ── 9) Fire-ranked feed ─────────────────────────────────────────────────
 class TestFireRankedFeed:
-    def test_ranked_by_fire_total(self):
-        r = requests.get(f"{API}/posts?sort=fire&window=all&limit=20", timeout=30)
+    def test_ranked_by_fire_total(self, stealth_token):
+        r = requests.get(f"{API}/posts?sort=fire&window=all&limit=20", headers=_hdr(stealth_token), timeout=30)
         assert r.status_code == 200, r.text[:200]
         posts = r.json().get("posts") or []
         assert isinstance(posts, list)

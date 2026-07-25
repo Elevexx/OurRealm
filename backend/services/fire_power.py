@@ -381,6 +381,77 @@ async def react(user: dict, post_id: str, fire_value: int,
 
 
 # ── Read helpers ────────────────────────────────────────────────────────
+async def quick_state(user: dict, post_id: str) -> dict:
+    """Authoritative Quick Fire range for one post — SAME engine pieces
+    react() uses (config, pool, reservations, edit window). The client
+    never computes its own allowed range."""
+    flags = await get_fire_flags()
+    uid = user["id"]
+    cfg = await fire_config_for_user(user)
+    post = await db.posts.find_one({"id": post_id}, {"_id": 0, "id": 1, "audience": 1})
+
+    eligible, reason = True, None
+    if not flags.get("fire_reactions"):
+        eligible, reason = False, "Fire reactions are not enabled"
+    if not post:
+        eligible, reason = False, "Post not found"
+    elif ((post.get("audience") or {}).get("visibility") or "public") != "public":
+        eligible, reason = False, "Fire is only available on public posts"
+    fire_paused = bool(user.get("fire_paused") or (await db.users.find_one(
+        {"id": uid}, {"_id": 0, "fire_paused": 1}) or {}).get("fire_paused"))
+    if fire_paused:
+        eligible, reason = False, "Fire is paused on your account"
+
+    pool = await pool_status(user, cfg)
+    state = await post_fire_state(post_id, uid) if post else {"fire_total": 0, "my_fire": 0}
+    my_fire = int(state.get("my_fire") or 0)
+
+    finalized, deadline_iso = False, None
+    reserved = 0
+    if my_fire > 0:
+        mine = await db.post_fire_reactions.find_one(
+            {"post_id": post_id, "user_id": uid, "active": True},
+            {"_id": 0, "id": 1, "edit_deadline": 1, "created_at": 1})
+        if mine:
+            deadline_iso = mine.get("edit_deadline")
+            if not deadline_iso and mine.get("created_at"):
+                try:
+                    deadline_iso = (datetime.fromisoformat(mine["created_at"]) + timedelta(hours=24)).isoformat()
+                except (ValueError, TypeError):
+                    deadline_iso = None
+            if deadline_iso:
+                try:
+                    finalized = datetime.now(timezone.utc) >= datetime.fromisoformat(deadline_iso)
+                except (ValueError, TypeError):
+                    finalized = False
+            if mine.get("id"):
+                reserved = await _reserved_for_reaction(mine["id"])
+
+    boosted_ok = bool(flags.get("boosted_fire")) and bool(cfg.get("fire_enabled"))
+    level_max = int(cfg.get("max_fire_per_reaction") or 1) if boosted_ok else 1
+    max_selectable = 1 if not eligible else min(level_max, 1 + reserved + pool["available"])
+    max_selectable = max(max_selectable, min(my_fire, level_max) if my_fire else 1)
+
+    return {
+        "post_id": post_id,
+        "fire_total": int(state.get("fire_total") or 0),
+        "my_fire": my_fire,
+        "finalized": finalized,
+        "edit_deadline": deadline_iso,
+        "min_selectable": 1,
+        "max_selectable": max_selectable,
+        "level_max": level_max,
+        "level_number": cfg.get("level_number"),
+        "level_name": cfg.get("level_name"),
+        "boosted_enabled": boosted_ok,
+        "available_boost": pool["available"],
+        "pool": pool,
+        "fire_paused": fire_paused,
+        "post_eligible": eligible,
+        "ineligible_reason": reason,
+    }
+
+
 async def post_fire_state(post_id: str, viewer_id: Optional[str] = None) -> dict:
     p = await db.posts.find_one({"id": post_id}, {"_id": 0, "fire_total": 1, "fire_count": 1})
     my_fire = 0

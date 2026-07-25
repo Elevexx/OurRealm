@@ -14,6 +14,7 @@ import { Flame, ChevronUp, X, Clock, Info } from "lucide-react";
 import { toast } from "sonner";
 import { usePostState, setPost } from "@/lib/postStore";
 import { sendFire, fetchFireStatus } from "@/lib/fireApi";
+import QuickFireSheet from "@/components/fire/QuickFireSheet";
 
 const PRESETS = [1, 2, 5, 10, 25, 50, 100];
 const FIRE_COLOR = "#FF7A1A";
@@ -334,13 +335,14 @@ export default function FireButton({ post, fireStatus, testidPrefix }) {
   const total = live.fire_total ?? seed.total ?? post.fire_total ?? 0;
   const myDeadline = live.my_fire_deadline ?? seed.my_fire_deadline ?? null;
   const myFinalized = (live.my_fire_finalized ?? seed.my_fire_finalized) === true;
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [sheet, setSheet] = useState(null); // null | "quick" | "full"
   const [busy, setBusy] = useState(false);
   const [pool, setPool] = useState(fireStatus?.pool || null);
   const [fresh, setFresh] = useState(null);
   const [showHint, setShowHint] = useState(false);
   const holdTimer = useRef(null);
   const openedByHold = useRef(false);
+  const mainBtnRef = useRef(null);
 
   // Prefer the freshest authed status (fetched on picker open) over the
   // possibly stale/guest module cache passed down as a prop.
@@ -366,14 +368,19 @@ export default function FireButton({ post, fireStatus, testidPrefix }) {
     try { localStorage.setItem(HINT_KEY, "1"); } catch { /* ignore */ }
   };
 
-  const openPicker = async () => {
+  const openSheet = async (which) => {
     dismissHint();
-    setPickerOpen(true);
+    setSheet(which); // only one Fire picker open at a time
     try {
       const s = await fetchFireStatus(true);
       setFresh(s);
       if (s?.pool) setPool(s.pool);
     } catch { /* keep cached pool */ }
+  };
+  const closeSheet = () => {
+    setSheet(null);
+    // Return focus to the main Fire button (a11y).
+    setTimeout(() => mainBtnRef.current?.focus(), 30);
   };
 
   const apply = async (value) => {
@@ -390,28 +397,27 @@ export default function FireButton({ post, fireStatus, testidPrefix }) {
       toast.error(e?.response?.data?.detail || "Could not send Fire");
     } finally {
       setBusy(false);
-      setPickerOpen(false);
+      closeSheet();
     }
   };
 
   const quickTap = (e) => {
     e?.stopPropagation();
     if (openedByHold.current) { openedByHold.current = false; return; }
-    dismissHint();
-    // Any existing Fire (1x or boosted): never silently change/remove —
-    // open the picker so edits are always intentional.
-    if (myFire > 0) { openPicker(); return; }
-    apply(1);
+    // Increment B: the main Fire button ALWAYS opens Quick Fire —
+    // it never sends Fire immediately, for any level or state.
+    openSheet("quick");
   };
   const startHold = () => {
     if (!boostAvailable) return;
-    holdTimer.current = setTimeout(() => { openedByHold.current = true; openPicker(); }, 450);
+    holdTimer.current = setTimeout(() => { openedByHold.current = true; openSheet("full"); }, 450);
   };
   const endHold = () => clearTimeout(holdTimer.current);
 
   return (
     <div className="relative flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
       <button
+        ref={mainBtnRef}
         data-testid={`${testidPrefix}-btn`}
         onClick={quickTap}
         onPointerDown={startHold}
@@ -419,10 +425,12 @@ export default function FireButton({ post, fireStatus, testidPrefix }) {
         onPointerLeave={endHold}
         onContextMenu={(e) => e.preventDefault()}
         aria-pressed={myFire > 0}
+        aria-haspopup="dialog"
+        aria-expanded={sheet === "quick"}
         aria-label={
           myFinalized && myFire > 0 ? `Your ${myFire}x Fire is finalized — tap for details`
             : myFire > 0 ? `Your ${myFire}x Fire — tap to adjust`
-            : "Give 1x Fire"
+            : "Send Fire — opens Quick Fire"
         }
         className="flex items-center gap-1.5 rounded focus-visible:outline focus-visible:outline-2"
         style={{
@@ -446,21 +454,21 @@ export default function FireButton({ post, fireStatus, testidPrefix }) {
       {boostAvailable && (
         <button
           data-testid={`${testidPrefix}-boost-open`}
-          onClick={() => (pickerOpen ? setPickerOpen(false) : openPicker())}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPicker(); } }}
-          aria-label="Choose Fire Power"
+          onClick={() => (sheet === "full" ? closeSheet() : openSheet("full"))}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openSheet("full"); } }}
+          aria-label="Open full Fire Power controls"
           aria-haspopup="dialog"
-          aria-expanded={pickerOpen}
-          title="Choose Fire Power"
+          aria-expanded={sheet === "full"}
+          title="Open full Fire Power controls"
           className="flex items-center justify-center rounded focus-visible:outline focus-visible:outline-2"
           style={{
-            color: pickerOpen ? FIRE_COLOR : "var(--text-muted)",
+            color: sheet === "full" ? FIRE_COLOR : "var(--text-muted)",
             touchAction: "manipulation",
             minWidth: 32, minHeight: 44, margin: "-12px 0",
             outlineColor: FIRE_COLOR,
           }}
         >
-          <ChevronUp size={13} style={{ transform: pickerOpen ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
+          <ChevronUp size={13} style={{ transform: sheet === "full" ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
         </button>
       )}
 
@@ -475,7 +483,7 @@ export default function FireButton({ post, fireStatus, testidPrefix }) {
           data-testid={`${testidPrefix}-hint`}
           role="status"
         >
-          Tap for 1× 🔥 · Hold or tap the arrow to boost
+          Tap to choose Fire · Arrow opens full controls
           <button onClick={dismissHint} aria-label="Dismiss hint" data-testid={`${testidPrefix}-hint-dismiss`}
             style={{ color: "var(--text-muted)" }}>
             <X size={11} />
@@ -483,7 +491,19 @@ export default function FireButton({ post, fireStatus, testidPrefix }) {
         </div>
       )}
 
-      {pickerOpen && (
+      {sheet === "quick" && (
+        <QuickFireSheet
+          post={post}
+          myFire={myFire}
+          busy={busy}
+          onApply={apply}
+          onClose={closeSheet}
+          onOpenFull={() => setSheet("full")}
+          testidPrefix={testidPrefix}
+        />
+      )}
+
+      {sheet === "full" && (
         <FirePickerSheet
           post={post}
           cfg={cfg}
@@ -493,7 +513,7 @@ export default function FireButton({ post, fireStatus, testidPrefix }) {
           finalized={myFinalized}
           busy={busy}
           onApply={apply}
-          onClose={() => setPickerOpen(false)}
+          onClose={closeSheet}
           testidPrefix={testidPrefix}
         />
       )}

@@ -194,6 +194,12 @@ async def fire_react(body: ReactBody, current: CurrentUser):
     return await fp.react(current, body.post_id, body.fire_value, body.idempotency_key)
 
 
+@router.get("/quick-state/{post_id}")
+async def fire_quick_state(post_id: str, current: CurrentUser):
+    """Authoritative Quick Fire range — shared engine, never a frontend formula."""
+    return await fp.quick_state(current, post_id)
+
+
 @router.get("/post/{post_id}")
 async def fire_post_state(post_id: str, current: OptionalUser):
     return await fp.post_fire_state(post_id, (current or {}).get("id"))

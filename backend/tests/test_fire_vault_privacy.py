@@ -115,12 +115,14 @@ class TestVaultAccrual:
                           json={"post_id": pid, "fire_value": 1}, timeout=20)
         assert r.status_code == 200, r.text[:200]
 
-        # Receiver: pending+1, lifetime_earned+1
+        # Receiver: pending+1. (lifetime_fire_earned now increments at
+        # SETTLEMENT time — pending → collectable — not at react time.)
         r1 = requests.get(f"{API}/fire/wallet", headers=_hdr(stealth_token), timeout=20).json()
         w1 = r1["wallet"]
         assert int(w1["pending_balance"]) == pending0 + 1, \
             f"pending expected {pending0 + 1}, got {w1['pending_balance']}"
-        assert int(w1["lifetime_fire_earned"]) == lifetime0 + 1
+        assert int(w1["lifetime_fire_earned"]) == lifetime0, \
+            "lifetime must not change before settlement"
 
         # Sender wallet earning fields unchanged
         rs1 = requests.get(f"{API}/fire/wallet", headers=_hdr(normal_token), timeout=20).json()
@@ -173,37 +175,36 @@ class TestVaultAccrual:
 class TestVaultSettlement:
     def test_settlement_zero_moves_pending_to_vault(
             self, stealth_token, normal_token):
-        # 1. Set settlement_hours to 0
-        r = requests.patch(f"{API}/fire/admin/wallets/config",
-                           headers=_hdr(stealth_token),
-                           json={"settlement_hours": 0}, timeout=20)
-        assert r.status_code == 200, r.text[:200]
-        assert r.json()["config"]["settlement_hours"] == 0
+        """Phase 0.6 policy: reaction earnings settle when the sender's
+        24h EDIT WINDOW ends (react passes finalize_at=edit_deadline, so
+        settlement_hours no longer short-circuits reaction credits).
+        We backdate settle_after in the DB to simulate the window ending,
+        then verify Pending → Collectable + lifetime credit on read."""
+        w0 = requests.get(f"{API}/fire/wallet", headers=_hdr(stealth_token), timeout=20).json()["wallet"]
+        pid = _create_public_post(stealth_token, "TEST_iter81_settle")
+        rr = requests.post(f"{API}/fire/react", headers=_hdr(normal_token),
+                           json={"post_id": pid, "fire_value": 1,
+                                 "idempotency_key": f"settle-{uuid.uuid4().hex}"}, timeout=20)
+        assert rr.status_code == 200
 
-        try:
-            # snapshot vault
-            w0 = requests.get(f"{API}/fire/wallet", headers=_hdr(stealth_token), timeout=20).json()["wallet"]
-            vault0 = int(w0["vault_balance"])
+        from pathlib import Path
+        from dotenv import load_dotenv
+        load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+        from tests._shared_loop import get_shared_loop
 
-            # 2. Fresh credit — settlement_after = now, so next wallet read settles it
-            pid = _create_public_post(stealth_token, "TEST_iter81_settle")
-            rr = requests.post(f"{API}/fire/react", headers=_hdr(normal_token),
-                               json={"post_id": pid, "fire_value": 1}, timeout=20)
-            assert rr.status_code == 200
+        async def _backdate():
+            from core.db import db
+            r = await db.fire_wallet_transactions.update_many(
+                {"post_id": pid, "status": "pending"},
+                {"$set": {"settle_after": "2020-01-01T00:00:00+00:00"}})
+            return r.modified_count
+        assert get_shared_loop().run_until_complete(_backdate()) >= 1
 
-            time.sleep(1)  # ensure settle_after <= now on read
-
-            # 3. Read wallet — should have settled +1 into vault
-            w1 = requests.get(f"{API}/fire/wallet", headers=_hdr(stealth_token), timeout=20).json()["wallet"]
-            assert int(w1["vault_balance"]) >= vault0 + 1, \
-                f"vault expected >= {vault0 + 1}, got {w1['vault_balance']}"
-        finally:
-            # 4. Restore to 24h
-            rr = requests.patch(f"{API}/fire/admin/wallets/config",
-                                headers=_hdr(stealth_token),
-                                json={"settlement_hours": 24}, timeout=20)
-            assert rr.status_code == 200
-            assert rr.json()["config"]["settlement_hours"] == 24
+        time.sleep(0.5)
+        w1 = requests.get(f"{API}/fire/wallet", headers=_hdr(stealth_token), timeout=20).json()["wallet"]
+        assert int(w1["collectable_balance"]) >= int(w0["collectable_balance"]) + 1, \
+            f"collectable expected >= {int(w0['collectable_balance']) + 1}, got {w1['collectable_balance']}"
+        assert int(w1["lifetime_fire_earned"]) >= int(w0["lifetime_fire_earned"]) + 1
 
 
 # ── VAULT: admin endpoints (founder only) ───────────────────────────────
@@ -319,7 +320,26 @@ class TestPrivacyDefaults:
 class TestPublicFireStats:
     def test_anonymous_hides_only_me_and_friends(self, normal_user):
         uname = normal_user["username"]
-        r = requests.get(f"{API}/fire/wallet/stats/{uname}", timeout=20)
+        # Guest browsing was removed (iter88): anonymous now gets 401.
+        anon = requests.get(f"{API}/fire/wallet/stats/{uname}", timeout=20)
+        assert anon.status_code == 401
+        # A signed-in non-friend, non-admin viewer sees the same privacy
+        # filtering the anonymous view used to check.
+        other = requests.post(f"{API}/auth/login",
+                              json={"email": "quickfire.newbie@example.com",
+                                    "password": "Password1$"}, timeout=20)
+        if other.status_code != 200:
+            requests.post(f"{API}/auth/register", json={
+                "email": "quickfire.newbie@example.com", "password": "Password1$",
+                "username": "quickfirenewbie", "name": "Quick Fire Newbie",
+                "accepted_terms": True, "accepted_privacy": True,
+                "accepted_conditions": True, "age_confirmed_13": True}, timeout=20)
+            other = requests.post(f"{API}/auth/login",
+                                  json={"email": "quickfire.newbie@example.com",
+                                        "password": "Password1$"}, timeout=20)
+        tok = other.json()["access_token"]
+        r = requests.get(f"{API}/fire/wallet/stats/{uname}",
+                         headers={"Authorization": f"Bearer {tok}"}, timeout=20)
         assert r.status_code == 200, r.text[:200]
         d = r.json()
         assert d["enabled"] is True
@@ -441,8 +461,11 @@ class TestRegression:
         assert r.status_code in (200, 201), r.text[:200]
 
     def test_fire_ranked_feed_still_works(self):
+        tok = requests.post(f"{API}/auth/login",
+                            json={"email": "stealth", "password": "Password1$"},
+                            timeout=20).json()["access_token"]
         r = requests.get(f"{API}/posts?viewer=stealth&sort=fire&window=all&limit=10",
-                         timeout=30)
+                         headers={"Authorization": f"Bearer {tok}"}, timeout=30)
         assert r.status_code == 200
         posts = r.json().get("posts", [])
         assert isinstance(posts, list)
