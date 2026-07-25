@@ -2,8 +2,10 @@
 
 Gated order per founder instruction. After each increment: tests + evidence + completion report (33-point template in founder's Jul 25 message) + STOP for approval. No production deploys or migrations without explicit approval.
 
-## GATE 1 — Phase 1–2 approval ✅ evidence delivered Jul 25, 2026; awaiting founder approval phrase.
-Restore point: git tag `phase-1-2-media-rights-verified` @ 7af25cc (main).
+## GATE 1 — Phase 1–2 approval ✅ APPROVED Jul 25, 2026 ("APPROVE PHASES 1–2 AND BEGIN PHASE 3").
+Restore point: git tag `phase-1-2-media-rights-verified` @ 769b42b (main).
+
+## INCREMENT A / Phase 3 — Media Sound Selector ✅ BUILT + TESTED Jul 25, 2026 — completion report delivered, awaiting founder approval for the next increment.
 
 ## Planned increments (founder picks the next one explicitly)
 - **INCREMENT A — Media Sound Selector (original Phase 3)**: compact Sound browser (Music/Podcasts/FX, genre, mood, search, preview), attach eligible Sound to images/videos via can_reuse() + permission_snapshot(), replace original video audio, no-audio option, trim/volume/fade.

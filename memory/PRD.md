@@ -1,6 +1,28 @@
 # OurRealm — Product Requirements Document (PRD)
 
-## Media Studio Phases 1–2 — Video Audio Rights + Sound Reuse Permissions (Jul 25, 2026) ✅ COMPLETE (awaiting founder approval before Phase 3)
+## Phase 3 — Media Sound Selector (Jul 25, 2026) ✅ COMPLETE (awaiting founder approval for next increment)
+
+**Verified: 13/13 pytest (`test_phase3_sound_selector.py`) + 9/9 media-rights regression + testing-agent frontend E2E pass (iteration_90, desktop + mobile), screenshots taken.**
+
+### Backend
+- `GET /api/sounds/browse` — permission-gated Sound browser feed: `use_type` (image_posts|video_posts), `q` search, `category` (Music/Podcast/FX), `genre`, `mood`, `sort` (trending|newest), `tab` (all|saved|mine|recent), `include_facets` (distinct genres/moods). Each row carries `reuse_eligible` + badge ("Available for OurRealm Reuse" / "Playable Only").
+- `services/sound_attachments.py` — `browse_sounds`, `validate_attachment` (authoritative publication-time gate: deleted→410, private→410, moderation-blocked→410, suspended owner→410, not-enabled→403, all with "select another Sound" messaging), `sanitize_settings` (start/duration≤600s/volume 0–2/fades 0–10s/loop image-only), `attachment_doc` (frozen `permission_snapshot`), `record_recent_use` (`user_recent_sounds` collection).
+- `POST /api/posts` — accepts `sound_attachment` {track_id,start_seconds,duration_seconds,volume,fade_in,fade_out,loop} on image/video posts (revalidated + snapshotted server-side) and `client_token` (duplicate-publish idempotency: same author+token returns the existing post).
+- `POST /api/videos/{video_id}/replace-audio` — owner-only; revalidates Sound eligibility; creates a NEW derivative video: base video's VIDEO STREAM ONLY (`-map 0:v:0` — original audio structurally excluded) + Sound with trim/volume/fades; never overwrites base or private original; idempotent per (base, track, params) via `replace_params_hash`; derivative gets `audio_rights_status: replaced_with_ourrealm_sound` + `video_audio_rights` row with `rights_source: ourrealm_sound_reuse` + snapshot; mirrored to R2.
+
+### Frontend
+- `SoundAttachPicker.jsx` — compact modal browser (search, tabs Browse/Saved/My Sounds/Recently Used, category chips, trending/newest, genre/mood selects, preview play, eligibility badges, disabled Select for playable-only). Bottom-sheet on mobile, max-h 78vh.
+- `SoundAttachmentEditor.jsx` — start/segment/fades, volume (video), loop (image), segment preview, remove/replace.
+- `VideoUploadPicker.jsx` — "Replace with an OurRealm Sound" now live: pick sound → editor → upload muted base → auto replace-audio → publishes derivative; upload disabled until a Sound chosen in replace mode; Publish Muted remains DEFAULT; silent publish always possible.
+- `Feed.jsx` — image posts: "Add an OurRealm Sound" button after staging images; `client_token` per compose session; posts render `PostSoundBadge` (image: client-side segment playback honoring start/duration/loop; video: attribution chip "♪ title — @owner").
+
+### Demo data
+- Track `d22ef302256a4652a34d348a3dc65194` "Neon Realm Groove" (owner stealth, preset media_posts) kept as the eligible demo Sound.
+
+### Known pre-existing issue (NOT Phase 3)
+- `tests/test_video_upload.py` uses deleted legacy user testfriend1 → login 401 setup errors (fails identically on the phase-1-2 tag).
+
+## Media Studio Phases 1–2 — Video Audio Rights + Sound Reuse Permissions (Jul 25, 2026) ✅ APPROVED BY FOUNDER
 
 **Verified: 9/9 pytest (`test_media_rights.py`), live curl enforcement checks, desktop + mobile screenshots of the composer Audio Rights panel.**
 
