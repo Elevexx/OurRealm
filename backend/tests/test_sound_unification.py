@@ -125,8 +125,11 @@ def _cleanup_all(founder_token):
 
 # ---------- BACKEND TESTS ----------
 class TestClassifications:
-    def test_public_classifications(self):
-        r = requests.get(f"{BASE_URL}/api/sounds/classifications", timeout=15)
+    def test_public_classifications(self, member_token):
+        # Auth required since guest browsing removal (iter88) — anon gets 401.
+        anon = requests.get(f"{BASE_URL}/api/sounds/classifications", timeout=15)
+        assert anon.status_code == 401
+        r = requests.get(f"{BASE_URL}/api/sounds/classifications", headers=_h(member_token), timeout=15)
         assert r.status_code == 200
         rows = r.json()["classifications"]
         ids = {c["id"] for c in rows}

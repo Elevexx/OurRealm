@@ -954,18 +954,41 @@ async def sound_migration_rollback(body: SoundMigrationBody, current: CurrentUse
 @router.post("/admin/media-rights/dry-run")
 async def media_rights_dry_run(current: CurrentUser):
     _require_founder_sound(current)
-    from services.sound_permissions import migration_dry_run
-    return await migration_dry_run()
+    from services.sound_permissions import migration_dry_run, record_dry_run
+    report = await migration_dry_run()
+    await record_dry_run(current, report)
+    return report
+
+
+class MediaRightsExecuteBody(BaseModel):
+    confirmation_phrase: Optional[str] = None
+    target_environment: Optional[str] = None
+    reason: Optional[str] = None
 
 
 @router.post("/admin/media-rights/execute")
-async def media_rights_execute(body: SoundMigrationBody, current: CurrentUser):
+async def media_rights_execute(body: MediaRightsExecuteBody, current: CurrentUser):
+    """Multi-factor gate: founder identity + exact phrase + explicit
+    environment target + audit reason + a recent dry-run on record.
+    Idempotent — only touches records missing the new fields."""
     _require_founder_sound(current)
+    from services.sound_permissions import (MIGRATION_VERSION, current_environment,
+                                            has_recent_dry_run, migration_execute)
     if (body.confirmation_phrase or "").strip() != "APPLY MEDIA RIGHTS MIGRATION":
         raise HTTPException(status_code=400,
                             detail='Type "APPLY MEDIA RIGHTS MIGRATION" to confirm')
-    from services.sound_permissions import migration_execute
-    return await migration_execute()
+    env = current_environment()
+    if (body.target_environment or "").strip().lower() != env:
+        raise HTTPException(status_code=400,
+                            detail=f'target_environment must explicitly name this environment ("{env}")')
+    if not (body.reason or "").strip():
+        raise HTTPException(status_code=400, detail="An audit reason is required")
+    if not await has_recent_dry_run():
+        raise HTTPException(status_code=409,
+                            detail="Run /admin/media-rights/dry-run first (within 24h)")
+    return await migration_execute(executed_by=current, reason=body.reason.strip(),
+                                   target_environment=env,
+                                   migration_version=MIGRATION_VERSION)
 
 
 # ── Sound reuse permissions (Phase 2 — Where this Sound may be used) ────

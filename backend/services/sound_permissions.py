@@ -10,6 +10,7 @@ system (Phase 5+): new environment types map onto `future_environments`
 until given their own flag.
 """
 import logging
+import os
 from datetime import datetime, timezone
 
 from core.db import db
@@ -72,6 +73,32 @@ def permission_snapshot(track: dict) -> dict:
 
 
 # ── Migration (dry-run first; metadata-only, non-destructive) ─────────
+MIGRATION_VERSION = "media-rights-v1"
+
+
+def current_environment() -> str:
+    """production only when the prod domain is the configured frontend."""
+    frontend = os.environ.get("FRONTEND_URL", "")
+    return "production" if "ourrealm.social" in frontend else "preview"
+
+
+async def record_dry_run(current: dict, report: dict) -> None:
+    await db.media_rights_migration_log.insert_one({
+        **report, "migration_version": MIGRATION_VERSION,
+        "environment": current_environment(),
+        "run_by_id": current.get("id"), "run_by_username": current.get("username"),
+        "at": datetime.now(timezone.utc).isoformat()})
+
+
+async def has_recent_dry_run() -> bool:
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    row = await db.media_rights_migration_log.find_one(
+        {"mode": "dry_run", "at": {"$gte": cutoff},
+         "environment": current_environment()})
+    return row is not None
+
+
 async def migration_dry_run() -> dict:
     total = await db.tracks.count_documents({})
     missing_perms = await db.tracks.count_documents({"reuse_permissions": {"$exists": False}})
@@ -88,7 +115,8 @@ async def migration_dry_run() -> dict:
     }
 
 
-async def migration_execute() -> dict:
+async def migration_execute(executed_by: dict | None = None, reason: str = "",
+                            target_environment: str = "", migration_version: str = MIGRATION_VERSION) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     r1 = await db.tracks.update_many(
         {"reuse_permissions": {"$exists": False}},
@@ -101,7 +129,12 @@ async def migration_execute() -> dict:
         {"audio_rights_status": {"$exists": False}},
         {"$set": {"audio_rights_status": "legacy_confirmation_not_collected"}})
     report = {"mode": "execute", "sounds_defaulted_playable_only": r1.modified_count,
-              "videos_labeled_legacy": r2.modified_count, "executed_at": now}
+              "videos_labeled_legacy": r2.modified_count, "executed_at": now,
+              "migration_version": migration_version,
+              "environment": target_environment or current_environment(),
+              "reason": reason,
+              "executed_by_id": (executed_by or {}).get("id"),
+              "executed_by_username": (executed_by or {}).get("username")}
     await db.media_rights_migration_log.insert_one({**report})
     report.pop("_id", None)
     log.info(f"[media-rights-migration] {report}")
