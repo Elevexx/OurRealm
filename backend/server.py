@@ -312,6 +312,15 @@ async def on_startup():
         await hashtags_router_mod.recompute_hashtag_post_counts()
     except Exception as e:
         logger.warning(f"[hashtags] startup index/migration error: {e}")
+    # Sound unification — restart-safe automatic backfill: every legacy
+    # track gets its canonical post (+ hearts → 1× Fire) so all Sound
+    # posts carry the unified Fire Power control. Idempotent no-op when
+    # everything is already canonical.
+    try:
+        from services import sound_posts as _sp
+        await _sp.run_startup_migration()
+    except Exception as e:
+        logger.warning(f"[sound-migration] startup error: {e}")
     _mod_task = asyncio.create_task(_moderation_loop())
 
     # Fire Vault — background finalization (Pending → Collectable).

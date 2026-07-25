@@ -496,7 +496,7 @@ async def list_posts(
     # once.
     if media_type == "sound":
         try:
-            from routers.sounds import _can_view_track, _normalise_visibility
+            from routers.sounds import _can_view_track
             t_cursor = db.tracks.find({}, {"_id": 0}).sort("created_at", -1).limit(200)
             already = {p.get("id") for p in items if p.get("id")}
             # Canonical sound posts already carry the track — never merge
@@ -530,63 +530,29 @@ async def list_posts(
                      "is_canonical_sound": True}))
                 visible_tracks = [t for t in visible_tracks if t["id"] not in canon_ids]
 
-            # Batch-lookup artist info for any track row that doesn't
-            # carry the denormalised `artist_*` fields. Single round-trip.
-            missing_uids = list({
-                t.get("user_id") for t in visible_tracks
-                if t.get("user_id") and not t.get("artist_username")
-            })
-            user_map: dict[str, dict] = {}
-            if missing_uids:
-                async for u in db.users.find(
-                    {"id": {"$in": missing_uids}},
-                    {"_id": 0, "id": 1, "username": 1, "display_name": 1,
-                     "name": 1, "avatar_url": 1},
-                ):
-                    user_map[u["id"]] = u
-
-            track_posts = []
-            for t in visible_tracks:
-                tid = t["id"]
-                u  = user_map.get(t.get("user_id")) or {}
-                username = t.get("artist_username") or u.get("username")
-                track_posts.append({
-                    "id":              tid,
-                    # Backend serialiser writes `author_*` keys onto posts;
-                    # FeedCard reads from those exact keys, so the merged
-                    # track row mirrors the same shape.
-                    "author_id":       t.get("user_id"),
-                    "author_username": username,
-                    "author_name":     (t.get("artist_display_name") or u.get("display_name")
-                                        or u.get("name") or username),
-                    "author_avatar":   t.get("artist_avatar_url") or u.get("avatar_url"),
-                    "user_id":         t.get("user_id"),
-                    "username":        username,
-                    "name":            (t.get("artist_display_name") or u.get("display_name")
-                                        or u.get("name") or username),
-                    "avatar_url":      t.get("artist_avatar_url") or u.get("avatar_url"),
-                    "content":         t.get("title") or "",
-                    "media_type":      "sound",
-                    "sound_url":       t.get("file_url"),
-                    "media_url":       t.get("file_url"),
-                    "sound_title":     t.get("title"),
-                    "sound_cover_url": t.get("cover_url"),
-                    "cover_url":       t.get("cover_url"),
-                    "genre":           t.get("genre"),
-                    "mood":            t.get("mood"),
-                    "duration_seconds": t.get("duration_seconds"),
-                    "mime":            t.get("mime"),
-                    "visibility":      _normalise_visibility(t.get("visibility")),
-                    "created_at":      t.get("created_at"),
-                    "likes":           int(t.get("likes") or 0),
-                    "comments":        0,
-                    "liked":           bool(viewer_id and viewer_id in (t.get("liked_by") or [])),
-                    "is_owner":        bool(viewer_id and viewer_id == t.get("user_id")),
-                    "is_sound_track":  True,
-                    "track_id":        tid,
-                })
-            if track_posts:
-                items.extend(track_posts)
+            # Any straggler here has NO canonical post (legacy row that
+            # pre-dates unification, or an abandoned deferred upload).
+            # Heal it on the spot — backfill_canonical_for_track is
+            # idempotent per track — so EVERY Sound in the feed is a
+            # canonical post carrying the unified Fire Power control.
+            # Raw track rows (is_sound_track) are never injected anymore.
+            healed: list[dict] = []
+            if visible_tracks:
+                from services import sound_posts as sp
+                for t in visible_tracks:
+                    try:
+                        p, _ = await sp.backfill_canonical_for_track(t, source="feed_heal")
+                        healed.append(p)
+                    except Exception as e:
+                        log.warning(f"[sounds-feed-merge] heal failed for {t.get('id')}: {e}")
+            if healed:
+                try:
+                    from services.fire_power import get_fire_flags, attach_fire
+                    if (await get_fire_flags()).get("fire_reactions"):
+                        await attach_fire(healed, viewer_id)
+                except Exception as e:
+                    log.warning(f"[sounds-feed-merge] attach_fire failed: {e}")
+                items.extend(_public_post(p, viewer_id=viewer_id) for p in healed)
                 def _ts(p):
                     v = p.get("created_at")
                     if isinstance(v, datetime):

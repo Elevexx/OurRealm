@@ -1,0 +1,33 @@
+{
+  "summary": "Verified the Sound → Fire migration for the legacy 'Calling in The City' post (canonical post d7e3d36d-ce28-49c5-96b5-4c60d2445174, track e8e5aa8b39454b23b044f314411d3bb4, owner @auditcheckreal). Backend: 4/4 API tests pass — no raw is_sound_track rows in the sound feed, exactly one canonical post for Calling in The City with fire_total>=1, GET /api/fire/post/{id} returns my_fire=1 for stealth, POST /api/fire/react cycles 1→3→1 successfully with wallet pool charge on boost and refund on reduce. Frontend: On /feed with Sounds filter — the post renders ONCE, shows FireButton (feed-fire-<postid>-btn / -total / -boost-open) with total=1 and NO feed-like-* testids on that card. Fire picker (my_fire>0) opens on tap, quick buttons and slider work, boosted to 3× (Send 3× 🔥) → total updated to 3 and my_multiplier '×3' immediately, persisted after reload. State restored back to 1× via API to leave the verification artifact clean. /sounds page uses FireButton on every track card (sounds-fire-*) and has ZERO sounds-like-* testids anywhere, confirming the Sound tracks no longer show the old heart control. Profile /profile/auditcheckreal loads but does not list individual sound tracks (skipped per guidance). Non-sound posts on /feed still show FireButton for public posts and feed-like-* for friends-only posts (regression clean).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "PostPopup for canonical sound post", "issue": "Could not verify PostPopup / post-popup-fire testid — feed sound cards ([data-testid=\"feed-sound-<postId>\"]) contain no clickable element that opens a PostPopup, and direct navigation to /post/<id> redirects back to /feed (no such route). Only the -audio child testid exists inside the card. If PostPopup should be reachable from a Sound feed card, add an open-detail affordance (clickable title/thumbnail or a dedicated /post/:id route) so that post-popup-fire renders as required by the review criterion.", "affected_selectors": ["feed-sound-d7e3d36d-ce28-49c5-96b5-4c60d2445174", "post-popup-fire"]},
+      {"flow": "Sounds page discovery of Calling in The City", "issue": "On /sounds (Music tab, Top 100, All genres, radius Any), the legacy migrated track 'Calling in The City' does NOT appear in Featured / Made for You / Top 100 lists, and searching the title yields 'No Music tracks here yet'. The reviewer requirement 'Sounds page — Calling in The City track card must render FireButton' cannot be positively verified because the track isn't surfaced. All OTHER tracks that DO appear on /sounds render sounds-fire-* correctly and there are ZERO sounds-like-* testids on the page, so the FireButton wiring itself is verified — but discovery/indexing of the legacy track into /sounds charts seems missing (likely genre/mood metadata or chart-eligibility filter excluding it).", "affected_selectors": ["sounds-fire-e8e5aa8b39454b23b044f314411d3bb4"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sound_fire_frontend_review.py",
+    "/app/backend/tests/test_sound_fire_migration.py"
+  ],
+  "action_items": [
+    "Add a way to open PostPopup for a Sound feed card (either make the sound card body clickable to open PostPopup, or expose a /post/:id route). Currently the review criterion 'PostPopup must show FireButton (post-popup-fire...)' cannot be verified because no post-popup-* testids ever appear from the Calling in The City card.",
+    "Investigate why the migrated legacy sound 'Calling in The City' does not appear on /sounds (Featured/Made-for-You/Top 100 nor via title search). Ensure the canonical sound backfill also populates whatever chart/genre index /sounds queries, or explicitly include is_canonical_sound tracks in the Sounds page listings."
+  ],
+  "critical_code_review_comments": [
+    "Feed cards for sounds have no clickable affordance to reach PostPopup — the card [data-testid=feed-sound-<postId>] only wraps the audio player and metadata; UX-wise, consumers can never see the full-post view (comments, share, boost) for a sound post via popup.",
+    "/sounds discovery pipeline appears independent of the sound_posts backfill: newly canonicalized legacy tracks are visible in /feed?media_type=sound but not in the /sounds Music charts. Consider unifying the data source or explicitly indexing canonical sound posts into the Sounds page query.",
+    "401 errors flood the browser console on every page load (Failed to load resource: 401). Even authenticated pages emit dozens of 401s — investigate service worker / preflight auth on optional endpoints; noisy console makes real errors harder to spot."
+  ],
+  "updated_files": ["/app/backend/tests/test_sound_fire_frontend_review.py"],
+  "success_rate": {"backend": "100%", "frontend": "80%"},
+  "test_credentials": "stealth / Password1$ (founder), auditcheckreal / Password1$ (member)",
+  "seed_data_creation": "None. Boosted Calling in The City to 3× via frontend, then restored to 1× via /api/fire/react to leave the verification artifact intact (stealth: my_fire=1, fire_total=1 confirmed).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend fire+sound migration is solid — test_sound_fire_migration.py (7/7) and test_sound_fire_frontend_review.py (4/4) both pass. Two frontend gaps remain: (1) no PostPopup opener from sound feed card / no /post/:id route so post-popup-fire cannot be exercised; (2) 'Calling in The City' isn't listed on /sounds page charts or via search though its canonical post exists. Restored stealth's fire on the target post back to 1×.",
+  "rca of the issue": "Both frontend gaps stem from wiring omissions rather than logic bugs. PostPopup: sound feed cards were converted from 'audio+minimal metadata' to include a FireButton, but no onClick handler / <Link> was added to open the full post view. Sounds page: /sounds queries the tracks charts pipeline, which is populated at upload time; the migration script backfilled canonical posts but did not re-emit chart entries for legacy tracks."
+}

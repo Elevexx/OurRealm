@@ -782,7 +782,7 @@ function FeedCard({ p, fireStatus, onPostDeleted, onPostUpdated }) {
       )}
       {p.poll && <PollDisplay post={p} />}
       <footer className="flex gap-5 text-sm" style={{ color: "var(--text-muted)" }}>
-        {fireStatus?.enabled && ((p.audience?.visibility || "public") === "public") && !p.is_sound_track ? (
+        {fireStatus?.enabled && ((p.audience?.visibility || "public") === "public") ? (
           <FireButton
             post={p}
             fireStatus={fireStatus}
