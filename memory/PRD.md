@@ -16,7 +16,8 @@
 - `services/sound_permissions.py`: 9 reuse flags (image_posts, video_posts, personal/group/community_realm, portal, nexus_district, world, future_environments), presets (playable_only / media_posts / realm_soundscapes / everywhere / custom), `can_reuse()` server gate, `permission_snapshot()` (frozen copy per use).
 - `GET/PATCH /api/sounds/{id}/reuse-permissions` — owner or founder only (others 403).
 - Migration (metadata-only, non-destructive): sounds missing perms → `playable_only`; historical videos → labeled `legacy_confirmation_not_collected` (files NEVER touched, never auto-muted).
-- **Startup is DRY-RUN ONLY** (logs totals). Execution requires founder endpoint `POST /api/sounds/admin/media-rights/execute` with phrase `APPLY MEDIA RIGHTS MIGRATION`, or env `MEDIA_RIGHTS_MIGRATION_AUTORUN=true`. Dry-run endpoint: `POST /api/sounds/admin/media-rights/dry-run` (founder).
+- **Startup is DRY-RUN ONLY** (logs totals). Execution requires founder endpoint `POST /api/sounds/admin/media-rights/execute` with: exact phrase `APPLY MEDIA RIGHTS MIGRATION` + `target_environment` matching the server's own environment (derived from FRONTEND_URL: ourrealm.social ⇒ "production", else "preview") + non-empty audit `reason` + a dry-run on record within 24h (dry-runs are logged to `media_rights_migration_log` with runner identity). Execute records migration_version `media-rights-v1`, environment, reason, executor. Idempotent (verified: second execute modified 0 records).
+- Git restore point: annotated tag **`phase-1-2-media-rights-verified`** → commit `7af25cc` on `main`.
 - NOTE: preview DB migration already executed on 2026-07-25 (6 sounds → playable_only, 6 videos → legacy label) via the pre-gating startup hook. Production has NOT been migrated (no deploy). Log collection: `media_rights_migration_log`.
 
 ### Files
