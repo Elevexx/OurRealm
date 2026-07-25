@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, Globe2, Users as UsersIcon, Wallet, DollarSign, BadgeCheck, Camera, MapPin, Radar, Trash2 } from "lucide-react";
+import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, Globe2, Users as UsersIcon, Wallet, DollarSign, BadgeCheck, Camera, MapPin, Radar, Trash2, ListMusic } from "lucide-react";
+import ManagePlaylistsTab from "@/components/ManagePlaylistsTab";
 import apiClient from "@/api/client";
 import VipBadge from "@/components/VipBadge";
 import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPicker";
@@ -25,6 +26,7 @@ import AdminSettingsTab from "@/components/AdminSettingsTab";
 // ship. Routes/backend remain untouched.
 const TABS_BASE = [
   { id: "account",  label: "Account",     Icon: UserCog },
+  { id: "playlists", label: "Sound Playlists", Icon: ListMusic },
   { id: "privacy",  label: "Privacy",     Icon: ShieldCheck },
 ];
 
@@ -329,6 +331,8 @@ export default function AccountSettings() {
       {tab === "admin" && <AdminSettingsTab />}
 
       {/* PRIVACY */}
+      {tab === "playlists" && <ManagePlaylistsTab />}
+
       {tab === "privacy" && (
         <div className="space-y-2" data-testid="tab-privacy">
           {[

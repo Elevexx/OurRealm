@@ -7,6 +7,10 @@ REFRESH_TOKEN_DAYS = 30
 LOCKOUT_THRESHOLD = 5
 LOCKOUT_MINUTES = 15
 
+# Personal Sound playlists (Bundle 1) — env-overridable limits
+MAX_PLAYLISTS_PER_USER = int(os.environ.get("MAX_PLAYLISTS_PER_USER", "50"))
+MAX_TRACKS_PER_PLAYLIST = int(os.environ.get("MAX_TRACKS_PER_PLAYLIST", "500"))
+
 # Founder account
 FOUNDER_EMAIL = "slopestyle2022@gmail.com"
 FOUNDER_USERNAME = "stealth"

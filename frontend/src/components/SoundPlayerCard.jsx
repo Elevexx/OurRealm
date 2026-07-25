@@ -14,8 +14,10 @@
  *   when any SoundPlayerCard starts playing it pauses all the others.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { Music2, AlertCircle } from "lucide-react";
+import { Music2, AlertCircle, ListPlus } from "lucide-react";
 import { resolveMediaUrl, isPlayableMediaUrl, probeMediaUrl, markMediaUrlBroken } from "@/lib/mediaUrl";
+import SoundFireControl from "@/components/SoundFireControl";
+import AddToPlaylistPopup from "@/components/AddToPlaylistPopup";
 
 const activeAudios = new Set();   // <audio> elements that have ever played
 function pauseOthers(current) {
@@ -49,6 +51,8 @@ export default function SoundPlayerCard({ post, testid }) {
   const audioRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
+  const [playlistOpen, setPlaylistOpen] = useState(false);
+  const tid = testid || "feed-sound-card";
   // Prefer the explicit sound url; only fall back to `media_url` when
   // the parent post is genuinely a sound post AND `media_url` isn't an
   // image / generic URL. This stops seed posts that carry an Unsplash
@@ -165,8 +169,27 @@ export default function SoundPlayerCard({ post, testid }) {
         }}
         className="w-full"
         style={{ display: "block", width: "100%" }}
-        data-testid={`${testid || "feed-sound-card"}-audio`}
+        data-testid={`${tid}-audio`}
       />
+      {post?.sound_track_id && (
+        <div className="flex items-center justify-end gap-1 px-2 py-1.5"
+          style={{ borderTop: "1px solid var(--border-col)" }}
+          data-testid={`${tid}-actions`}>
+          <button
+            onClick={() => setPlaylistOpen(true)}
+            className="starbar-icon"
+            style={{ width: 32, height: 32, color: "var(--text-muted)" }}
+            data-testid={`${tid}-add-playlist`}
+            aria-label="Add to playlist"
+            title="Add to playlist"
+          >
+            <ListPlus size={14} />
+          </button>
+          <SoundFireControl trackId={post.sound_track_id} testidPrefix={`${tid}-fire`} />
+          <AddToPlaylistPopup open={playlistOpen} trackId={post.sound_track_id}
+            onClose={() => setPlaylistOpen(false)} testid={`${tid}-playlist-popup`} />
+        </div>
+      )}
     </div>
   );
 }

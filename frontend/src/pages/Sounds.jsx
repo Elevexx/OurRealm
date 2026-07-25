@@ -8,7 +8,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import useHeartbeat from "@/hooks/useHeartbeat";
 import {
   Play, Heart, Plus, ChevronDown, ChevronLeft, ChevronRight,
-  Music as MusicIcon, Mic, Sparkles, Wand2, Disc3, Loader2, Upload, Send, Search,
+  Music as MusicIcon, Mic, Sparkles, Wand2, Disc3, Loader2, Upload, Send, Search, ListPlus,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,6 +22,7 @@ import { play as playerPlay, formatTime } from "@/lib/audioPlayer";
 import { TRENDING_TRACKS } from "@/data/mockData";
 import FireButton from "@/components/fire/FireButton";
 import { useFireStatus } from "@/lib/fireApi";
+import AddToPlaylistPopup from "@/components/AddToPlaylistPopup";
 
 // Tabs — unique color + icon per spec
 const TABS = [
@@ -566,6 +567,7 @@ function FeaturedCard({ t, onPlay, testid }) {
 }
 
 function TrackCard({ t, user, fireStatus, onPlay, onLike, onShare, onUpdated, onDeleted }) {
+  const [playlistOpen, setPlaylistOpen] = useState(false);
   const cover = t.cover_url || t.cover || null;
   const firePost = t.post && fireStatus?.enabled
     && ((t.post.audience?.visibility || "public") === "public") ? t.post : null;
@@ -623,6 +625,18 @@ function TrackCard({ t, user, fireStatus, onPlay, onLike, onShare, onUpdated, on
           onDeleted={onDeleted}
           testid={`sound-manage-${t.id}`}
         />
+        <button
+          onClick={() => setPlaylistOpen(true)}
+          className="starbar-icon"
+          style={{ width: 36, height: 36, color: "var(--text-muted)" }}
+          data-testid={`sounds-add-playlist-${t.id}`}
+          aria-label="Add to playlist"
+          title="Add to playlist"
+        >
+          <ListPlus size={16} />
+        </button>
+        <AddToPlaylistPopup open={playlistOpen} trackId={t.id}
+          onClose={() => setPlaylistOpen(false)} testid={`sounds-playlist-popup-${t.id}`} />
         {firePost ? (
           <FireButton
             post={firePost}

@@ -1,10 +1,12 @@
 // Global sticky mini-player. Renders only when a track is loaded.
 // Sits above the bottom nav. Tap the title to expand details (TODO P1).
 import React, { useEffect, useState } from "react";
-import { Play, Pause, X, Loader2, Volume2 } from "lucide-react";
+import { Play, Pause, X, Loader2, Volume2, ListPlus } from "lucide-react";
 import {
   subscribe, toggle, seek, stop, setVolume, formatTime,
 } from "@/lib/audioPlayer";
+import SoundFireControl from "@/components/SoundFireControl";
+import AddToPlaylistPopup from "@/components/AddToPlaylistPopup";
 
 const BACKEND = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
 function abs(u) {
@@ -16,6 +18,7 @@ function abs(u) {
 
 export default function MiniPlayer() {
   const [s, setS] = useState(null);
+  const [playlistOpen, setPlaylistOpen] = useState(false);
   useEffect(() => subscribe(setS), []);
   if (!s?.track) return null;
   const t = s.track;
@@ -91,6 +94,19 @@ export default function MiniPlayer() {
           {/* fallback non-fancy progress for browsers without input[type=range] styles */}
           <div className="sr-only">progress {progress.toFixed(0)}%</div>
         </div>
+        <SoundFireControl trackId={t.id} testidPrefix="mini-fire" />
+        <button
+          onClick={() => setPlaylistOpen(true)}
+          className="starbar-icon shrink-0"
+          style={{ width: 32, height: 32, color: "var(--text-muted)" }}
+          data-testid="mini-add-playlist"
+          aria-label="Add to playlist"
+          title="Add to playlist"
+        >
+          <ListPlus size={15} />
+        </button>
+        <AddToPlaylistPopup open={playlistOpen} trackId={t.id}
+          onClose={() => setPlaylistOpen(false)} testid="mini-playlist-popup" />
         <button
           onClick={() => toggle()}
           className="starbar-icon shrink-0"

@@ -1,0 +1,44 @@
+{
+  "summary": "Bundle 1 (Personal Sound Playlists + Sound-Player Fire + AddToPlaylistPopup + Account Settings tab) frontend E2E tested on desktop (1440x900) and mobile (390x844) as founder stealth. Found & FIXED one CRITICAL blocker: /app/frontend/src/pages/Sounds.jsx was missing imports for `ListPlus` (lucide icon used in the new sounds-add-playlist button) and `AddToPlaylistPopup` component — this crashed the entire Sounds page with an uncaught 'ListPlus is not defined' ReferenceError in TrackCard, rendering 0 track cards on /sounds. After adding the two missing imports, /sounds renders 7 tracks and all Bundle 1 flows pass. Verified: (1) sounds-track-{id} cards render with sounds-add-playlist-{id} and sounds-fire-{id}-btn present. Fire button shows current total (1 for track e8e5...) and opens the shared Quick Fire sheet (sounds-fire-{id}-quick) on click. Send button correctly disables when at current level with the 'Current: Nx' state (as designed in Increment B). (2) AddToPlaylistPopup opens as sounds-playlist-popup-{id} — no visibility toggle anywhere ([data-testid*=visibility] returns None); quick-create via -new-name + -create builds a new playlist and auto-adds the sound (row aria-pressed=true, green check icon rendered). Toggling the row removes then re-adds the sound (aria-pressed flips true→false→true, backend calls succeed). (3) MiniPlayer appears after clicking sounds-play-{id}; renders mini-fire-btn (with mini-fire-total='1' matching the /sounds card's fire total — SAME canonical post confirmed) and mini-add-playlist opening mini-playlist-popup with the same playlists visible. (4) Account Settings /settings/account → 'Sound Playlists' tab (data-testid tab-playlists) lists owned playlists with counts; playlist-open-{id} expands detail; rename input (playlist-rename-{id}), duration row, item row with playlist-item-up/down/remove-{trackId} all render. playlist-delete-{id} → playlist-delete-yes-{id} inline confirm deletes cleanly. No visibility/duplicate/archive controls. (5) Playlist sync verified: creating from /sounds popup, playlist appears in Account Settings with 1 sound = Calling in The City. (6) Mobile 390x844: sounds card width=366 (no overflow), AddToPlaylistPopup renders as bottom sheet (y=670, h=174, flush to bottom edge 844), mini-player width=390 = clientWidth (no horizontal overflow), Account Settings playlists tab usable, playlist detail readable. (7) Regression: home feed still has 48 feed-fire-* buttons, quick fire dialog opens on click; composer/publish unaffected. (8) SoundPlayerCard footer add-playlist/fire-only-when-sound_track_id NOT tested because current feed contains no posts with sound_track_id — no seed data available. Code-inspected SoundPlayerCard.jsx integration and confirmed the conditional render. Console: only pre-existing 401/404 asset probes documented in prior iterations — no NEW errors after the import fix.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/screenshots_iter92/desktop_sounds.png",
+    "/app/test_reports/screenshots_iter92/desktop_popup.png",
+    "/app/test_reports/screenshots_iter92/desktop_quickfire.png",
+    "/app/test_reports/screenshots_iter92/desktop_miniplayer.png",
+    "/app/test_reports/screenshots_iter92/desktop_settings_playlists.png",
+    "/app/test_reports/screenshots_iter92/desktop_playlist_detail.png",
+    "/app/test_reports/screenshots_iter92/mobile_sounds.png",
+    "/app/test_reports/screenshots_iter92/mobile_popup.png",
+    "/app/test_reports/screenshots_iter92/mobile_miniplayer.png",
+    "/app/test_reports/screenshots_iter92/mobile_playlists.png",
+    "/app/test_reports/screenshots_iter92/mobile_playlist_detail.png"
+  ],
+  "action_items": [
+    "CRITICAL BUG WAS FIXED BY TESTING AGENT: /app/frontend/src/pages/Sounds.jsx was missing `ListPlus` import from lucide-react AND `AddToPlaylistPopup` import. This crashed the entire Sounds page. E1 should verify the fix in git diff — added `ListPlus` to the lucide-react import list on line 10-12 and added `import AddToPlaylistPopup from \"@/components/AddToPlaylistPopup\";` after the FireButton import.",
+    "OPTIONAL: seed at least one post with sound_track_id in the home feed so SoundPlayerCard footer (add-playlist + fire) can be end-to-end verified in a future run. Currently there are 0 such posts on the preview backend.",
+    "OPTIONAL: consider a lint/typecheck step in CI to catch missing imports like this before deploy — the bug would have been caught by any ESLint `no-undef` run against the file."
+  ],
+  "critical_code_review_comments": [
+    "Sounds.jsx TrackCard used `<ListPlus>` and `<AddToPlaylistPopup>` without importing them — pure runtime crash caught only when a real track rendered. Suggest wiring `eslint --max-warnings=0` (or at least `no-undef`) into the frontend pre-commit / CI step so this class of bug is impossible.",
+    "AddToPlaylistPopup.jsx line 61: backdrop onClick calls stopPropagation THEN onClose — the stopPropagation is redundant on the outer div (nothing above it listens) but the pattern is fine. However clicking the input, buttons, or list also triggers e.stopPropagation on the inner or-surface, so backdrop-close only fires on actual backdrop clicks — good.",
+    "SoundFireControl.jsx: module-level `cache = new Map()` keyed by trackId is never invalidated. If a canonical-post ID ever changes (e.g., admin remaps a track's post) the cached promise will keep serving the old post ID for the lifetime of the tab. Low risk today but worth noting for later.",
+    "ManagePlaylistsTab.jsx: `rename` calls `apiClient.patch` on blur without debounce — rapid blur/refocus could enqueue duplicate PATCHes. Currently guarded by the `defaultValue` check `!== pl.name`, which is fine for now.",
+    "Sounds.jsx TrackCard action row: on 390px width the row shows share + manage + add-playlist + fire icons. Card width 366px accommodates them but with tight spacing. If more icons are added in the future the row will need to wrap or truncate. Acceptable today."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/Sounds.jsx (added missing `ListPlus` to lucide-react import and added `import AddToPlaylistPopup from \"@/components/AddToPlaylistPopup\";`)"
+  ],
+  "success_rate": {"backend": "skipped per request (pytest 18/18 already green)", "frontend": "9/9 flows verified after fixing 1 blocker; SoundPlayerCard-in-feed flow not verifiable (no seed post has sound_track_id)"},
+  "test_credentials": "stealth / Password1$ (used).",
+  "seed_data_creation": "Created one playlist 'TEST_iter92_226561' with 1 sound (Calling in The City) during flow verification. Cleaned up at end — final state: 'No playlists yet.' for stealth. No lingering test data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Bundle 1 testids in use: sounds-track-{id}, sounds-add-playlist-{id}, sounds-fire-{id}-btn / -total / -quick / -quick-send, sounds-playlist-popup-{id} + -new-name / -create / -close / -row-{plid}. Mini player: mini-player, mini-fire-btn / mini-fire-total, mini-add-playlist, mini-playlist-popup + -row-{plid} / -close. Account settings: account-tab-playlists (button), tab-playlists (panel), playlists-new-name / playlists-create, playlist-card-{id}, playlist-open-{id}, playlist-delete-{id} / -delete-yes-{id} / -delete-no-{id}, playlist-detail-{id}, playlist-rename-{id}, playlist-item-{plid}-{tid}, playlist-item-up-{tid} / -down-{tid} / -remove-{tid}. Home feed sound-post case NOT tested — no post with sound_track_id in current preview backend seed. If you need to verify SoundPlayerCard footer, ask E1 to seed a post first (or you may use the composer to attach a Sound to a new post).",
+  "rca of the issue": "Root cause of the /sounds crash: When Bundle 1 added an 'Add to Playlist' button to TrackCard, the developer added `<ListPlus size={16} />` and `<AddToPlaylistPopup .../>` inside TrackCard's JSX but forgot to add `ListPlus` to the `import { ... } from 'lucide-react'` list (lines 10-12) and forgot to add the `import AddToPlaylistPopup from '@/components/AddToPlaylistPopup';` line. React only evaluates the JSX when TrackCard actually renders, so the crash only manifested on `/sounds` (not visible in a build-succeeded log). Reproduction: log in as any user, navigate to /sounds — the React error overlay 'Uncaught runtime error: ListPlus is not defined at TrackCard' pops immediately and 0 track cards render. Mitigation applied by testing agent: added both missing imports at the top of Sounds.jsx (see updated_files). Verified fix: /sounds now renders 7 track cards with the expected sounds-add-playlist-{id} and sounds-fire-{id}-btn testids, and all Bundle 1 flows pass. Prevention: add an ESLint `no-undef` rule to CI so this can never ship again."
+}

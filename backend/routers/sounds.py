@@ -992,6 +992,21 @@ async def media_rights_execute(body: MediaRightsExecuteBody, current: CurrentUse
 
 
 # ── Phase 3 — Media Sound Selector: browse Sounds for attachment ────────
+@router.get("/{track_id}/canonical-post")
+async def canonical_post_for_fire(track_id: str, current: CurrentUser):
+    """Resolve a track's ONE canonical post for Sound-player Fire.
+    Never creates duplicates — returns the existing canonical record."""
+    from services.sound_posts import canonical_post_for_track
+    from services.fire_power import post_fire_state
+    post = await canonical_post_for_track(track_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="No canonical post for this Sound")
+    state = await post_fire_state(post["id"], current["id"])
+    return {"post": {"id": post["id"], "audience": post.get("audience"),
+                     "fire_total": state["fire_total"], "my_fire": state["my_fire"],
+                     "sound_track_id": track_id}}
+
+
 @router.get("/browse")
 async def browse_sounds_for_attachment(
     current: CurrentUser,

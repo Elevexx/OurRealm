@@ -30,6 +30,7 @@ from routers import videos as videos_router_mod
 from routers import moderation as moderation_router_mod
 from routers import threads as threads_router_mod
 from routers import sounds as sounds_router_mod
+from routers import playlists as playlists_router_mod
 from routers import phase5 as phase5_router_mod
 from routers import tickets as tickets_router_mod
 from routers import ticket_categories as ticket_categories_router_mod
@@ -91,6 +92,7 @@ app.include_router(videos_router_mod.router)
 app.include_router(moderation_router_mod.router)
 app.include_router(threads_router_mod.router)
 app.include_router(sounds_router_mod.router)
+app.include_router(playlists_router_mod.router)
 app.include_router(phase5_router_mod.router)
 app.include_router(tickets_router_mod.router)
 app.include_router(ticket_categories_router_mod.router)
