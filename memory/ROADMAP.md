@@ -39,3 +39,6 @@ Belongs to Sound Admin / Copyright Tool / moderation / support-ticket / audit ph
 - Idempotency on all mutations (Fire, publish, playlists, migrations, notifications, accounting).
 - Testing requirements per founder's §20 (Quick Fire, Sound-player Fire, Playlists, Admin, device/browser matrix; simulated-viewport testing labeled separately from real-device).
 - Backlog also: JWT_SECRET rotation (P2), CORS scoping (P2), mini profile hover-card (P2).
+
+## STATUS UPDATE (Jul 25, 2026)
+- INCREMENT C (Sound-Player Fire on existing surfaces: Sounds page, feed SoundPlayerCard, MiniPlayer) + INCREMENT D core (Personal Playlist Foundation, private-only, approved trimmed scope: CRUD + add/remove/reorder + limits 50/500 in config + Account Settings tab + Add-to-Playlist popup everywhere) = **BUNDLE 1 COMPLETE & TESTED** (tests/test_playlists_bundle1.py 18/18; frontend iteration_92.json 9/9). Deferred by user from Increment D: artwork, visibility, archive/restore, default, realm connect, loop/shuffle/start, usage view. Awaiting user approval before Bundle 2 (Increments E/F/G — admin sounds center, taxonomy, copyright tool).
