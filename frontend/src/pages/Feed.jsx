@@ -266,42 +266,6 @@ export default function Feed() {
         </button>
       </div>
 
-      {/* New order (Feb 20, 2026): Customize → Radius → Trending
-          Hashtags → Media Type bar → Feed. Lets users pick their
-          location radius, glance at trending tags, then filter by
-          media type just before the feed renders. */}
-
-      {/* Phase-2 — Radius filter chips. Filters server posts by author
-          location within `radius` miles of the viewer's ZIP. Default Any. */}
-      <div className="mt-3 flex items-center gap-2 overflow-x-auto no-scrollbar" data-testid="feed-radius-bar">
-        <span className="text-[11px] uppercase tracking-wider shrink-0" style={{ color: "var(--text-muted)" }}>Radius</span>
-        {RADIUS_OPTIONS.map(({ id, label }) => (
-          <button
-            key={id}
-            type="button"
-            className="or-chip shrink-0"
-            data-active={radius === id}
-            onClick={() => {
-              if (id !== "any" && !user?.zip_code) { setZipRequiredOpen(true); return; }
-              setRadius(id);
-            }}
-            data-testid={`feed-radius-${id}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <TrendingHashtags />
-
-      {/* Media type bar — sits between Trending Hashtags and the
-          composer so users can refine the feed by content type after
-          glancing at trends. Icon-only on mobile (handled inside the
-          MediaTypeBar component itself). The For You page uses Polls
-          as the 6th filter chip (Next arrow is reserved for Customize
-          Feed / Home onboarding only). */}
-      <MediaTypeBar value={media} onChange={setMedia} trailing="poll" />
-
       {/* Composer */}
       <div className="or-surface p-4 mt-4" data-testid="feed-composer">
         <div className="flex gap-3">
@@ -544,6 +508,36 @@ export default function Feed() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* New order: Composer → Media Type bar → Trending Hashtags →
+          Radius → Latest/Top Fire → Feed. Layout-only — all behavior
+          unchanged. */}
+      <div className="mt-4">
+        <MediaTypeBar value={media} onChange={setMedia} trailing="poll" />
+      </div>
+
+      <TrendingHashtags />
+
+      {/* Phase-2 — Radius filter chips. Filters server posts by author
+          location within `radius` miles of the viewer's ZIP. Default Any. */}
+      <div className="mt-3 flex items-center gap-2 overflow-x-auto no-scrollbar" data-testid="feed-radius-bar">
+        <span className="text-[11px] uppercase tracking-wider shrink-0" style={{ color: "var(--text-muted)" }}>Radius</span>
+        {RADIUS_OPTIONS.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            className="or-chip shrink-0"
+            data-active={radius === id}
+            onClick={() => {
+              if (id !== "any" && !user?.zip_code) { setZipRequiredOpen(true); return; }
+              setRadius(id);
+            }}
+            data-testid={`feed-radius-${id}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="mt-5 space-y-4">

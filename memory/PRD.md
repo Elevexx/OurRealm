@@ -2879,3 +2879,6 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 - **Seed defaults updated** (progression/seed.py): fresh installs seed Fire tasks + inner_realm_complete.
 - **First-run report (preview)**: 42 tasks audited, 6 like→fire conversions, 1 inner realm repointed, 6 renamed, 4 placeholder tasks archived, 12 snapshot tasks converted, 123 users scanned, 119 repaired, 0 failed, 0 errors. Second run = clean no-op (idempotent). Stealth verified: Join 3 Realms 3/3 ✓, Inner Realm 8/8 ✓, "Receive 100 Fire Power" 15/100 live.
 - Tests: /app/backend/tests/test_progression_repair.py (7/7).
+
+## July 25, 2026 — Feed layout reorder (layout-only, verified via screenshots desktop+mobile)
+- Feed.jsx order now: Composer → MediaTypeBar → TrendingHashtags → Radius chips → Latest/Top Fire → posts. Single MediaTypeBar instance; no behavior changes.
