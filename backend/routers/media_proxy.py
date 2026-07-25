@@ -69,6 +69,10 @@ def _safe_filename(name: str) -> str:
     slashes, no `..`, no NULs."""
     if not name or "/" in name or "\\" in name or ".." in name or "\x00" in name:
         raise HTTPException(status_code=400, detail="Invalid filename")
+    # Private pre-mute originals (`<id>.orig.<ext>`) are local-only rights
+    # evidence — never publicly servable through any route.
+    if ".orig." in name:
+        raise HTTPException(status_code=400, detail="Invalid filename")
     return name
 
 
