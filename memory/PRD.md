@@ -1,6 +1,23 @@
 # OurRealm — Product Requirements Document (PRD)
 
-## Phase 3 — Media Sound Selector (Jul 25, 2026) ✅ COMPLETE (awaiting founder approval for next increment)
+## Increment B — Quick Fire Foundation (Jul 25, 2026) ✅ COMPLETE (awaiting founder approval for next increment)
+
+**Verified: 10/10 new pytest (`test_quick_fire.py`) + full fire regression green (phase06 19/19, vault 21/21, fire_up 11/11, widget) + testing-agent E2E pass (iteration_91, all 13 checkpoints, desktop + mobile + newbie).**
+
+### Behavior
+- Main Fire button on EVERY post surface now ALWAYS opens the compact **QuickFireSheet** — never sends immediately (all levels/states). Chevron beside it (aria-label "Open full Fire Power controls") opens the existing full picker. Only one sheet open at a time; quick→full switch button inside the sheet.
+- Quick sheet: slider default 1🔥 (init to current when reaction exists), "Send X🔥" confirm (disabled + "Current: X×" when unchanged), Remove chip, meta line (Level max / Up to X now / boost left / Current), Newbie fixed visible 1× slider with note. Nothing sent on open/slide/close/Escape/backdrop.
+- **Server-authoritative range**: `GET /api/fire/quick-state/{post_id}` (`fire_power.quick_state()`) — same engine as react(): level max, pool available, reserved-for-reaction, finalized/edit-deadline, fire-paused, post eligibility (+reason). NO frontend range formula.
+- ONE fire engine: both pickers call `sendFire` → `POST /api/fire/react` with per-call idempotency_key (existing `fire_idempotency` dedupe), difference-based charge/release, no-op when unchanged (no transaction), optimistic UI with rollback + toast on failure, postStore syncs duplicate mounted instances, pool display updates from response.
+- A11y: dialog semantics, slider auto-focus + arrow keys + aria-valuetext, Escape close, focus returns to fire button, labeled controls.
+
+### Files
+- NEW `frontend/src/components/fire/QuickFireSheet.jsx`, `backend/tests/test_quick_fire.py`
+- MOD `frontend/src/components/fire/FireButton.jsx` (sheet state machine, quickTap always opens quick, chevron relabeled, focus return, hint text), `backend/services/fire_power.py` (+quick_state), `backend/routers/fire.py` (+GET /quick-state/{post_id})
+- Stale legacy fire tests aligned with current policy (auth-required endpoints post-iter88; lifetime credits at settlement; reaction settlement = 24h edit window): `test_fire_phase06.py`, `test_fire_vault_privacy.py`. `test_fire_power.py` remains a stale pre-0.6 suite (documented, not policy-accurate).
+- New test account: quickfire.newbie@example.com / Password1$ (Newbie level, fixed 1×).
+
+## Phase 3 — Media Sound Selector (Jul 25, 2026) ✅ APPROVED BY FOUNDER
 
 **Verified: 13/13 pytest (`test_phase3_sound_selector.py`) + 9/9 media-rights regression + testing-agent frontend E2E pass (iteration_90, desktop + mobile), screenshots taken.**
 
