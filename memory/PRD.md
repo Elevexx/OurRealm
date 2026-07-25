@@ -2891,3 +2891,8 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
   3. Strict server-side feed dedupe in posts.py list_posts final step: one post id per response + one canonical instance per sound_track_id (highest-ranked kept). Intentional creator reposts (non-canonical) unaffected. Covers Latest/Top Fire/Sounds/pagination/refresh (limit-based feed).
 - Tests: tests/test_feed_dedupe.py (5) + updated test_sound_fire_migration.py duplicate-repair test; shared event loop helper tests/_shared_loop.py added (motor one-loop-per-process). All 19 pass together.
 - Production duplicates auto-repair on next redeploy via startup migration.
+
+## July 25, 2026 — Trending Hashtag post interaction (TESTED e2e via browser automation)
+- HashtagFeed.jsx cards now open the canonical global PostPopup (openPostPopup) on tap; avatar/username/hashtag taps stopPropagation and navigate independently.
+- PostPopup.jsx gained shareable-URL sync: ?post=<id> pushed while open (works on every page that opens the popup), browser Back/Android gesture closes it, Escape/X/overlay close cleans the URL, refresh/direct ?post= URL deep-links the post (auth-gated), hashtag page state preserved on close (no feed reload). Safe-area insets added to the overlay padding.
+- Verified: card click → popup + URL, fire control, live comment, back-close, deep link, escape-close, username→profile without popup.

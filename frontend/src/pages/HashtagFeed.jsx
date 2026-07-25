@@ -6,11 +6,12 @@
  * unknown tags (still clickable per spec).
  */
 import React, { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { Hash, Loader2, ArrowLeft } from "lucide-react";
 import apiClient from "@/api/client";
 import HashtagText from "@/components/HashtagText";
 import UserAvatar from "@/components/UserAvatar";
+import { openPostPopup } from "@/lib/postPopupController";
 
 function timeAgo(iso) {
   if (!iso) return "";
@@ -24,6 +25,7 @@ function timeAgo(iso) {
 
 export default function HashtagFeed() {
   const { tag } = useParams();
+  const navigate = useNavigate();
   const t = (tag || "").toLowerCase();
   const [data, setData] = useState({ posts: [], total: 0, tag: t });
   const [loading, setLoading] = useState(true);
@@ -65,14 +67,28 @@ export default function HashtagFeed() {
       ) : (
         <div className="space-y-3">
           {data.posts.map((p) => (
-            <article key={p.id} className="or-surface p-4" data-testid={`hashtag-feed-post-${p.id}`}>
+            <article
+              key={p.id}
+              className="or-surface p-4 cursor-pointer"
+              data-testid={`hashtag-feed-post-${p.id}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => openPostPopup(p)}
+              onKeyDown={(e) => { if (e.key === "Enter") openPostPopup(p); }}
+            >
               <header className="flex items-center gap-3 mb-2">
                 <UserAvatar
                   user={{ id: p.author_id, username: p.author_username, name: p.author_name, avatar_url: p.author_avatar }}
                   size={36}
+                  onClick={(e) => { e?.stopPropagation?.(); navigate(`/public/${p.author_username}`); }}
                 />
                 <div className="flex-1 min-w-0">
-                  <Link to={`/public/${p.author_username}`} className="font-semibold truncate block" style={{ color: "var(--text-main)" }}>
+                  <Link
+                    to={`/public/${p.author_username}`}
+                    className="font-semibold truncate block"
+                    style={{ color: "var(--text-main)" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     @{p.author_username}
                   </Link>
                   <div className="text-xs" style={{ color: "var(--text-muted)" }}>

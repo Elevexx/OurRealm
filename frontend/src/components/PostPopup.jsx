@@ -7,7 +7,7 @@
  * composer with the 178-char limit + emoji support. Every action routes
  * through postStore so other surfaces (Feed, My Feed widget) update.
  */
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { X, Heart, MessageCircle, Send, Loader2, Link2, Video as VideoIcon, Reply, Flag, Share2, UserPlus, Check } from "lucide-react";
 import FireButton from "@/components/fire/FireButton";
 import { useFireStatus } from "@/lib/fireApi";
@@ -288,7 +288,54 @@ export default function PostPopup() {
     }
   };
 
-  const close = useCallback(() => setState(null), []);
+  const close = useCallback(() => {
+    if (pushedUrlRef.current) {
+      pushedUrlRef.current = false;
+      window.history.back(); // pops our ?post entry; popstate clears state
+    } else {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("post")) {
+        url.searchParams.delete("post");
+        window.history.replaceState(null, "", url.toString());
+      }
+      setState(null);
+    }
+  }, []);
+
+  // Shareable URL — while open the address bar carries ?post=<id>. The
+  // browser Back button / Android back gesture closes the popup, and
+  // loading a URL with ?post= opens that post over the current page
+  // without reloading the feed behind it.
+  const pushedUrlRef = useRef(false);
+  useEffect(() => {
+    if (!state?.postId) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("post") !== state.postId) {
+      url.searchParams.set("post", state.postId);
+      window.history.pushState({ orPostPopup: state.postId }, "", url.toString());
+      pushedUrlRef.current = true;
+    }
+  }, [state?.postId]);
+  useEffect(() => {
+    const onPop = () => {
+      const id = new URLSearchParams(window.location.search).get("post");
+      if (!id) {
+        pushedUrlRef.current = false;
+        setState(null);
+      } else {
+        setState((s) => (s?.postId === id ? s : { post: null, postId: id }));
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  // Deep link — refresh / direct open of a ?post=<id> URL (auth required;
+  // anonymous visitors get routed to signup by the global guard first).
+  useEffect(() => {
+    if (!user?.id) return;
+    const initial = new URLSearchParams(window.location.search).get("post");
+    if (initial) setState((s) => s || { post: null, postId: initial });
+  }, [user?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Esc to close + scroll lock while open
   useEffect(() => {
@@ -393,7 +440,11 @@ export default function PostPopup() {
   return (
     <div
       className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center px-2 sm:px-4 py-4 sm:py-10"
-      style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(8px)" }}
+      style={{
+        background: "rgba(0,0,0,0.65)", backdropFilter: "blur(8px)",
+        paddingTop: "max(1rem, env(safe-area-inset-top))",
+        paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
+      }}
       onClick={close}
       data-testid="post-popup-overlay"
     >
