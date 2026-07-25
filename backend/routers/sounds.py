@@ -226,7 +226,7 @@ async def upload_track(
     raw = await file.read()
     if len(raw) > MAX_BYTES:
         raise HTTPException(status_code=413, detail=f"File exceeds {MAX_BYTES // (1024*1024)} MB limit")
-    # Centralized per-user caps (5 MB / 10-per-day / 60s for non-founder; @stealth exempt).
+    # Centralized per-user caps (50 MB / 10-per-day / 10 min for non-founder; @stealth exempt).
     await enforce_pre_upload(current, "audio", len(raw))
 
     try:

@@ -2855,3 +2855,9 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 ## July 24, 2026 — Signed-in /signin panel restored + header logo → /signin (TESTED via screenshot flow)
 - SignIn.jsx: logged-in users see "Continue as @username" (→ ?next or /feed) and "Sign Out" (logs out, stays on /signin showing the form). No guest option restored.
 - TopStarBar.jsx: header logo click now navigates to /signin (was "/").
+
+## July 25, 2026 — Sound Uploads for Musicians (TESTED end-to-end via curl, all cases pass)
+- Limits raised: audio 5MB→50MB, 60s→10 min (upload_limits.py LIMITS.audio: max_bytes 50MB, max_seconds 600; per-day 10 unchanged; founder exempt unchanged). audio_store MAX_BYTES was already 50MB. Friendly error: "Audio too long — max 10 minutes."
+- Audio optimization: save_audio (services/audio_store.py) now transcodes every upload to streaming AAC 128k .m4a (+faststart) via imageio-ffmpeg static binary (already in requirements.txt, works in prod deploys) in asyncio.to_thread; skips re-encode only when already AAC ≤192kbps or duration >660s; original file deleted after successful transcode; on ffmpeg failure the original is kept and served (backward compatible). R2 mirror uploads the optimized m4a; playback via /api/media/audio/*.m4a signed-redirect verified (206 range, valid ftyp).
+- UI: SoundUploadPicker helper text → "Up to 10 minutes • Max 50 MB. Audio is automatically optimized and streamed from our CDN for fast playback." 413 fallback message updated.
+- Verified: 3-min MP3, 4-min MP3, 8-min WAV (41MB→7.8MB m4a), 38MB FLAC (→4.9MB m4a) all accepted+transcoded; 51MB rejected 413; 10.5-min rejected 400; originals removed; no orphan tmp files; quota endpoint intact; test tracks cleaned from DB.

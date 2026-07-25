@@ -5,7 +5,7 @@ Server-enforced caps applied to all users except the founder `@stealth`.
 Caps (per rolling 24h):
     images : 3 MB / file, 20 uploads / 24h
     videos : 100 MB / file, 3 uploads / 24h, 60s max
-    sounds : 5 MB / file, 10 uploads / 24h, 60s max
+    sounds : 50 MB / file, 10 uploads / 24h, 10 min max
 
 Per-post caps are enforced where posts are composed:
     images per post : 4
@@ -28,7 +28,7 @@ FOUNDER_USERNAME = "stealth"
 LIMITS = {
     "image": {"max_bytes": 3   * 1024 * 1024, "per_day": 20, "max_seconds": None},
     "video": {"max_bytes": 100 * 1024 * 1024, "per_day":  3, "max_seconds": 60},
-    "audio": {"max_bytes": 5   * 1024 * 1024, "per_day": 10, "max_seconds": 60},
+    "audio": {"max_bytes": 50  * 1024 * 1024, "per_day": 10, "max_seconds": 600},
 }
 
 # Mongo collections keyed by kind — must exist for the count window to work.
@@ -80,9 +80,11 @@ def enforce_duration(user: dict, kind: str, seconds: Optional[float]) -> None:
     if not cfg or cfg["max_seconds"] is None:
         return
     if seconds is not None and seconds > cfg["max_seconds"] + 0.5:
+        cap = cfg["max_seconds"]
+        human = f"{cap // 60} minutes" if cap >= 120 and cap % 60 == 0 else f"{cap} seconds"
         raise HTTPException(
             status_code=400,
-            detail=f"{kind.title()} too long — max {cfg['max_seconds']} seconds.",
+            detail=f"{kind.title()} too long — max {human}.",
         )
 
 

@@ -13,10 +13,12 @@ duration_seconds extracted server-side via mutagen.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import os
 import re
+import subprocess
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
@@ -172,6 +174,53 @@ def _extract_duration(raw: bytes, ext: str, on_disk_path: Optional[Path] = None)
     return 0.0
 
 
+# ── Streaming optimization (AAC 128k) ─────────────────────────────────
+TRANSCODE_BITRATE = "128k"
+_SKIP_TRANSCODE_BPS = 192_000   # already-efficient AAC below this is kept as-is
+_TRANSCODE_MAX_SECONDS = 660    # don't waste cycles on tracks the caps will reject
+
+
+def _ffmpeg_exe() -> Optional[str]:
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def _should_transcode(ext: str, size: int, duration: float) -> bool:
+    if duration <= 0 or duration > _TRANSCODE_MAX_SECONDS:
+        return False
+    if ext in ("m4a", "aac") and (size * 8 / duration) <= _SKIP_TRANSCODE_BPS:
+        return False
+    return True
+
+
+def _run_transcode(src: Path, dst: Path) -> bool:
+    exe = _ffmpeg_exe()
+    if not exe:
+        return False
+    cmd = [
+        exe, "-y", "-hide_banner", "-loglevel", "error",
+        "-i", str(src), "-vn", "-c:a", "aac", "-b:a", TRANSCODE_BITRATE,
+        "-movflags", "+faststart", "-f", "mp4", str(dst),
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, timeout=600)
+        ok = res.returncode == 0 and dst.is_file() and dst.stat().st_size > 1024
+        if not ok:
+            logger.warning(f"[transcode] ffmpeg rc={res.returncode}: {(res.stderr or b'')[-300:]}")
+            dst.unlink(missing_ok=True)
+        return ok
+    except Exception as e:
+        logger.warning(f"[transcode] error: {e}")
+        try:
+            dst.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return False
+
+
 async def save_audio(
     raw: bytes,
     owner_id: str,
@@ -191,11 +240,27 @@ async def save_audio(
     path.write_bytes(raw)
     duration = _extract_duration(raw, ext, on_disk_path=path)
 
+    # Optimize for streaming — transcode to AAC 128k (.m4a). On success
+    # the original is removed; on any failure the original is kept and
+    # served as-is (fully backward compatible).
+    size_bytes = len(raw)
+    if _should_transcode(ext, size_bytes, duration):
+        tmp = ROOT / f"{audio_id}.tmp.m4a"
+        if await asyncio.to_thread(_run_transcode, path, tmp):
+            final = ROOT / f"{audio_id}.m4a"
+            os.replace(tmp, final)
+            if path != final:
+                path.unlink(missing_ok=True)
+            path = final
+            ext = "m4a"
+            mime = "audio/mp4"
+            size_bytes = path.stat().st_size
+
     rec = AudioRecord(
         id=audio_id,
         user_id=owner_id,
         file_url=f"/api/sounds/{audio_id}.{ext}",
-        bytes=len(raw),
+        bytes=size_bytes,
         mime=mime,
         ext=ext,
         duration_seconds=round(duration, 2),
@@ -207,7 +272,7 @@ async def save_audio(
     from services.r2_mirror import mirror_to_cloud
     rec.file_url = mirror_to_cloud("audio", f"{audio_id}.{ext}", path, rec.file_url)
     logger.info(
-        f"Stored audio {audio_id} ({mime}, {len(raw)}b, {duration:.1f}s) for {owner_id}"
+        f"Stored audio {audio_id} ({mime}, {size_bytes}b, {duration:.1f}s) for {owner_id}"
     )
     return rec
 
