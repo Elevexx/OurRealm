@@ -221,6 +221,14 @@ async def level_publish(level_id: str, current: CurrentUser, confirm: bool = Fal
     await _audit(current, "level_publish", "level", level_id,
                  after={"version": snap["config_version"]},
                  extra={"migrated_users": affected})
+    # Future-proofing — new/changed tasks are credited from historical
+    # data immediately, no manual repair ever needed.
+    try:
+        import asyncio as _aio
+        from services.progression.repair import backfill_new_task
+        _aio.create_task(backfill_new_task(level_id, current.get("username") or current["id"]))
+    except Exception:
+        pass
     return {"ok": True, "version": snap["config_version"], "migrated_users": affected}
 
 
@@ -831,3 +839,27 @@ async def activation_status(current: CurrentUser):
                            "failed_in_last_backfill": (last_backfill or {}).get("totals", {}).get("failed")},
         "claims_rewards_gate": bool(last_backfill),
     }
+
+
+# ── Progress Repair (audit + global backfill) ────────────────────────────
+@router.post("/repair/run")
+async def repair_run(current: CurrentUser):
+    """Founder action — full audit & repair. Idempotent, safe anytime."""
+    require_founder(current)
+    import asyncio as _aio
+    from services.progression.repair import run_progress_repair
+    running = await db.progression_repair_reports.find_one(
+        {"status": "running"}, {"_id": 0, "id": 1})
+    if running:
+        return {"ok": False, "error": "A repair is already running.", "report_id": running["id"]}
+    _aio.create_task(run_progress_repair(actor=current.get("username") or current["id"]))
+    await _audit(current, "repair_run", "system", "progress_repair")
+    return {"ok": True, "started": True}
+
+
+@router.get("/repair/latest")
+async def repair_latest(current: CurrentUser):
+    require_founder(current)
+    doc = await db.progression_repair_reports.find_one(
+        {}, {"_id": 0}, sort=[("started_at", -1)])
+    return {"report": doc}

@@ -140,10 +140,87 @@ async def engagement_received(user, cfg, level_started_at, target):
         actors |= real_commenters
         if kind == "comment":
             total += cnt if not unique_user else 0
+    if kind in ("fire", "any") and post_ids:
+        f_senders = set()
+        f_total = 0
+        async for r in db.post_fire_reactions.find(
+                {"post_id": {"$in": post_ids[:500]}, "active": True},
+                {"_id": 0, "user_id": 1, "fire_value": 1}).limit(MAX_SCAN):
+            if r.get("user_id") and r["user_id"] != user["id"]:
+                f_senders.add(r["user_id"])
+                f_total += int(r.get("fire_value") or 0)
+        real_f = await _real_user_ids(f_senders)
+        actors |= real_f
+        if kind == "fire":
+            total += f_total
     if kind == "view":
         total = 0  # views are not durably tracked yet — never auto-complete
     value = len(actors) if unique_user else total
     return _res(value, target, "db.posts/comments", f"{value} valid {kind} engagements")
+
+
+async def fire_received(user, cfg, level_started_at, target):
+    """Total Fire Power received on the user's posts (or unique real
+    supporters when cfg.unique == 'user'). Reads active reactions only —
+    includes migrated hearts (source='migration'/'sound_migration')."""
+    unique_user = cfg.get("unique") == "user"
+    post_ids = [p["id"] async for p in db.posts.find(
+        {"author_id": user["id"], "deleted_at": {"$exists": False}},
+        {"_id": 0, "id": 1}).limit(MAX_SCAN)]
+    total, senders = 0, set()
+    if post_ids:
+        async for r in db.post_fire_reactions.find(
+                {"post_id": {"$in": post_ids}, "active": True},
+                {"_id": 0, "user_id": 1, "fire_value": 1}).limit(MAX_SCAN):
+            if r.get("user_id") and r["user_id"] != user["id"]:
+                total += int(r.get("fire_value") or 0)
+                senders.add(r["user_id"])
+    if unique_user:
+        real = await _real_user_ids(senders)
+        return _res(len(real), target, "db.post_fire_reactions",
+                    f"Fire from {len(real)} unique real users")
+    return _res(total, target, "db.post_fire_reactions", f"{total} Fire Power received")
+
+
+async def fire_sent(user, cfg, level_started_at, target):
+    """Fire Power the user has given to OTHER creators' posts."""
+    unique_user = cfg.get("unique") == "user"
+    rows = [r async for r in db.post_fire_reactions.find(
+        {"user_id": user["id"], "active": True},
+        {"_id": 0, "post_id": 1, "fire_value": 1}).limit(MAX_SCAN)]
+    authors = {}
+    pids = list({r.get("post_id") for r in rows if r.get("post_id")})
+    if pids:
+        async for p in db.posts.find({"id": {"$in": pids}},
+                                     {"_id": 0, "id": 1, "author_id": 1, "deleted_at": 1}):
+            if not p.get("deleted_at"):
+                authors[p["id"]] = p.get("author_id")
+    total, recipients = 0, set()
+    for r in rows:
+        a = authors.get(r.get("post_id"))
+        if not a or a == user["id"]:
+            continue
+        total += int(r.get("fire_value") or 0)
+        recipients.add(a)
+    if unique_user:
+        real = await _real_user_ids(recipients)
+        return _res(len(real), target, "db.post_fire_reactions",
+                    f"supported {len(real)} unique real creators")
+    return _res(total, target, "db.post_fire_reactions", f"{total} Fire Power sent")
+
+
+async def inner_realm_complete(user, cfg, level_started_at, target):
+    """Complete when the saved Inner Realm has as many members as the
+    user's chosen size (4/8/12/24 — default 8). Reads users.inner_8
+    (falls back to legacy users.top_8)."""
+    members = {v for v in (user.get("inner_8") or user.get("top_8") or [])
+               if isinstance(v, str) and v and v != user["id"]}
+    size = user.get("inner_realm_size")
+    if size not in (4, 8, 12, 24):
+        size = 8
+    n = len(members)
+    return _res(min(n, size), size, "users.inner_8",
+                f"{n} Inner Realm members (realm size {size})")
 
 
 async def friend_count(user, cfg, level_started_at, target):
@@ -333,6 +410,9 @@ STRATEGIES = {
     "tutorial_complete": tutorial_complete,
     "widget_customized": widget_customized,
     "manual_approval": manual_approval,
+    "fire_received": fire_received,
+    "fire_sent": fire_sent,
+    "inner_realm_complete": inner_realm_complete,
 }
 
 

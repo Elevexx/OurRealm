@@ -64,6 +64,16 @@ _reg("views_received", "Receive valid views", "posting", "engagement_received",
 _reg("unique_engagers", "Receive engagement from unique real users", "posting", "engagement_received",
      config={"kind": "any", "unique": "user"}, button="View Feed", dest="/feed", unique="user")
 
+# ── Fire Power tasks (Likes were replaced by Fire) ────────────
+_reg("fire_received", "Receive Fire Power", "posting", "fire_received",
+     button="View Feed", dest="/feed")
+_reg("fire_unique_supporters", "Receive Fire from unique real users", "posting", "fire_received",
+     config={"unique": "user"}, button="View Feed", dest="/feed", unique="user")
+_reg("fire_sent", "Send Fire Power to creators", "engagement", "fire_sent",
+     button="Explore Feed", dest="/feed")
+_reg("fire_unique_creators", "Support unique creators with Fire", "engagement", "fire_sent",
+     config={"unique": "user"}, button="Explore Feed", dest="/feed", unique="user")
+
 # ── Social tasks ─────────────────────────────────────────────
 _reg("follow_user", "Follow a real user", "social", "friend_count",
      config={"direction": "out"}, button="Find People", dest="/friends", progress="numeric")
@@ -79,6 +89,8 @@ _reg("top8_add", "Add users to your Inner Realm", "social", "list_field_count",
      config={"field": "top_8"}, button="Edit Inner Realm", dest="/profile")
 _reg("inner8_add", "Add users to your Inner Realm", "social", "list_field_count",
      config={"field": "inner_8"}, button="Edit Inner Realm", dest="/profile")
+_reg("inner_realm_complete", "Complete your Inner Realm", "social", "inner_realm_complete",
+     button="Edit Inner Realm", dest="/profile", progress="numeric")
 _reg("unique_interactions", "Interact with unique real users", "social", "interactions_given",
      config={"unique": "user"}, button="Explore Feed", dest="/feed", unique="user")
 

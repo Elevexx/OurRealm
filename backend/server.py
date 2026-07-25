@@ -321,6 +321,14 @@ async def on_startup():
         await _sp.run_startup_migration()
     except Exception as e:
         logger.warning(f"[sound-migration] startup error: {e}")
+    # Progression repair — audits task definitions (Likes→Fire, Inner
+    # Realm detection, duplicate merge) and recalculates every user from
+    # full history. Runs once per REPAIR_VERSION; idempotent; background.
+    try:
+        from services.progression.repair import run_startup_repair
+        asyncio.create_task(run_startup_repair())
+    except Exception as e:
+        logger.warning(f"[progression-repair] startup error: {e}")
     _mod_task = asyncio.create_task(_moderation_loop())
 
     # Fire Vault — background finalization (Pending → Collectable).
