@@ -550,7 +550,7 @@ async def feed(
     window: str = "24h",
     limit: int = 50,
 ):
-    query: dict = {"is_ai_generated": False}
+    query: dict = {"is_ai_generated": {"$ne": True}}
     if category and category != "All":
         query["category"] = category
     if genre and genre != "All":
@@ -671,7 +671,7 @@ async def top100(
     page: int = 1,
 ):
     page = max(1, min(int(page or 1), 5))
-    query: dict = {"is_ai_generated": False}
+    query: dict = {"is_ai_generated": {"$ne": True}}
     if category and category != "All":
         query["category"] = category
     if genre and genre != "All":
@@ -828,7 +828,7 @@ async def tracks_by_username(
     )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    query: dict = {"user_id": user["id"], "is_ai_generated": False}
+    query: dict = {"user_id": user["id"], "is_ai_generated": {"$ne": True}}
     if category and category != "All":
         # Case-insensitive match — admin/users may upload with
         # "podcast"/"podcasts"/"PODCASTS" casing. Normalize before
