@@ -619,7 +619,23 @@ async def list_posts(
     except Exception as e:
         log.warning(f"[fire] feed attach/rank failed: {e}")
 
-    return {"posts": items}
+    # Strict feed uniqueness — every post id may appear only ONCE per
+    # response, and a Sound may surface through only ONE canonical post
+    # (intentional creator reposts are non-canonical and unaffected).
+    # Items are already ranked, so the first (highest-ranked) copy wins.
+    seen_ids, seen_canon_tracks, deduped = set(), set(), []
+    for p in items:
+        pid = p.get("id")
+        if pid and pid in seen_ids:
+            continue
+        if p.get("is_canonical_sound") and p.get("sound_track_id"):
+            if p["sound_track_id"] in seen_canon_tracks:
+                continue
+            seen_canon_tracks.add(p["sound_track_id"])
+        if pid:
+            seen_ids.add(pid)
+        deduped.append(p)
+    return {"posts": deduped}
 
 
 @router.post("/{post_id}/poll/vote")

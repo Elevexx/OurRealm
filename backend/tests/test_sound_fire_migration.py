@@ -46,11 +46,11 @@ def _h(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-_LOOP = asyncio.new_event_loop()
+from tests._shared_loop import get_shared_loop
 
 
 def _run(coro):
-    return _LOOP.run_until_complete(coro)
+    return get_shared_loop().run_until_complete(coro)
 
 
 async def _db():
@@ -173,24 +173,30 @@ def test_backfill_is_idempotent_no_duplicates(legacy_track):
 def test_duplicate_canonical_repair(legacy_track):
     async def go():
         db = await _db()
-        from services.sound_posts import _repair_duplicate_canonicals
+        from services.sound_posts import repair_duplicate_sound_posts, ensure_sound_indexes
         canon = await db.posts.find_one(
             {"sound_track_id": legacy_track["track_id"], "is_canonical_sound": True}, {"_id": 0})
+        try:
+            await db.posts.drop_index("uniq_canonical_sound")  # simulate legacy dup data
+        except Exception:
+            pass
         dup_id = uuid.uuid4().hex
         await db.posts.insert_one({**{k: v for k, v in canon.items() if k != "id"},
                                    "id": dup_id, "fire_count": 0, "comments": 0,
                                    "created_at": "2026-06-01T00:00:00+00:00"})
-        repaired = await _repair_duplicate_canonicals()
+        repaired = await repair_duplicate_sound_posts()
+        await ensure_sound_indexes()
         n = await db.posts.count_documents(
             {"sound_track_id": legacy_track["track_id"], "is_canonical_sound": True})
         kept = await db.posts.find_one(
             {"sound_track_id": legacy_track["track_id"], "is_canonical_sound": True}, {"_id": 0, "id": 1})
-        await db.posts.delete_one({"id": dup_id})
-        return repaired, n, kept["id"], canon["id"]
-    repaired, n, kept_id, orig_id = _run(go())
+        dup_gone = await db.posts.find_one({"id": dup_id}, {"_id": 0, "id": 1})
+        return repaired, n, kept["id"], canon["id"], dup_gone
+    repaired, n, kept_id, orig_id, dup_gone = _run(go())
     assert repaired >= 1
     assert n == 1
-    assert kept_id == orig_id, "repair must keep the most engaged/original canonical"
+    assert kept_id == orig_id, "repair must keep the oldest valid canonical"
+    assert dup_gone is None, "duplicate must be removed after engagement merge"
 
 
 def test_fire_add_increase_decrease_remove_on_migrated_post(founder_token, legacy_track):

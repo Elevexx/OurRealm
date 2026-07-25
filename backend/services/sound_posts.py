@@ -250,6 +250,14 @@ async def ensure_sound_indexes() -> None:
                                                     name="uniq_classification")
     except Exception as e:  # noqa: BLE001
         log.warning(f"[sound-post] index ensure failed: {e}")
+    # Hard guarantee — at most ONE canonical post per track. Created after
+    # duplicate repair (see run_startup_migration ordering).
+    try:
+        await db.posts.create_index(
+            [("sound_track_id", 1)], name="uniq_canonical_sound", unique=True,
+            partialFilterExpression={"is_canonical_sound": True})
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"[sound-post] uniq canonical index failed (dupes still present?): {e}")
 
 
 # ── Legacy migration: tracks → canonical posts (+ likes → 1× Fire) ──────
@@ -278,7 +286,15 @@ async def backfill_canonical_for_track(t: dict, user: Optional[dict] = None,
     doc = _post_doc_for_track(t, user, source_composer="migration",
                               created_at=t.get("created_at"),
                               migration_source=source)
-    await db.posts.insert_one(doc)
+    try:
+        await db.posts.insert_one(doc)
+    except Exception:
+        # Unique canonical index tripped — a concurrent request/startup
+        # created it first. Converge on the existing canonical post.
+        existing = await canonical_post_for_track(t["id"])
+        if existing:
+            return existing, 0
+        raise
     doc.pop("_id", None)
     likes_converted = 0
     for uid in (t.get("liked_by") or []):
@@ -338,26 +354,85 @@ async def migration_dry_run() -> dict:
             "destructive": False, "samples": samples}
 
 
-async def _repair_duplicate_canonicals() -> int:
-    """Keep the most engaged canonical (fire+comments, tie → oldest);
-    demote extras to regular posts. No data is deleted."""
+async def _merge_post_engagement(keep_id: str, dup_id: str) -> None:
+    """Move ALL engagement from a duplicate post onto the keeper without
+    ever double-counting a user."""
+    # Fire — move non-conflicting reactions; a user already holding fire
+    # on the keeper keeps that reaction and the duplicate's copy is dropped.
+    async for r in db.post_fire_reactions.find({"post_id": dup_id}, {"_id": 0, "id": 1, "user_id": 1}):
+        exists = await db.post_fire_reactions.find_one(
+            {"post_id": keep_id, "user_id": r["user_id"]}, {"_id": 0, "id": 1})
+        if exists:
+            await db.post_fire_reactions.delete_one({"id": r["id"]})
+        else:
+            await db.post_fire_reactions.update_one({"id": r["id"]}, {"$set": {"post_id": keep_id}})
+    # Comments / emoji reactions / saves / shares / notifications.
+    await db.comments.update_many({"post_id": dup_id}, {"$set": {"post_id": keep_id}})
+    async for r in db.reactions.find({"target_type": "post", "target_id": dup_id},
+                                     {"_id": 0, "id": 1, "user_id": 1}):
+        exists = await db.reactions.find_one(
+            {"target_type": "post", "target_id": keep_id, "user_id": r["user_id"]}, {"_id": 0, "id": 1})
+        if exists:
+            await db.reactions.delete_one({"id": r["id"]})
+        else:
+            await db.reactions.update_one({"id": r["id"]}, {"$set": {"target_id": keep_id}})
+    for coll in ("saved_posts", "bookmarks", "post_shares", "shares"):
+        try:
+            await db[coll].update_many({"post_id": dup_id}, {"$set": {"post_id": keep_id}})
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        await db.notifications.update_many({"payload.post_id": dup_id},
+                                           {"$set": {"payload.post_id": keep_id}})
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def repair_duplicate_sound_posts() -> int:
+    """Merge duplicate canonical Sound posts (and demoted migration
+    artifacts) into the OLDEST valid canonical, migrating all engagement,
+    then delete the duplicates. Idempotent."""
+    from services.fire_power import recompute_post_fire
     repaired = 0
+    track_ids: set = set()
+    # Groups of >1 canonical posts per track.
     pipeline = [
         {"$match": {"is_canonical_sound": True, "sound_track_id": {"$ne": None}}},
         {"$group": {"_id": "$sound_track_id", "n": {"$sum": 1}}},
         {"$match": {"n": {"$gt": 1}}},
     ]
     async for row in db.posts.aggregate(pipeline):
-        posts = [p async for p in db.posts.find(
-            {"sound_track_id": row["_id"], "is_canonical_sound": True}, {"_id": 0})]
-        posts.sort(key=lambda p: (
-            -(int(p.get("fire_count") or 0) + int(p.get("comments") or 0)),
-            p.get("created_at") or ""))
-        for extra in posts[1:]:
-            await db.posts.update_one({"id": extra["id"]},
-                                      {"$set": {"is_canonical_sound": False}})
+        track_ids.add(row["_id"])
+    # Demoted artifacts from earlier repairs (never user reposts — those
+    # carry no migration_source) whose track already has a canonical.
+    async for p in db.posts.find(
+            {"is_canonical_sound": {"$ne": True}, "sound_track_id": {"$ne": None},
+             "migration_source": {"$in": ["sound_backfill", "feed_heal", "lazy_heal"]}},
+            {"_id": 0, "sound_track_id": 1}):
+        track_ids.add(p["sound_track_id"])
+    for tid in track_ids:
+        group = [p async for p in db.posts.find(
+            {"sound_track_id": tid,
+             "$or": [{"is_canonical_sound": True},
+                     {"migration_source": {"$in": ["sound_backfill", "feed_heal", "lazy_heal"]}}]},
+            {"_id": 0, "id": 1, "created_at": 1, "deleted_at": 1, "is_canonical_sound": 1})]
+        if len(group) < 2:
+            continue
+        valid = [p for p in group if not p.get("deleted_at")] or group
+        keep = sorted(valid, key=lambda p: p.get("created_at") or "")[0]
+        for dup in group:
+            if dup["id"] == keep["id"]:
+                continue
+            await _merge_post_engagement(keep["id"], dup["id"])
+            await db.posts.delete_one({"id": dup["id"]})
             repaired += 1
+        await db.posts.update_one({"id": keep["id"]}, {"$set": {"is_canonical_sound": True}})
+        await recompute_post_fire(keep["id"])
     return repaired
+
+
+# Retained name — migration_execute calls this.
+_repair_duplicate_canonicals = repair_duplicate_sound_posts
 
 
 async def migration_execute(founder: dict) -> dict:
@@ -392,9 +467,14 @@ async def migration_execute(founder: dict) -> dict:
 
 
 async def run_startup_migration() -> None:
-    """Restart-safe automatic backfill — logs the dry-run report first,
-    then executes only when there is actual work (idempotent no-op
-    otherwise)."""
+    """Restart-safe automatic backfill — repairs duplicate Sound posts
+    FIRST (merge engagement into the oldest canonical, delete copies),
+    then guarantees uniqueness with a partial unique index, then
+    backfills any legacy tracks. Idempotent no-op when clean."""
+    merged = await repair_duplicate_sound_posts()
+    if merged:
+        log.info(f"[sound-migration] startup merged {merged} duplicate sound post(s)")
+    await ensure_sound_indexes()
     report = await migration_dry_run()
     log.info(f"[sound-migration] startup dry-run: {report}")
     if report["tracks_to_backfill"] or report["duplicate_canonical_posts_detected"]:

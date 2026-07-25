@@ -38,3 +38,4 @@ def admin_token(api_client):
 def admin_client(api_client, admin_token):
     api_client.headers.update({"Authorization": f"Bearer {admin_token}"})
     return api_client
+

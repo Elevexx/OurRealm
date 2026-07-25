@@ -17,11 +17,11 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 load_dotenv(Path(__file__).resolve().parents[2] / "frontend" / ".env")
 BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
 
-_LOOP = asyncio.new_event_loop()
+from tests._shared_loop import get_shared_loop
 
 
 def _run(coro):
-    return _LOOP.run_until_complete(coro)
+    return get_shared_loop().run_until_complete(coro)
 
 
 def _login(u, p):

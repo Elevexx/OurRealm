@@ -2882,3 +2882,12 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 
 ## July 25, 2026 — Feed layout reorder (layout-only, verified via screenshots desktop+mobile)
 - Feed.jsx order now: Composer → MediaTypeBar → TrendingHashtags → Radius chips → Latest/Top Fire → posts. Single MediaTypeBar instance; no behavior changes.
+
+## July 25, 2026 — Duplicate Sound posts in For You feed: permanent fix (TESTED: 19/19 pytest across 3 suites)
+- **Root cause**: concurrent feed-heal / startup-migration requests could both pass the "no canonical yet" check and insert two canonical posts for one track (race); earlier repair demoted (not removed) extras, leaving visible duplicates in feeds.
+- **Fixes**:
+  1. Partial UNIQUE index `uniq_canonical_sound` on posts.sound_track_id where is_canonical_sound=True — a second canonical can never be inserted. backfill_canonical_for_track catches the DuplicateKeyError and converges on the existing post (race-safe, verified with 3 concurrent heals → exactly 1 post).
+  2. repair_duplicate_sound_posts() (sound_posts.py) replaces demote-only repair: keeps the OLDEST valid canonical, migrates fire (no double-count per user), comments, emoji reactions, saves/shares/notifications, recomputes fire totals, then DELETES duplicates + old demoted migration artifacts. Idempotent; runs at startup BEFORE index creation (run_startup_migration ordering).
+  3. Strict server-side feed dedupe in posts.py list_posts final step: one post id per response + one canonical instance per sound_track_id (highest-ranked kept). Intentional creator reposts (non-canonical) unaffected. Covers Latest/Top Fire/Sounds/pagination/refresh (limit-based feed).
+- Tests: tests/test_feed_dedupe.py (5) + updated test_sound_fire_migration.py duplicate-repair test; shared event loop helper tests/_shared_loop.py added (motor one-loop-per-process). All 19 pass together.
+- Production duplicates auto-repair on next redeploy via startup migration.
