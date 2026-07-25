@@ -948,3 +948,66 @@ async def sound_migration_rollback(body: SoundMigrationBody, current: CurrentUse
                             detail='Type "ROLLBACK SOUND MIGRATION" to confirm')
     from services import sound_posts as sp
     return await sp.migration_rollback(current)
+
+
+# ── Media rights migration (Phase 2 — founder-gated, dry-run first) ────
+@router.post("/admin/media-rights/dry-run")
+async def media_rights_dry_run(current: CurrentUser):
+    _require_founder_sound(current)
+    from services.sound_permissions import migration_dry_run
+    return await migration_dry_run()
+
+
+@router.post("/admin/media-rights/execute")
+async def media_rights_execute(body: SoundMigrationBody, current: CurrentUser):
+    _require_founder_sound(current)
+    if (body.confirmation_phrase or "").strip() != "APPLY MEDIA RIGHTS MIGRATION":
+        raise HTTPException(status_code=400,
+                            detail='Type "APPLY MEDIA RIGHTS MIGRATION" to confirm')
+    from services.sound_permissions import migration_execute
+    return await migration_execute()
+
+
+# ── Sound reuse permissions (Phase 2 — Where this Sound may be used) ────
+@router.get("/{track_id}/reuse-permissions")
+async def get_reuse_permissions(track_id: str, current: CurrentUser):
+    from services.sound_permissions import default_permissions, preset_for, PRESETS
+    t = await db.tracks.find_one({"id": track_id}, {"_id": 0, "id": 1, "user_id": 1,
+                                                    "title": 1, "reuse_permissions": 1})
+    if not t:
+        raise HTTPException(status_code=404, detail="Sound not found")
+    perms = t.get("reuse_permissions") or default_permissions()
+    return {"track_id": track_id, "title": t.get("title"),
+            "is_owner": t.get("user_id") == current["id"],
+            "permissions": perms, "preset": preset_for(perms),
+            "presets": list(PRESETS.keys())}
+
+
+@router.patch("/{track_id}/reuse-permissions")
+async def set_reuse_permissions(track_id: str, payload: dict, current: CurrentUser):
+    """Only the Sound owner (or founder admin) may change reuse rules."""
+    from services.sound_permissions import (REUSE_FLAGS, PRESETS, default_permissions,
+                                            preset_for)
+    t = await db.tracks.find_one({"id": track_id}, {"_id": 0, "id": 1, "user_id": 1,
+                                                    "reuse_permissions": 1})
+    if not t:
+        raise HTTPException(status_code=404, detail="Sound not found")
+    is_admin = (current.get("username") == "stealth" or current.get("admin_role") == "founder")
+    if t.get("user_id") != current["id"] and not is_admin:
+        raise HTTPException(status_code=403, detail="Only the Sound owner can change reuse permissions")
+    perms = dict(t.get("reuse_permissions") or default_permissions())
+    preset = payload.get("preset")
+    if preset:
+        if preset not in PRESETS:
+            raise HTTPException(status_code=400, detail="Unknown preset")
+        perms = dict(PRESETS[preset])
+    for k, v in (payload.get("permissions") or {}).items():
+        if k in REUSE_FLAGS:
+            perms[k] = bool(v)
+    from datetime import datetime, timezone
+    await db.tracks.update_one(
+        {"id": track_id},
+        {"$set": {"reuse_permissions": perms, "reuse_preset": preset_for(perms),
+                  "reuse_updated_at": datetime.now(timezone.utc).isoformat(),
+                  "reuse_updated_by": current["id"]}})
+    return {"ok": True, "permissions": perms, "preset": preset_for(perms)}

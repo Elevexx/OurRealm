@@ -1,5 +1,31 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Media Studio Phases 1–2 — Video Audio Rights + Sound Reuse Permissions (Jul 25, 2026) ✅ COMPLETE (awaiting founder approval before Phase 3)
+
+**Verified: 9/9 pytest (`test_media_rights.py`), live curl enforcement checks, desktop + mobile screenshots of the composer Audio Rights panel.**
+
+### Phase 1 — Video audio safety (server-enforced)
+- `POST /api/videos/upload` accepts `audio_choice` (mute|original|replace, default **mute**), `rights_confirmed` (bool, default false), `upload_session_id` (dedupe key).
+- `video_store.save_video()`: ffmpeg probes for audio streams (`_probe_has_audio`; unknown ⇒ assume audio = safe path). Audio publishes ONLY when `audio_choice=="original" AND rights_confirmed==true`. Otherwise a **muted derivative** is written (`_strip_audio`, video stream copied, `-an`); the original file moves to a private `.orig.<ext>` name that the public serve route rejects (400).
+- Audit collection **`video_audio_rights`**: one row per upload — audio_detected, audio_choice, rights_confirmed(+at), terms_version, original_asset_ref, original_audio_volume.
+- Idempotency: same `upload_session_id` ⇒ same video doc returned, count stays 1. Frontend also guards with `busy` flag + fresh UUID per staged file.
+- `videos` docs carry `audio_rights_status`: `confirmed` / `muted_no_confirmation` / `no_audio` / `legacy_confirmation_not_collected`.
+- UI (`VideoUploadPicker.jsx`): staging step with AUDIO RIGHTS panel — 🔇 Publish Muted (default), 🎵 Replace with OurRealm Sound (disabled until Phase 3, never exposes original audio server-side), 🎤 Keep Original Audio + unchecked rights checkbox + amber warning when unchecked.
+
+### Phase 2 — Sound reuse permissions
+- `services/sound_permissions.py`: 9 reuse flags (image_posts, video_posts, personal/group/community_realm, portal, nexus_district, world, future_environments), presets (playable_only / media_posts / realm_soundscapes / everywhere / custom), `can_reuse()` server gate, `permission_snapshot()` (frozen copy per use).
+- `GET/PATCH /api/sounds/{id}/reuse-permissions` — owner or founder only (others 403).
+- Migration (metadata-only, non-destructive): sounds missing perms → `playable_only`; historical videos → labeled `legacy_confirmation_not_collected` (files NEVER touched, never auto-muted).
+- **Startup is DRY-RUN ONLY** (logs totals). Execution requires founder endpoint `POST /api/sounds/admin/media-rights/execute` with phrase `APPLY MEDIA RIGHTS MIGRATION`, or env `MEDIA_RIGHTS_MIGRATION_AUTORUN=true`. Dry-run endpoint: `POST /api/sounds/admin/media-rights/dry-run` (founder).
+- NOTE: preview DB migration already executed on 2026-07-25 (6 sounds → playable_only, 6 videos → legacy label) via the pre-gating startup hook. Production has NOT been migrated (no deploy). Log collection: `media_rights_migration_log`.
+
+### Files
+- MOD `/app/backend/services/video_store.py`, `/app/backend/routers/videos.py`, `/app/backend/routers/sounds.py`, `/app/backend/server.py`, `/app/frontend/src/components/VideoUploadPicker.jsx`
+- NEW `/app/backend/services/sound_permissions.py`, `/app/backend/tests/test_media_rights.py` (9 tests, self-cleaning)
+
+### Next (pending founder approval)
+- Phase 3: Media Sound Selector · Phase 4: Media Studio · Phase 5: Realm Audio Context · Phase 6: Soundscape Playlist Widget · Phase 7: Portals/Nexus/Worlds audio · Phase 8: Moderation/Backfill/Deployment.
+
 ## Portals 1.4 — Config-driven Realm Template Foundation (Feb 7, 2026) ✅ COMPLETE
 
 **Purpose:** finalize the reusable Realm architecture so every future Realm can ship as a single JavaScript config file, not a new class. Zero regressions on Portals 1.0–1.3.

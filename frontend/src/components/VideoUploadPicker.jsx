@@ -53,6 +53,10 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
   const [progress, setProgress] = useState(0);
   const [localPreview, setLocalPreview] = useState(null);
   const [quota, setQuota] = useState(null);
+  const [pending, setPending] = useState(null);
+  const [audioChoice, setAudioChoice] = useState("mute");
+  const [rightsChecked, setRightsChecked] = useState(false);
+  const [audioNote, setAudioNote] = useState("");
   const inputRef = useRef(null);
 
   // Best-effort quota fetch so the user sees "N left today" before they pick.
@@ -67,7 +71,7 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
   const onFileChange = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    setErr(""); setProgress(0);
+    setErr(""); setProgress(0); setAudioNote("");
 
     // Client-side guardrails — friendly messages before we even try.
     if (f.size > MAX_MB * 1024 * 1024) {
@@ -84,14 +88,25 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
       return;
     }
 
-    // Local preview (object URL) so the user sees what they're about to post.
+    // Stage the file — AUDIO RIGHTS must be answered before upload.
     if (localPreview) URL.revokeObjectURL(localPreview);
     setLocalPreview(URL.createObjectURL(f));
-    setBusy(true);
+    setPending({ file: f, duration, sessionId: (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`) });
+    setAudioChoice("mute");
+    setRightsChecked(false);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const doUpload = async () => {
+    if (!pending || busy) return;
+    setErr(""); setBusy(true);
     try {
       const fd = new FormData();
-      fd.append("file", f);
-      if (duration != null) fd.append("duration", String(duration));
+      fd.append("file", pending.file);
+      if (pending.duration != null) fd.append("duration", String(pending.duration));
+      fd.append("audio_choice", audioChoice);
+      fd.append("rights_confirmed", String(audioChoice === "original" && rightsChecked));
+      fd.append("upload_session_id", pending.sessionId);
       const { data } = await apiClient.post("/videos/upload", fd, {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (evt) => {
@@ -100,22 +115,20 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
       });
       const next = data?.url || data?.video?.url;
       if (!next) throw new Error("Upload returned no URL");
-      // Server URL is now authoritative — drop the local blob so the preview
-      // <video> swaps to the rehosted file.
       if (localPreview) URL.revokeObjectURL(localPreview);
       setLocalPreview(null);
+      setPending(null);
       setProgress(100);
-      // Persist as a RELATIVE path (e.g. `/api/videos/<id>.mp4`). The
-      // browser resolves it against the current document origin at render
-      // time, so the same post document works in BOTH preview and
-      // production — even when the deployed REACT_APP_BACKEND_URL differs
-      // from the upload-time one. Absolutising at upload was the cause of
-      // "video failed to load after refresh" on ourrealm.social.
+      if (data?.audio?.audio_detected && !data?.audio?.audio_published) {
+        setAudioNote("Published with the original audio muted.");
+      } else if (data?.audio?.audio_published) {
+        setAudioNote("Published with the original audio (rights confirmed).");
+      }
+      // Persist as a RELATIVE path (works in both preview and production).
       const stripped = next.startsWith("http")
         ? next.replace(/^https?:\/\/[^/]+/, "")
         : next;
       onChange?.(stripped);
-      // Refresh quota so the visible "N left today" decrements live.
       apiClient.get("/upload-limits/me")
         .then(({ data: q }) => setQuota(q?.limits?.video || null))
         .catch(() => {});
@@ -128,16 +141,16 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
       else setErr(detail || "Upload failed.");
     } finally {
       setBusy(false);
-      // Reset the input so picking the SAME file again still fires onChange.
-      if (inputRef.current) inputRef.current.value = "";
     }
   };
 
   const clear = () => {
     if (localPreview) URL.revokeObjectURL(localPreview);
     setLocalPreview(null);
+    setPending(null);
     setProgress(0);
     setErr("");
+    setAudioNote("");
     onChange?.("");
   };
 
@@ -221,6 +234,70 @@ export default function VideoUploadPicker({ videoUrl, onChange, testid = "video-
             style={{ maxHeight: 220, background: "#000" }}
           />
         </div>
+      )}
+
+      {/* AUDIO RIGHTS — required before the staged file uploads. */}
+      {pending && (
+        <div
+          className="space-y-2 p-3 text-xs"
+          style={{ border: "1px solid var(--border-col)", borderRadius: "var(--radius)" }}
+          data-testid={`${testid}-audio-rights`}
+        >
+          <div className="font-semibold uppercase tracking-wider text-[11px]">Audio Rights</div>
+          <p style={{ color: "var(--text-muted)" }}>
+            This video contains audio. Its original audio will remain muted unless you
+            confirm that you own the audio or have permission to use it on OurRealm.
+          </p>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="radio" name={`${testid}-audio`} checked={audioChoice === "mute"}
+              onChange={() => { setAudioChoice("mute"); setRightsChecked(false); }}
+              data-testid={`${testid}-audio-mute`} className="mt-0.5" />
+            <span><b>🔇 Publish Muted</b><br />
+              <span style={{ color: "var(--text-muted)" }}>Remove or mute this video's original audio.</span></span>
+          </label>
+          <label className="flex items-start gap-2" style={{ opacity: 0.6 }}>
+            <input type="radio" name={`${testid}-audio`} disabled
+              data-testid={`${testid}-audio-replace`} className="mt-0.5" />
+            <span><b>🎵 Replace with an OurRealm Sound</b><br />
+              <span style={{ color: "var(--text-muted)" }}>Remove the original audio and add a Sound from OurRealm — arriving with the OurRealm Media Studio Sound browser.</span></span>
+          </label>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="radio" name={`${testid}-audio`} checked={audioChoice === "original"}
+              onChange={() => setAudioChoice("original")}
+              data-testid={`${testid}-audio-original`} className="mt-0.5" />
+            <span><b>🎤 Keep Original Audio</b><br />
+              <span style={{ color: "var(--text-muted)" }}>Only choose this if you own the audio or have permission to use it on OurRealm.</span></span>
+          </label>
+          {audioChoice === "original" && (
+            <label className="flex items-start gap-2 cursor-pointer pl-5">
+              <input type="checkbox" checked={rightsChecked}
+                onChange={(e) => setRightsChecked(e.target.checked)}
+                data-testid={`${testid}-rights-checkbox`} className="mt-0.5" />
+              <span>I confirm that I own this audio or have the necessary rights and
+                permission to upload and share it on OurRealm.</span>
+            </label>
+          )}
+          {audioChoice === "original" && !rightsChecked && (
+            <p style={{ color: "#ffb84d" }} data-testid={`${testid}-rights-warning`}>
+              Without the confirmation above, the video will publish with its original audio muted.
+            </p>
+          )}
+          <button
+            type="button"
+            className="or-btn w-full"
+            onClick={doUpload}
+            disabled={busy}
+            data-testid={`${testid}-confirm-upload`}
+          >
+            {busy ? <><Loader2 size={13} className="animate-spin" /> Uploading…</> : "Upload video"}
+          </button>
+        </div>
+      )}
+
+      {audioNote && (
+        <p className="text-[11px]" style={{ color: "var(--text-muted)" }} data-testid={`${testid}-audio-note`}>
+          {audioNote}
+        </p>
       )}
 
       {err && (

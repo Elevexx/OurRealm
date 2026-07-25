@@ -120,17 +120,69 @@ def _remux_mov_to_mp4(raw: bytes) -> bytes:
         return dst.read_bytes()
 
 
+# ── Audio safety (Phase 1 — OurRealm Media Studio) ───────────────────
+TERMS_VERSION = "2026-02-1"
+
+
+def _ffmpeg():
+    from imageio_ffmpeg import get_ffmpeg_exe
+    return get_ffmpeg_exe()
+
+
+def _probe_has_audio(path: Path) -> bool:
+    """True when the file contains ANY audio stream (ffmpeg -i probe)."""
+    import subprocess
+    try:
+        proc = subprocess.run([_ffmpeg(), "-hide_banner", "-i", str(path)],
+                              capture_output=True, timeout=60)
+        return b"Audio:" in (proc.stderr or b"")
+    except Exception:
+        # Unknown = assume audio present so the safe (muted) path is taken.
+        return True
+
+
+def _strip_audio(src: Path, dst: Path) -> bool:
+    """Write a muted derivative (video stream copied, audio removed)."""
+    import subprocess
+    try:
+        proc = subprocess.run(
+            [_ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
+             "-i", str(src), "-c:v", "copy", "-an",
+             "-movflags", "+faststart", str(dst)],
+            capture_output=True, timeout=300)
+        return proc.returncode == 0 and dst.exists() and dst.stat().st_size > 512
+    except Exception:
+        return False
+
+
 # ── Public API ────────────────────────────────────────────────────────
 async def save_video(
     raw: bytes,
     owner_id: str,
     declared_mime: Optional[str] = None,
     filename: Optional[str] = None,
+    audio_choice: str = "mute",
+    rights_confirmed: bool = False,
+    upload_session_id: Optional[str] = None,
 ) -> VideoRecord:
     if len(raw) > MAX_BYTES:
         raise ValueError(f"Video too large (max {MAX_BYTES // (1024 * 1024)} MB)")
     if len(raw) < 512:
         raise ValueError("Empty or invalid video file")
+
+    # Idempotent publish — a retried upload with the same session id
+    # returns the already-stored video instead of creating a duplicate.
+    if upload_session_id:
+        existing = await db.videos.find_one(
+            {"user_id": owner_id, "upload_session_id": upload_session_id}, {"_id": 0})
+        if existing:
+            rec = VideoRecord(id=existing["id"], user_id=owner_id, ext=existing["ext"],
+                              bytes=existing["bytes"], mime=existing["mime"],
+                              created_at=existing["created_at"],
+                              cloud_url=existing.get("cloud_url"))
+            if not rec.cloud_url and existing.get("url", "").startswith("/api/media/"):
+                rec.cloud_url = existing["url"]
+            return rec
 
     ext = _resolve_ext(declared_mime, filename)
     if ext == "mov":
@@ -143,6 +195,32 @@ async def save_video(
     target = video_dir() / f"{video_id}.{ext}"
     with open(target, "wb") as f:
         f.write(raw)
+
+    # ── AUDIO SAFETY — server-side enforcement, never trusts the client.
+    # Original audio publishes ONLY when the uploader affirmatively chose
+    # "original" AND checked the rights confirmation. Otherwise the public
+    # derivative is stripped of audio; the original moves to a private
+    # file name that the serving endpoint and the CDN mirror both reject.
+    import asyncio as _aio
+    audio_detected = await _aio.to_thread(_probe_has_audio, target)
+    audio_published = False
+    original_ref = None
+    if audio_detected:
+        allow_original = (audio_choice == "original") and bool(rights_confirmed)
+        if allow_original:
+            audio_published = True
+        else:
+            private_orig = video_dir() / f"{video_id}.orig.{ext}"
+            muted = video_dir() / f"{video_id}.muted.{ext}"
+            ok = await _aio.to_thread(_strip_audio, target, muted)
+            if ok:
+                os.replace(target, private_orig)     # original: private, local-only
+                os.replace(muted, target)            # public file: muted derivative
+                original_ref = private_orig.name
+            else:
+                # Stripping failed — refuse to publish unlicensed audio.
+                target.unlink(missing_ok=True)
+                raise ValueError("Could not process this video's audio safely. Please try again.")
 
     rec = VideoRecord(
         id=video_id,
@@ -170,9 +248,40 @@ async def save_video(
         "mime": rec.mime,
         "created_at": rec.created_at,
         "url": rec.url,
+        "upload_session_id": upload_session_id,
+        "audio_detected": audio_detected,
+        "audio_published": audio_published,
+        "audio_rights_status": (
+            "confirmed" if audio_published
+            else ("muted_no_confirmation" if audio_detected else "no_audio")),
     }
     await db.videos.insert_one(doc)
-    logger.info(f"saved video {rec.id}.{ext} bytes={rec.bytes} for user={owner_id}")
+    # Full audit record — a rights checkbox is a stored user representation,
+    # not independent legal proof of ownership.
+    now = datetime.now(timezone.utc).isoformat()
+    await db.video_audio_rights.insert_one({
+        "id": uuid.uuid4().hex,
+        "user_id": owner_id,
+        "video_id": rec.id,
+        "post_id": None,
+        "upload_session_id": upload_session_id,
+        "original_filename": filename,
+        "audio_detected": audio_detected,
+        "audio_choice": audio_choice,
+        "rights_confirmed": bool(rights_confirmed and audio_choice == "original"),
+        "rights_confirmed_at": now if (rights_confirmed and audio_choice == "original") else None,
+        "terms_version": TERMS_VERSION,
+        "replacement_sound_id": None,
+        "original_audio_volume": 1.0 if audio_published else 0.0,
+        "replacement_sound_volume": None,
+        "original_asset_ref": original_ref,
+        "public_derivative_id": f"{rec.id}.{ext}",
+        "processing_status": "completed",
+        "created_at": now,
+        "updated_at": now,
+    })
+    logger.info(f"saved video {rec.id}.{ext} bytes={rec.bytes} audio_detected={audio_detected} "
+                f"audio_published={audio_published} for user={owner_id}")
     return rec
 
 

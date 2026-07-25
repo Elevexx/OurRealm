@@ -41,7 +41,14 @@ async def upload_video(
     # Client passes the HTMLVideoElement.duration it measured locally so we
     # can reject too-long clips early (server doesn't bundle ffprobe).
     duration: Optional[float] = Form(default=None),
+    # AUDIO RIGHTS — server re-verifies everything; these are requests,
+    # not authoritative. Default is always "mute".
+    audio_choice: str = Form(default="mute"),
+    rights_confirmed: bool = Form(default=False),
+    upload_session_id: Optional[str] = Form(default=None),
 ):
+    if audio_choice not in ("mute", "original", "replace"):
+        audio_choice = "mute"
     raw = await file.read()
     if len(raw) > MAX_BYTES:
         raise HTTPException(status_code=413, detail=f"File exceeds {MAX_BYTES // (1024*1024)} MB limit")
@@ -59,11 +66,17 @@ async def upload_video(
             current["id"],
             declared_mime=file.content_type,
             filename=file.filename,
+            audio_choice=audio_choice,
+            rights_confirmed=rights_confirmed,
+            upload_session_id=upload_session_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    return {"video": rec.to_dict(), "url": rec.url}
+    meta = await db.videos.find_one({"id": rec.id}, {"_id": 0, "audio_detected": 1,
+                                                     "audio_published": 1,
+                                                     "audio_rights_status": 1})
+    return {"video": rec.to_dict(), "url": rec.url, "audio": meta or {}}
 
 
 @router.get("/me/list")

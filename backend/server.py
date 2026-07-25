@@ -329,6 +329,14 @@ async def on_startup():
         asyncio.create_task(run_startup_repair())
     except Exception as e:
         logger.warning(f"[progression-repair] startup error: {e}")
+    # Media rights (Phase 1-2) — label legacy videos ("confirmation not
+    # collected", metadata only) and default existing Sounds to
+    # playable-only reuse. Idempotent, non-destructive.
+    try:
+        from services.sound_permissions import run_startup_migration as _mrm
+        await _mrm()
+    except Exception as e:
+        logger.warning(f"[media-rights-migration] startup error: {e}")
     _mod_task = asyncio.create_task(_moderation_loop())
 
     # Fire Vault — background finalization (Pending → Collectable).
