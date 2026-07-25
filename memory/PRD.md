@@ -2896,3 +2896,9 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 - HashtagFeed.jsx cards now open the canonical global PostPopup (openPostPopup) on tap; avatar/username/hashtag taps stopPropagation and navigate independently.
 - PostPopup.jsx gained shareable-URL sync: ?post=<id> pushed while open (works on every page that opens the popup), browser Back/Android gesture closes it, Escape/X/overlay close cleans the URL, refresh/direct ?post= URL deep-links the post (auth-gated), hashtag page state preserved on close (no feed reload). Safe-area insets added to the overlay padding.
 - Verified: card click → popup + URL, fire control, live comment, back-close, deep link, escape-close, username→profile without popup.
+
+## July 25, 2026 — External post link sharing (TESTED e2e via browser)
+- New lib /app/frontend/src/lib/sharePost.js: sharePostLink(post) — Web Share API on mobile, clipboard + "Post link copied" toast fallback; repeated-tap guard; URL format https://ourrealm.social/feed?post=<id> (REACT_APP_SHARE_ORIGIN in frontend/.env, hardcoded prod fallback — NEVER preview domain).
+- ShareToUserModal now has a "Share post link" button at top (single logic for every surface — Feed + PostPopup cover Home/profiles/Sounds/hashtags/search since all use the same modal). Friend-DM sharing unchanged.
+- Recipient flow verified: logged-out visit → /signup?next=/feed?post=id → signin → lands on exact post popup. Server enforces permissions on the shared post (deleted/private/blocked return errors in popup).
+- Preview DB hygiene: removed 29 orphan sound posts (old TEST_iter83 artifacts whose tracks were deleted).

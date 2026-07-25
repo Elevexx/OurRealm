@@ -10,7 +10,8 @@
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Share2, X, Search, Loader2, Check, Send } from "lucide-react";
+import { Share2, X, Search, Loader2, Check, Send, Link2 } from "lucide-react";
+import { sharePostLink } from "@/lib/sharePost";
 import apiClient from "@/api/client";
 import UserAvatar from "@/components/UserAvatar";
 
@@ -29,6 +30,7 @@ export default function ShareToUserModal({
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(new Set());
+  const [linkBusy, setLinkBusy] = useState(false);
   const [sending, setSending] = useState(false);
   const [sentTo, setSentTo] = useState(new Set());
   const [err, setErr] = useState("");
@@ -116,6 +118,24 @@ export default function ShareToUserModal({
             style={{ width: 32, height: 32 }} aria-label="Close"
             data-testid={`${testid}-close`}
           ><X size={14} /></button>
+        </div>
+
+        <div className="p-3" style={{ borderBottom: "1px solid var(--border-col)" }}>
+          <button
+            type="button"
+            className="or-btn or-btn-ghost w-full flex items-center justify-center gap-2 text-sm"
+            onClick={async () => {
+              if (linkBusy) return;
+              setLinkBusy(true);
+              await sharePostLink({ id: postId, content: postPreview });
+              setLinkBusy(false);
+            }}
+            disabled={linkBusy}
+            data-testid={`${testid}-share-link`}
+          >
+            <Link2 size={14} />
+            {linkBusy ? "Sharing…" : "Share post link"}
+          </button>
         </div>
 
         <div className="p-3" style={{ borderBottom: "1px solid var(--border-col)" }}>
