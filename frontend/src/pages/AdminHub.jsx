@@ -65,6 +65,17 @@ const CARDS = [
     statKey: "totalHashtags",
   },
   {
+    id: "premium-usernames",
+    to: "/admin/premium-usernames",
+    title: "Premium Usernames",
+    description: "Length pricing, name rules, grants, and burn statistics.",
+    Icon: Flame,
+    accent: "#FF7A00",
+    badge: null,
+    roles: ["founder", "admin"],
+    statKey: null,
+  },
+  {
     id: "support",
     to: "/admin/support",
     title: "Support Center",

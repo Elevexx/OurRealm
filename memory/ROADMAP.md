@@ -42,3 +42,7 @@ Belongs to Sound Admin / Copyright Tool / moderation / support-ticket / audit ph
 
 ## STATUS UPDATE (Jul 25, 2026)
 - INCREMENT C (Sound-Player Fire on existing surfaces: Sounds page, feed SoundPlayerCard, MiniPlayer) + INCREMENT D core (Personal Playlist Foundation, private-only, approved trimmed scope: CRUD + add/remove/reorder + limits 50/500 in config + Account Settings tab + Add-to-Playlist popup everywhere) = **BUNDLE 1 COMPLETE & TESTED** (tests/test_playlists_bundle1.py 18/18; frontend iteration_92.json 9/9). Deferred by user from Increment D: artwork, visibility, archive/restore, default, realm connect, loop/shuffle/start, usage view. Awaiting user approval before Bundle 2 (Increments E/F/G — admin sounds center, taxonomy, copyright tool).
+
+## STATUS UPDATE (Jul 26, 2026)
+- DONE: Bundle 1b (video audio options visible, playlist playback via MiniPlayer queue, Realm Soundtrack widget on profiles) + Premium Usernames (grandfathering, tiered Fire Vault burn pricing, NPC_# sequence, signup gate, unlock modal, /admin/premium-usernames w/ bulk tool).
+- DEFERRED (user-ordered, do NOT start unprompted): group/community Realm Soundtrack wiring, /admin/sounds control center, genre/mood managers, copyright hold + rights strikes + 30-day restrictions, portal/nexus/world audio, playlist artwork/sharing, charts/analytics, advanced media studio, Bundle 2/3 remainder. P2 backlog: JWT_SECRET rotation, CORS scoping, mini profile hover-card.

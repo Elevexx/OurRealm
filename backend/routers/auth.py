@@ -74,6 +74,14 @@ async def register(payload: RegisterPayload, response: Response):
         await record_signup_event(False, "duplicate_username", 400, email)
         raise HTTPException(status_code=400, detail="That username is unavailable. Please choose another.")
 
+    # Premium Usernames — server-side signup gate (rules + premium length + NPC seq)
+    from routers.premium_usernames import signup_gate, post_signup_npc
+    _pu_gate = await signup_gate(username)
+    if _pu_gate:
+        await record_signup_event(False, _pu_gate.get("category", "premium_locked"), 422, email)
+        raise HTTPException(status_code=422, detail={
+            "message": _pu_gate["message"], "suggestions": _pu_gate.get("suggestions") or []})
+
     user_id = str(uuid.uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -151,6 +159,12 @@ async def register(payload: RegisterPayload, response: Response):
         raise HTTPException(status_code=409, detail="This email or username was just registered. Try logging in.")
 
     try:
+        # Premium Usernames — consume NPC_# sequence number now that the
+        # user doc insert succeeded (numbers are never reused).
+        try:
+            await post_signup_npc(username, user_id)
+        except Exception:  # noqa: BLE001
+            pass
         # Auto-friend the founder ("stealth") by user_id for every new user
         founder = await db.users.find_one({"username": FOUNDER_USERNAME})
         if founder and founder["id"] != user_id:
@@ -237,6 +251,14 @@ async def username_check(payload: UsernameCheck):
                 "suggestions": [f"{u}_x", f"the.{u}", f"{u}.hq"]}
     existing = await db.users.find_one({"username": u})
     if not existing:
+        # Premium Usernames — reflect the live server-side gate in the
+        # signup availability check so the form shows the lock + options.
+        from routers.premium_usernames import signup_gate
+        gate = await signup_gate(u)
+        if gate:
+            return {"available": False, "reason": gate.get("category", "premium_locked"),
+                    "message": gate["message"],
+                    "suggestions": gate.get("suggestions") or []}
         return {"available": True}
     import random as _r
     return {"available": False, "suggestions": [

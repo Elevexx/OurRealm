@@ -40,7 +40,7 @@ export default function SignUp() {
       try {
         const { data } = await apiClient.post("/auth/username/check", { username });
         if (data.available) setUnCheck({ status: "ok", suggestions: [] });
-        else setUnCheck({ status: "taken", suggestions: data.suggestions || [] });
+        else setUnCheck({ status: "taken", suggestions: data.suggestions || [], message: data.message || "" });
       } catch {
         setUnCheck({ status: "idle", suggestions: [] });
       }
@@ -130,6 +130,11 @@ export default function SignUp() {
                 <StatusIcon />
               </div>
             </div>
+            {unCheck.status === "taken" && unCheck.message && (
+              <p className="text-[11px]" style={{ color: "#ffb84d" }} data-testid="signup-username-message">
+                {unCheck.message}
+              </p>
+            )}
             {unCheck.status === "taken" && unCheck.suggestions?.length > 0 && (
               <div className="flex flex-wrap gap-1.5" data-testid="signup-username-suggestions">
                 {unCheck.suggestions.slice(0, 4).map((s) => (

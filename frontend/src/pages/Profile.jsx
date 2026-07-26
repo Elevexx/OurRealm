@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import useHeartbeat from "@/hooks/useHeartbeat";
+import PremiumUsernameModal from "@/components/PremiumUsernameModal";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import * as Icons from "lucide-react";
 import {
@@ -22,6 +23,7 @@ import VipBadge from "@/components/VipBadge";
 import ProfileBadges from "@/components/ProfileBadges";
 import LevelBadge from "@/components/progression/LevelBadge";
 import ProgressCard from "@/components/progression/ProgressCard";
+import RealmSoundtrack from "@/components/RealmSoundtrack";
 import ProgressionBadges from "@/components/progression/ProgressionBadges";
 import FireWalletCard from "@/components/fire/FireWalletCard";
 import FoundingVipCard from "@/components/fire/FoundingVipCard";
@@ -407,6 +409,7 @@ export default function Profile() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [editing, setEditing] = useState(searchParams.get("edit") !== "0");
+  const [premiumUnOpen, setPremiumUnOpen] = useState(false);
   const [form, setForm] = useState({ name: "", bio: "" });
   // Empty widget lists are VALID saved state for customized profiles —
   // fall back to defaults ONLY when the account has never saved a layout
@@ -629,6 +632,13 @@ export default function Profile() {
                   </button>
             )}
             {user && (
+              <button className="or-btn or-btn-ghost" onClick={() => setPremiumUnOpen(true)}
+                data-testid="profile-premium-username-btn" title="Unlock a short username with Fire Power">
+                <Icons.Flame size={14} /> Unlock Premium Username! 🔥
+              </button>
+            )}
+            <PremiumUsernameModal open={premiumUnOpen} onClose={() => setPremiumUnOpen(false)} />
+            {user && (
               <button
                 className="or-btn or-btn-ghost"
                 onClick={() => navigate("/profile/support")}
@@ -664,6 +674,7 @@ export default function Profile() {
           <FireWalletCard collapsible />
           <ProgressCard username={user.username} isOwner={true} />
           <ProgressionBadges username={user.username} isOwner={true} />
+          <RealmSoundtrack username={user.username} isOwner={true} />
         </>
       )}
 

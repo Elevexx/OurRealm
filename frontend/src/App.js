@@ -49,6 +49,7 @@ import AdminLeaderboardSettings from "@/pages/AdminLeaderboardSettings";
 import Leaderboards from "@/pages/Leaderboards";
 import FAQPage from "@/pages/FAQPage";
 import AdminHashtags from "@/pages/AdminHashtags";
+import AdminPremiumUsernames from "@/pages/AdminPremiumUsernames";
 import HashtagFeed from "@/pages/HashtagFeed";
 import TrendingHashtagsPage from "@/pages/TrendingHashtagsPage";
 import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage, CommunityStandardsPage, DMCAPolicyPage, SafetyPolicyPage, CookieNoticePage, AccountDeletionPage } from "@/pages/LegalPages";
@@ -156,6 +157,7 @@ function App() {
             <Route path="/hashtags" element={<ShellRoute><TrendingHashtagsPage /></ShellRoute>} />
             <Route path="/hashtags/:tag" element={<ShellRoute><HashtagFeed /></ShellRoute>} />
             <Route path="/admin/hashtags" element={<ShellRoute><AdminHashtags /></ShellRoute>} />
+            <Route path="/admin/premium-usernames" element={<ShellRoute><AdminPremiumUsernames /></ShellRoute>} />
             <Route path="/discover" element={<ShellRoute><Discover /></ShellRoute>} />
             <Route path="/sounds" element={<ShellRoute><Sounds /></ShellRoute>} />
             <Route path="/music" element={<Navigate to="/sounds" replace />} />

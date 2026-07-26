@@ -4,10 +4,11 @@
  * deletes Sounds), open playlist, remove tracks, reorder tracks.
  */
 import React, { useEffect, useState } from "react";
-import { ListMusic, Plus, Trash2, ChevronUp, ChevronDown, Loader2, Music } from "lucide-react";
+import { ListMusic, Plus, Trash2, ChevronUp, ChevronDown, Loader2, Music, Play } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { resolveMediaUrl } from "@/lib/mediaUrl";
+import { playQueue } from "@/lib/audioPlayer";
 
 const fmt = (s) => `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
 
@@ -133,9 +134,20 @@ export default function ManagePlaylistsTab() {
                   <input className="or-input w-full text-xs" defaultValue={pl.name} maxLength={80}
                     onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== pl.name && rename(pl.id, e.target.value.trim())}
                     data-testid={`playlist-rename-${pl.id}`} aria-label="Playlist name" />
-                  <div className="text-[11px]" style={{ color: "var(--text-muted)" }}
-                    data-testid={`playlist-duration-${pl.id}`}>
-                    Total {fmt(detail.playlist.total_duration_seconds || 0)} · {detail.playlist.item_count} sounds
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button className="or-chip text-[10px]"
+                      disabled={!detail.items.some((i) => !i.unavailable)}
+                      onClick={() => {
+                        const eligible = detail.items.filter((i) => !i.unavailable).map((i) => i.track);
+                        playQueue(eligible, 0, { name: `playlist:${pl.id}` });
+                      }}
+                      data-testid={`playlist-play-all-${pl.id}`}>
+                      <Play size={11} /> Play All
+                    </button>
+                    <div className="text-[11px]" style={{ color: "var(--text-muted)" }}
+                      data-testid={`playlist-duration-${pl.id}`}>
+                      Total {fmt(detail.playlist.total_duration_seconds || 0)} · {detail.playlist.item_count} sounds
+                    </div>
                   </div>
                   <div className="space-y-1">
                     {detail.items.map((i, idx) => (
@@ -154,6 +166,17 @@ export default function ManagePlaylistsTab() {
                               data-testid={`playlist-item-unavailable-${i.track_id}`}>unavailable</span>
                           )}
                         </span>
+                        {!i.unavailable && (
+                          <button className="starbar-icon" style={{ width: 24, height: 24, color: "var(--primary)" }}
+                            onClick={() => {
+                              const eligible = detail.items.filter((x) => !x.unavailable).map((x) => x.track);
+                              const start = eligible.findIndex((t) => t.id === i.track_id);
+                              playQueue(eligible, Math.max(0, start), { name: `playlist:${pl.id}` });
+                            }}
+                            aria-label="Play from here" data-testid={`playlist-item-play-${i.track_id}`}>
+                            <Play size={11} />
+                          </button>
+                        )}
                         <button className="starbar-icon" style={{ width: 24, height: 24 }} onClick={() => move(idx, -1)}
                           aria-label="Move up" data-testid={`playlist-item-up-${i.track_id}`}><ChevronUp size={11} /></button>
                         <button className="starbar-icon" style={{ width: 24, height: 24 }} onClick={() => move(idx, 1)}

@@ -7,7 +7,7 @@ NEVER deletes canonical Sounds. Limits come from core.config.
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -207,3 +207,75 @@ async def reorder_items(playlist_id: str, body: ReorderBody, current: CurrentUse
             {"playlist_id": playlist_id, "track_id": tid}, {"$set": {"position": idx}})
     await db.playlists.update_one({"id": playlist_id}, {"$set": {"updated_at": _now()}})
     return {"ok": True}
+
+
+# ---------------- Realm Soundtrack (profile = personal Realm) ----------------
+# Data model is context-generic so group/community Realms, Portals and
+# Nexus can reuse it later: one record per (context_type, context_id).
+
+class SoundtrackBody(BaseModel):
+    playlist_id: Optional[str] = None
+    start_track_id: Optional[str] = None
+    shuffle: bool = False
+    repeat: bool = False
+    autoplay: bool = False
+
+
+@router.put("/soundtrack")
+async def set_profile_soundtrack(body: SoundtrackBody, current: CurrentUser):
+    """Sets the CALLER's own profile soundtrack. playlist_id=null removes it."""
+    key = {"context_type": "profile", "context_id": current["id"]}
+    if not body.playlist_id:
+        await db.realm_soundtracks.delete_one(key)
+        return {"ok": True, "enabled": False}
+    pl = await db.playlists.find_one({"id": body.playlist_id}, {"_id": 0})
+    if not pl:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    if pl["owner_id"] != current["id"]:
+        raise HTTPException(status_code=403, detail="You can only use your own playlists")
+    doc = {**key, "owner_id": current["id"], "playlist_id": body.playlist_id,
+           "start_track_id": body.start_track_id, "shuffle": bool(body.shuffle),
+           "repeat": bool(body.repeat), "autoplay": bool(body.autoplay),
+           "updated_at": _now()}
+    await db.realm_soundtracks.update_one(key, {"$set": doc}, upsert=True)
+    return {"ok": True, "enabled": True, "soundtrack": doc}
+
+
+@router.get("/soundtrack/by-user/{username}")
+async def get_profile_soundtrack(username: str, current: CurrentUser):
+    owner = await db.users.find_one({"username": username}, {"_id": 0, "id": 1})
+    if not owner:
+        raise HTTPException(status_code=404, detail="User not found")
+    st = await db.realm_soundtracks.find_one(
+        {"context_type": "profile", "context_id": owner["id"]}, {"_id": 0})
+    if not st:
+        return {"enabled": False}
+    pl = await db.playlists.find_one(
+        {"id": st["playlist_id"], "owner_id": owner["id"]}, {"_id": 0})
+    if not pl:
+        return {"enabled": False}
+    items = await db.playlist_items.find({"playlist_id": pl["id"]},
+                                         {"_id": 0}).sort("position", 1).to_list(MAX_TRACKS_PER_PLAYLIST)
+    is_owner = current["id"] == owner["id"]
+    tracks = {t["id"]: t async for t in db.tracks.find(
+        {"id": {"$in": [i["track_id"] for i in items]}},
+        {"_id": 0, "id": 1, "title": 1, "cover_url": 1, "file_url": 1,
+         "duration_seconds": 1, "user_id": 1, "visibility": 1,
+         "artist_username": 1, "deleted_at": 1, "moderation_status": 1})}
+    out = []
+    for i in items:
+        t = tracks.get(i["track_id"])
+        if (not t or t.get("deleted_at")
+                or t.get("moderation_status") in RESTRICTED_STATUSES):
+            continue
+        if t.get("visibility") != "public" and not is_owner:
+            continue
+        out.append({k: t.get(k) for k in ("id", "title", "cover_url", "file_url",
+                                          "duration_seconds", "artist_username")})
+    return {"enabled": True, "is_owner": is_owner,
+            "playlist": {"id": pl["id"], "name": pl["name"]},
+            "settings": {"start_track_id": st.get("start_track_id"),
+                         "shuffle": bool(st.get("shuffle")),
+                         "repeat": bool(st.get("repeat")),
+                         "autoplay": bool(st.get("autoplay"))},
+            "tracks": out}

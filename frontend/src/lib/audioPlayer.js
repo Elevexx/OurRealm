@@ -37,7 +37,14 @@ let current = {
   volume: 1,
   loading: false,
   error: null,
+  queue: [],             // ordered track list (playlist playback)
+  queueIndex: -1,
+  shuffle: false,
+  repeat: false,
+  queueName: null,       // e.g. "playlist:<id>" / "soundtrack:<username>"
 };
+
+let _failStreak = 0;
 
 const audio = typeof window !== "undefined" ? new Audio() : null;
 if (audio) {
@@ -45,9 +52,12 @@ if (audio) {
   audio.volume = 1;
   audio.addEventListener("loadedmetadata", () => emit({ duration: audio.duration || 0 }));
   audio.addEventListener("timeupdate",  () => emit({ position: audio.currentTime || 0 }));
-  audio.addEventListener("play",        () => emit({ playing: true, loading: false, error: null }));
+  audio.addEventListener("play",        () => { _failStreak = 0; emit({ playing: true, loading: false, error: null }); });
   audio.addEventListener("pause",       () => emit({ playing: false }));
-  audio.addEventListener("ended",       () => emit({ playing: false, position: 0 }));
+  audio.addEventListener("ended",       () => {
+    if (current.queue.length && current.queueIndex >= 0) { _step(1, true); return; }
+    emit({ playing: false, position: 0 });
+  });
   audio.addEventListener("waiting",     () => emit({ loading: true }));
   audio.addEventListener("canplay",     () => emit({ loading: false }));
   audio.addEventListener("error",       () => {
@@ -112,6 +122,13 @@ export async function play(track) {
     emit({ track: next, playing: false, loading: false, error: "This sound is unavailable." });
     return;
   }
+  // Keep the queue pointer honest: playing a track outside the queue
+  // clears the queue; playing a queue member syncs the index.
+  if (current.queue.length) {
+    const qi = current.queue.findIndex((q) => q.id === next.id);
+    if (qi === -1) emit({ queue: [], queueIndex: -1, queueName: null });
+    else if (qi !== current.queueIndex) emit({ queueIndex: qi });
+  }
   // If same track and just paused, resume rather than re-load.
   if (current.track?.id === next.id && audio.src) {
     try {
@@ -152,6 +169,8 @@ export async function play(track) {
       });
       navigator.mediaSession.setActionHandler("play", () => resume());
       navigator.mediaSession.setActionHandler("pause", () => pause());
+      navigator.mediaSession.setActionHandler("nexttrack", () => next());
+      navigator.mediaSession.setActionHandler("previoustrack", () => prev());
     } catch { /* ignore */ }
   }
 }
@@ -194,8 +213,45 @@ export function stop() {
   audio.pause();
   audio.removeAttribute("src");
   audio.load();
-  emit({ track: null, playing: false, position: 0, duration: 0, loading: false, error: null });
+  emit({ track: null, playing: false, position: 0, duration: 0, loading: false, error: null,
+         queue: [], queueIndex: -1, queueName: null });
 }
+
+/* ------------------------- queue playback (Bundle 1b) ------------------------- */
+// Plays an ordered track list through THIS singleton player — no second
+// audio element. Unavailable Sounds are skipped by the error handler.
+export function playQueue(tracks, startIndex = 0, opts = {}) {
+  const q = (tracks || []).filter((t) => t && t.id && resolveSoundUrl(t));
+  if (!q.length) return;
+  const idx = Math.max(0, Math.min(Number(startIndex) || 0, q.length - 1));
+  _failStreak = 0;
+  emit({ queue: q, queueIndex: idx, shuffle: !!opts.shuffle, repeat: !!opts.repeat,
+         queueName: opts.name || null });
+  play(q[idx]);
+}
+
+function _step(dir, auto = false) {
+  const { queue, queueIndex, shuffle, repeat } = current;
+  if (!queue.length) return;
+  let nextIdx;
+  if (shuffle && queue.length > 1 && dir > 0) {
+    do { nextIdx = Math.floor(Math.random() * queue.length); } while (nextIdx === queueIndex);
+  } else {
+    nextIdx = queueIndex + dir;
+    if (nextIdx >= queue.length) {
+      if (repeat) nextIdx = 0;
+      else { if (!auto) return; emit({ playing: false }); return; }
+    }
+    if (nextIdx < 0) nextIdx = repeat ? queue.length - 1 : 0;
+  }
+  emit({ queueIndex: nextIdx });
+  play(queue[nextIdx]);
+}
+
+export function next() { _step(1); }
+export function prev() { _step(-1); }
+export function toggleShuffle() { emit({ shuffle: !current.shuffle }); }
+export function toggleRepeat() { emit({ repeat: !current.repeat }); }
 
 export function formatTime(s) {
   s = Math.max(0, Math.floor(Number(s) || 0));

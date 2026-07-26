@@ -17,6 +17,7 @@ import ReportButton from "@/components/ReportButton";
 import ProfileBadges from "@/components/ProfileBadges";
 import LevelBadge from "@/components/progression/LevelBadge";
 import ProgressCard from "@/components/progression/ProgressCard";
+import RealmSoundtrack from "@/components/RealmSoundtrack";
 import ProgressionBadges from "@/components/progression/ProgressionBadges";
 import PublicFireStats from "@/components/fire/PublicFireStats";
 import FireWalletCard from "@/components/fire/FireWalletCard";
@@ -405,6 +406,7 @@ export default function FounderProfile() {
       {isOwner ? <FireWalletCard collapsible /> : <PublicFireStats username={profile.username} />}
       <ProgressCard username={profile.username} isOwner={isOwner} />
       <ProgressionBadges username={profile.username} isOwner={isOwner} />
+      <RealmSoundtrack username={profile.username} isOwner={isOwner} />
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={widgets.filter((w) => ALLOWED_WIDGET_TYPES.has(w.type) || !!w.editor_config).map((w) => w.id)} strategy={rectSortingStrategy}>
