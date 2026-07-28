@@ -345,6 +345,15 @@ class RealmCreate(BaseModel):
 
 @router.post("/communities/realms")
 async def create_realm(payload: RealmCreate, current: CurrentUser):
+    # Realm creation burns Fire Power (permanent, non-refundable). Admins bypass.
+    REALM_CREATION_FIRE_COST = 2000
+    _is_admin = get_admin_role(current) is not None
+    if not _is_admin:
+        _w = await db.fire_wallets.find_one({"user_id": current["id"]},
+                                            {"_id": 0, "vault_balance": 1}) or {}
+        if int(_w.get("vault_balance") or 0) < REALM_CREATION_FIRE_COST:
+            raise HTTPException(status_code=402,
+                                detail="Creating a Realm requires 2,000 🔥 Fire Power.")
     slug = (payload.name or "").strip().lower().replace(" ", "-")[:60]
     rid = uuid.uuid4().hex[:12]
     now = _now_iso()
@@ -400,6 +409,31 @@ async def create_realm(payload: RealmCreate, current: CurrentUser):
         "created_by": current["id"], "created_at": now, "updated_at": now,
     }
     await db.community_widgets.insert_one(widget)
+    # Burn ONLY after successful creation; conditional deduction beats races.
+    # Deleting the Realm later NEVER refunds this burn.
+    if not _is_admin:
+        _before = int((_w or {}).get("vault_balance") or 0)
+        gate = await db.fire_wallets.update_one(
+            {"user_id": current["id"], "vault_balance": {"$gte": REALM_CREATION_FIRE_COST}},
+            {"$inc": {"vault_balance": -REALM_CREATION_FIRE_COST}})
+        if gate.modified_count != 1:
+            # raced double-spend — roll the creation back, burn nothing
+            await db.realms.delete_one({"id": rid})
+            await db.community_memberships.delete_many({"community_type": "realm", "community_id": rid})
+            await db.community_chats.delete_many({"community_type": "realm", "community_id": rid})
+            await db.community_widgets.delete_many({"community_type": "realm", "community_id": rid})
+            raise HTTPException(status_code=402,
+                                detail="Creating a Realm requires 2,000 🔥 Fire Power.")
+        _fresh = await db.fire_wallets.find_one({"user_id": current["id"]},
+                                                {"_id": 0, "vault_balance": 1}) or {}
+        await db.fire_wallet_transactions.insert_one({
+            "id": uuid.uuid4().hex, "user_id": current["id"], "sender_id": None,
+            "type": "realm_creation_burn", "status": "burned",
+            "amount": -REALM_CREATION_FIRE_COST, "label": "Realm Creation",
+            "description": f"Realm creation: {doc['name']} — {REALM_CREATION_FIRE_COST} Fire Power permanently burned",
+            "realm_id": rid,
+            "vault_balance_after": int(_fresh.get("vault_balance") or 0),
+            "created_at": now})
     return {**doc, "_main_chat_id": chat["id"], "_poll_widget_id": widget["id"]}
 
 

@@ -42,7 +42,7 @@ DEFAULT_CONFIG = {
                      "4": True, "5": True, "6": True},
     "min_account_age_days": 0,
     "require_verification": False,
-    "change_cooldown_days": 0,
+    "change_cooldown_days": 7,
     "maintenance_lock": False,
 }
 
@@ -280,9 +280,12 @@ async def public_config(current: CurrentUser):
 async def check_username(u: str, current: CurrentUser):
     _rate_limit(current["id"], "check", 40)
     cfg = await get_pu_config()
-    if not cfg["enabled"] or cfg["maintenance_lock"]:
-        raise HTTPException(status_code=403, detail="Premium usernames are not available right now.")
+    if cfg["maintenance_lock"]:
+        raise HTTPException(status_code=403, detail="Username changes are temporarily locked.")
     res = await evaluate(u, current)
+    if res.get("premium") and not cfg["enabled"] and res["status"] == "available":
+        res["status"] = "locked"
+        res["message"] = "Premium usernames are not available right now."
     w = await db.fire_wallets.find_one({"user_id": current["id"]},
                                        {"_id": 0, "vault_balance": 1}) or {}
     vault = max(0, int(w.get("vault_balance") or 0))
@@ -302,27 +305,39 @@ class UnlockBody(BaseModel):
 
 @router.post("/unlock")
 async def unlock_username(body: UnlockBody, current: CurrentUser):
-    """Atomic, idempotent premium username unlock (permanent Vault burn)."""
+    """Atomic, idempotent username change — standard names rename free,
+    premium names permanently burn Fire Vault. Shared by Edit Profile,
+    Account Settings and the unlock modal."""
     _rate_limit(current["id"], "unlock", 8)
+    return await perform_username_change(current, body.username, body.idempotency_key)
+
+
+async def perform_username_change(current: dict, username: str, idempotency_key: str) -> dict:
+    """THE single server-side username-change service (no other code path
+    may rename a user). Handles standard (free) and premium (Vault burn)."""
     cfg = await get_pu_config()
     uid = current["id"]
-    if not cfg["enabled"] or cfg["maintenance_lock"]:
-        raise HTTPException(status_code=403, detail="Premium usernames are not available right now.")
+    if cfg["maintenance_lock"]:
+        raise HTTPException(status_code=403, detail="Username changes are temporarily locked.")
     # idempotent replay
     prev = await db.fire_wallet_transactions.find_one(
         {"user_id": uid, "type": "premium_username_burn",
-         "idempotency_key": body.idempotency_key}, {"_id": 0})
+         "idempotency_key": idempotency_key}, {"_id": 0})
     if prev:
         return {"success": True, "idempotent_replay": True,
                 "username": prev["new_username"], "fire_burned": abs(prev["amount"]),
                 "vault_balance_after": prev["vault_balance_after"]}
-    # cooldown / account age
     udoc = await db.users.find_one({"id": uid}, {"_id": 0}) or {}
+    if udoc.get("is_protected") or (udoc.get("username") or "").lower() == "support":
+        raise HTTPException(status_code=403, detail="This account is protected and cannot be renamed.")
+    # cooldown / account age
     if int(cfg.get("change_cooldown_days") or 0) > 0 and udoc.get("username_changed_at"):
         try:
             from datetime import timedelta
-            nxt = datetime.fromisoformat(udoc["username_changed_at"]) + \
-                timedelta(days=int(cfg["change_cooldown_days"]))
+            last = datetime.fromisoformat(udoc["username_changed_at"])
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            nxt = last + timedelta(days=int(cfg["change_cooldown_days"]))
             if datetime.now(timezone.utc) < nxt:
                 raise HTTPException(status_code=429,
                                     detail=f"You can change your username again after {nxt.date().isoformat()}.")
@@ -336,17 +351,21 @@ async def unlock_username(body: UnlockBody, current: CurrentUser):
                                     detail=f"Your account must be at least {cfg['min_account_age_days']} days old.")
         except ValueError:
             pass
-    if cfg.get("require_verification") and not udoc.get("is_verified"):
-        raise HTTPException(status_code=403, detail="A verified account is required to unlock premium usernames.")
     # server-side revalidation
-    res = await evaluate(body.username, {**current, **udoc})
+    res = await evaluate(username, {**current, **udoc})
     if res["status"] == "verification_required" and not udoc.get("is_verified"):
         raise HTTPException(status_code=403, detail="This username requires a verified account.")
-    if res["status"] not in ("available", "verification_required") or res["cost"] is None:
-        raise HTTPException(status_code=409, detail=res.get("message") or "That username can't be unlocked.")
-    if not res["premium"]:
-        raise HTTPException(status_code=400, detail="That's a standard-length username — no unlock needed.")
-    new_u, cost = res["username"], int(res["cost"])
+    if res["status"] not in ("available", "verification_required", "standard"):
+        raise HTTPException(status_code=409, detail=res.get("message") or "That username can't be used.")
+    premium = bool(res["premium"])
+    if premium:
+        if cfg["enabled"] is False:
+            raise HTTPException(status_code=403, detail="Premium usernames are not available right now.")
+        if cfg.get("require_verification") and not udoc.get("is_verified"):
+            raise HTTPException(status_code=403, detail="A verified account is required to unlock premium usernames.")
+        if res["cost"] is None:
+            raise HTTPException(status_code=409, detail="This username length is not claimable right now.")
+    new_u, cost = res["username"], int(res["cost"] or 0) if premium else 0
     old_u = udoc.get("username")
     if new_u == old_u:
         raise HTTPException(status_code=400, detail="That's already your username.")
@@ -356,10 +375,6 @@ async def unlock_username(body: UnlockBody, current: CurrentUser):
     except Exception:
         raise HTTPException(status_code=409, detail="Someone just claimed that username.")
 
-    async def _abort(status, detail):
-        await db.username_claims.delete_one({"username": new_u, "user_id": uid})
-        raise HTTPException(status_code=status, detail=detail)
-
     # 2) conditional permanent Vault deduction — Vault ONLY, never pool/pending
     w = await db.fire_wallets.find_one({"user_id": uid}, {"_id": 0, "vault_balance": 1}) or {}
     before = max(0, int(w.get("vault_balance") or 0))
@@ -368,65 +383,72 @@ async def unlock_username(body: UnlockBody, current: CurrentUser):
             {"user_id": uid, "vault_balance": {"$gte": cost}},
             {"$inc": {"vault_balance": -cost}})
         if gate.modified_count != 1:
-            await _abort(402, "Not enough Fire Power in your Fire Vault.")
+            await db.username_claims.delete_one({"username": new_u, "user_id": uid})
+            raise HTTPException(status_code=402, detail="Not enough Fire Power in your Fire Vault.")
     after = before - cost
     try:
         # 3) assign username
         await db.users.update_one({"id": uid}, {"$set": {
             "username": new_u, "username_changed_at": _now(),
-            "premium_username": True}})
+            **({"premium_username": True} if premium else {})}})
         # old premium-length usernames retire permanently by default
         if old_u and len(old_u) <= int(cfg["max_premium_len"]):
             await db.username_rules.update_one(
                 {"username": old_u},
                 {"$set": {"username": old_u, "status": "retired",
-                          "note": f"auto-retired after premium unlock by {uid}",
+                          "note": f"auto-retired after username change by {uid}",
                           "updated_by": "system", "updated_at": _now()}},
                 upsert=True)
-        # 4) history + ledger + audit + notification
+        # release the old claim so retired-rule is the single source of truth
+        await db.username_claims.delete_one({"username": old_u, "user_id": uid})
+        # 4) history + (premium only) ledger + audit + notification
         await db.username_history.insert_one({
             "id": uuid.uuid4().hex, "user_id": uid, "old_username": old_u,
-            "new_username": new_u, "method": "premium_unlock",
+            "new_username": new_u, "method": "premium_unlock" if premium else "rename",
             "char_count": len(new_u), "fire_cost": cost, "at": _now()})
-        await db.fire_wallet_transactions.insert_one({
-            "id": uuid.uuid4().hex, "user_id": uid, "sender_id": None,
-            "type": "premium_username_burn", "status": "burned",
-            "amount": -cost, "label": "Premium Username Unlock",
-            "description": f"Premium username unlock: @{new_u} — {cost} Fire Power burned",
-            "old_username": old_u, "new_username": new_u,
-            "char_count": len(new_u),
-            "vault_balance_before": before, "vault_balance_after": after,
-            "pricing_rule": res.get("pricing_rule"),
-            "idempotency_key": body.idempotency_key,
-            "created_at": _now()})
+        if cost > 0:
+            await db.fire_wallet_transactions.insert_one({
+                "id": uuid.uuid4().hex, "user_id": uid, "sender_id": None,
+                "type": "premium_username_burn", "status": "burned",
+                "amount": -cost, "label": "Premium Username Unlock",
+                "description": f"Premium username unlock: @{new_u} — {cost} Fire Power burned",
+                "old_username": old_u, "new_username": new_u,
+                "char_count": len(new_u),
+                "vault_balance_before": before, "vault_balance_after": after,
+                "pricing_rule": res.get("pricing_rule"),
+                "idempotency_key": idempotency_key,
+                "created_at": _now()})
         await db.audit_log.insert_one({
-            "id": uuid.uuid4().hex, "action": "premium_username_unlock",
+            "id": uuid.uuid4().hex,
+            "action": "premium_username_unlock" if premium else "username_rename",
             "actor_id": uid, "target_user_id": uid,
             "old_value": old_u, "new_value": new_u, "fire_cost": cost,
             "at": _now()})
-        try:
-            from routers.notifications import emit_notification
-            await emit_notification(
-                recipient_id=uid, kind="premium_username", actor_username=None,
-                payload={"title": "Premium username unlocked! 🔥",
-                         "body": f"You unlocked the Premium Username @{new_u} by burning "
-                                 f"{cost} Fire Power from your Fire Vault. 🔥"})
-        except Exception:  # noqa: BLE001
-            pass
+        if cost > 0:
+            try:
+                from routers.notifications import emit_notification
+                await emit_notification(
+                    recipient_id=uid, kind="premium_username", actor_username=None,
+                    payload={"title": "Premium username unlocked! 🔥",
+                             "body": f"You unlocked the Premium Username @{new_u} by burning "
+                                     f"{cost} Fire Power from your Fire Vault. 🔥"})
+            except Exception:  # noqa: BLE001
+                pass
     except HTTPException:
         raise
     except Exception as e:  # compensate — refund + release claim
-        log.error(f"[premium-usernames] unlock failed post-deduct: {e}")
+        log.error(f"[premium-usernames] username change failed post-deduct: {e}")
         if cost > 0:
             await db.fire_wallets.update_one({"user_id": uid}, {"$inc": {"vault_balance": cost}})
         await db.users.update_one({"id": uid}, {"$set": {"username": old_u}})
         await db.username_claims.delete_one({"username": new_u, "user_id": uid})
-        raise HTTPException(status_code=500, detail="Unlock failed — nothing was charged.")
+        raise HTTPException(status_code=500, detail="Change failed — nothing was charged.")
     return {"success": True, "username": new_u, "old_username": old_u,
-            "fire_burned": cost, "vault_balance_before": before,
-            "vault_balance_after": after,
-            "message": f"Premium username unlocked! Your new username is @{new_u}. "
-                       f"{cost} Fire Power was permanently burned from your Fire Vault. 🔥"}
+            "premium": premium, "fire_burned": cost,
+            "vault_balance_before": before, "vault_balance_after": after,
+            "message": (f"Premium username unlocked! Your new username is @{new_u}. "
+                        f"{cost} Fire Power was permanently burned from your Fire Vault. 🔥"
+                        if premium else f"Username changed to @{new_u}.")}
 
 
 # ------------------------------- admin endpoints -----------------------------
@@ -786,3 +808,61 @@ async def admin_list_rules(current: CurrentUser, limit: int = 100):
     rows = [r async for r in db.username_rules.find({}, {"_id": 0})
             .sort("updated_at", -1).limit(min(max(limit, 1), 500))]
     return {"rules": rows}
+
+
+@router.get("/admin/unpaid-renames")
+async def admin_unpaid_renames(current: CurrentUser):
+    """Read-only repair report: users holding a premium-length username
+    that was CHANGED to (not grandfathered-original, not admin-granted)
+    without a matching Fire Vault burn. Recommends a repair; changes nothing."""
+    _admin(current)
+    cfg = await get_pu_config()
+    max_len = int(cfg["max_premium_len"])
+    rows = []
+    async for u in db.users.find(
+            {"username_changed_at": {"$exists": True, "$ne": None}},
+            {"_id": 0, "id": 1, "username": 1, "name": 1,
+             "username_changed_at": 1, "username_grandfathered": 1}):
+        un = u.get("username") or ""
+        if len(un) > max_len or not USERNAME_RE.match(un):
+            continue
+        burn = await db.fire_wallet_transactions.find_one(
+            {"user_id": u["id"], "type": "premium_username_burn", "new_username": un},
+            {"_id": 0, "amount": 1})
+        if burn:
+            continue
+        hist = await db.username_history.find_one(
+            {"user_id": u["id"], "new_username": un}, {"_id": 0})
+        if hist and hist.get("method") == "admin_grant":
+            continue
+        prev = (hist or {}).get("old_username")
+        if not prev:
+            adm = await db.audit_log.find_one(
+                {"target_user_id": u["id"],
+                 "action": {"$in": ["admin_username_change", "username_rename"]},
+                 "new_value": un}, {"_id": 0, "old_value": 1, "action": 1})
+            if adm and adm.get("action") == "admin_username_change":
+                continue
+            prev = (adm or {}).get("old_value")
+        ev = await evaluate(un, None)
+        rule = await db.username_rules.find_one({"username": un},
+                                                {"_id": 0, "custom_cost": 1})
+        required = ((rule or {}).get("custom_cost")
+                    if (rule or {}).get("custom_cost") is not None
+                    else _cost_for_len(cfg, len(un)))
+        rows.append({
+            "user_id": u["id"], "name": u.get("name"),
+            "previous_username": prev or "(unknown — renamed before history tracking)",
+            "current_username": un, "char_count": len(un),
+            "changed_at": u.get("username_changed_at"),
+            "grandfathered": bool(u.get("username_grandfathered")),
+            "required_fire_power": required,
+            "fire_power_burned": 0,
+            "recommended_repair": (
+                f"Either (a) collect {required} Fire Power retroactively via an agreed burn, "
+                f"(b) admin-grant the name officially with a reason, or "
+                f"(c) revert to a standard-length username via admin grant. No automatic change made."
+                if required is not None else
+                "Set a custom cost or rule for this length, then decide grant vs revert."),
+        })
+    return {"max_premium_len": max_len, "count": len(rows), "rows": rows}

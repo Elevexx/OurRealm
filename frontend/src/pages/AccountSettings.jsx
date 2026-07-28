@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, Globe2, Users as UsersIcon, Wallet, DollarSign, BadgeCheck, Camera, MapPin, Radar, Trash2, ListMusic } from "lucide-react";
@@ -66,6 +66,19 @@ export default function AccountSettings() {
   const [newUsername, setNewUsername] = useState("");
   const [unBusy, setUnBusy] = useState(false);
   const [unMsg, setUnMsg] = useState("");
+  const [unCheck, setUnCheck] = useState(null);
+
+  useEffect(() => {
+    if (!newUsername || newUsername.length < 1) { setUnCheck(null); return undefined; }
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await apiClient.get(`/premium-usernames/check?u=${encodeURIComponent(newUsername)}`);
+        setUnCheck(data);
+      } catch (e) { setUnCheck({ status: "error", message: e?.response?.data?.detail || "Check failed" }); }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [newUsername]);
+
   const [curPwd, setCurPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
   const [pwdMsg, setPwdMsg] = useState("");
@@ -93,8 +106,11 @@ export default function AccountSettings() {
   const changeUsername = async () => {
     setUnBusy(true); setUnMsg("");
     try {
-      await apiClient.patch("/profile/username", { username: newUsername.trim() });
-      setUnMsg("Username changed."); setNewUsername("");
+      const { data } = await apiClient.post("/premium-usernames/unlock", {
+        username: newUsername.trim(),
+        idempotency_key: (crypto.randomUUID && crypto.randomUUID()) || `${Date.now()}-${Math.random()}`,
+      });
+      setUnMsg(data.message || "Username changed."); setNewUsername(""); setUnCheck(null);
       if (refreshMe) await refreshMe();
     } catch (e) {
       setUnMsg(e?.response?.data?.detail || "Could not change username");
@@ -216,17 +232,44 @@ export default function AccountSettings() {
         <div className="space-y-4" data-testid="tab-account">
           <Card title="Username" Icon={AtSign}>
             <div className="text-sm mb-2" style={{ color: "var(--text-muted)" }}>
-              Current: <b style={{ color: "var(--text-main)" }}>@{user.username}</b> · You can rename once every 7 days.
+              Current: <b style={{ color: "var(--text-main)" }}>@{user.username}</b> · Short usernames are
+              Premium and burn Fire Power from your Fire Vault.
             </div>
             <div className="flex gap-2 flex-wrap">
               <input className="or-input flex-1" placeholder="new_username"
                 value={newUsername} onChange={(e) => setNewUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g,""))}
                 data-testid="settings-new-username" />
-              <button className="or-btn" disabled={unBusy || newUsername.length < 3} onClick={changeUsername} data-testid="settings-save-username">
-                {unBusy ? "Saving…" : "Change"}
+              <button className="or-btn"
+                disabled={unBusy || newUsername.length < 1 || !unCheck
+                  || !["available", "standard"].includes(unCheck.status)}
+                onClick={changeUsername} data-testid="settings-save-username">
+                {unBusy ? "Saving…"
+                  : unCheck?.premium && unCheck?.cost != null
+                    ? `Burn ${Number(unCheck.cost).toLocaleString()} 🔥 to Unlock`
+                    : "Change"}
               </button>
             </div>
-            {unMsg && <div className="text-xs mt-2" data-testid="settings-username-msg" style={{ color: unMsg.includes("changed") ? "var(--brand-green)" : "#FF8080" }}>{unMsg}</div>}
+            {unCheck && (
+              <div className="text-xs mt-2 flex flex-wrap gap-x-3 gap-y-1" data-testid="settings-username-check">
+                <span style={{ color: ["available", "standard"].includes(unCheck.status) ? "var(--brand-green)" : "#FF8080" }}>
+                  {{ available: "Available", standard: "Available", taken: "Unavailable — already exists",
+                     reserved: "Unavailable — reserved", prohibited: "Unavailable", retired: "Unavailable",
+                     locked: "Locked", verification_required: "Verification required",
+                     insufficient_vault: "Insufficient Fire Vault balance", invalid: "Invalid",
+                     error: "Error" }[unCheck.status] || unCheck.status}
+                </span>
+                <span style={{ color: "var(--text-muted)" }}>
+                  {unCheck.premium ? "Premium Username" : "Normal username"}
+                </span>
+                {unCheck.premium && unCheck.cost != null && (
+                  <span style={{ color: "#FF7A00" }}>Requires {Number(unCheck.cost).toLocaleString()} Fire Power 🔥</span>
+                )}
+                {unCheck.vault_balance != null && (
+                  <span style={{ color: "var(--text-muted)" }}>Fire Vault: {Number(unCheck.vault_balance).toLocaleString()}</span>
+                )}
+              </div>
+            )}
+            {unMsg && <div className="text-xs mt-2" data-testid="settings-username-msg" style={{ color: unMsg.includes("changed") || unMsg.includes("unlocked") ? "var(--brand-green)" : "#FF8080" }}>{unMsg}</div>}
           </Card>
 
           <Card title="Email" Icon={MailCheck}>

@@ -49,13 +49,14 @@ export default function PremiumUsernameModal({ open, onClose }) {
   const w = wallet?.wallet || {};
   const pool = wallet?.pool || {};
   const canUnlock = res?.status === "available" && res?.cost != null;
+  const canRename = res?.status === "standard";
 
-  const doUnlock = async () => {
+  const doUnlock = async (key = idemKey) => {
     if (busy) return;
     setBusy(true);
     try {
       const { data } = await apiClient.post("/premium-usernames/unlock", {
-        username: res.username, idempotency_key: idemKey,
+        username: res.username, idempotency_key: key,
       });
       toast.success(data.message || `Premium username unlocked! @${data.username}`);
       await refreshMe();
@@ -137,10 +138,24 @@ export default function PremiumUsernameModal({ open, onClose }) {
           </div>
           <div className="flex items-center justify-between">
             {stateLine()}
-            {res?.message && res.status !== "available" && (
-              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{res.message}</span>
+            {res && !checking && (
+              <span className="text-[10px] font-bold" data-testid="premium-username-kind"
+                style={{ color: res.premium ? "#FF7A00" : "var(--text-muted)" }}>
+                {res.premium ? "Premium Username" : "Normal username"}
+              </span>
             )}
           </div>
+          {res?.message && !["available", "standard"].includes(res?.status) && (
+            <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{res.message}</p>
+          )}
+
+          {canRename && (
+            <button className="or-btn w-full text-xs" disabled={busy}
+              onClick={() => doUnlock((crypto.randomUUID && crypto.randomUUID()) || `${Date.now()}-${Math.random()}`)}
+              data-testid="premium-rename-standard-btn">
+              {busy ? <Loader2 size={13} className="animate-spin" /> : `Change username to @${res.username} (free)`}
+            </button>
+          )}
 
           {canUnlock && !confirming && (
             <div className="p-3 rounded space-y-1.5 text-xs"
@@ -172,7 +187,7 @@ export default function PremiumUsernameModal({ open, onClose }) {
               <div className="flex justify-between"><span>Balance before</span><b>{fmt(res.vault_balance)}</b></div>
               <div className="flex justify-between"><span>Balance after</span><b>{fmt(res.balance_after)}</b></div>
               <div className="flex gap-2">
-                <button className="or-btn flex-1" disabled={busy} onClick={doUnlock}
+                <button className="or-btn flex-1" disabled={busy} onClick={() => doUnlock()}
                   data-testid="premium-unlock-confirm-btn">
                   {busy ? <Loader2 size={13} className="animate-spin" /> : "Confirm permanent burn 🔥"}
                 </button>

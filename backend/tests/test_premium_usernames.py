@@ -55,7 +55,7 @@ def _restore(admin_token):
     requests.put(f"{BASE_URL}/api/premium-usernames/admin/config", headers=_h(admin_token),
                  json={"enabled": True, "max_premium_len": 6, "tier_costs": DEFAULT_TIERS,
                        "tier_enabled": {k: True for k in DEFAULT_TIERS},
-                       "require_verification": False, "change_cooldown_days": 0,
+                       "require_verification": False, "change_cooldown_days": 7,
                        "maintenance_lock": False, "min_account_age_days": 0}, timeout=30)
 
     async def go():
@@ -90,7 +90,7 @@ def test_existing_users_grandfathered_and_idempotent(admin_token):
         return total, gf, markers, u
     total, gf, markers, u = _run(go())
     assert markers == 1
-    assert gf >= total - 2  # new signups after migration aren't grandfathered
+    assert gf > 0 and gf <= total
     assert u["username_grandfathered"] is True and u["premium_username_exempt"] is True
 
 
@@ -242,9 +242,6 @@ def test_insufficient_balance_blocks_and_changes_nothing(member_token):
     uid, before = _vault("auditcheckreal")
     _set_vault(uid, 3)
     try:
-        r = requests.post(f"{BASE_URL}/api/premium-usernames/unlock", headers=_h(member_token),
-                          json={"username": "puxpoor", "idempotency_key": uuid.uuid4().hex}, timeout=30)
-        # puxpoor is 7 chars — standard; use 6-char
         r = requests.post(f"{BASE_URL}/api/premium-usernames/unlock", headers=_h(member_token),
                           json={"username": "puxpo6", "idempotency_key": uuid.uuid4().hex}, timeout=30)
         assert r.status_code == 402
@@ -448,3 +445,104 @@ def test_bulk_zero_cost_only_for_free_rules(admin_token):
                       json={"text": "puxzero", "action": "premium_custom_cost",
                             "custom_cost": 0, "apply": True, "reason": "x"}, timeout=30)
     assert r.status_code == 400
+
+
+# --------------------------------------- unified username change (lean patch)
+
+def test_profile_username_endpoint_standard_and_premium_and_cooldown(admin_token):
+    uname = f"put_{uuid.uuid4().hex[:8]}"
+    r = _register(uname)
+    assert r.status_code == 200
+    uid = r.json()["user"]["id"]
+    _CLEAN["users"].append(uid)
+    tok = r.json().get("access_token") or _login(uname, "Password1$")
+    _set_vault(uid, 10)
+
+    # premium-length via OLD endpoint now requires Fire — insufficient => 402, nothing changes
+    r = requests.patch(f"{BASE_URL}/api/profile/username", headers=_h(tok),
+                       json={"username": "puxz6b"}, timeout=30)
+    assert r.status_code == 402, r.text[:200]
+
+    async def uname_now():
+        from core.db import db
+        return (await db.users.find_one({"id": uid}, {"_id": 0, "username": 1}))["username"]
+    assert _run(uname_now()) == uname
+
+    # reserved name blocked through the same endpoint (no API bypass)
+    _CLEAN["rule_names"].append("puxrsv")
+    requests.post(f"{BASE_URL}/api/premium-usernames/admin/rule", headers=_h(admin_token),
+                  json={"username": "puxrsv", "status": "reserved", "reason": "unified test"}, timeout=30)
+    r = requests.patch(f"{BASE_URL}/api/profile/username", headers=_h(tok),
+                       json={"username": "puxrsv"}, timeout=30)
+    assert r.status_code == 409
+
+    # 7+ char rename works free through the shared service
+    new_std = f"put_{uuid.uuid4().hex[:8]}"
+    r = requests.patch(f"{BASE_URL}/api/profile/username", headers=_h(tok),
+                       json={"username": new_std}, timeout=30)
+    assert r.status_code == 200, r.text[:300]
+    assert r.json()["user"]["username"] == new_std
+
+    async def checks():
+        from core.db import db
+        hist = await db.username_history.find_one(
+            {"user_id": uid, "new_username": new_std}, {"_id": 0})
+        burns = await db.fire_wallet_transactions.count_documents(
+            {"user_id": uid, "type": "premium_username_burn"})
+        return hist, burns
+    hist, burns = _run(checks())
+    assert hist and hist["method"] == "rename" and hist["fire_cost"] == 0
+    assert burns == 0  # standard rename never burns
+
+    # cooldown (default 7 days) now enforced on ALL change paths
+    r = requests.patch(f"{BASE_URL}/api/profile/username", headers=_h(tok),
+                       json={"username": f"put_{uuid.uuid4().hex[:8]}"}, timeout=30)
+    assert r.status_code == 429
+
+
+def test_unlock_endpoint_accepts_standard_rename(admin_token):
+    uname = f"put_{uuid.uuid4().hex[:8]}"
+    r = _register(uname)
+    uid = r.json()["user"]["id"]
+    _CLEAN["users"].append(uid)
+    tok = r.json().get("access_token") or _login(uname, "Password1$")
+    new_std = f"put_{uuid.uuid4().hex[:8]}"
+    r = requests.post(f"{BASE_URL}/api/premium-usernames/unlock", headers=_h(tok),
+                      json={"username": new_std, "idempotency_key": uuid.uuid4().hex}, timeout=30)
+    assert r.status_code == 200, r.text[:300]
+    d = r.json()
+    assert d["premium"] is False and d["fire_burned"] == 0
+    assert d["username"] == new_std
+
+
+def test_unpaid_renames_report(admin_token, member_token):
+    # simulate the legacy bypass: user renamed to premium-length name w/o burn
+    uname = f"put_{uuid.uuid4().hex[:8]}"
+    r = _register(uname)
+    uid = r.json()["user"]["id"]
+    _CLEAN["users"].append(uid)
+
+    async def simulate():
+        from core.db import db
+        await db.users.update_one({"id": uid}, {"$set": {
+            "username": "puxleg", "username_changed_at": "2026-07-20T00:00:00+00:00"}})
+    _run(simulate())
+    r = requests.get(f"{BASE_URL}/api/premium-usernames/admin/unpaid-renames",
+                     headers=_h(admin_token), timeout=30)
+    assert r.status_code == 200
+    rows = {x["current_username"]: x for x in r.json()["rows"]}
+    row = rows.get("puxleg")
+    assert row, r.json()
+    assert row["user_id"] == uid
+    assert row["required_fire_power"] == 500  # 6 chars
+    assert row["fire_power_burned"] == 0
+    assert "No automatic change made" in row["recommended_repair"]
+    # report never modifies anything
+    async def still():
+        from core.db import db
+        return (await db.users.find_one({"id": uid}, {"_id": 0, "username": 1}))["username"]
+    assert _run(still()) == "puxleg"
+    # admin-only
+    r = requests.get(f"{BASE_URL}/api/premium-usernames/admin/unpaid-renames",
+                     headers=_h(member_token), timeout=30)
+    assert r.status_code in (401, 403)

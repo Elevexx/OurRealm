@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { isAdmin } from "@/lib/isAdmin";
 import { resolveMediaUrl } from "@/lib/mediaUrl";
 
 const SORTS = [
@@ -331,15 +332,31 @@ function RealmCard({ realm, isFavorite, onOpen, onToggleFavorite }) {
 
 
 // ─── Create modal ───────────────────────────────────────────────
+const REALM_FIRE_COST = 2000;
+
 function CreateRealmModal({ onClose, onCreated }) {
+  const { user } = useAuth();
+  const admin = isAdmin(user);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [vault, setVault] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    if (admin) return;
+    apiClient.get("/fire/wallet")
+      .then((r) => setVault(Math.max(0, Number(r.data?.wallet?.vault_balance || 0))))
+      .catch(() => setVault(0));
+  }, [admin]);
+
+  const enough = admin || (vault != null && vault >= REALM_FIRE_COST);
 
   const submit = async (e) => {
     e?.preventDefault?.();
+    if (!admin && !confirming) { setConfirming(true); return; }
     setBusy(true); setErr("");
     try {
       const { data } = await apiClient.post("/communities/realms", {
@@ -350,6 +367,7 @@ function CreateRealmModal({ onClose, onCreated }) {
       onCreated(data);
     } catch (e) {
       setErr(e?.response?.data?.detail || "Create failed");
+      setConfirming(false);
     } finally { setBusy(false); }
   };
 
@@ -364,10 +382,31 @@ function CreateRealmModal({ onClose, onCreated }) {
         <label className="text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Tags (comma-separated)</label>
         <input value={tags} onChange={(e) => setTags(e.target.value)} className="or-input mb-3" placeholder="music, festivals" data-testid="realms-create-tags" />
         {err && <div className="text-sm mb-2" style={{ color: "#FF8080" }} data-testid="realms-create-error">{err}</div>}
+
+        {!admin && vault != null && !enough && (
+          <div className="text-sm mb-2 p-2 rounded" data-testid="realms-create-insufficient"
+            style={{ color: "#FF8080", background: "rgba(255,80,80,0.08)", border: "1px solid rgba(255,80,80,0.4)" }}>
+            Creating a Realm requires 2,000 🔥 Fire Power.
+            <span className="block text-[11px]" style={{ color: "var(--text-muted)" }}>
+              Fire Vault: {vault.toLocaleString()} 🔥
+            </span>
+          </div>
+        )}
+        {!admin && enough && confirming && (
+          <div className="text-sm mb-2 p-2 rounded" data-testid="realms-create-burn-confirm"
+            style={{ color: "var(--text-main)", background: "rgba(255,122,0,0.08)", border: "1px solid rgba(255,122,0,0.5)" }}>
+            Creating a Realm permanently burns 2,000 🔥 Fire Power.
+            <span className="block text-[11px]" style={{ color: "var(--text-muted)" }}>
+              Fire Vault: {vault.toLocaleString()} 🔥 → {(vault - REALM_FIRE_COST).toLocaleString()} 🔥 · This is never refunded, even if the Realm is deleted.
+            </span>
+          </div>
+        )}
+
         <div className="flex items-center justify-end gap-2">
-          <button type="button" onClick={onClose} className="or-chip" data-testid="realms-create-cancel">Cancel</button>
-          <button type="submit" className="or-btn" disabled={busy || !name.trim()} data-testid="realms-create-submit">
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Create
+          <button type="button" onClick={() => (confirming ? setConfirming(false) : onClose())} className="or-chip" data-testid="realms-create-cancel">Cancel</button>
+          <button type="submit" className="or-btn" disabled={busy || !name.trim() || !enough} data-testid="realms-create-submit">
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            {admin ? " Create" : confirming ? " Burn 2,000 🔥 & Create" : enough ? " Continue" : " Create"}
           </button>
         </div>
       </form>

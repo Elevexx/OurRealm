@@ -201,40 +201,16 @@ async def update_profile(update: ProfileUpdate, current: CurrentUser):
 
 @router.patch("/username")
 async def change_username(payload: UsernameChangePayload, current: CurrentUser):
+    """Delegates to THE shared Premium Username service — standard names
+    rename free, premium-length names require a Fire Vault burn."""
     new_un = payload.username.lower().strip()
     if new_un == (current.get("username") or "").lower():
         return {"ok": True, "user": serialize_user(current)}
-    # Phase B — @support is a protected system account; refuse rename.
-    if current.get("is_protected") or (current.get("username") or "").lower() == "support":
-        raise HTTPException(status_code=403, detail="This account is protected and cannot be renamed.")
-    # Cooldown
-    last = current.get("username_changed_at")
-    if last:
-        try:
-            last_dt = datetime.fromisoformat(last)
-            if last_dt.tzinfo is None:
-                last_dt = last_dt.replace(tzinfo=timezone.utc)
-            elapsed = datetime.now(timezone.utc) - last_dt
-            if elapsed < timedelta(days=USERNAME_COOLDOWN_DAYS):
-                days_left = USERNAME_COOLDOWN_DAYS - elapsed.days
-                raise HTTPException(
-                    status_code=429,
-                    detail=f"You can change your username again in {days_left} day(s).",
-                )
-        except HTTPException:
-            raise
-        except Exception:
-            pass
-    # Availability
-    if await db.users.find_one({"username": new_un}):
-        raise HTTPException(status_code=400, detail="Username already taken")
-    now_iso = datetime.now(timezone.utc).isoformat()
-    await db.users.update_one(
-        {"id": current["id"]},
-        {"$set": {"username": new_un, "username_changed_at": now_iso}},
-    )
+    from routers.premium_usernames import perform_username_change
+    result = await perform_username_change(
+        current, new_un, idempotency_key=f"profile-{current['id']}-{new_un}")
     user = await db.users.find_one({"id": current["id"]}, {"_id": 0})
-    return {"ok": True, "user": serialize_user(user)}
+    return {"ok": True, "result": result, "user": serialize_user(user)}
 
 
 @router.post("/change-password")
