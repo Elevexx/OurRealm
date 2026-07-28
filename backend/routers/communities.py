@@ -166,10 +166,19 @@ async def list_realms(q: Optional[str] = None, limit: int = 50):
     ids = [r["id"] for r in raw if r.get("id")]
     # One aggregation, then attach the real counts to each card.
     counts = await _membership_count_map("realm", ids)
+    official_owner_ids = {u["id"] async for u in db.users.find(
+        {"username": {"$in": ["stealth", "ourrealm"]}}, {"_id": 0, "id": 1})}
     realms = []
     for r in raw:
         r["member_count"] = counts.get(r.get("id"), 0)
-        realms.append(_realm_with_aliases(r))
+        out = _realm_with_aliases(r)
+        out["is_official"] = (r.get("owner_id") in official_owner_ids
+                              or r.get("created_by") in official_owner_ids)
+        realms.append(out)
+    # Official realms pinned on top (member_count DESC); others keep order.
+    official = sorted([x for x in realms if x["is_official"]],
+                      key=lambda x: -(x.get("member_count") or 0))
+    realms = official + [x for x in realms if not x["is_official"]]
     return {"realms": realms}
 
 

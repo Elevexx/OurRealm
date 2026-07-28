@@ -94,7 +94,10 @@ export default function Realms() {
     } else {
       list.sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
     }
-    return list;
+    // Official realms always pinned on top, most members first.
+    const official = list.filter((r) => r.is_official)
+      .sort((a, b) => (b.member_count || 0) - (a.member_count || 0));
+    return [...official, ...list.filter((r) => !r.is_official)];
   }, [filtered, sortKey, myMembershipMap]);
 
   const toggleFavorite = async (realm) => {
@@ -279,9 +282,20 @@ function RealmCard({ realm, isFavorite, onOpen, onToggleFavorite }) {
   const online = realm.online_count ?? realm.online ?? 0;
   const members = realm.member_count ?? realm.members ?? 0;
   return (
-    <div className="or-surface overflow-hidden" data-testid={`realm-card-${realm.id}`}>
+    <div className="or-surface overflow-hidden" data-testid={`realm-card-${realm.id}`}
+      style={realm.is_official ? {
+        border: "1px solid rgba(255, 200, 60, 0.55)",
+        boxShadow: "0 0 10px rgba(255, 200, 60, 0.22)",
+      } : undefined}>
       <button onClick={onOpen} className="block w-full text-left">
         <div className="relative h-40">
+          {realm.is_official && (
+            <span className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest"
+              style={{ background: "rgba(255, 200, 60, 0.92)", color: "#1a1400" }}
+              data-testid={`realm-official-badge-${realm.id}`}>
+              Official
+            </span>
+          )}
           {(() => {
             // Prefer `banner_url` (new alias from the API) and fall back
             // to legacy `banner`. Append `?v=updated_at` so the browser
