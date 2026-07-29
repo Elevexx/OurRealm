@@ -1061,12 +1061,13 @@ async def case_detail(content_type: str, content_id: str, current: CurrentUser):
     notes = [n async for n in db.moderation_notes.find(
         {"content_type": content_type, "content_id": content_id}, {"_id": 0}
     ).sort("created_at", -1).limit(50)]
-    audit = [a async for a in db.moderation_log.find(
-        {"content_id": content_id}, {"_id": 0}).sort("created_at", -1).limit(100)]
-    # Post log_action for the open event (audit: post opened in admin).
+    # Audit: log the open event BEFORE snapshotting so this response
+    # already carries its own "post opened in admin" entry.
     await log_action(action="case_opened", content_type=content_type,
                      content_id=content_id, user_id=uploader_id,
                      actor_id=current["id"], meta={"source": "moderation_center"})
+    audit = [a async for a in db.moderation_log.find(
+        {"content_id": content_id}, {"_id": 0}).sort("created_at", -1).limit(100)]
     return {"content": doc, "uploader": uploader, "reports": reports,
             "notes": notes, "audit": audit}
 

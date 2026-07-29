@@ -58,3 +58,14 @@ Belongs to Sound Admin / Copyright Tool / moderation / support-ticket / audit ph
   - Tests: backend/tests/test_content_safety_phase1.py 17/17 pass; frontend e2e blur overlay verified (iteration_93.json).
 - PHASE 2 (next, user-approved order): threat/hate/nudity/graphic/scam/self-harm/privacy-doxxing detection workflows, urgent safety queue depth, account enforcement tools (warn/limit/suspend), report merging + reporter-abuse controls.
 - PHASE 3: appeals, Realm moderator permissions, advanced analytics, configurable per-category thresholds, detection model settings.
+
+## STATUS UPDATE (Jul 29, 2026 — later) — Content Safety Phase 1.5 COMPLETE & TESTED
+- Admin moderation controls strengthened (user spec, all 12 test points verified — iteration_94.json: backend 11/11, frontend 23/23 incl. mobile 390x844 + regression):
+  - Lock to Private While Under Review: POST /api/admin/moderation/post/{id}/lock-private|unlock-private (reason REQUIRED, 422 if empty; saves original_audience for EXACT restore; uploader sees "Under Review" banner via review_lock_view; other users lose access via audience gate).
+  - Internal moderator notes (db.moderation_notes) + full case view GET /case/{ct}/{id} (content, uploader, reports, notes, audit trail incl. case_opened in same response).
+  - Global user search /users/search (partial username/name/id; email founder-only) + user moderation profile /users/{id} (counts, history, notes) + /users/{id}/posts (25/page, 11 filters).
+  - Platform-wide content search /content/search (caption/id, username, media_type, status, severity_min, blurred, locked).
+  - cases?tab= now supports ai|urgent|blurred|review|hidden|locked. Audit meta.source recorded on every action (post_menu|edit_screen|moderation_center|user_profile).
+  - Frontend: PostManagementMenu "Moderation" grid (Blur/Remove Blur, Lock Private/Restore Visibility w/ ReasonModal required reason, Hide/Restore, Open Case deep-link); Moderation Center 12 tabs (added All Content, Under Review, Private Review, Hidden, Users) + ?case=post:{id} deep link; shared components /components/admin/ (modActions.js, ReasonModal, ModPostRow, ModUserPanel, ModContentSearch, ModCaseDetail); sonner toasts, busy-state double-submit protection, mobile card layouts.
+- Known tech debt (non-blocking): moderation.py is ~1260 lines — split into safety_admin.py router recommended before Phase 2 additions.
+- PHASE 2 next: detection workflows per category, account enforcement (warn/limit/suspend), report merging, reporter-abuse controls. PHASE 3: appeals, Realm moderator permissions, thresholds, Settings tab.
