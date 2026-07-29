@@ -99,9 +99,12 @@ async def list_notifications(current: CurrentUser, limit: int = 50):
 async def mark_seen(current: CurrentUser):
     """Mark every VISIBLE notification for the current user as seen.
     Hidden-kind rows are left alone — they're already invisible, no
-    point flipping `seen` on them."""
+    point flipping `seen` on them. Admin moderation notifications are
+    ALSO excluded: urgent safety cases must never be auto-cleared just
+    by opening the page — they're marked read via acknowledge/open-case."""
     res = await db.notifications.update_many(
-        {"recipient_id": current["id"], "seen": False, **_KIND_NOT_HIDDEN},
+        {"recipient_id": current["id"], "seen": False,
+         "kind": {"$nin": _HIDDEN_KINDS + ["admin_moderation"]}},
         {"$set": {"seen": True}},
     )
     return {"updated": res.modified_count}

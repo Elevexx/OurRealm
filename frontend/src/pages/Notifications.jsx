@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, UserPlus, AtSign, Mail, Share2, Users, Bell, Calendar, Check, CheckCheck, Bookmark, Flame } from "lucide-react";
+import { Heart, MessageCircle, UserPlus, AtSign, Mail, Share2, Users, Bell, Calendar, Check, CheckCheck, Bookmark, Flame, ShieldAlert, FolderOpen } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { NOTIFICATION_CATEGORIES } from "@/data/mockData";
@@ -37,12 +37,19 @@ export default function Notifications() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [cat, setCat] = useState("All");
+  const [modFilter, setModFilter] = useState("all"); // all | urgent | unresolved | resolved
   // Real server notifications only (June 2026 audit — mock rows removed).
   const [items, setItems] = useState([]);
   const [serverItems, setServerItems] = useState([]);
 
+  // Admin-only Moderation tab (mirrors backend moderation-access roles).
+  const adminRole = user?.admin_role || ((user?.username || "").toLowerCase() === "stealth" ? "founder" : null);
+  const isModAdmin = ["founder", "support_admin", "moderator"].includes(adminRole);
+
   // Load real notifications + mark all as seen as soon as the page opens
-  // (this is what clears the red badge in the top bar).
+  // (this is what clears the red badge in the top bar). The backend
+  // excludes admin_moderation from mark-seen so urgent moderation
+  // notifications are never auto-cleared by simply opening the page.
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -60,9 +67,16 @@ export default function Notifications() {
     return () => { cancelled = true; };
   }, [user]);
 
+  // Moderation notifications stay OUT of the social list — they only
+  // render inside the admin-only Moderation tab below.
+  const modItems = useMemo(
+    () => serverItems.filter((n) => n.kind === "admin_moderation"),
+    [serverItems]
+  );
+
   // Merge real + mock and sort by created_at desc (most recent first).
   const merged = useMemo(() => {
-    const mapped = serverItems.map((n) => ({
+    const mapped = serverItems.filter((n) => n.kind !== "admin_moderation").map((n) => ({
       id: n.id,
       type: n.kind,
       category: n.kind === "friend_request" ? "Friends" :
@@ -102,6 +116,7 @@ export default function Notifications() {
   }, [serverItems, items]);
 
   const unreadCount = merged.filter((n) => n.unread).length;
+  const modUnread = modItems.filter((n) => !n.seen).length;
 
   const filtered = useMemo(
     () => cat === "All" ? merged : merged.filter((n) => n.category === cat),
@@ -211,9 +226,36 @@ export default function Notifications() {
             </button>
           );
         })}
+        {isModAdmin && (
+          <button
+            className="or-chip shrink-0"
+            data-active={cat === "Moderation"}
+            onClick={() => setCat("Moderation")}
+            style={{ color: cat === "Moderation" ? "#FFC94D" : undefined }}
+            data-testid="notifications-cat-Moderation"
+          >
+            <ShieldAlert size={12} /> Moderation
+            {modUnread > 0 && (
+              <span
+                className="text-[10px] font-bold rounded-full px-1.5"
+                style={{ background: "#FF3344", color: "#fff" }}
+                data-testid="notifications-mod-unread"
+              >{modUnread}</span>
+            )}
+          </button>
+        )}
       </div>
 
-      {/* List */}
+      {cat === "Moderation" && isModAdmin ? (
+        <ModerationNotifications
+          items={modItems}
+          filter={modFilter}
+          setFilter={setModFilter}
+          navigate={navigate}
+          onLocalUpdate={(id, patch) => setServerItems((arr) =>
+            arr.map((n) => (n.id === id ? { ...n, ...patch, payload: { ...n.payload, ...(patch.payload || {}) } } : n)))}
+        />
+      ) : (
       <div className="space-y-2">
         {filtered.length === 0 && (
           <div className="or-surface p-6 text-center" style={{ color: "var(--text-muted)" }}>
@@ -266,6 +308,109 @@ export default function Notifications() {
                   <Check size={12} />
                 </button>
               )}
+            </div>
+          );
+        })}
+      </div>
+      )}
+    </div>
+  );
+}
+
+const PRIORITY_COLORS = {
+  Critical: "#FF2D55",
+  Urgent: "#FF5A5A",
+  High: "#FFA94D",
+  Standard: "#8A93A6",
+};
+
+const MOD_EVENT_LABELS = {
+  urgent_case: "Urgent safety case",
+  scan_failed: "Safety scan failed — needs review",
+  review_lock: "Post locked private for review",
+};
+
+function ModerationNotifications({ items, filter, setFilter, navigate, onLocalUpdate }) {
+  const filtered = items.filter((n) => {
+    const st = n.payload?.status || "unresolved";
+    if (filter === "urgent") return ["Critical", "Urgent"].includes(n.payload?.priority) && st !== "resolved";
+    if (filter === "unresolved") return st !== "resolved";
+    if (filter === "resolved") return st === "resolved";
+    return true;
+  });
+
+  const ack = async (n, action) => {
+    try {
+      await apiClient.post(`/admin/moderation/notifications/${n.id}/ack`, { action });
+    } catch { /* best-effort */ }
+    onLocalUpdate(n.id, {
+      seen: true,
+      payload: action === "acknowledge" && (n.payload?.status !== "resolved")
+        ? { status: "acknowledged" } : {},
+    });
+  };
+
+  const openCase = async (n) => {
+    await ack(n, "open");
+    const ct = n.payload?.content_type || "post";
+    navigate(`/admin/moderation?case=${ct}:${n.payload?.content_id}`);
+  };
+
+  return (
+    <div data-testid="mod-notifications">
+      <div className="flex gap-1.5 mb-3 overflow-x-auto no-scrollbar">
+        {["all", "urgent", "unresolved", "resolved"].map((f) => (
+          <button key={f} className="or-chip text-[11px] shrink-0" data-active={filter === f}
+            style={filter === f ? { color: "var(--primary)", borderColor: "var(--primary)" } : undefined}
+            onClick={() => setFilter(f)} data-testid={`mod-notif-filter-${f}`}>
+            {f}
+          </button>
+        ))}
+      </div>
+      <div className="space-y-2">
+        {filtered.length === 0 && (
+          <div className="or-surface p-6 text-center" style={{ color: "var(--text-muted)" }} data-testid="mod-notifications-empty">
+            No moderation notifications in this filter.
+          </div>
+        )}
+        {filtered.map((n) => {
+          const p = n.payload || {};
+          const prio = p.priority || "Standard";
+          const st = p.status || "unresolved";
+          return (
+            <div key={n.id} className="or-surface p-3 sm:p-4" data-testid={`mod-notification-${n.id}`}
+              style={{ outline: !n.seen ? "1px solid #FFC94D" : "1px solid transparent" }}>
+              <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full font-bold"
+                  style={{ color: PRIORITY_COLORS[prio] || "#8A93A6", border: `1px solid ${PRIORITY_COLORS[prio] || "#8A93A6"}` }}
+                  data-testid={`mod-notif-priority-${n.id}`}>
+                  {prio}
+                </span>
+                {p.category && <span className="or-chip text-[10px]">{p.category}</span>}
+                <span className="text-[10px] uppercase" style={{ color: "var(--text-muted)" }}>{p.content_type || "post"}</span>
+                <span className="text-[10px] uppercase tracking-widest ml-auto"
+                  style={{ color: st === "resolved" ? "#57D98A" : st === "acknowledged" ? "#8A93A6" : "#FFC94D" }}
+                  data-testid={`mod-notif-status-${n.id}`}>
+                  {st}
+                </span>
+              </div>
+              <div className="text-sm" style={{ color: "var(--text-main)" }}>
+                {MOD_EVENT_LABELS[p.event_type] || "Moderation event"}
+                {p.username ? <> · <span className="font-semibold">@{p.username}</span></> : null}
+              </div>
+              <div className="text-[10px] mt-0.5 mb-2" style={{ color: "var(--text-muted)" }}>
+                {p.content_type || "post"}:{String(p.content_id || "").slice(0, 12)}… · {String(n.created_at || "").slice(0, 16).replace("T", " ")}
+              </div>
+              <div className="flex gap-1.5">
+                <button className="or-chip" style={{ minHeight: 32 }} onClick={() => openCase(n)} data-testid={`mod-notif-open-${n.id}`}>
+                  <FolderOpen size={11} /> Open Case
+                </button>
+                {st === "unresolved" && (
+                  <button className="or-chip" style={{ minHeight: 32 }} onClick={() => ack(n, "acknowledge")} data-testid={`mod-notif-ack-${n.id}`}>
+                    <Check size={11} /> Acknowledge
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}

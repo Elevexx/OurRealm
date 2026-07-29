@@ -434,17 +434,25 @@ async def apply_post_media_safety(post_id: str, force: bool = False) -> None:
                          "post_id": post_id})
         except Exception:
             pass
-    # Urgent — alert the founder inbox.
+    # Urgent — notify all moderation-authorized admins (deduped per case).
     if safety.get("urgent"):
         try:
-            from routers.notifications import emit_notification
-            founder = await db.users.find_one({"username": "stealth"}, {"_id": 0, "id": 1})
-            if founder:
-                await emit_notification(
-                    founder["id"], "moderation",
-                    payload={"preview": "URGENT safety case flagged — review the "
-                                        "Moderation Center immediately.",
-                             "post_id": post_id})
+            from routers.moderation import notify_moderation_event
+            await notify_moderation_event(
+                event_type="urgent_case", content_type="post", content_id=post_id,
+                category=("minor_safety" if "minor_safety" in categories
+                          else (categories or ["safety"])[0]),
+                priority="Critical" if "minor_safety" in categories else "Urgent",
+                username=post.get("author_username"))
+        except Exception:
+            pass
+    elif safety.get("scan_status") == "failed":
+        try:
+            from routers.moderation import notify_moderation_event
+            await notify_moderation_event(
+                event_type="scan_failed", content_type="post", content_id=post_id,
+                category="scan", priority="Standard",
+                username=post.get("author_username"))
         except Exception:
             pass
 

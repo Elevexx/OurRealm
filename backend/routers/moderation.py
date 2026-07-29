@@ -394,7 +394,12 @@ async def take_action(content_type: str, content_id: str, payload: ActionPayload
         user_id=(doc or {}).get("author_id") or (doc or {}).get("user_id") or content_id,
         actor_id=current["id"],
         reason=payload.reason or payload.action,
+        meta={"source": payload.source or "moderation_center"},
     )
+
+    # Case decided — mark related moderation notifications Resolved.
+    if payload.action in ("approve", "hide", "restore", "delete"):
+        await _resolve_mod_notifications(content_id)
 
     # Notify the uploader (no internal details) + reporters on resolution.
     uploader_id = (doc or {}).get("author_id") or (doc or {}).get("user_id")
@@ -944,7 +949,7 @@ async def lock_private(post_id: str, payload: LockPayload, current: CurrentUser)
     access; everyone else loses it via the audience visibility gate.
     Original audience is preserved for exact restoration."""
     _require_admin(current)
-    post = await db.posts.find_one({"id": post_id}, {"_id": 0, "audience": 1, "author_id": 1, "review_lock": 1})
+    post = await db.posts.find_one({"id": post_id}, {"_id": 0, "audience": 1, "author_id": 1, "author_username": 1, "review_lock": 1})
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     if (post.get("review_lock") or {}).get("active"):
@@ -966,6 +971,9 @@ async def lock_private(post_id: str, payload: LockPayload, current: CurrentUser)
                      actor_id=current["id"], reason=payload.reason,
                      meta={"previous_audience": original_audience,
                            "source": payload.source or "moderation_center"})
+    await notify_moderation_event(event_type="review_lock", content_type="post",
+                                  content_id=post_id, category="review",
+                                  priority="High", username=post.get("author_username"))
     if post.get("author_id"):
         try:
             from routers.notifications import emit_notification
@@ -1001,6 +1009,7 @@ async def unlock_private(post_id: str, payload: LockPayload, current: CurrentUse
                      actor_id=current["id"], reason=payload.reason,
                      meta={"restored_audience": original,
                            "source": payload.source or "moderation_center"})
+    await _resolve_mod_notifications(post_id, "review_lock")
     if post.get("author_id"):
         try:
             from routers.notifications import emit_notification
@@ -1255,3 +1264,85 @@ async def content_mod_search(current: CurrentUser, q: str = "",
         rc = await db.reports.count_documents({"content_type": "post", "content_id": p["id"]})
         rows.append(_admin_post_row(p, rc))
     return {"posts": rows, "total": total, "skip": skip, "limit": limit}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# ADMIN MODERATION NOTIFICATIONS (lightweight — reuses db.notifications
+# with kind="admin_moderation"; recipient-scoped to moderation roles).
+# ──────────────────────────────────────────────────────────────────────
+MOD_NOTIFY_ROLES = ["founder", "support_admin", "moderator"]
+
+
+async def notify_moderation_event(event_type: str, content_type: str, content_id: str,
+                                  category: str = "safety", priority: str = "Standard",
+                                  username: Optional[str] = None,
+                                  status: str = "unresolved") -> None:
+    """Notify all moderation-authorized admins. Dedupe: a repeated event
+    for the same unresolved case UPDATES the active row (bumps time,
+    re-flags unseen) instead of stacking duplicates."""
+    now = datetime.now(timezone.utc).isoformat()
+    recipients = {u["id"] async for u in db.users.find(
+        {"$or": [{"admin_role": {"$in": MOD_NOTIFY_ROLES}}, {"username": "stealth"}]},
+        {"_id": 0, "id": 1})}
+    created = 0
+    for rid in recipients:
+        existing = await db.notifications.find_one({
+            "recipient_id": rid, "kind": "admin_moderation",
+            "payload.content_id": content_id,
+            "payload.event_type": event_type,
+            "payload.status": {"$ne": "resolved"},
+        }, {"_id": 0, "id": 1})
+        if existing:
+            await db.notifications.update_one({"id": existing["id"]}, {"$set": {
+                "created_at": now, "seen": False,
+                "payload.priority": priority, "payload.status": status,
+            }})
+        else:
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()), "recipient_id": rid,
+                "kind": "admin_moderation", "actor_username": None,
+                "payload": {"priority": priority, "category": category,
+                            "username": username, "content_type": content_type,
+                            "content_id": content_id, "event_type": event_type,
+                            "status": status},
+                "created_at": now, "seen": False})
+            created += 1
+    await log_action(action="mod_notification_created", content_type=content_type,
+                     content_id=content_id, user_id=None, reason=event_type,
+                     meta={"priority": priority, "recipients": len(recipients),
+                           "new_rows": created})
+
+
+async def _resolve_mod_notifications(content_id: str, event_type: Optional[str] = None) -> None:
+    q = {"kind": "admin_moderation", "payload.content_id": content_id,
+         "payload.status": {"$ne": "resolved"}}
+    if event_type:
+        q["payload.event_type"] = event_type
+    await db.notifications.update_many(q, {"$set": {"payload.status": "resolved", "seen": True}})
+
+
+class ModNotifAck(BaseModel):
+    action: str = "acknowledge"  # acknowledge | open
+
+
+@router.post("/api/admin/moderation/notifications/{notif_id}/ack")
+async def ack_mod_notification(notif_id: str, payload: ModNotifAck, current: CurrentUser):
+    _require_admin(current)
+    n = await db.notifications.find_one(
+        {"id": notif_id, "recipient_id": current["id"], "kind": "admin_moderation"},
+        {"_id": 0})
+    if not n:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    updates: dict = {"seen": True}
+    p = n.get("payload") or {}
+    if payload.action == "acknowledge" and p.get("status") != "resolved":
+        updates["payload.status"] = "acknowledged"
+    await db.notifications.update_one({"id": notif_id}, {"$set": updates})
+    await log_action(
+        action="mod_notification_acknowledged" if payload.action == "acknowledge"
+        else "case_opened_from_notification",
+        content_type=p.get("content_type") or "post",
+        content_id=p.get("content_id") or notif_id,
+        user_id=None, actor_id=current["id"],
+        meta={"notification_id": notif_id})
+    return {"ok": True, "status": updates.get("payload.status", p.get("status"))}
