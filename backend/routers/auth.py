@@ -516,7 +516,12 @@ from pydantic import BaseModel as _BaseModel
 
 
 class GoogleSessionPayload(_BaseModel):
-    session_id: str
+    session_id: str = ""
+    pending_token: str = ""
+    accepted_terms: bool = False
+    accepted_conditions: bool = False
+    accepted_privacy: bool = False
+    age_confirmed_13: bool = False
 
 
 EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
@@ -528,23 +533,31 @@ async def google_session(payload: GoogleSessionPayload, response: Response):
     Links by email to an existing account, or creates a new one.
     Returns the SAME shape as /login so the client flow is identical."""
     sid = (payload.session_id or "").strip()
-    if not sid:
+    ptok = (payload.pending_token or "").strip()
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    if ptok:
+        # Resume a pending NEW-user signup after Terms acceptance —
+        # the Google profile was already fetched and stored server-side.
+        pending = await db.pending_google_signups.find_one({"token": ptok}, {"_id": 0})
+        if not pending or str(pending.get("expires_at", "")) < now_iso:
+            raise HTTPException(status_code=401, detail="Sign-in session expired. Please sign in with Google again.")
+        data = pending["data"]
+    elif sid:
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                r = await client.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": sid})
+        except Exception:
+            raise HTTPException(status_code=502, detail="Could not reach the sign-in service. Please try again.")
+        if r.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid or expired Google session. Please try again.")
+        data = r.json()
+    else:
         raise HTTPException(status_code=400, detail="Missing session_id")
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": sid})
-    except Exception:
-        raise HTTPException(status_code=502, detail="Could not reach the sign-in service. Please try again.")
-    if r.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid or expired Google session. Please try again.")
-    data = r.json()
     email = (data.get("email") or "").lower().strip()
     if not email:
         raise HTTPException(status_code=401, detail="Google sign-in did not return an email.")
-
-    now = datetime.now(timezone.utc)
-    now_iso = now.isoformat()
     user = await db.users.find_one({"email": email})
     created = False
 
@@ -574,8 +587,17 @@ async def google_session(payload: GoogleSessionPayload, response: Response):
         await db.users.update_one({"id": user["id"]}, {"$set": updates})
         user.update(updates)
     else:
-        # New Google user — generate a unique, non-premium username from
-        # the email prefix; the user can rename later via profile settings.
+        # New Google user — same compliance gate as /register: no account
+        # is created until every agreement is accepted.
+        if not (payload.accepted_terms and payload.accepted_privacy
+                and payload.accepted_conditions and payload.age_confirmed_13):
+            token = secrets.token_urlsafe(24)
+            await db.pending_google_signups.insert_one({
+                "token": token, "data": data, "created_at": now_iso,
+                "expires_at": (now + timedelta(minutes=15)).isoformat()})
+            return {"requires_terms": True, "pending_token": token, "email": email}
+        # Generate a unique, non-premium username from the email prefix;
+        # the user can rename later via profile settings.
         import re as _re
         from routers.premium_usernames import signup_gate
         base = _re.sub(r"[^a-z0-9_.]", "", email.split("@")[0].lower())[:20] or "user"
@@ -642,6 +664,8 @@ async def google_session(payload: GoogleSessionPayload, response: Response):
         await db.users.insert_one(doc)
         doc.pop("_id", None)
         created = True
+        if ptok:
+            await db.pending_google_signups.delete_one({"token": ptok})
         # Auto-friend founder + support (mirrors /register).
         try:
             founder = await db.users.find_one({"username": FOUNDER_USERNAME})
@@ -715,6 +739,11 @@ async def google_session(payload: GoogleSessionPayload, response: Response):
 
 
 @router.post("/username-onboarding/dismiss")
+async def dismiss_username_onboarding(current: CurrentUser):
+    """'Keep this username for now' — one-time; the prompt never reshows."""
+    await db.users.update_one({"id": current["id"]},
+                              {"$set": {"needs_username_onboarding": False}})
+    return {"ok": True}
 async def dismiss_username_onboarding(current: CurrentUser):
     """'Keep this username for now' — one-time; the prompt never reshows."""
     await db.users.update_one({"id": current["id"]},

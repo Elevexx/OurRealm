@@ -2988,3 +2988,8 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 - Fallback verified: AuthCallback.jsx — missing session_id → redirect /signin; backend 401/failed exchange → error message + "Back to sign in" button. Live API check: bad session_id → 401.
 - Fix: test cleanup now also deletes username_claims (stale claim from a prior partial run caused a false rename failure).
 - Content Safety Phase 2 code is COMPLETE but final testing_agent verification PAUSED by user (credit conservation). Phase 3 not started.
+
+## July 29, 2026 — Google signup Terms gate (TESTED 19/19 mock + signup UI screenshot)
+- NEW Google users must accept ToS/T&C/Privacy/13+ BEFORE account creation: /auth/google/session now returns {requires_terms, pending_token} for unknown emails without acceptance flags (Google profile stashed in pending_google_signups, 15-min expiry, token consumed on create). Second call with pending_token + the 4 acceptance booleans creates the account.
+- Shared ComplianceCheckboxes.jsx extracted from SignUp.jsx (identical UI/testids for email signup, "google-" prefix on AuthCallback). AuthCallback shows the acceptance step with Agree/Cancel; existing users and repeat logins unchanged (no prompt).
+- Verified: no user doc before acceptance, token consumed, existing-account link untouched, email signup renders identically.

@@ -5,6 +5,7 @@ import ModeSwitcher from "@/components/ModeSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
 import apiClient from "@/api/client";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
+import { ComplianceCheckboxes } from "@/components/ComplianceCheckboxes";
 import { Check, X, Loader2, LogOut } from "lucide-react";
 
 export default function SignUp() {
@@ -168,53 +169,10 @@ export default function SignUp() {
               </div>
             )}
             {/* ── Compliance acknowledgements (Phase 1) ── */}
-            <div className="space-y-2 pt-1" data-testid="signup-compliance">
-              <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "var(--text-muted)" }}>
-                <input
-                  type="checkbox" checked={acceptedTos}
-                  onChange={(e) => setAcceptedTos(e.target.checked)}
-                  data-testid="signup-accept-tos"
-                  style={{ marginTop: 2, accentColor: "var(--primary)" }}
-                />
-                <span>
-                  I have read and agree to the {" "}
-                  <Link to="/terms" target="_blank" className="underline" style={{ color: "var(--primary)" }} data-testid="signup-link-terms">Terms of Service</Link>.
-                </span>
-              </label>
-              <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "var(--text-muted)" }}>
-                <input
-                  type="checkbox" checked={acceptedConditions}
-                  onChange={(e) => setAcceptedConditions(e.target.checked)}
-                  data-testid="signup-accept-conditions"
-                  style={{ marginTop: 2, accentColor: "var(--primary)" }}
-                />
-                <span>
-                  I have read and agree to OurRealm's {" "}
-                  <Link to="/terms-conditions" target="_blank" className="underline" style={{ color: "var(--primary)" }} data-testid="signup-link-conditions">Terms &amp; Conditions</Link>.
-                </span>
-              </label>
-              <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "var(--text-muted)" }}>
-                <input
-                  type="checkbox" checked={acceptedPrivacy}
-                  onChange={(e) => setAcceptedPrivacy(e.target.checked)}
-                  data-testid="signup-accept-privacy"
-                  style={{ marginTop: 2, accentColor: "var(--primary)" }}
-                />
-                <span>
-                  I have read and agree to the {" "}
-                  <Link to="/privacy" target="_blank" className="underline" style={{ color: "var(--primary)" }} data-testid="signup-link-privacy">Privacy Policy</Link>.
-                </span>
-              </label>
-              <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "var(--text-muted)" }}>
-                <input
-                  type="checkbox" checked={ageConfirmed}
-                  onChange={(e) => setAgeConfirmed(e.target.checked)}
-                  data-testid="signup-accept-age"
-                  style={{ marginTop: 2, accentColor: "var(--primary)" }}
-                />
-                <span>I confirm I am at least <b style={{ color: "var(--text-main)" }}>13 years old</b> (COPPA).</span>
-              </label>
-            </div>
+            <ComplianceCheckboxes
+              values={{ tos: acceptedTos, conditions: acceptedConditions, privacy: acceptedPrivacy, age: ageConfirmed }}
+              onChange={(key, v) => ({ tos: setAcceptedTos, conditions: setAcceptedConditions, privacy: setAcceptedPrivacy, age: setAgeConfirmed }[key](v))}
+            />
             <button type="submit" disabled={loading || unCheck.status === "taken" || !allAccepted} className="or-btn w-full" data-testid="signup-submit">
               {loading ? "Creating account…" : "Join OurRealm"}
             </button>

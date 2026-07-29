@@ -31,10 +31,16 @@ async def main():
             "session_token": "st_test_123"}
 
     with patch("httpx.AsyncClient", return_value=mock_client(fake)):
-        # 1) brand-new Google user
-        out = await google_session(GoogleSessionPayload(session_id="mock-1"), Response())
+        # 1) brand-new Google user — BLOCKED until agreements accepted
+        gate = await google_session(GoogleSessionPayload(session_id="mock-0"), Response())
+        ok("new user requires terms first", gate.get("requires_terms") is True and gate.get("pending_token"))
+        ok("no account created before acceptance", await db.users.count_documents({"email": fake["email"]}) == 0)
+        out = await google_session(GoogleSessionPayload(
+            pending_token=gate["pending_token"], accepted_terms=True,
+            accepted_conditions=True, accepted_privacy=True, age_confirmed_13=True), Response())
         u = out["user"]
-        ok("new google user created", out["created"])
+        ok("new google user created after acceptance", out["created"])
+        ok("pending token consumed", await db.pending_google_signups.count_documents({"token": gate["pending_token"]}) == 0)
         ok("new user gets onboarding flag", u.get("needs_username_onboarding") is True)
         ok("google_auth exposed", u.get("google_auth") is True)
         uid = u["id"]
