@@ -46,3 +46,15 @@ Belongs to Sound Admin / Copyright Tool / moderation / support-ticket / audit ph
 ## STATUS UPDATE (Jul 26, 2026)
 - DONE: Bundle 1b (video audio options visible, playlist playback via MiniPlayer queue, Realm Soundtrack widget on profiles) + Premium Usernames (grandfathering, tiered Fire Vault burn pricing, NPC_# sequence, signup gate, unlock modal, /admin/premium-usernames w/ bulk tool).
 - DEFERRED (user-ordered, do NOT start unprompted): group/community Realm Soundtrack wiring, /admin/sounds control center, genre/mood managers, copyright hold + rights strikes + 30-day restrictions, portal/nexus/world audio, playlist artwork/sharing, charts/analytics, advanced media studio, Bundle 2/3 remainder. P2 backlog: JWT_SECRET rotation, CORS scoping, mini profile hover-card.
+
+## STATUS UPDATE (Jul 29, 2026) — Content Safety Phase 1 COMPLETE & TESTED
+- NEW SYSTEM: AI-assisted Content Safety & Moderation (user spec, 3 phases). PHASE 1 DONE:
+  - `services/content_safety.py`: vision AI scan (gpt-4o-mini via emergentintegrations, EMERGENT_LLM_KEY) of every image/video ONCE at upload; results cached on media docs + rolled up to `posts.safety` (severity 0-4, categories, confidence, context, model version). Feeds NEVER rescan. Videos: 3 ffmpeg frames → 1 contact sheet → 1 vision call (cost-optimized). Text rule-scan reasons mapped to categories/severity. Sev≥3 auto-hides, sev=2 pending_review, sev≥4/minor_safety = urgent + founder notification.
+  - Serialization: `_public_post` strips internal `safety`, exposes minimal `safety_view` (severity, category, manual, message, is_uploader). Uploader never sees own blur.
+  - Frontend: `SensitiveMediaOverlay.jsx` (blur + warning + View Content/Hide; honors prefs; manual blur overrides prefs), wired in Feed + PostPopup. `SafetyPreferences.jsx` in /settings (show/blur/hide × graphic/adult_sexual/violent/medical; GET/PATCH /api/me/safety-preferences).
+  - Manual admin blur ANY post: POST /api/admin/moderation/{ct}/{id}/blur|unblur (category, internal reason, public message, manual_override, full audit), in PostManagementMenu (AdminBlurModal) + Moderation Center.
+  - Admin Trust & Safety Moderation Center at /admin/moderation (AdminModerationCenter.jsx, AdminHub card): tabs Overview/AI Flagged/Urgent/User Reports/Blurred/Removed/Audit Log; endpoints /cases, /reports (+close/remove-with-reason/reopen), /safety-summary, /rescan. Comment text scan + hidden-comment gate added. Moderation notifications to uploader/reporter (kind "moderation").
+  - Fixed race: media scan rollup re-reads safety before write so mid-scan manual blurs survive. get_post now honors Bearer auth for is_uploader.
+  - Tests: backend/tests/test_content_safety_phase1.py 17/17 pass; frontend e2e blur overlay verified (iteration_93.json).
+- PHASE 2 (next, user-approved order): threat/hate/nudity/graphic/scam/self-harm/privacy-doxxing detection workflows, urgent safety queue depth, account enforcement tools (warn/limit/suspend), report merging + reporter-abuse controls.
+- PHASE 3: appeals, Realm moderator permissions, advanced analytics, configurable per-category thresholds, detection model settings.

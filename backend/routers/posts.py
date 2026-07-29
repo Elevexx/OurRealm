@@ -400,7 +400,7 @@ async def feed_by_user(username: str, current: OptionalUser, limit: int = 100,
                 p["created_at"] = datetime.fromisoformat(p["created_at"])
             except Exception:
                 pass
-        items.append(_public_post(p))
+        items.append(_public_post(p, viewer_id=(viewer_doc or {}).get("id")))
     return {"posts": _dedupe_post_items(items)}
 
 
@@ -790,9 +790,10 @@ async def like_post(post_id: str, current: CurrentUser):
 
 
 @router.get("/{post_id}")
-async def get_post(post_id: str, viewer: Optional[str] = None):
+async def get_post(post_id: str, current: OptionalUser, viewer: Optional[str] = None):
     """Single post fetch — used by the post popup to refresh state.
     Optional `?viewer=<username>` so poll tallies can mark the user's own vote.
+    Falls back to the authenticated user when `viewer` is omitted.
     """
     p = await db.posts.find_one({"id": post_id}, {"_id": 0})
     if not p:
@@ -802,10 +803,10 @@ async def get_post(post_id: str, viewer: Optional[str] = None):
             p["created_at"] = datetime.fromisoformat(p["created_at"])
         except Exception:
             pass
-    viewer_id = None
+    viewer_id = current["id"] if current else None
     if viewer:
         vd = await db.users.find_one({"username": viewer.lower()}, {"_id": 0, "id": 1})
-        viewer_id = (vd or {}).get("id")
+        viewer_id = (vd or {}).get("id") or viewer_id
     public = _public_post(p, viewer_id=viewer_id)
     try:
         from routers.reactions import reaction_summary_for

@@ -25,6 +25,8 @@ export default function Settings() {
 
       <FireWalletPrivacy />
 
+      {user && <SafetyPreferences />}
+
       <div className="or-surface p-5 mb-4">
         <h3 className="text-lg mb-3" style={{ fontFamily: "var(--font-display)" }}>Account</h3>
         {user ? (

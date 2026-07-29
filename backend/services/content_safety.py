@@ -202,7 +202,9 @@ async def scan_image_record(image_id: str, force: bool = False) -> Optional[dict
     path = IMG_ROOT / name
     b64 = _prep_image_b64(str(path)) if name and path.exists() else None
     res = await _vision_classify(b64) if b64 else None
-    safety = _merge_manual(s, _result_to_safety(res, "ai:vision"))
+    # Re-read just before writing so a manual blur applied mid-scan survives.
+    cur = await db.images.find_one({"id": image_id}, {"_id": 0, "safety": 1})
+    safety = _merge_manual((cur or {}).get("safety") or {}, _result_to_safety(res, "ai:vision"))
     await db.images.update_one({"id": image_id}, {"$set": {"safety": safety}})
     if safety.get("severity", 0) >= 1:
         from services.moderation import log_action
@@ -270,7 +272,8 @@ async def scan_video_record(video_id: str, force: bool = False) -> Optional[dict
             b64 = _contact_sheet_b64(frames) if frames else None
             if b64:
                 res = await _vision_classify(b64)
-    safety = _merge_manual(s, _result_to_safety(res, "ai:vision"))
+    cur = await db.videos.find_one({"id": video_id}, {"_id": 0, "safety": 1})
+    safety = _merge_manual((cur or {}).get("safety") or {}, _result_to_safety(res, "ai:vision"))
     await db.videos.update_one({"id": video_id}, {"$set": {"safety": safety}})
     if safety.get("severity", 0) >= 1:
         from services.moderation import log_action
@@ -374,7 +377,13 @@ async def apply_post_media_safety(post_id: str, force: bool = False) -> None:
             categories.append(c)
 
     sev = max(severities) if severities else 0
-    prev = post.get("safety") or {}
+    # Re-read the post just before writing — the media scans above take
+    # seconds, and an admin may have applied a manual blur meanwhile.
+    fresh = await db.posts.find_one(
+        {"id": post_id}, {"_id": 0, "safety": 1, "moderated_by": 1, "moderation_status": 1})
+    if not fresh:
+        return
+    prev = fresh.get("safety") or {}
     safety = _merge_manual(prev, {
         "scan_status": "failed" if (any_failed and sev == 0) else "done",
         "severity": sev,
@@ -391,7 +400,7 @@ async def apply_post_media_safety(post_id: str, force: bool = False) -> None:
     updates: dict = {"safety": safety}
 
     # Severity escalation — never downgrade an explicit admin decision.
-    mod_by = str(post.get("moderated_by") or "")
+    mod_by = str(fresh.get("moderated_by") or "")
     admin_decided = mod_by.startswith("admin:")
     if not admin_decided:
         if sev >= 3:
@@ -399,7 +408,7 @@ async def apply_post_media_safety(post_id: str, force: bool = False) -> None:
             updates["moderation_reason"] = (categories or ["safety"])[0]
             updates["moderated_by"] = "auto:safety"
             updates["moderated_at"] = _now()
-        elif sev == 2 and (post.get("moderation_status") in (None, "approved")):
+        elif sev == 2 and (fresh.get("moderation_status") in (None, "approved")):
             updates["moderation_status"] = "pending_review"
             updates["moderation_reason"] = (categories or ["safety"])[0]
             updates["moderated_by"] = "auto:safety"
