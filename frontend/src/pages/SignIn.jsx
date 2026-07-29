@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Logo from "@/components/Logo";
 import apiClient, { formatApiErrorDetail } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
@@ -124,6 +125,7 @@ export default function SignIn() {
               >
                 Use a one-time code instead
               </button>
+              <GoogleSignInButton label="Sign in with Google" />
             </form>
           )}
 

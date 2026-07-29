@@ -4,6 +4,7 @@ import Logo from "@/components/Logo";
 import ModeSwitcher from "@/components/ModeSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
 import apiClient from "@/api/client";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 import { Check, X, Loader2, LogOut } from "lucide-react";
 
 export default function SignUp() {
@@ -217,6 +218,7 @@ export default function SignUp() {
             <button type="submit" disabled={loading || unCheck.status === "taken" || !allAccepted} className="or-btn w-full" data-testid="signup-submit">
               {loading ? "Creating account…" : "Join OurRealm"}
             </button>
+            <GoogleSignInButton label="Sign up with Google" />
           </form>
           <p className="text-[11px] mt-4" style={{ color: "var(--text-muted)" }}>
             By signing up you agree to OurRealm's Terms and Privacy Policy. Social sign-in

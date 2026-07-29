@@ -40,7 +40,16 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  useEffect(() => { refreshMe(); }, [refreshMe]);
+  useEffect(() => {
+    // CRITICAL: If returning from the Google OAuth callback, skip the
+    // /me check — AuthCallback exchanges the session_id and establishes
+    // the session first, then calls refreshMe itself.
+    if (window.location.hash?.includes("session_id=")) {
+      setIsLoading(false);
+      return;
+    }
+    refreshMe();
+  }, [refreshMe]);
 
   const persistToken = (tok) => {
     try { if (tok) localStorage.setItem("ourrealm.access", tok); } catch { /* ignore */ }

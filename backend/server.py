@@ -174,6 +174,7 @@ PUBLIC_API_PATHS = {
     "/api/auth/otp/verify",
     "/api/auth/forgot-password",
     "/api/auth/reset-password",
+    "/api/auth/google/session",
 }
 
 

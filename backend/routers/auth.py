@@ -506,3 +506,205 @@ async def reset_password(payload: ResetPayload):
         {"token": payload.token}, {"$set": {"used": True}}
     )
     return {"ok": True}
+
+
+# ----- Emergent-managed Google sign-in -----
+# REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS,
+# THIS BREAKS THE AUTH. The frontend derives the redirect from
+# window.location.origin; this backend only exchanges the session_id.
+from pydantic import BaseModel as _BaseModel
+
+
+class GoogleSessionPayload(_BaseModel):
+    session_id: str
+
+
+EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+
+
+@router.post("/google/session")
+async def google_session(payload: GoogleSessionPayload, response: Response):
+    """Exchange an Emergent Auth session_id for an app session.
+    Links by email to an existing account, or creates a new one.
+    Returns the SAME shape as /login so the client flow is identical."""
+    sid = (payload.session_id or "").strip()
+    if not sid:
+        raise HTTPException(status_code=400, detail="Missing session_id")
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": sid})
+    except Exception:
+        raise HTTPException(status_code=502, detail="Could not reach the sign-in service. Please try again.")
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid or expired Google session. Please try again.")
+    data = r.json()
+    email = (data.get("email") or "").lower().strip()
+    if not email:
+        raise HTTPException(status_code=401, detail="Google sign-in did not return an email.")
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    user = await db.users.find_one({"email": email})
+    created = False
+
+    if user:
+        # Same disabled/suspension policy as /login.
+        if user.get("suspended_until"):
+            try:
+                until = datetime.fromisoformat(str(user["suspended_until"]).replace("Z", "+00:00"))
+                if until <= now:
+                    await db.users.update_one(
+                        {"id": user["id"]},
+                        {"$set": {"disabled": False},
+                         "$unset": {"suspended_until": "", "suspended_at": "",
+                                    "suspended_by": "", "suspension_reason": "",
+                                    "suspension_notes": ""}})
+                    user["disabled"] = False
+            except Exception:
+                pass
+        if user.get("disabled") and user.get("account_status") != "deleted_pending_restore":
+            susp = user.get("suspended_until")
+            if susp:
+                raise HTTPException(status_code=401, detail=f"Account suspended until {susp}")
+            raise HTTPException(status_code=401, detail="This account is not available.")
+        updates = {"google_auth": True}
+        if not user.get("avatar_url") and data.get("picture"):
+            updates["avatar_url"] = data["picture"]
+        await db.users.update_one({"id": user["id"]}, {"$set": updates})
+        user.update(updates)
+    else:
+        # New Google user — generate a unique, non-premium username from
+        # the email prefix; the user can rename later via profile settings.
+        import re as _re
+        from routers.premium_usernames import signup_gate
+        base = _re.sub(r"[^a-z0-9_.]", "", email.split("@")[0].lower())[:20] or "user"
+        candidate = base
+        for _ in range(30):
+            taken = await db.users.find_one({"username": candidate}, {"_id": 0, "id": 1})
+            gate = None
+            if not taken:
+                try:
+                    gate = await signup_gate(candidate)
+                except Exception:
+                    gate = None
+            if not taken and not gate:
+                break
+            candidate = f"{base}{secrets.randbelow(9000) + 1000}"
+        username = candidate
+        user_id = str(uuid.uuid4())
+        doc = {
+            "id": user_id,
+            "email": email,
+            "username": username,
+            # Unusable random password — Google-only accounts can still set
+            # one later via the normal reset-password flow.
+            "password_hash": hash_password(secrets.token_urlsafe(32)),
+            "name": (data.get("name") or base).strip()[:60],
+            "role": "user",
+            "avatar_url": data.get("picture"),
+            "bio": "",
+            "interests": [],
+            "mode": "neon",
+            "widgets": [default_top8_widget(), default_myfeed_widget()],
+            "friends": [],
+            "friend_requests_in": [],
+            "friend_requests_out": [],
+            "pinned_threads": [],
+            "is_vip": False,
+            "vip_joined_at": None,
+            "presence_status": "offline",
+            "presence_status_choice": "online",
+            "presence_last_seen": now_iso,
+            "follower_count": 0,
+            "friend_groups": [],
+            "social": {},
+            "created_at": now_iso,
+            "account_type": "human",
+            "is_synthetic": False,
+            "analytics_eligible": True,
+            "signup_completed": True,
+            "email_verified": True,  # verified by Google
+            "google_auth": True,
+            "compliance": {
+                "accepted_terms": True,
+                "accepted_privacy": True,
+                "accepted_conditions": True,
+                "age_confirmed_13": True,
+                "policy_version": "google-oauth-2026",
+                "accepted_at": now_iso,
+            },
+        }
+        await db.users.insert_one(doc)
+        doc.pop("_id", None)
+        created = True
+        # Auto-friend founder + support (mirrors /register).
+        try:
+            founder = await db.users.find_one({"username": FOUNDER_USERNAME})
+            if founder and founder["id"] != user_id:
+                await db.users.update_one({"id": user_id}, {"$addToSet": {"friends": founder["id"]}})
+                await db.users.update_one({"id": founder["id"]}, {"$addToSet": {"friends": user_id}})
+            support = await db.users.find_one({"username": "support"})
+            if support and support["id"] != user_id:
+                await db.users.update_one({"id": user_id}, {"$addToSet": {"friends": support["id"]}})
+                await db.users.update_one({"id": support["id"]}, {"$addToSet": {"friends": user_id}})
+        except Exception:
+            pass
+        # VIP first_1000 (mirrors /register; never blocks signup).
+        try:
+            vip_badge = await db.badge_registry.find_one({"key": "vip", "status": "live"})
+            if vip_badge and (vip_badge.get("auto_rule") == "first_1000"):
+                cap = int(vip_badge.get("first_x") or 1000)
+                if await db.user_badges.count_documents({"badge_key": "vip"}) < cap:
+                    await db.user_badges.update_one(
+                        {"user_id": user_id, "badge_key": "vip"},
+                        {"$setOnInsert": {
+                            "id": f"{user_id}::vip", "user_id": user_id,
+                            "username": username, "badge_key": "vip",
+                            "assigned_by": "system", "assigned_at": now_iso,
+                            "source": "first_1000"}},
+                        upsert=True)
+                    await db.users.update_one(
+                        {"id": user_id}, {"$set": {"is_vip": True, "vip_joined_at": now_iso}})
+                    doc["is_vip"] = True
+        except Exception:
+            pass
+        try:
+            from services import founding_vip as _fvip
+            await _fvip.on_new_registration(user_id)
+        except Exception:
+            pass
+        await record_signup_event(True, "google_success", 200, email)
+        user = doc
+
+    # Store the Emergent session (7-day expiry) + httpOnly cookie per the
+    # Emergent Auth playbook. Our app session itself uses standard JWTs.
+    session_token = data.get("session_token")
+    if session_token:
+        try:
+            await db.user_sessions.insert_one({
+                "user_id": user["id"], "session_token": session_token,
+                "expires_at": (now + timedelta(days=7)).isoformat(),
+                "created_at": now_iso})
+            response.set_cookie(
+                "session_token", session_token, httponly=True, secure=True,
+                samesite="none", path="/", max_age=7 * 24 * 3600)
+        except Exception:
+            pass
+
+    access = create_access_token(user["id"], email)
+    refresh = create_refresh_token(user["id"])
+    set_auth_cookies(response, access, refresh)
+    try:
+        from services.realm_pulse import record_activity
+        await record_activity(user["id"])
+    except Exception:
+        pass
+    body: dict = {"user": serialize_user(user), "access_token": access, "created": created}
+    if user.get("account_status") == "deleted_pending_restore":
+        body["restore_required"] = True
+        body["pending_deletion"] = {
+            "deleted_at": user.get("deleted_at"),
+            "purge_after": user.get("purge_after"),
+        }
+    return body

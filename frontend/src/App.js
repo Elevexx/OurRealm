@@ -51,6 +51,7 @@ import FAQPage from "@/pages/FAQPage";
 import AdminHashtags from "@/pages/AdminHashtags";
 import AdminPremiumUsernames from "@/pages/AdminPremiumUsernames";
 import AdminModerationCenter from "@/pages/AdminModerationCenter";
+import AuthCallback from "@/pages/AuthCallback";
 import HashtagFeed from "@/pages/HashtagFeed";
 import TrendingHashtagsPage from "@/pages/TrendingHashtagsPage";
 import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage, CommunityStandardsPage, DMCAPolicyPage, SafetyPolicyPage, CookieNoticePage, AccountDeletionPage } from "@/pages/LegalPages";
@@ -120,6 +121,18 @@ function RestoreGate({ children }) {
   return children;
 }
 
+// Emergent Google Auth — synchronous fragment check DURING render (not in
+// a useEffect) so a fresh `#session_id=` is processed before any route or
+// auth guard runs. Must read useLocation().hash (reactive), never
+// window.location.hash.
+// REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT
+// URLS, THIS BREAKS THE AUTH
+function GoogleAuthGate({ children }) {
+  const location = useLocation();
+  if (location.hash?.includes("session_id=")) return <AuthCallback />;
+  return children;
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -128,6 +141,7 @@ function App() {
         <PresenceProvider>
           <BrowserRouter>
           <YouTubeRouteCleanup />
+          <GoogleAuthGate>
           <RestoreGate>
           <Routes>
             <Route path="/" element={<RootRedirect />} />
@@ -205,6 +219,7 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           </RestoreGate>
+          </GoogleAuthGate>
           <PostPopup />
           <Toaster position="top-center" richColors closeButton={false}
             toastOptions={{
