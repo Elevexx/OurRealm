@@ -46,6 +46,8 @@ def _safe_filename(name: str) -> str:
 
 @router.post("/upload")
 async def upload(current: CurrentUser, file: UploadFile = File(...)):
+    from services.moderation import ensure_not_limited
+    await ensure_not_limited(current["id"], "uploading")
     raw = await file.read()
     if len(raw) > MAX_BYTES:
         raise HTTPException(status_code=413, detail=f"File exceeds {MAX_BYTES // (1024*1024)} MB limit")

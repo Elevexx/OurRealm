@@ -390,6 +390,7 @@ async def perform_username_change(current: dict, username: str, idempotency_key:
         # 3) assign username
         await db.users.update_one({"id": uid}, {"$set": {
             "username": new_u, "username_changed_at": _now(),
+            "needs_username_onboarding": False,
             **({"premium_username": True} if premium else {})}})
         # old premium-length usernames retire permanently by default
         if old_u and len(old_u) <= int(cfg["max_premium_len"]):

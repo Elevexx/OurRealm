@@ -50,6 +50,8 @@ async def upload_video(
 ):
     if audio_choice not in ("mute", "original", "replace"):
         audio_choice = "mute"
+    from services.moderation import ensure_not_limited
+    await ensure_not_limited(current["id"], "uploading")
     raw = await file.read()
     if len(raw) > MAX_BYTES:
         raise HTTPException(status_code=413, detail=f"File exceeds {MAX_BYTES // (1024*1024)} MB limit")

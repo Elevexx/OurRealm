@@ -130,10 +130,14 @@ function CaseRow({ item, onAction, onBlur, onOpenCase, busy }) {
   );
 }
 
-function ReportRow({ r, onUpdate, onContentAction, busy }) {
+function ReportRow({ r, onUpdate, onContentAction, onMarkAbusive, selected, onToggleSelect, busy }) {
   return (
     <div className="or-surface p-3" data-testid={`ts-report-${r.id}`}>
       <div className="flex flex-wrap items-center gap-2 mb-1">
+        {r.status === "open" && !r.removed_from_active_queue && (
+          <input type="checkbox" checked={selected} onChange={onToggleSelect}
+            data-testid={`ts-report-select-${r.id}`} />
+        )}
         <span className="or-chip text-[10px]">{r.reason?.replace(/_/g, " ")}</span>
         <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
           {r.content_type} · {r.status}{r.removed_from_active_queue ? " · removed from queue" : ""}
@@ -162,6 +166,10 @@ function ReportRow({ r, onUpdate, onContentAction, busy }) {
             </button>
             <button className="or-chip" disabled={busy} onClick={() => onUpdate(r, "remove")} data-testid={`ts-report-remove-${r.id}`}>
               <Flag size={11} /> Remove report
+            </button>
+            <button className="or-chip" disabled={busy} onClick={() => onMarkAbusive(r)}
+              style={{ color: "#FF8080", borderColor: "rgba(255,80,80,0.4)" }} data-testid={`ts-report-abusive-${r.id}`}>
+              Mark reporter abuse
             </button>
           </>
         )}
@@ -196,6 +204,7 @@ export default function AdminModerationCenter() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [blurTarget, setBlurTarget] = useState(null);
+  const [selectedReports, setSelectedReports] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true); setErr("");
@@ -260,6 +269,33 @@ export default function AdminModerationCenter() {
       await load();
     } catch (e) {
       setErr(e?.response?.data?.detail || "Action failed");
+    } finally { setBusy(false); }
+  };
+
+  const markAbusive = async (r) => {
+    const reason = window.prompt("Reason for flagging this report as knowingly false/abusive (required):");
+    if (!reason) return;
+    setBusy(true); setErr("");
+    try {
+      await apiClient.post(`/admin/moderation/reports/${r.id}/mark-abusive`, { reason });
+      await load();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Failed");
+    } finally { setBusy(false); }
+  };
+
+  const mergeSelected = async () => {
+    if (selectedReports.length < 2) return;
+    setBusy(true); setErr("");
+    try {
+      await apiClient.post("/admin/moderation/reports/merge", {
+        primary_id: selectedReports[0],
+        duplicate_ids: selectedReports.slice(1),
+      });
+      setSelectedReports([]);
+      await load();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Merge failed");
     } finally { setBusy(false); }
   };
 
@@ -339,14 +375,20 @@ export default function AdminModerationCenter() {
         <ModContentSearch onOpenCase={(ct, id) => setCaseTarget({ contentType: ct, contentId: id })} />
       ) : tab === "reports" ? (
         <>
-          <div className="flex gap-1.5 mb-3">
+          <div className="flex gap-1.5 mb-3 flex-wrap items-center">
             {["open", "resolved", "removed", "all"].map((s) => (
               <button key={s} className="or-chip text-[11px]"
                 style={reportStatus === s ? { color: "var(--primary)", borderColor: "var(--primary)" } : undefined}
-                onClick={() => setReportStatus(s)} data-testid={`ts-report-filter-${s}`}>
+                onClick={() => { setReportStatus(s); setSelectedReports([]); }} data-testid={`ts-report-filter-${s}`}>
                 {s}
               </button>
             ))}
+            {selectedReports.length >= 2 && (
+              <button className="or-chip text-[11px] ml-auto" disabled={busy} onClick={mergeSelected}
+                style={{ color: "var(--primary)", borderColor: "var(--primary)" }} data-testid="ts-reports-merge">
+                Merge {selectedReports.length} (first = primary)
+              </button>
+            )}
           </div>
           <div className="space-y-2" data-testid="ts-reports-list">
             {reports.length === 0 ? (
@@ -354,7 +396,12 @@ export default function AdminModerationCenter() {
                 No {reportStatus} reports.
               </div>
             ) : reports.map((r) => (
-              <ReportRow key={r.id} r={r} onUpdate={updateReport} onContentAction={reportContentAction} busy={busy} />
+              <ReportRow key={r.id} r={r} onUpdate={updateReport} onContentAction={reportContentAction}
+                onMarkAbusive={markAbusive}
+                selected={selectedReports.includes(r.id)}
+                onToggleSelect={() => setSelectedReports((s) =>
+                  s.includes(r.id) ? s.filter((x) => x !== r.id) : [...s, r.id])}
+                busy={busy} />
             ))}
           </div>
         </>

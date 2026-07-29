@@ -2,6 +2,7 @@ import React from "react";
 import ModeSwitcher from "@/components/ModeSwitcher";
 import FireWalletPrivacy from "@/components/fire/FireWalletPrivacy";
 import SafetyPreferences from "@/components/SafetyPreferences";
+import ConnectedAccounts from "@/components/ConnectedAccounts";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 
@@ -26,6 +27,8 @@ export default function Settings() {
       <FireWalletPrivacy />
 
       {user && <SafetyPreferences />}
+
+      {user && <ConnectedAccounts />}
 
       <div className="or-surface p-5 mb-4">
         <h3 className="text-lg mb-3" style={{ fontFamily: "var(--font-display)" }}>Account</h3>

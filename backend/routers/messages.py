@@ -115,6 +115,8 @@ async def get_thread(username: str, current: CurrentUser):
 
 @router.post("")
 async def send_message(payload: MessageCreatePlus, current: CurrentUser):
+    from services.moderation import ensure_not_limited
+    await ensure_not_limited(current["id"], "messaging")
     target = await _user_by_username(payload.to_username)
     if not target:
         raise HTTPException(status_code=404, detail="Recipient not found")

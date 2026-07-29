@@ -302,3 +302,23 @@ def is_visible_to(post_or_doc: dict, viewer: Optional[dict]) -> bool:
 
 def asdict_decision(d: ModerationDecision) -> dict:
     return asdict(d)
+
+
+async def ensure_not_limited(user_id: str, capability: str) -> None:
+    """Trust & Safety account-limit gate. Raises 403 when the user is
+    actively limited from the given capability. Expired limits self-heal."""
+    u = await db.users.find_one({"id": user_id}, {"_id": 0, "account_limits": 1})
+    lim = (u or {}).get("account_limits") or {}
+    if not lim.get("active"):
+        return
+    exp = lim.get("expires_at")
+    if exp and exp <= datetime.now(timezone.utc).isoformat():
+        await db.users.update_one({"id": user_id},
+                                  {"$set": {"account_limits.active": False}})
+        return
+    if capability in (lim.get("capabilities") or []):
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Your account is temporarily limited from this action. "
+                   "Check your notifications for details.")

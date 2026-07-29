@@ -354,6 +354,8 @@ class RealmCreate(BaseModel):
 
 @router.post("/communities/realms")
 async def create_realm(payload: RealmCreate, current: CurrentUser):
+    from services.moderation import ensure_not_limited
+    await ensure_not_limited(current["id"], "realm_creation")
     # Realm creation burns Fire Power (permanent, non-refundable). Admins bypass.
     REALM_CREATION_FIRE_COST = 2000
     _is_admin = get_admin_role(current) is not None

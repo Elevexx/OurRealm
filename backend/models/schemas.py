@@ -240,6 +240,11 @@ def serialize_user(doc: dict) -> dict:
         "id": doc["id"],
         "email": doc["email"],
         "username": doc.get("username"),
+        # Google sign-in — linked status + one-time username onboarding
+        # flag for accounts CREATED via Google (never set on email-linked
+        # existing accounts).
+        "google_auth": bool(doc.get("google_auth")),
+        "needs_username_onboarding": bool(doc.get("needs_username_onboarding")),
         "name": doc.get("name", ""),
         "role": doc.get("role", "user"),
         "avatar_url": doc.get("avatar_url"),

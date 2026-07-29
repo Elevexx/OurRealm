@@ -2981,3 +2981,10 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 - Add-to-Playlist popup (quick-create inline) on all three surfaces; Account Settings → Sound Playlists tab (list/create/rename/delete/remove/reorder only).
 - Tests: backend 18/18 (test_playlists_bundle1.py) + fire/sound regressions green; frontend e2e iteration_92 9/9 desktop+mobile. Pre-existing unrelated failures documented: test_fire_power.py (guest 401s from iter-88 auth guard; refund accounting superseded by Increment B — test_quick_fire.py is authoritative).
 - NEXT: user approval → Bundle 2 (Sounds Control Center /admin/sounds, Genre/Mood managers, Copyright tool, strikes/restrictions). Then Bundle 3 (Realm Audio Context, migration dry runs). Backlog: JWT_SECRET rotation (P2), CORS scoping (P2), mini profile hover-card (P2).
+
+## July 26, 2026 — Google Sign-In onboarding flow VERIFIED (minimal scope, user credit-constrained)
+- Re-ran tests/test_google_auth_mock.py: 16/16 PASS — existing users matched by verified email (no duplicate doc), new Google users get needs_username_onboarding flag + auto username, onboarding modal gated in App.js, availability via shared premium-usernames service (rules/reserved/premium pricing), rename clears flag, dismiss persists.
+- Added inline verification: suspended (401 "Account suspended until…") and banned/disabled (401 "This account is not available.") users are BLOCKED from Google login — same policy as /login. New Google signups get auto-friends (founder+support), VIP first_1000 eligibility, founding-VIP hook, identical JWT access/refresh tokens.
+- Fallback verified: AuthCallback.jsx — missing session_id → redirect /signin; backend 401/failed exchange → error message + "Back to sign in" button. Live API check: bad session_id → 401.
+- Fix: test cleanup now also deletes username_claims (stale claim from a prior partial run caused a false rename failure).
+- Content Safety Phase 2 code is COMPLETE but final testing_agent verification PAUSED by user (credit conservation). Phase 3 not started.

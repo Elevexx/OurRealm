@@ -76,6 +76,8 @@ def _build_poll(payload_poll) -> Optional[dict]:
 
 @router.post("")
 async def create_post(payload: PostCreate, current: CurrentUser):
+    from services.moderation import ensure_not_limited
+    await ensure_not_limited(current["id"], "posting")
     # Duplicate-publish idempotency (Phase 3) — repeated Publish taps /
     # network retries with the same client_token return the existing post.
     if payload.client_token:
@@ -885,6 +887,8 @@ async def list_comments(post_id: str, limit: int = 200, viewer: Optional[str] = 
 
 @router.post("/{post_id}/comment")
 async def comment_post(post_id: str, current: CurrentUser, body: dict):
+    from services.moderation import ensure_not_limited
+    await ensure_not_limited(current["id"], "commenting")
     text = (body or {}).get("text", "").strip()
     parent_id = (body or {}).get("parent_id")
     if not text:

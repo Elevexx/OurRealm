@@ -52,6 +52,7 @@ import AdminHashtags from "@/pages/AdminHashtags";
 import AdminPremiumUsernames from "@/pages/AdminPremiumUsernames";
 import AdminModerationCenter from "@/pages/AdminModerationCenter";
 import AuthCallback from "@/pages/AuthCallback";
+import UsernameOnboardingModal from "@/components/UsernameOnboardingModal";
 import HashtagFeed from "@/pages/HashtagFeed";
 import TrendingHashtagsPage from "@/pages/TrendingHashtagsPage";
 import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage, CommunityStandardsPage, DMCAPolicyPage, SafetyPolicyPage, CookieNoticePage, AccountDeletionPage } from "@/pages/LegalPages";
@@ -121,6 +122,20 @@ function RestoreGate({ children }) {
   return children;
 }
 
+// One-time username onboarding for accounts created via Google sign-in.
+// Renders above the app; never for email-linked existing accounts.
+function UsernameOnboardingGate({ children }) {
+  const { user } = useAuth();
+  const showOnboarding = !!user?.needs_username_onboarding
+    && user?.account_status !== "deleted_pending_restore";
+  return (
+    <>
+      {children}
+      {showOnboarding && <UsernameOnboardingModal />}
+    </>
+  );
+}
+
 // Emergent Google Auth — synchronous fragment check DURING render (not in
 // a useEffect) so a fresh `#session_id=` is processed before any route or
 // auth guard runs. Must read useLocation().hash (reactive), never
@@ -143,6 +158,7 @@ function App() {
           <YouTubeRouteCleanup />
           <GoogleAuthGate>
           <RestoreGate>
+          <UsernameOnboardingGate>
           <Routes>
             <Route path="/" element={<RootRedirect />} />
             <Route path="/signup" element={<SignUp />} />
@@ -218,6 +234,7 @@ function App() {
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </UsernameOnboardingGate>
           </RestoreGate>
           </GoogleAuthGate>
           <PostPopup />

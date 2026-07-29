@@ -626,6 +626,10 @@ async def google_session(payload: GoogleSessionPayload, response: Response):
             "signup_completed": True,
             "email_verified": True,  # verified by Google
             "google_auth": True,
+            # One-time onboarding prompt: choose a custom username.
+            # Only for accounts CREATED via Google — email-linked existing
+            # accounts never receive this flag.
+            "needs_username_onboarding": True,
             "compliance": {
                 "accepted_terms": True,
                 "accepted_privacy": True,
@@ -708,3 +712,11 @@ async def google_session(payload: GoogleSessionPayload, response: Response):
             "purge_after": user.get("purge_after"),
         }
     return body
+
+
+@router.post("/username-onboarding/dismiss")
+async def dismiss_username_onboarding(current: CurrentUser):
+    """'Keep this username for now' — one-time; the prompt never reshows."""
+    await db.users.update_one({"id": current["id"]},
+                              {"$set": {"needs_username_onboarding": False}})
+    return {"ok": True}

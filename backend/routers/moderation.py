@@ -1124,14 +1124,19 @@ async def user_mod_profile(user_id: str, current: CurrentUser):
         {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1,
          "created_at": 1, "is_banned": 1, "banned_at": 1, "disabled": 1,
          "admin_role": 1, "email": 1, "last_seen_at": 1, "bio": 1,
-         "copyright_strike_count": 1})
+         "copyright_strike_count": 1, "account_limits": 1,
+         "suspended_until": 1, "suspension_reason": 1,
+         "reporter_abuse_flags": 1})
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
     is_founder = (current.get("username") or "").lower() == "stealth" or current.get("is_founder")
     if not is_founder:
         u.pop("email", None)
     u["status"] = ("banned" if u.get("is_banned")
+                   else "suspended" if u.get("suspended_until")
                    else "disabled" if u.get("disabled") else "active")
+    if (u.get("account_limits") or {}).get("active"):
+        u["limited"] = True
     counts = {
         "posts": await db.posts.count_documents({"author_id": user_id}),
         "removed_posts": await db.posts.count_documents(
@@ -1346,3 +1351,139 @@ async def ack_mod_notification(notif_id: str, payload: ModNotifAck, current: Cur
         user_id=None, actor_id=current["id"],
         meta={"notification_id": notif_id})
     return {"ok": True, "status": updates.get("payload.status", p.get("status"))}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# PHASE 2 — account enforcement (warn / limit / suspend), report
+# merging, reporter-abuse controls.
+# ──────────────────────────────────────────────────────────────────────
+ENFORCE_CAPS = {"posting", "commenting", "messaging", "uploading",
+                "realm_creation", "recommendations"}
+
+
+class EnforcePayload(BaseModel):
+    action: str  # warn | limit | unlimit | suspend | unsuspend
+    reason: str = Field(min_length=2, max_length=300)
+    days: Optional[int] = None
+    capabilities: Optional[list[str]] = None
+    source: Optional[str] = None
+
+
+@router.post("/api/admin/moderation/users/{user_id}/enforce")
+async def enforce_account(user_id: str, payload: EnforcePayload, current: CurrentUser):
+    _require_admin(current)
+    target = await db.users.find_one({"id": user_id}, {"_id": 0, "id": 1, "username": 1,
+                                                       "account_limits": 1, "disabled": 1})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user_id == current["id"]:
+        raise HTTPException(status_code=400, detail="You cannot enforce against yourself")
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    action = payload.action
+    notify_msg = None
+
+    if action == "warn":
+        notify_msg = ("You have received a formal warning for a Community "
+                      "Guidelines violation. Repeated violations may lead to "
+                      "account restrictions.")
+    elif action == "limit":
+        caps = [c for c in (payload.capabilities or []) if c in ENFORCE_CAPS]
+        if not caps:
+            raise HTTPException(status_code=400, detail="Select at least one capability to limit")
+        days = max(1, min(90, int(payload.days or 3)))
+        await db.users.update_one({"id": user_id}, {"$set": {"account_limits": {
+            "active": True, "capabilities": caps,
+            "expires_at": (now + timedelta(days=days)).isoformat(),
+            "applied_by": current["id"], "applied_at": now_iso,
+            "reason": payload.reason}}})
+        notify_msg = ("Your account is temporarily limited "
+                      f"({', '.join(c.replace('_', ' ') for c in caps)}) for {days} day(s) "
+                      "due to a Community Guidelines violation.")
+    elif action == "unlimit":
+        await db.users.update_one({"id": user_id}, {"$set": {"account_limits.active": False}})
+        notify_msg = "Your account limits have been lifted."
+    elif action == "suspend":
+        days = max(1, min(365, int(payload.days or 7)))
+        until = (now + timedelta(days=days)).isoformat()
+        await db.users.update_one({"id": user_id}, {"$set": {
+            "disabled": True, "suspended_until": until, "suspended_at": now_iso,
+            "suspended_by": current["id"], "suspension_reason": payload.reason}})
+        notify_msg = f"Your account has been suspended until {until[:10]} for a Community Guidelines violation."
+    elif action == "unsuspend":
+        await db.users.update_one({"id": user_id}, {
+            "$set": {"disabled": False},
+            "$unset": {"suspended_until": "", "suspended_at": "",
+                       "suspended_by": "", "suspension_reason": ""}})
+        notify_msg = "Your account suspension has been lifted."
+    else:
+        raise HTTPException(status_code=400, detail="Unknown enforcement action")
+
+    await log_action(action=f"account_{action}", content_type="profile",
+                     content_id=user_id, user_id=user_id, actor_id=current["id"],
+                     reason=payload.reason,
+                     meta={"days": payload.days, "capabilities": payload.capabilities,
+                           "source": payload.source or "user_profile"})
+    if notify_msg:
+        try:
+            from routers.notifications import emit_notification
+            await emit_notification(user_id, "moderation", payload={"preview": notify_msg})
+        except Exception:
+            pass
+    return {"ok": True, "action": action}
+
+
+class MergeReportsPayload(BaseModel):
+    primary_id: str
+    duplicate_ids: list[str] = Field(min_length=1)
+
+
+@router.post("/api/admin/moderation/reports/merge")
+async def merge_reports(payload: MergeReportsPayload, current: CurrentUser):
+    """Combine duplicate reports about the same content into one case.
+    Duplicates leave the active queue but the audit record is preserved."""
+    _require_admin(current)
+    primary = await db.reports.find_one({"id": payload.primary_id}, {"_id": 0})
+    if not primary:
+        raise HTTPException(status_code=404, detail="Primary report not found")
+    now = datetime.now(timezone.utc).isoformat()
+    merged = 0
+    for rid in payload.duplicate_ids:
+        if rid == payload.primary_id:
+            continue
+        res = await db.reports.update_one({"id": rid}, {"$set": {
+            "status": "duplicate", "duplicate_of": payload.primary_id,
+            "removed_from_active_queue": True,
+            "merged_by": current["id"], "merged_at": now}})
+        merged += res.modified_count
+    await db.reports.update_one({"id": payload.primary_id},
+                                {"$inc": {"merged_count": merged}})
+    await log_action(action="report_merged", content_type="report",
+                     content_id=payload.primary_id, user_id=primary.get("reporter_id"),
+                     actor_id=current["id"],
+                     meta={"duplicates": payload.duplicate_ids, "merged": merged})
+    return {"ok": True, "merged": merged}
+
+
+@router.post("/api/admin/moderation/reports/{report_id}/mark-abusive")
+async def mark_report_abusive(report_id: str, payload: UnblurPayload, current: CurrentUser):
+    """Flag a knowingly false/abusive report. Increments the reporter's
+    abuse counter for pattern tracking — users are NEVER punished merely
+    because a report was not confirmed."""
+    _require_admin(current)
+    rep = await db.reports.find_one({"id": report_id}, {"_id": 0})
+    if not rep:
+        raise HTTPException(status_code=404, detail="Report not found")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.reports.update_one({"id": report_id}, {"$set": {
+        "marked_abusive": True, "status": "resolved",
+        "resolution_status": "abusive_report",
+        "removed_from_active_queue": True,
+        "resolved_at": now, "resolved_by": current["id"],
+        "resolution_notes": payload.reason}})
+    await db.users.update_one({"id": rep["reporter_id"]},
+                              {"$inc": {"reporter_abuse_flags": 1}})
+    await log_action(action="reporter_abuse_flagged", content_type="report",
+                     content_id=report_id, user_id=rep.get("reporter_id"),
+                     actor_id=current["id"], reason=payload.reason)
+    return {"ok": True}

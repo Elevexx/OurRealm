@@ -4,9 +4,11 @@
  * filters + inline moderation actions.
  */
 import React, { useState } from "react";
-import { Loader2, Search, UserRound } from "lucide-react";
+import { toast } from "sonner";
+import { Loader2, Search, UserRound, Gavel } from "lucide-react";
 import apiClient from "@/api/client";
 import ModPostRow from "@/components/admin/ModPostRow";
+import EnforceModal from "@/components/admin/EnforceModal";
 
 const POST_FILTERS = ["all", "images", "videos", "sounds", "text", "blurred",
   "under_review", "locked", "hidden", "ai_flagged", "reported"];
@@ -25,6 +27,7 @@ export default function ModUserPanel({ onOpenCase }) {
   const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(false);
+  const [enforce, setEnforce] = useState(null); // action string
 
   const search = async (e) => {
     e?.preventDefault();
@@ -143,6 +146,38 @@ export default function ModUserPanel({ onOpenCase }) {
                 </div>
               ))}
             </div>
+            {/* Enforcement — Trust & Safety Phase 2 */}
+            <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border-col)" }} data-testid="mod-user-enforcement">
+              <div className="text-[10px] uppercase tracking-widest mb-1.5 flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
+                <Gavel size={11} /> Account enforcement
+                {(profile.user.account_limits || {}).active && (
+                  <span className="or-chip text-[10px]" style={{ color: "#FFA94D", borderColor: "#FFA94D" }} data-testid="mod-user-limited-badge">
+                    limited: {(profile.user.account_limits.capabilities || []).join(", ")} until {(profile.user.account_limits.expires_at || "").slice(0, 10)}
+                  </span>
+                )}
+                {profile.user.suspended_until && (
+                  <span className="or-chip text-[10px]" style={{ color: "#FF8080", borderColor: "#FF8080" }} data-testid="mod-user-suspended-badge">
+                    suspended until {String(profile.user.suspended_until).slice(0, 10)}
+                  </span>
+                )}
+                {(profile.user.reporter_abuse_flags || 0) > 0 && (
+                  <span className="or-chip text-[10px]">{profile.user.reporter_abuse_flags} abusive-report flags</span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button className="or-chip" style={{ minHeight: 32 }} onClick={() => setEnforce("warn")} data-testid="mod-user-warn">Warn</button>
+                {(profile.user.account_limits || {}).active ? (
+                  <button className="or-chip" style={{ minHeight: 32 }} onClick={() => setEnforce("unlimit")} data-testid="mod-user-unlimit">Lift limits</button>
+                ) : (
+                  <button className="or-chip" style={{ minHeight: 32 }} onClick={() => setEnforce("limit")} data-testid="mod-user-limit">Limit</button>
+                )}
+                {profile.user.suspended_until ? (
+                  <button className="or-chip" style={{ minHeight: 32 }} onClick={() => setEnforce("unsuspend")} data-testid="mod-user-unsuspend">Lift suspension</button>
+                ) : (
+                  <button className="or-chip" style={{ minHeight: 32, color: "#FF8080", borderColor: "rgba(255,80,80,0.4)" }} onClick={() => setEnforce("suspend")} data-testid="mod-user-suspend">Suspend</button>
+                )}
+              </div>
+            </div>
           </div>
 
           {(profile.history || []).length > 0 && (
@@ -185,6 +220,15 @@ export default function ModUserPanel({ onOpenCase }) {
               </button>
             )}
           </div>
+          {enforce && (
+            <EnforceModal
+              userId={profile.user.id}
+              username={profile.user.username}
+              action={enforce}
+              onClose={() => setEnforce(null)}
+              onDone={(a) => { toast.success(`Done: ${a}`); openProfile(profile.user); }}
+            />
+          )}
         </div>
       )}
     </div>
