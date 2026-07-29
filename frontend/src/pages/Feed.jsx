@@ -734,6 +734,15 @@ function FeedCard({ p, fireStatus, onPostDeleted, onPostUpdated }) {
           <Sparkles size={11} /> Founder Announcement
         </div>
       )}
+      {p.review_lock_view?.active && (
+        <div
+          className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg text-[12px]"
+          style={{ background: "color-mix(in srgb, #B98CFF 12%, transparent)", color: "#B98CFF", border: "1px solid color-mix(in srgb, #B98CFF 35%, transparent)" }}
+          data-testid={`feed-review-lock-${p.id}`}
+        >
+          <Sparkles size={12} /> Under Review — this post is temporarily private while our moderation team reviews it.
+        </div>
+      )}
       <header className="flex items-center gap-3 mb-3">
         <UserAvatar
           user={{ id: p.author_id, username: p.author_username, name: p.author_name, avatar_url: p.author_avatar }}

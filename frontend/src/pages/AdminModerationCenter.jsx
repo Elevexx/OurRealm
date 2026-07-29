@@ -7,23 +7,34 @@
  * plus the new blur/unblur/rescan + report administration.
  */
 import React, { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Shield, ShieldAlert, Loader2, CheckCircle2, EyeOff, RotateCcw, Trash2,
-  UserX, RefreshCcw, Eye, Flag, FileText, AlertTriangle,
+  UserX, RefreshCcw, Eye, Flag, FileText, AlertTriangle, FolderOpen,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import AdminBackButton from "@/components/AdminBackButton";
 import AdminBlurModal from "@/components/AdminBlurModal";
+import ModUserPanel from "@/components/admin/ModUserPanel";
+import ModContentSearch from "@/components/admin/ModContentSearch";
+import ModCaseDetail from "@/components/admin/ModCaseDetail";
 
 const TABS = [
   { id: "overview", label: "Overview" },
+  { id: "content", label: "All Content" },
   { id: "ai", label: "AI Flagged" },
-  { id: "urgent", label: "Urgent Safety" },
+  { id: "urgent", label: "Urgent" },
   { id: "reports", label: "User Reports" },
+  { id: "review", label: "Under Review" },
   { id: "blurred", label: "Blurred" },
+  { id: "locked", label: "Private Review" },
+  { id: "hidden", label: "Hidden" },
   { id: "removed", label: "Removed" },
+  { id: "users", label: "Users" },
   { id: "log", label: "Audit Log" },
 ];
+
+const CASE_TABS = new Set(["ai", "urgent", "blurred", "review", "hidden", "locked"]);
 
 const STAT_CARDS = [
   { id: "total_scanned", label: "Content scanned" },
@@ -56,13 +67,14 @@ function SeverityPill({ severity, urgent }) {
   );
 }
 
-function CaseRow({ item, onAction, onBlur, busy }) {
+function CaseRow({ item, onAction, onBlur, onOpenCase, busy }) {
   const blurred = item.manual_blur?.active;
   return (
     <div className="or-surface p-3" data-testid={`ts-case-${item.content_type}-${item.id}`}>
       <div className="flex flex-wrap items-center gap-2 mb-1">
         <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{item.content_type}</span>
         <SeverityPill severity={item.severity} urgent={item.urgent} />
+        {item.review_locked && <span className="or-chip text-[10px]" style={{ color: "#B98CFF" }}>private review</span>}
         {(item.categories || []).map((c) => (
           <span key={c} className="or-chip text-[10px]">{c}</span>
         ))}
@@ -109,6 +121,9 @@ function CaseRow({ item, onAction, onBlur, busy }) {
         <button className="or-chip" disabled={busy} style={{ color: "#FF8080", borderColor: "rgba(255,80,80,0.4)" }}
           onClick={() => onAction(item, "ban")} data-testid={`ts-ban-${item.id}`}>
           <UserX size={11} /> Ban user
+        </button>
+        <button className="or-chip" disabled={busy} onClick={() => onOpenCase?.(item.content_type, item.id)} data-testid={`ts-case-open-${item.id}`}>
+          <FolderOpen size={11} /> Case
         </button>
       </div>
     </div>
@@ -161,7 +176,16 @@ function ReportRow({ r, onUpdate, onContentAction, busy }) {
 }
 
 export default function AdminModerationCenter() {
-  const [tab, setTab] = useState("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get("tab") || "overview");
+  const [caseTarget, setCaseTarget] = useState(() => {
+    const c = searchParams.get("case");
+    if (c && c.includes(":")) {
+      const [ct, id] = c.split(":");
+      return { contentType: ct, contentId: id };
+    }
+    return null;
+  });
   const [summary, setSummary] = useState(null);
   const [cases, setCases] = useState([]);
   const [reports, setReports] = useState([]);
@@ -178,7 +202,7 @@ export default function AdminModerationCenter() {
     try {
       const s = await apiClient.get("/admin/moderation/safety-summary");
       setSummary(s.data);
-      if (tab === "ai" || tab === "urgent" || tab === "blurred") {
+      if (CASE_TABS.has(tab)) {
         const c = await apiClient.get(`/admin/moderation/cases?tab=${tab}&limit=50`);
         setCases(c.data?.items || []);
       } else if (tab === "reports") {
@@ -309,6 +333,10 @@ export default function AdminModerationCenter() {
             upload and cached — feeds never rescan.
           </div>
         </>
+      ) : tab === "users" ? (
+        <ModUserPanel onOpenCase={(ct, id) => setCaseTarget({ contentType: ct, contentId: id })} />
+      ) : tab === "content" ? (
+        <ModContentSearch onOpenCase={(ct, id) => setCaseTarget({ contentType: ct, contentId: id })} />
       ) : tab === "reports" ? (
         <>
           <div className="flex gap-1.5 mb-3">
@@ -387,6 +415,15 @@ export default function AdminModerationCenter() {
           contentId={blurTarget.id}
           onClose={() => setBlurTarget(null)}
           onDone={() => load()}
+        />
+      )}
+
+      {caseTarget && (
+        <ModCaseDetail
+          contentType={caseTarget.contentType}
+          contentId={caseTarget.contentId}
+          onClose={() => { setCaseTarget(null); setSearchParams({}, { replace: true }); }}
+          onChanged={() => load()}
         />
       )}
     </div>

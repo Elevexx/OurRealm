@@ -413,6 +413,9 @@ def _public_post(p: dict, viewer_id: Optional[str] = None) -> dict:
     p.pop("author_lng", None)
     # Content safety — strip internal detection data; expose only a
     # minimal viewer-facing block. Uploader sees their own post normally.
+    rl = p.pop("review_lock", None)
+    if isinstance(rl, dict) and rl.get("active"):
+        p["review_lock_view"] = {"active": True}
     s = p.pop("safety", None)
     if isinstance(s, dict):
         mb = s.get("manual_blur") or {}

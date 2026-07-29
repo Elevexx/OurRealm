@@ -526,6 +526,15 @@ export default function PostPopup() {
             </div>
           ) : (
             <>
+              {post?.review_lock_view?.active && (
+                <div
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-[12px]"
+                  style={{ background: "color-mix(in srgb, #B98CFF 12%, transparent)", color: "#B98CFF", border: "1px solid color-mix(in srgb, #B98CFF 35%, transparent)" }}
+                  data-testid="post-popup-review-lock"
+                >
+                  Under Review — this post is temporarily private while our moderation team reviews it.
+                </div>
+              )}
               {post?.content && (
                 <p className="whitespace-pre-wrap text-sm sm:text-base" style={{ color: "var(--text-main)" }} data-testid="post-popup-content">
                   {post.content}

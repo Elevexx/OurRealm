@@ -277,6 +277,8 @@ async def list_log(current: CurrentUser, limit: int = 100):
 # ─── Admin actions ────────────────────────────────────────────────────
 class ActionPayload(BaseModel):
     action: str  # approve | hide | restore | delete | ban | acknowledge
+    reason: Optional[str] = None
+    source: Optional[str] = None  # post_menu | edit_screen | moderation_center | user_profile
 
 
 @router.post("/api/admin/moderation/{content_type}/{content_id}/action")
@@ -639,6 +641,7 @@ class BlurPayload(BaseModel):
     category: str = "graphic"
     internal_reason: Optional[str] = Field(default=None, max_length=300)
     public_message: Optional[str] = Field(default=None, max_length=200)
+    source: Optional[str] = None
 
 
 @router.post("/api/admin/moderation/{content_type}/{content_id}/blur")
@@ -675,7 +678,8 @@ async def manual_blur(content_type: str, content_id: str, payload: BlurPayload, 
                      actor_id=current["id"], reason=payload.category,
                      meta={"internal_reason": payload.internal_reason,
                            "public_message": payload.public_message,
-                           "previous_severity": prev.get("severity") or 0})
+                           "previous_severity": prev.get("severity") or 0,
+                           "source": payload.source or "moderation_center"})
     uploader = doc.get("author_id") or doc.get("user_id")
     if uploader:
         try:
@@ -690,6 +694,7 @@ async def manual_blur(content_type: str, content_id: str, payload: BlurPayload, 
 
 class UnblurPayload(BaseModel):
     reason: Optional[str] = Field(default=None, max_length=300)
+    source: Optional[str] = None
 
 
 @router.post("/api/admin/moderation/{content_type}/{content_id}/unblur")
@@ -714,7 +719,8 @@ async def manual_unblur(content_type: str, content_id: str, payload: UnblurPaylo
                      content_id=content_id,
                      user_id=doc.get("author_id") or doc.get("user_id"),
                      actor_id=current["id"], reason=payload.reason,
-                     meta={"previous": prev.get("manual_blur")})
+                     meta={"previous": prev.get("manual_blur"),
+                           "source": payload.source or "moderation_center"})
     return {"ok": True, "blurred": False}
 
 
@@ -741,12 +747,18 @@ async def rescan_content(content_type: str, content_id: str, current: CurrentUse
 
 @router.get("/api/admin/moderation/cases")
 async def safety_cases(current: CurrentUser, tab: str = "ai", limit: int = 50):
-    """Unified case list: tab = ai | urgent | blurred."""
+    """Unified case list: tab = ai | urgent | blurred | review | hidden | locked."""
     _require_admin(current)
     if tab == "urgent":
         q = {"safety.urgent": True}
     elif tab == "blurred":
         q = {"safety.manual_blur.active": True}
+    elif tab == "review":
+        q = {"moderation_status": STATUS_PENDING_REVIEW}
+    elif tab == "hidden":
+        q = {"moderation_status": {"$in": [STATUS_HIDDEN, STATUS_REJECTED]}}
+    elif tab == "locked":
+        q = {"review_lock.active": True}
     else:
         q = {"safety.severity": {"$gte": 1}}
     items = []
@@ -915,3 +927,330 @@ async def set_safety_prefs(payload: SafetyPrefsPayload, current: CurrentUser):
         await db.users.update_one({"id": current["id"]}, {"$set": updates})
     u = await db.users.find_one({"id": current["id"]}, {"_id": 0, "safety_prefs": 1})
     return {"preferences": {**SAFETY_PREF_DEFAULTS, **((u or {}).get("safety_prefs") or {})}}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# PHASE 1.5 — Admin moderation controls: private-review lock, internal
+# notes, case view, user search + moderation profile, content search.
+# ──────────────────────────────────────────────────────────────────────
+class LockPayload(BaseModel):
+    reason: str = Field(min_length=2, max_length=300)
+    source: Optional[str] = None  # post_menu | edit_screen | moderation_center | user_profile
+
+
+@router.post("/api/admin/moderation/post/{post_id}/lock-private")
+async def lock_private(post_id: str, payload: LockPayload, current: CurrentUser):
+    """Lock a post private while under review. Uploader + admins keep
+    access; everyone else loses it via the audience visibility gate.
+    Original audience is preserved for exact restoration."""
+    _require_admin(current)
+    post = await db.posts.find_one({"id": post_id}, {"_id": 0, "audience": 1, "author_id": 1, "review_lock": 1})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if (post.get("review_lock") or {}).get("active"):
+        return {"ok": True, "locked": True, "already": True}
+    now = datetime.now(timezone.utc).isoformat()
+    original_audience = post.get("audience") or {"visibility": "public", "user_ids": []}
+    await db.posts.update_one({"id": post_id}, {"$set": {
+        "review_lock": {
+            "active": True,
+            "original_audience": original_audience,
+            "locked_by": current["id"],
+            "locked_at": now,
+            "reason": payload.reason,
+        },
+        "audience": {"visibility": "private", "user_ids": []},
+    }})
+    await log_action(action="private_review_lock", content_type="post",
+                     content_id=post_id, user_id=post.get("author_id"),
+                     actor_id=current["id"], reason=payload.reason,
+                     meta={"previous_audience": original_audience,
+                           "source": payload.source or "moderation_center"})
+    if post.get("author_id"):
+        try:
+            from routers.notifications import emit_notification
+            await emit_notification(post["author_id"], "moderation", payload={
+                "preview": "One of your posts is temporarily private while our moderation team reviews it.",
+                "post_id": post_id})
+        except Exception:
+            pass
+    return {"ok": True, "locked": True}
+
+
+@router.post("/api/admin/moderation/post/{post_id}/unlock-private")
+async def unlock_private(post_id: str, payload: LockPayload, current: CurrentUser):
+    """Restore the post's exact original visibility after review."""
+    _require_admin(current)
+    post = await db.posts.find_one({"id": post_id}, {"_id": 0, "review_lock": 1, "author_id": 1, "audience": 1})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    rl = post.get("review_lock") or {}
+    if not rl.get("active"):
+        raise HTTPException(status_code=400, detail="Post is not locked for review")
+    now = datetime.now(timezone.utc).isoformat()
+    original = rl.get("original_audience") or {"visibility": "public", "user_ids": []}
+    await db.posts.update_one({"id": post_id}, {"$set": {
+        "audience": original,
+        "review_lock.active": False,
+        "review_lock.unlocked_by": current["id"],
+        "review_lock.unlocked_at": now,
+        "review_lock.unlock_reason": payload.reason,
+    }})
+    await log_action(action="private_review_unlock", content_type="post",
+                     content_id=post_id, user_id=post.get("author_id"),
+                     actor_id=current["id"], reason=payload.reason,
+                     meta={"restored_audience": original,
+                           "source": payload.source or "moderation_center"})
+    if post.get("author_id"):
+        try:
+            from routers.notifications import emit_notification
+            await emit_notification(post["author_id"], "moderation", payload={
+                "preview": "Your post has finished review and its original visibility was restored.",
+                "post_id": post_id})
+        except Exception:
+            pass
+    return {"ok": True, "locked": False}
+
+
+class NotePayload(BaseModel):
+    note: str = Field(min_length=1, max_length=1000)
+
+
+@router.post("/api/admin/moderation/{content_type}/{content_id}/note")
+async def add_moderator_note(content_type: str, content_id: str, payload: NotePayload, current: CurrentUser):
+    _require_admin(current)
+    if content_type not in CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Unknown content_type")
+    now = datetime.now(timezone.utc).isoformat()
+    rec = {"id": uuid.uuid4().hex, "content_type": content_type,
+           "content_id": content_id, "note": payload.note,
+           "author_id": current["id"], "author_username": current.get("username"),
+           "created_at": now}
+    await db.moderation_notes.insert_one(rec)
+    rec.pop("_id", None)
+    await log_action(action="moderator_note_added", content_type=content_type,
+                     content_id=content_id, user_id=None, actor_id=current["id"],
+                     meta={"note_id": rec["id"]})
+    return {"ok": True, "note": rec}
+
+
+@router.get("/api/admin/moderation/case/{content_type}/{content_id}")
+async def case_detail(content_type: str, content_id: str, current: CurrentUser):
+    """Full moderation case: content, safety data (admins may see internals),
+    reports, internal notes, audit trail, uploader summary."""
+    _require_admin(current)
+    if content_type not in CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Unknown content_type")
+    coll = getattr(db, CONTENT_TYPES[content_type])
+    doc = await coll.find_one({"id": content_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    uploader_id = doc.get("author_id") or doc.get("user_id")
+    uploader = None
+    if uploader_id:
+        uploader = await db.users.find_one(
+            {"id": uploader_id},
+            {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1,
+             "created_at": 1, "is_banned": 1, "disabled": 1})
+    reports = [r async for r in db.reports.find(
+        {"content_type": content_type, "content_id": content_id}, {"_id": 0}
+    ).sort("created_at", -1).limit(50)]
+    for r in reports:
+        u = await db.users.find_one({"id": r.get("reporter_id")}, {"_id": 0, "username": 1})
+        r["reporter_username"] = (u or {}).get("username")
+    notes = [n async for n in db.moderation_notes.find(
+        {"content_type": content_type, "content_id": content_id}, {"_id": 0}
+    ).sort("created_at", -1).limit(50)]
+    audit = [a async for a in db.moderation_log.find(
+        {"content_id": content_id}, {"_id": 0}).sort("created_at", -1).limit(100)]
+    # Post log_action for the open event (audit: post opened in admin).
+    await log_action(action="case_opened", content_type=content_type,
+                     content_id=content_id, user_id=uploader_id,
+                     actor_id=current["id"], meta={"source": "moderation_center"})
+    return {"content": doc, "uploader": uploader, "reports": reports,
+            "notes": notes, "audit": audit}
+
+
+# ─── User search + moderation profile ────────────────────────────────
+@router.get("/api/admin/moderation/users/search")
+async def user_mod_search(current: CurrentUser, q: str = "", limit: int = 20):
+    _require_admin(current)
+    q = (q or "").strip()
+    if not q:
+        return {"users": []}
+    import re as _re
+    rx = {"$regex": _re.escape(q), "$options": "i"}
+    ors: list[dict] = [{"username": rx}, {"name": rx}, {"id": q}]
+    is_founder = (current.get("username") or "").lower() == "stealth" or current.get("is_founder")
+    if is_founder and "@" in q:
+        ors.append({"email": q.lower()})
+    out = []
+    cursor = db.users.find({"$or": ors},
+                           {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1,
+                            "created_at": 1, "is_banned": 1, "disabled": 1, "admin_role": 1,
+                            "email": 1, "last_seen_at": 1}).limit(min(max(1, limit), 50))
+    async for u in cursor:
+        if not is_founder:
+            u.pop("email", None)
+        uid = u["id"]
+        u["reports_made"] = await db.reports.count_documents({"reporter_id": uid})
+        u["moderation_actions"] = await db.moderation_log.count_documents(
+            {"user_id": uid, "action": {"$nin": ["report", "case_opened"]}})
+        u["removed_posts"] = await db.posts.count_documents(
+            {"author_id": uid, "moderation_status": {"$in": ["hidden", "rejected"]}})
+        u["flagged_posts"] = await db.posts.count_documents(
+            {"author_id": uid, "safety.severity": {"$gte": 1}})
+        u["status"] = ("banned" if u.get("is_banned")
+                       else "disabled" if u.get("disabled") else "active")
+        out.append(u)
+    return {"users": out}
+
+
+@router.get("/api/admin/moderation/users/{user_id}")
+async def user_mod_profile(user_id: str, current: CurrentUser):
+    _require_admin(current)
+    u = await db.users.find_one(
+        {"id": user_id},
+        {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1,
+         "created_at": 1, "is_banned": 1, "banned_at": 1, "disabled": 1,
+         "admin_role": 1, "email": 1, "last_seen_at": 1, "bio": 1,
+         "copyright_strike_count": 1})
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    is_founder = (current.get("username") or "").lower() == "stealth" or current.get("is_founder")
+    if not is_founder:
+        u.pop("email", None)
+    u["status"] = ("banned" if u.get("is_banned")
+                   else "disabled" if u.get("disabled") else "active")
+    counts = {
+        "posts": await db.posts.count_documents({"author_id": user_id}),
+        "removed_posts": await db.posts.count_documents(
+            {"author_id": user_id, "moderation_status": {"$in": ["hidden", "rejected"]}}),
+        "flagged_posts": await db.posts.count_documents(
+            {"author_id": user_id, "safety.severity": {"$gte": 1}}),
+        "locked_posts": await db.posts.count_documents(
+            {"author_id": user_id, "review_lock.active": True}),
+        "reports_made": await db.reports.count_documents({"reporter_id": user_id}),
+        "moderation_actions": await db.moderation_log.count_documents(
+            {"user_id": user_id, "action": {"$nin": ["report", "case_opened"]}}),
+    }
+    # Reports received about this user's recent posts.
+    recent_ids = [p["id"] async for p in db.posts.find(
+        {"author_id": user_id}, {"_id": 0, "id": 1}).sort("created_at", -1).limit(200)]
+    counts["reports_received"] = await db.reports.count_documents(
+        {"content_id": {"$in": recent_ids}}) if recent_ids else 0
+    history = [h async for h in db.moderation_log.find(
+        {"user_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(30)]
+    reports_made = [r async for r in db.reports.find(
+        {"reporter_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(10)]
+    notes = [n async for n in db.moderation_notes.find(
+        {"content_type": "profile", "content_id": user_id}, {"_id": 0}
+    ).sort("created_at", -1).limit(20)]
+    return {"user": u, "counts": counts, "history": history,
+            "reports_made": reports_made, "notes": notes}
+
+
+USER_POST_FILTERS = {
+    "all": {},
+    "images": {"media_type": "image"},
+    "videos": {"media_type": "video"},
+    "sounds": {"media_type": "sound"},
+    "text": {"media_type": "thought"},
+    "blurred": {"safety.manual_blur.active": True},
+    "under_review": {"moderation_status": "pending_review"},
+    "hidden": {"moderation_status": {"$in": ["hidden", "rejected"]}},
+    "locked": {"review_lock.active": True},
+    "ai_flagged": {"safety.severity": {"$gte": 1}},
+}
+
+
+def _admin_post_row(p: dict, report_count: int = 0) -> dict:
+    s = p.get("safety") or {}
+    rl = p.get("review_lock") or {}
+    return {
+        "id": p.get("id"),
+        "content": (p.get("content") or "")[:200],
+        "media_type": p.get("media_type"),
+        "image_url": (p.get("image_urls") or [None])[0] or p.get("image_url"),
+        "video_url": p.get("video_url"),
+        "created_at": p.get("created_at"),
+        "author_id": p.get("author_id"),
+        "author_username": p.get("author_username"),
+        "visibility": (p.get("audience") or {}).get("visibility") or "public",
+        "moderation_status": p.get("moderation_status") or "approved",
+        "severity": s.get("severity", 0),
+        "categories": s.get("categories") or [],
+        "manual_blur": bool((s.get("manual_blur") or {}).get("active")),
+        "review_locked": bool(rl.get("active")),
+        "urgent": bool(s.get("urgent")),
+        "scan_status": s.get("scan_status"),
+        "fire_total": p.get("fire_total") or 0,
+        "likes": p.get("likes") or 0,
+        "comments": p.get("comments") or 0,
+        "report_count": report_count,
+    }
+
+
+@router.get("/api/admin/moderation/users/{user_id}/posts")
+async def user_mod_posts(user_id: str, current: CurrentUser,
+                         filter: str = "all", skip: int = 0, limit: int = 25):
+    _require_admin(current)
+    base: dict = {"author_id": user_id}
+    extra = USER_POST_FILTERS.get(filter)
+    if extra is None and filter == "reported":
+        ids = await db.reports.distinct("content_id", {"content_type": "post"})
+        extra = {"id": {"$in": ids}}
+    q = {**base, **(extra or {})}
+    total = await db.posts.count_documents(q)
+    cursor = db.posts.find(q, {"_id": 0}).sort("created_at", -1) \
+        .skip(max(0, skip)).limit(min(max(1, limit), 50))
+    rows = []
+    async for p in cursor:
+        rc = await db.reports.count_documents({"content_type": "post", "content_id": p["id"]})
+        rows.append(_admin_post_row(p, rc))
+    return {"posts": rows, "total": total, "skip": skip, "limit": limit}
+
+
+@router.get("/api/admin/moderation/content/search")
+async def content_mod_search(current: CurrentUser, q: str = "",
+                             username: Optional[str] = None,
+                             media_type: Optional[str] = None,
+                             status: Optional[str] = None,
+                             severity_min: Optional[int] = None,
+                             blurred: Optional[bool] = None,
+                             locked: Optional[bool] = None,
+                             skip: int = 0, limit: int = 25):
+    """Platform-wide content search for the Moderation Center."""
+    _require_admin(current)
+    import re as _re
+    query: dict = {}
+    q = (q or "").strip()
+    if q:
+        query["$or"] = [{"content": {"$regex": _re.escape(q), "$options": "i"}},
+                        {"id": q}]
+    if username:
+        u = await db.users.find_one({"username": username.lower().lstrip("@")}, {"_id": 0, "id": 1})
+        query["author_id"] = (u or {}).get("id") or "__none__"
+    if media_type:
+        query["media_type"] = media_type
+    if status:
+        if status == "approved":
+            query["moderation_status"] = {"$in": [None, "approved"]}
+        else:
+            query["moderation_status"] = status
+    if severity_min is not None:
+        query["safety.severity"] = {"$gte": int(severity_min)}
+    if blurred:
+        query["safety.manual_blur.active"] = True
+    if locked:
+        query["review_lock.active"] = True
+    if not query:
+        query = {}
+    total = await db.posts.count_documents(query)
+    cursor = db.posts.find(query, {"_id": 0}).sort("created_at", -1) \
+        .skip(max(0, skip)).limit(min(max(1, limit), 50))
+    rows = []
+    async for p in cursor:
+        rc = await db.reports.count_documents({"content_type": "post", "content_id": p["id"]})
+        rows.append(_admin_post_row(p, rc))
+    return {"posts": rows, "total": total, "skip": skip, "limit": limit}

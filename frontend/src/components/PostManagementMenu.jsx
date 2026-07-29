@@ -15,10 +15,14 @@
  */
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Edit3, Trash2, Globe2, Users as UsersIcon, UserCheck, Eye, EyeOff, X, Loader2, Pin } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { Edit3, Trash2, Globe2, Users as UsersIcon, UserCheck, Eye, EyeOff, X, Loader2, Pin, Lock, Unlock, FolderOpen, RotateCcw } from "lucide-react";
 import apiClient from "@/api/client";
 import FriendMultiPicker from "@/components/FriendMultiPicker";
 import AdminBlurModal from "@/components/AdminBlurModal";
+import ReasonModal from "@/components/admin/ReasonModal";
+import { postAction } from "@/components/admin/modActions";
 
 const VIS_OPTIONS = [
   { id: "public",  label: "Public",       Icon: Globe2 },
@@ -49,6 +53,8 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
   const [err, setErr] = useState("");
   const [pickFriends, setPickFriends] = useState(false);
   const [blurOpen, setBlurOpen] = useState(false);
+  const [modModal, setModModal] = useState(null); // {action,title,msg,requireReason,destructive}
+  const navigate = useNavigate();
   // Anchor coordinates for the desktop popover (mobile uses fixed CSS instead).
   const [anchorRect, setAnchorRect] = useState(null);
   const toggleRef = React.useRef(null);
@@ -124,16 +130,34 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
   const isModAdmin = user && ((user.username || "").toLowerCase() === "stealth" || user.is_founder
     || (user.username || "").toLowerCase() === "support");
   const isManuallyBlurred = !!post?.safety_view?.manual;
-  const removeBlur = async () => {
+  const isReviewLocked = !!post?.review_lock_view?.active;
+  const isHidden = ["hidden", "rejected"].includes(post?.moderation_status);
+
+  const runModAction = async (action, reason = null) => {
     setBusy(true); setErr("");
     try {
-      await apiClient.post(`/admin/moderation/post/${post.id}/unblur`, { reason: null });
-      onUpdated?.({ ...post, safety_view: null });
+      await postAction("post", post.id, action, { reason, source: "post_menu" });
+      const patch =
+        action === "lock" ? { review_lock_view: { active: true } }
+        : action === "unlock" ? { review_lock_view: null }
+        : action === "hide" ? { moderation_status: "hidden" }
+        : action === "restore" ? { moderation_status: "approved" }
+        : action === "unblur" ? { safety_view: null }
+        : {};
+      toast.success(
+        action === "lock" ? "Locked private for review"
+        : action === "unlock" ? "Original visibility restored"
+        : action === "hide" ? "Post hidden"
+        : action === "restore" ? "Post restored"
+        : action === "unblur" ? "Blur removed" : "Done");
+      onUpdated?.({ ...post, ...patch });
       closeMenu();
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Failed to remove blur");
+      setErr(e?.response?.data?.detail || "Action failed");
+      throw e;
     } finally { setBusy(false); }
   };
+  const removeBlur = () => runModAction("unblur");
   const pinPost = async () => {
     setBusy(true); setErr("");
     try {
@@ -254,6 +278,46 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
             {busy ? <Loader2 size={11} className="animate-spin" /> : <Pin size={11} />}
             {post.is_pinned ? "Unpin from For You" : "Pin to For You"}
           </button>
+        )}
+        {isModAdmin && (
+          <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border-col)" }}>
+            <div className="text-[10px] uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }} data-testid={`${idScope}-mod-title`}>
+              Moderation
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                isManuallyBlurred
+                  ? { id: "unblur", Icon: Eye, label: "Remove Blur", onClick: () => removeBlur() }
+                  : { id: "blur", Icon: EyeOff, label: "Blur for Others", onClick: () => { setBlurOpen(true); closeMenu(); } },
+                isReviewLocked
+                  ? { id: "unlock", Icon: Unlock, label: "Restore Visibility", onClick: () => setModModal({ action: "unlock", title: "Restore original visibility", msg: "The post returns to its exact original audience.", requireReason: true }) }
+                  : { id: "lock", Icon: Lock, label: "Lock Private", onClick: () => setModModal({ action: "lock", title: "Lock private while under review", msg: "Only the uploader and admins will see this post until restored.", requireReason: true }) },
+                isHidden
+                  ? { id: "restore", Icon: RotateCcw, label: "Restore Post", onClick: () => runModAction("restore") }
+                  : { id: "hide", Icon: EyeOff, label: "Hide Post", onClick: () => setModModal({ action: "hide", title: "Hide post", msg: "Hidden from all users except the uploader." }) },
+                { id: "case", Icon: FolderOpen, label: "Open Case", onClick: () => { closeMenu(); navigate(`/admin/moderation?case=post:${post.id}`); } },
+              ].map(({ id, Icon, label, onClick }) => (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={busy}
+                  onClick={onClick}
+                  className="text-[11px] uppercase tracking-wide flex items-center justify-center gap-1 px-2 py-2.5"
+                  style={{
+                    borderRadius: 6,
+                    background: "color-mix(in srgb, #FFC94D 10%, transparent)",
+                    color: "#FFC94D",
+                    border: "1px solid color-mix(in srgb, #FFC94D 35%, transparent)",
+                    whiteSpace: "normal",
+                    wordBreak: "break-word",
+                  }}
+                  data-testid={`${idScope}-${id}`}
+                >
+                  {busy ? <Loader2 size={11} className="animate-spin" /> : <Icon size={11} />} {label}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {DeleteSection}
         {err && (
@@ -387,6 +451,18 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
               is_uploader: post.author_id === user?.id,
             },
           })}
+        />
+      )}
+
+      {modModal && (
+        <ReasonModal
+          title={modModal.title}
+          message={modModal.msg}
+          requireReason={!!modModal.requireReason}
+          destructive={!!modModal.destructive}
+          confirmLabel={modModal.title}
+          onClose={() => setModModal(null)}
+          onConfirm={(reason) => runModAction(modModal.action, reason)}
         />
       )}
     </div>

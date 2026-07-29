@@ -1,0 +1,37 @@
+{
+  "summary": "Content Safety Phase 1.5 (admin moderation controls). Backend: 11 pytest tests PASS + 1 SKIPPED (see note). Covered untested items from prior iteration: lock-private empty reason → 422; full lock→unlock cycle preserves audience (public→private→public), tftwo visibility flip, uploader retains view w/ review_lock_view.active=true; moderator note + case detail (content/uploader/reports/notes/audit) exposes case_opened + private_review_lock w/ meta.source='post_menu'; non-admin (tftwo) gets 403 on all six Phase-1.5 admin endpoints (lock/unlock/note/case/users-search/content-search); user search partial 'tft' finds tftwo w/ counts+status, founder sees own email; user profile returns all counts+history+notes; user posts filters all/hidden/ai_flagged/locked are subsets of all; content search by caption + username/blurred/locked filters; cases?tab=locked includes locked post; cases?tab=review reachable; blur w/ source='edit_screen' records meta.source in audit. Frontend (desktop 1920x1080): /feed → own post menu shows Moderation section w/ Blur/Lock/Hide/Case; Lock Private opens ReasonModal, empty submit shows reason-modal-error, filled confirm closes modal + shows Under Review banner (feed-review-lock-{id}); menu reopens with Restore Visibility (unlock). /admin/moderation renders all 12 tabs (overview/content/ai/urgent/reports/review/blurred/locked/hidden/removed/users/log); all clickable. Users tab search 'tft' returns tftwo, click opens profile with mod-user-counts + filter chips. All Content tab search returns rows with modrow-case-{id} buttons; opening one shows mod-case-detail modal with mod-case-audit; note added via mod-case-note-input+add appears in list. Deep link /admin/moderation?case=post:{id} opens the modal directly. Mobile 390x844: /admin/moderation tabs wrap+usable, Users search present; /feed post management opens as bottom sheet with Moderation grid + Lock Private button visible+tappable. Regression: tftwo logged in — own post menu has NO Moderation section/lock button; direct fetch /api/admin/moderation/users/search returns 403.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/admin/moderation/case/{ct}/{id}", "issue": "Endpoint logs case_opened AFTER fetching the audit list, so the first call never returns the case_opened entry in its own response. Callers must refresh the case view to see the just-created audit row. Consider capturing the log entry and appending it in-memory before returning."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_content_safety_phase1_5.py",
+    "/app/test_reports/pytest/content_safety_phase1_5.xml"
+  ],
+  "action_items": [
+    "Optional: case_detail should include the case_opened entry in the SAME response (currently only visible on re-fetch)."
+  ],
+  "critical_code_review_comments": [
+    "moderation.py is now 1256 lines — well over the 700-line guideline. Strongly recommend splitting Phase 1.5 controls (lock-private, unlock-private, notes, case detail, user search/profile/posts, content search) into a dedicated `admin_moderation.py` (or `safety_admin.py`) router. Same recommendation carried from iteration_93.",
+    "Pydantic min_length=2 on LockPayload.reason means clients calling with 1-char reason get 422 BEFORE the auth check runs — auth-vs-validation order can leak endpoint existence to unauthenticated callers. Prefer running auth guard first (dependency ordering) or use min_length=1 with an explicit business-check that returns 403 on non-admin before 400 on short reason.",
+    "case_opened audit entry is logged AFTER `audit = […]` snapshot — the first response of case_detail always omits it (verified in tests; had to fetch twice). Minor UX inconsistency.",
+    "content search: when both q AND username filter are provided with wrong username, backend sets author_id='__none__' — works, but returning an empty list explicitly (or a validation error for unknown username) would be cleaner than a magic sentinel."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_content_safety_phase1_5.py"
+  ],
+  "success_rate": {"backend": "100% (11/11 executed; 1 skipped by design)", "frontend": "100% (23/23 assertions across desktop+mobile+regression)"},
+  "test_credentials": "stealth / Password1$ (founder); tftwo / pass1234",
+  "seed_data_creation": "Backend fixtures: multiple TEST_ text posts by stealth were created via `created_posts` fixture; each was unlocked/unblurred/deleted in the teardown. Frontend: one 'phase15-ui-lock-test-abc123' text post created by stealth and DELETED via post menu after the lock/unlock cycle. One 'tftwo regression check' text post created + DELETED. One internal moderator note ('ui-test-note-xyz') was added to an existing feed post during the case-detail flow — this note is left in DB as it belongs to a non-test post (safe: it is admin-only content).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 1.5 admin moderation is production-ready across backend+desktop+mobile+regression. Untested items from iteration_93 (non-admin 403s, cases tabs review/hidden/locked, blur-source audit, post-menu Lock ReasonModal, case deep-link, mobile layout) are now all verified. Only carryover: the case_opened-in-same-response minor bug and the moderation.py file-size refactor (unchanged since iteration_93). Frontend Login placeholder is 'Email or username' + 'Password' — no data-testids on the login form; using get_by_placeholder works. When creating posts, click button with role='Share'. Feed uses `feed-manage-{postId}-toggle`, then menu content is under `feed-manage-{postId}-desktop-{action}` on desktop OR `feed-manage-{postId}-{action}` on mobile bottom-sheet.",
+  "rca of the issue": "No blocking issue. Minor: `case_opened` audit entry not returned in the first `GET /case/...` response because `log_action` fires AFTER the audit list is materialized. Reproduction: POST note to a post → immediately GET case/post/{id} → audit contains `private_review_lock` + `moderator_note_added` but NOT `case_opened`. Second GET returns it. Mitigation: capture the just-logged entry and append to `audit` in-memory before returning, or move the `log_action(case_opened)` call before the `audit = […]` list-build."
+}
