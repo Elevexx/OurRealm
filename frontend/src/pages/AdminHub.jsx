@@ -15,7 +15,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BarChart3, Zap, Hash, Headphones, HelpCircle, LifeBuoy,
-  Crown, ShieldCheck, ChevronRight, Loader2, Sparkles, LayoutGrid, Database,
+  Crown, ShieldCheck, ShieldAlert, ChevronRight, Loader2, Sparkles, LayoutGrid, Database,
   Image as ImageIcon, Trophy, Flame,
 } from "lucide-react";
 import apiClient from "@/api/client";
@@ -41,6 +41,16 @@ const CARDS = [
     badge: "Support",
     roles: ["founder", "admin"],
     statKey: "openTickets",   // shows open helpdesk tickets as a hint
+  },
+  {
+    id: "trust-safety",
+    to: "/admin/moderation",
+    title: "Trust & Safety",
+    description: "Moderation Center — AI flags, user reports, manual blur, audit log.",
+    Icon: ShieldAlert,
+    accent: "#FF5A5A",
+    badge: "Support",
+    roles: ["founder", "admin"],
   },
   {
     id: "realm-pulse",

@@ -26,6 +26,7 @@ import VideoEmbed from "@/components/VideoEmbed";
 import ShareToUserModal from "@/components/ShareToUserModal";
 import { dedupePosts } from "@/lib/dedupePosts";
 import ImageLightbox from "@/components/ImageLightbox";
+import SensitiveMediaOverlay from "@/components/SensitiveMediaOverlay";
 import VideoUploadPicker from "@/components/VideoUploadPicker";
 import SoundAttachPicker from "@/components/SoundAttachPicker";
 import SoundAttachmentEditor from "@/components/SoundAttachmentEditor";
@@ -778,6 +779,7 @@ function FeedCard({ p, fireStatus, onPostDeleted, onPostUpdated }) {
         </p>
       )}
       {mediaImgs ? (
+        <SensitiveMediaOverlay safetyView={p.safety_view} testid={`feed-safety-${p.id}`}>
         <div
           className="grid gap-1 mb-3 overflow-hidden"
           style={{
@@ -801,7 +803,9 @@ function FeedCard({ p, fireStatus, onPostDeleted, onPostUpdated }) {
             />
           ))}
         </div>
+        </SensitiveMediaOverlay>
       ) : mediaImg && (
+        <SensitiveMediaOverlay safetyView={p.safety_view} testid={`feed-safety-${p.id}`}>
         <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
           <img
             src={absoluteImageUrl(mediaImg)}
@@ -813,6 +817,7 @@ function FeedCard({ p, fireStatus, onPostDeleted, onPostUpdated }) {
             onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
           />
         </div>
+        </SensitiveMediaOverlay>
       )}
       {p.sound_attachment && (mediaImg || mediaImgs || mediaVid) && (
         <div className="mb-3 -mt-1.5">
@@ -827,9 +832,11 @@ function FeedCard({ p, fireStatus, onPostDeleted, onPostUpdated }) {
         <SoundPlayerCard post={p} testid={`feed-sound-${p.id}`} />
       )}
       {mediaVid && (
+        <SensitiveMediaOverlay safetyView={p.safety_view} testid={`feed-safety-video-${p.id}`}>
         <div className="overflow-hidden mb-3" style={{ borderRadius: "var(--radius)", border: "1px solid var(--border-col)" }}>
           <VideoEmbed url={mediaVid} testid={`feed-video-${p.id}`} />
         </div>
+        </SensitiveMediaOverlay>
       )}
       {mediaLink && (
         <a href={mediaLink} target="_blank" rel="noreferrer" className="or-chip text-sm mb-3 inline-flex break-all" data-testid={`feed-link-${p.id}`} onClick={(e) => e.stopPropagation()}>

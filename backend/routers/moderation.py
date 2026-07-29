@@ -358,7 +358,7 @@ async def take_action(content_type: str, content_id: str, payload: ActionPayload
             else "restored" if payload.action == "restore"
             else "approved" if payload.action == "approve"
             else "acknowledged",
-        "resolution_notes": (payload.reason or "")[:240] if hasattr(payload, "reason") else None,
+        "resolution_notes": (payload.reason or "")[:240],
     }
     if payload.action in ("delete", "hide"):
         report_resolution["removed_at"] = now
@@ -391,8 +391,34 @@ async def take_action(content_type: str, content_id: str, payload: ActionPayload
         content_id=content_id,
         user_id=(doc or {}).get("author_id") or (doc or {}).get("user_id") or content_id,
         actor_id=current["id"],
-        reason=payload.action,
+        reason=payload.reason or payload.action,
     )
+
+    # Notify the uploader (no internal details) + reporters on resolution.
+    uploader_id = (doc or {}).get("author_id") or (doc or {}).get("user_id")
+    if uploader_id and payload.action in ("hide", "delete", "restore", "approve"):
+        try:
+            from routers.notifications import emit_notification
+            msg = {
+                "hide":    "Your content has been restricted for a possible Community Guidelines violation.",
+                "delete":  "Your content was removed for a Community Guidelines violation.",
+                "restore": "Your content has been restored and is visible again.",
+                "approve": "Your content was reviewed and found not to violate our guidelines.",
+            }[payload.action]
+            await emit_notification(uploader_id, "moderation",
+                                    payload={"preview": msg, "content_id": content_id})
+        except Exception:
+            pass
+    try:
+        from routers.notifications import emit_notification
+        async for r in db.reports.find(
+                {"content_type": content_type, "content_id": content_id,
+                 "resolved_at": now}, {"_id": 0, "reporter_id": 1}):
+            await emit_notification(
+                r["reporter_id"], "moderation",
+                payload={"preview": "Your report was reviewed and a decision has been made. Thank you for helping keep OurRealm safe."})
+    except Exception:
+        pass
 
     return {"ok": True, "action": payload.action, "content_id": content_id}
 
@@ -598,3 +624,294 @@ async def storage_status(current: CurrentUser):
             "per_store_value": os.environ.get(env) or None,
         }
     return info
+
+
+# ──────────────────────────────────────────────────────────────────────
+# CONTENT SAFETY (Phase 1) — manual blur, rescan, unified cases,
+# report administration, user safety preferences, extended summary.
+# ──────────────────────────────────────────────────────────────────────
+BLUR_CATEGORIES = {"graphic", "nudity_sexual", "violence", "medical",
+                   "disturbing", "custom"}
+SAFETY_COLLS = (("posts", "post"), ("images", "image"), ("videos", "video"))
+
+
+class BlurPayload(BaseModel):
+    category: str = "graphic"
+    internal_reason: Optional[str] = Field(default=None, max_length=300)
+    public_message: Optional[str] = Field(default=None, max_length=200)
+
+
+@router.post("/api/admin/moderation/{content_type}/{content_id}/blur")
+async def manual_blur(content_type: str, content_id: str, payload: BlurPayload, current: CurrentUser):
+    """Blur ANY content for other users — no AI flag or report required.
+    Uploader keeps seeing their own content normally."""
+    _require_admin(current)
+    if content_type not in CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Unknown content_type")
+    if payload.category not in BLUR_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Unknown warning category")
+    coll = getattr(db, CONTENT_TYPES[content_type])
+    doc = await coll.find_one({"id": content_id}, {"_id": 0, "safety": 1, "author_id": 1, "user_id": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    now = datetime.now(timezone.utc).isoformat()
+    prev = doc.get("safety") or {}
+    mb = {
+        "active": True,
+        "category": payload.category,
+        "public_message": payload.public_message,
+        "internal_reason": payload.internal_reason,
+        "applied_by": current["id"],
+        "applied_at": now,
+    }
+    await coll.update_one({"id": content_id}, {"$set": {
+        "safety.manual_blur": mb,
+        "safety.manual_override": True,
+        "safety.severity": max(int(prev.get("severity") or 0), 1),
+    }})
+    await log_action(action="blur_manual", content_type=content_type,
+                     content_id=content_id,
+                     user_id=doc.get("author_id") or doc.get("user_id"),
+                     actor_id=current["id"], reason=payload.category,
+                     meta={"internal_reason": payload.internal_reason,
+                           "public_message": payload.public_message,
+                           "previous_severity": prev.get("severity") or 0})
+    uploader = doc.get("author_id") or doc.get("user_id")
+    if uploader:
+        try:
+            from routers.notifications import emit_notification
+            await emit_notification(uploader, "moderation", payload={
+                "preview": "Your content received a sensitive-content warning and may appear blurred to other users.",
+                "content_id": content_id})
+        except Exception:
+            pass
+    return {"ok": True, "blurred": True}
+
+
+class UnblurPayload(BaseModel):
+    reason: Optional[str] = Field(default=None, max_length=300)
+
+
+@router.post("/api/admin/moderation/{content_type}/{content_id}/unblur")
+async def manual_unblur(content_type: str, content_id: str, payload: UnblurPayload, current: CurrentUser):
+    _require_admin(current)
+    if content_type not in CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Unknown content_type")
+    coll = getattr(db, CONTENT_TYPES[content_type])
+    doc = await coll.find_one({"id": content_id}, {"_id": 0, "safety": 1, "author_id": 1, "user_id": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    now = datetime.now(timezone.utc).isoformat()
+    prev = doc.get("safety") or {}
+    await coll.update_one({"id": content_id}, {"$set": {
+        "safety.manual_blur.active": False,
+        "safety.manual_blur.removed_by": current["id"],
+        "safety.manual_blur.removed_at": now,
+        "safety.manual_blur.removal_reason": payload.reason,
+        "safety.severity": int(prev.get("scan_severity") or 0),
+    }})
+    await log_action(action="unblur_manual", content_type=content_type,
+                     content_id=content_id,
+                     user_id=doc.get("author_id") or doc.get("user_id"),
+                     actor_id=current["id"], reason=payload.reason,
+                     meta={"previous": prev.get("manual_blur")})
+    return {"ok": True, "blurred": False}
+
+
+@router.post("/api/admin/moderation/{content_type}/{content_id}/rescan")
+async def rescan_content(content_type: str, content_id: str, current: CurrentUser):
+    """Admin-requested re-run of AI detection (the only automatic rescan
+    trigger besides a model change)."""
+    _require_admin(current)
+    import asyncio as _aio
+    from services.content_safety import (apply_post_media_safety,
+                                         scan_image_record, scan_video_record)
+    if content_type == "post":
+        _aio.create_task(apply_post_media_safety(content_id, force=True))
+    elif content_type == "image":
+        _aio.create_task(scan_image_record(content_id, force=True))
+    elif content_type == "video":
+        _aio.create_task(scan_video_record(content_id, force=True))
+    else:
+        raise HTTPException(status_code=400, detail="Rescan supports post/image/video")
+    await log_action(action="rescan", content_type=content_type,
+                     content_id=content_id, user_id=None, actor_id=current["id"])
+    return {"ok": True, "queued": True}
+
+
+@router.get("/api/admin/moderation/cases")
+async def safety_cases(current: CurrentUser, tab: str = "ai", limit: int = 50):
+    """Unified case list: tab = ai | urgent | blurred."""
+    _require_admin(current)
+    if tab == "urgent":
+        q = {"safety.urgent": True}
+    elif tab == "blurred":
+        q = {"safety.manual_blur.active": True}
+    else:
+        q = {"safety.severity": {"$gte": 1}}
+    items = []
+    for coll_name, ct in SAFETY_COLLS:
+        cursor = getattr(db, coll_name).find(q, {"_id": 0}).sort("safety.scanned_at", -1).limit(limit)
+        async for d in cursor:
+            s = d.get("safety") or {}
+            uploader = d.get("author_id") or d.get("user_id")
+            u = await db.users.find_one({"id": uploader}, {"_id": 0, "username": 1}) if uploader else None
+            report_count = await db.reports.count_documents({"content_id": d.get("id")})
+            items.append({
+                "content_type": ct,
+                "id": d.get("id"),
+                "preview": (d.get("content") or d.get("original_url") or d.get("url") or "")[:160],
+                "uploader_id": uploader,
+                "uploader_username": (u or {}).get("username"),
+                "severity": s.get("severity", 0),
+                "categories": s.get("categories") or [],
+                "confidence": s.get("confidence"),
+                "context": s.get("context"),
+                "detection_source": s.get("detection_source"),
+                "scan_status": s.get("scan_status"),
+                "scanned_at": s.get("scanned_at"),
+                "urgent": s.get("urgent", False),
+                "manual_blur": (s.get("manual_blur") or {}),
+                "moderation_status": d.get("moderation_status"),
+                "report_count": report_count,
+                "created_at": d.get("created_at"),
+            })
+    items.sort(key=lambda x: (not x["urgent"], -(x["severity"] or 0), x.get("scanned_at") or ""), )
+    return {"items": items[:limit]}
+
+
+@router.get("/api/admin/moderation/reports")
+async def admin_reports(current: CurrentUser, status: str = "open",
+                        reason: Optional[str] = None, limit: int = 100):
+    _require_admin(current)
+    q: dict = {}
+    if status == "open":
+        q = {"status": "open", "removed_from_active_queue": {"$ne": True}}
+    elif status == "resolved":
+        q = {"status": "resolved"}
+    elif status == "removed":
+        q = {"removed_from_active_queue": True}
+    if reason:
+        q["reason"] = reason
+    out = []
+    cursor = db.reports.find(q, {"_id": 0}).sort("created_at", -1).limit(min(max(1, limit), 300))
+    async for r in cursor:
+        u = await db.users.find_one({"id": r.get("reporter_id")}, {"_id": 0, "username": 1})
+        r["reporter_username"] = (u or {}).get("username")
+        out.append(r)
+    return {"reports": out}
+
+
+class ReportAdminPayload(BaseModel):
+    action: str  # close | remove | reopen
+    reason: Optional[str] = Field(default=None, max_length=300)
+
+
+@router.post("/api/admin/moderation/reports/{report_id}/update")
+async def admin_update_report(report_id: str, payload: ReportAdminPayload, current: CurrentUser):
+    _require_admin(current)
+    rep = await db.reports.find_one({"id": report_id}, {"_id": 0})
+    if not rep:
+        raise HTTPException(status_code=404, detail="Report not found")
+    now = datetime.now(timezone.utc).isoformat()
+    if payload.action == "close":
+        await db.reports.update_one({"id": report_id}, {"$set": {
+            "status": "resolved", "resolution_status": "no_violation",
+            "resolved_at": now, "resolved_by": current["id"],
+            "resolution_notes": payload.reason}})
+        try:
+            from routers.notifications import emit_notification
+            await emit_notification(rep["reporter_id"], "moderation", payload={
+                "preview": "Your report was reviewed and closed. Thank you for helping keep OurRealm safe."})
+        except Exception:
+            pass
+    elif payload.action == "remove":
+        if not payload.reason:
+            raise HTTPException(status_code=400, detail="A removal reason is required")
+        await db.reports.update_one({"id": report_id}, {"$set": {
+            "removed_from_active_queue": True, "removal_reason": payload.reason,
+            "removed_by": current["id"], "removed_at": now}})
+    elif payload.action == "reopen":
+        await db.reports.update_one({"id": report_id}, {"$set": {
+            "status": "open", "removed_from_active_queue": False}})
+    else:
+        raise HTTPException(status_code=400, detail="Unknown action")
+    # Immutable audit record is preserved regardless of queue removal.
+    await log_action(action=f"report_{payload.action}", content_type="report",
+                     content_id=report_id, user_id=rep.get("reporter_id"),
+                     actor_id=current["id"], reason=payload.reason,
+                     meta={"target": f"{rep.get('content_type')}:{rep.get('content_id')}"})
+    return {"ok": True, "action": payload.action}
+
+
+@router.get("/api/admin/moderation/safety-summary")
+async def safety_summary(current: CurrentUser):
+    _require_admin(current)
+    today_iso = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    total_scanned = ai_flagged = blurred = urgent = 0
+    for coll_name, _ct in SAFETY_COLLS:
+        coll = getattr(db, coll_name)
+        total_scanned += await coll.count_documents({"safety.scan_status": "done"})
+        ai_flagged    += await coll.count_documents({"safety.severity": {"$gte": 1}})
+        blurred       += await coll.count_documents({"safety.manual_blur.active": True})
+        urgent        += await coll.count_documents({"safety.urgent": True})
+    open_reports  = await db.reports.count_documents({"status": "open", "removed_from_active_queue": {"$ne": True}})
+    reports_today = await db.reports.count_documents({"created_at": {"$gte": today_iso}})
+    pending = await db.posts.count_documents({"moderation_status": STATUS_PENDING_REVIEW})
+    hidden  = await db.posts.count_documents({"moderation_status": STATUS_HIDDEN})
+    removed_today = await db.posts.count_documents({
+        "moderation_status": {"$in": [STATUS_HIDDEN, STATUS_REJECTED]},
+        "moderated_at": {"$gte": today_iso}})
+    cat_rows = await db.posts.aggregate([
+        {"$match": {"safety.categories.0": {"$exists": True}}},
+        {"$unwind": "$safety.categories"},
+        {"$group": {"_id": "$safety.categories", "n": {"$sum": 1}}},
+        {"$sort": {"n": -1}}, {"$limit": 10},
+    ]).to_list(10)
+    from services.content_safety import MODEL_VERSION, LLM_KEY
+    return {
+        "total_scanned": total_scanned, "ai_flagged": ai_flagged,
+        "manual_blurred": blurred, "urgent": urgent,
+        "open_reports": open_reports, "reports_today": reports_today,
+        "pending_review": pending, "auto_hidden": hidden,
+        "removed_today": removed_today,
+        "top_categories": [{"category": r["_id"], "count": r["n"]} for r in cat_rows],
+        "detection_model": MODEL_VERSION,
+        "detection_enabled": bool(LLM_KEY),
+    }
+
+
+# ─── User Safety & Content Preferences ────────────────────────────────
+SAFETY_PREF_KEYS = ("graphic", "adult_sexual", "violent", "medical")
+SAFETY_PREF_VALUES = ("show", "blur", "hide")
+SAFETY_PREF_DEFAULTS = {"graphic": "blur", "adult_sexual": "blur",
+                        "violent": "blur", "medical": "show"}
+
+
+@router.get("/api/me/safety-preferences")
+async def get_safety_prefs(current: CurrentUser):
+    u = await db.users.find_one({"id": current["id"]}, {"_id": 0, "safety_prefs": 1})
+    prefs = {**SAFETY_PREF_DEFAULTS, **((u or {}).get("safety_prefs") or {})}
+    return {"preferences": prefs}
+
+
+class SafetyPrefsPayload(BaseModel):
+    graphic: Optional[str] = None
+    adult_sexual: Optional[str] = None
+    violent: Optional[str] = None
+    medical: Optional[str] = None
+
+
+@router.patch("/api/me/safety-preferences")
+async def set_safety_prefs(payload: SafetyPrefsPayload, current: CurrentUser):
+    updates = {}
+    for k in SAFETY_PREF_KEYS:
+        v = getattr(payload, k)
+        if v is not None:
+            if v not in SAFETY_PREF_VALUES:
+                raise HTTPException(status_code=400, detail=f"Invalid value for {k}")
+            updates[f"safety_prefs.{k}"] = v
+    if updates:
+        await db.users.update_one({"id": current["id"]}, {"$set": updates})
+    u = await db.users.find_one({"id": current["id"]}, {"_id": 0, "safety_prefs": 1})
+    return {"preferences": {**SAFETY_PREF_DEFAULTS, **((u or {}).get("safety_prefs") or {})}}

@@ -18,6 +18,7 @@ import { createPortal } from "react-dom";
 import { Edit3, Trash2, Globe2, Users as UsersIcon, UserCheck, Eye, EyeOff, X, Loader2, Pin } from "lucide-react";
 import apiClient from "@/api/client";
 import FriendMultiPicker from "@/components/FriendMultiPicker";
+import AdminBlurModal from "@/components/AdminBlurModal";
 
 const VIS_OPTIONS = [
   { id: "public",  label: "Public",       Icon: Globe2 },
@@ -47,6 +48,7 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [pickFriends, setPickFriends] = useState(false);
+  const [blurOpen, setBlurOpen] = useState(false);
   // Anchor coordinates for the desktop popover (mobile uses fixed CSS instead).
   const [anchorRect, setAnchorRect] = useState(null);
   const toggleRef = React.useRef(null);
@@ -116,6 +118,22 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
   // a new post auto-replaces any current pinned announcement on the
   // server. Unpin clears the global pin entirely.
   const isPinAdmin = user && ["stealth", "support"].includes((user.username || "").toLowerCase());
+
+  // Trust & Safety — manual sensitive-content blur (any post, no AI flag
+  // or report required). Founder/support only.
+  const isModAdmin = user && ((user.username || "").toLowerCase() === "stealth" || user.is_founder
+    || (user.username || "").toLowerCase() === "support");
+  const isManuallyBlurred = !!post?.safety_view?.manual;
+  const removeBlur = async () => {
+    setBusy(true); setErr("");
+    try {
+      await apiClient.post(`/admin/moderation/post/${post.id}/unblur`, { reason: null });
+      onUpdated?.({ ...post, safety_view: null });
+      closeMenu();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Failed to remove blur");
+    } finally { setBusy(false); }
+  };
   const pinPost = async () => {
     setBusy(true); setErr("");
     try {
@@ -351,6 +369,24 @@ export default function PostManagementMenu({ post, user, onUpdated, onDeleted, t
           title="Custom audience for this post"
           initialSelectedIds={post?.audience?.user_ids || []}
           onConfirm={(ids) => { setPickFriends(false); saveCustomIds(ids); }}
+        />
+      )}
+
+      {blurOpen && (
+        <AdminBlurModal
+          contentType="post"
+          contentId={post.id}
+          onClose={() => setBlurOpen(false)}
+          onDone={(category, publicMessage) => onUpdated?.({
+            ...post,
+            safety_view: {
+              severity: Math.max(post?.safety_view?.severity || 0, 1),
+              category,
+              message: publicMessage || null,
+              manual: true,
+              is_uploader: post.author_id === user?.id,
+            },
+          })}
         />
       )}
     </div>

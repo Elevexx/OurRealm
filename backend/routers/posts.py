@@ -203,6 +203,9 @@ async def create_post(payload: PostCreate, current: CurrentUser):
     )
     # Pull the now-moderated record back so the response carries fresh state.
     fresh = await db.posts.find_one({"id": doc["id"]}, {"_id": 0})
+    # Content-safety rollup (media vision results + text scan) — async.
+    from services.content_safety import kickoff_post_safety
+    kickoff_post_safety(fresh or doc)
     if isinstance(fresh.get("created_at"), str):
         try:
             fresh["created_at"] = datetime.fromisoformat(fresh["created_at"])
@@ -408,6 +411,22 @@ def _public_post(p: dict, viewer_id: Optional[str] = None) -> dict:
     p.pop("author_zip", None)
     p.pop("author_lat", None)
     p.pop("author_lng", None)
+    # Content safety — strip internal detection data; expose only a
+    # minimal viewer-facing block. Uploader sees their own post normally.
+    s = p.pop("safety", None)
+    if isinstance(s, dict):
+        mb = s.get("manual_blur") or {}
+        manual = bool(mb.get("active"))
+        sev = int(s.get("severity") or 0)
+        if manual or sev >= 1:
+            p["safety_view"] = {
+                "severity": max(sev, 1),
+                "category": (mb.get("category") if manual else None)
+                            or ((s.get("categories") or ["sensitive"])[0]),
+                "message": (mb.get("public_message") or None) if manual else None,
+                "manual": manual,
+                "is_uploader": bool(viewer_id and p.get("author_id") == viewer_id),
+            }
     poll = p.get("poll")
     if poll:
         votes = poll.get("votes") or {}
@@ -822,7 +841,15 @@ async def list_comments(post_id: str, limit: int = 200, viewer: Optional[str] = 
         c.pop("liked_by", None)
         return c
 
-    cursor = db.comments.find({"post_id": post_id}, {"_id": 0}).sort("created_at", 1).limit(limit)
+    cursor = db.comments.find({
+        "post_id": post_id,
+        # Moderation gate — hidden/rejected comments show only to their author.
+        "$or": [
+            {"moderation_status": {"$in": [None, "approved", "pending_review"]}},
+            {"moderation_status": {"$exists": False}},
+            {"author_id": viewer_id},
+        ],
+    }, {"_id": 0}).sort("created_at", 1).limit(limit)
     all_items = [c async for c in cursor]
     parents = [hydrate(c) for c in all_items if not c.get("parent_id")]
     by_parent: dict = {}
@@ -892,6 +919,9 @@ async def comment_post(post_id: str, current: CurrentUser, body: dict):
     }
     await db.comments.insert_one(comment)
     comment.pop("_id", None)
+    # Rule-based text moderation for comments (cheap, no LLM).
+    await scan_and_apply(coll_name="comments", doc_id_field="id", doc=comment,
+                         text_fields=("text",), user_id=current["id"])
     await db.posts.update_one({"id": post_id}, {"$inc": {"comments": 1}})
     new_count_doc = await db.posts.find_one({"id": post_id}, {"_id": 0, "comments": 1})
 

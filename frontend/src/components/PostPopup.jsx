@@ -23,6 +23,7 @@ import SoundPlayerCard from "@/components/SoundPlayerCard";
 import UserAvatar from "@/components/UserAvatar";
 import ReportButton from "@/components/ReportButton";
 import ImageLightbox from "@/components/ImageLightbox";
+import SensitiveMediaOverlay from "@/components/SensitiveMediaOverlay";
 import ShareToUserModal from "@/components/ShareToUserModal";
 import ReactionAttachment from "@/components/ReactionAttachment";
 
@@ -531,6 +532,7 @@ export default function PostPopup() {
                 </p>
               )}
               {mediaImgs ? (
+                <SensitiveMediaOverlay safetyView={post?.safety_view} testid="post-popup-safety">
                 <div
                   className="grid gap-1 overflow-hidden"
                   style={{
@@ -554,7 +556,9 @@ export default function PostPopup() {
                     />
                   ))}
                 </div>
+                </SensitiveMediaOverlay>
               ) : mediaImg && (
+                <SensitiveMediaOverlay safetyView={post?.safety_view} testid="post-popup-safety">
                 <img
                   src={absoluteImageUrl(mediaImg)}
                   alt=""
@@ -565,12 +569,15 @@ export default function PostPopup() {
                   data-testid="post-popup-image"
                   onClick={() => setImageLightbox(true)}
                 />
+                </SensitiveMediaOverlay>
               )}
               {isSound && (
                 <SoundPlayerCard post={post} testid="post-popup-sound" />
               )}
               {mediaVid && (
+                <SensitiveMediaOverlay safetyView={post?.safety_view} testid="post-popup-safety-video">
                 <VideoEmbed url={mediaVid} testid="post-popup-video" />
+                </SensitiveMediaOverlay>
               )}
               {mediaLink && (
                 <a href={mediaLink} target="_blank" rel="noreferrer" className="or-chip text-sm break-all" data-testid="post-popup-link">

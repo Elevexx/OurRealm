@@ -55,6 +55,10 @@ async def upload(current: CurrentUser, file: UploadFile = File(...)):
         rec = await save_bytes(raw, current["id"], declared_mime=file.content_type)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # Content-safety vision scan — async, scan-once, cached on the doc.
+    import asyncio as _aio
+    from services.content_safety import scan_image_record
+    _aio.create_task(scan_image_record(rec.id))
     return {"image": rec.to_dict(), "url": rec.original_url, "thumbnail_url": rec.thumbnail_url}
 
 
@@ -81,6 +85,9 @@ async def from_url(payload: FromUrlPayload, current: CurrentUser):
         rec = await save_bytes(raw, current["id"], declared_mime=r.headers.get("content-type", ""))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    import asyncio as _aio
+    from services.content_safety import scan_image_record
+    _aio.create_task(scan_image_record(rec.id))
     return {"image": rec.to_dict(), "url": rec.original_url, "thumbnail_url": rec.thumbnail_url}
 
 

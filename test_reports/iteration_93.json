@@ -1,0 +1,38 @@
+{
+  "summary": "Tested Content Safety & Moderation Phase 1. Backend: 17/17 pytest tests pass (safety prefs GET/PATCH/validate, safety_view exposure to viewer, no raw safety leak, uploader flag with ?viewer=, manual blur/unblur w/ 403 for non-admin, safety-summary, cases?tab=ai, reports listing w/ reporter_username, report action flow close/remove/reopen incl. 400 without reason, rescan queued, audit log contains blur_manual/unblur_manual/rescan, comment auto-hide for threat text, image upload accepted). Frontend: /admin/moderation renders with all 7 tabs (ts-tab-overview/ai/urgent/reports/blurred/removed/log) — all clickable and switch. ts-stats visible. Report filter chips (open/resolved/removed/all) present. Audit log tab shows entries incl. blur_manual+rescan. Admin Hub Trust & Safety card links to /admin/moderation. CRITICAL MISS: /settings does NOT render SafetyPreferences component (imported at line 4 but never used in JSX). Blur overlay e2e as second user not run (backend cycle validated instead — one JPEG uploaded total, per token/vision-cost budget).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/posts/{id}", "issue": "Uses ?viewer=<username> query param to identify viewer for safety_view.is_uploader; ignores authenticated Bearer user. Callers relying on auth alone will always see is_uploader=false. Consider falling back to current authenticated user when viewer query missing."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "pages/Settings.jsx", "issue": "SafetyPreferences imported (line 4) but never rendered. /settings has NO 'Safety & Content Preferences' card and no [data-testid=safety-preferences] element. Users cannot manage per-category show/blur/hide from Settings.", "selector": "[data-testid=\"safety-preferences\"]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AdminHub", "issues": ["React warning: 'Each child in a list should have a unique key prop' — check AdminHub map render (non-blocking, but noisy in console)"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_content_safety_phase1.py", "/app/test_reports/pytest/content_safety_phase1.xml"],
+  "action_items": [
+    "Render <SafetyPreferences /> inside /app/frontend/src/pages/Settings.jsx (currently only imported, never used) so /settings exposes the required safety preferences card with data-testid=safety-preferences.",
+    "Optional (design): GET /api/posts/{id} should honor authenticated user for safety_view.is_uploader instead of requiring ?viewer=<username>.",
+    "Fix React key warning on AdminHub grid render."
+  ],
+  "critical_code_review_comments": [
+    "Settings.jsx imports SafetyPreferences but never mounts it — dead import causes the Phase 1 UX contract (settings-based per-category preferences) to silently break.",
+    "posts.py get_post relies on ?viewer= querystring rather than authenticated identity for is_uploader — fragile and inconsistent with rest of the codebase where CurrentUser is used.",
+    "safety_view in _public_post drops manual_blur.public_message into `message` field (only when manual=True) — frontend and non-manual severity signals share the same key with different semantics; consider `manual_message` for clarity.",
+    "moderation.py router file at 918 lines is on the edge of the 700-line guideline — Phase 1 additions (blur, unblur, rescan, cases, reports, safety-summary, safety-preferences) should be split into a dedicated safety.py router."
+  ],
+  "updated_files": ["/app/backend/tests/test_content_safety_phase1.py"],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "83% — 5/6 surfaces verified; SafetyPreferences card missing from /settings"},
+  "test_credentials": "stealth / Password1$  (founder); tftwo / pass1234",
+  "seed_data_creation": "Test post with sexual-pattern text was created and cleaned up. Test report was created by tftwo and left in 'resolved' state (close action) — safe to leave. One test JPEG was uploaded (single vision-scan credit consumed as per instructions).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend Phase 1 fully passes. Only outstanding action is mounting <SafetyPreferences/> in /app/frontend/src/pages/Settings.jsx (already imported). Once mounted, retest data-testid=safety-preferences with 4 rows (graphic/adult_sexual/violent/medical) and pills like safety-pref-graphic-blur; verify persistence via reload. Also worthwhile: run full e2e blur overlay as tftwo (login tftwo → /feed → expect feed-safety-{postId} overlay with 'Sensitive Content' + feed-safety-{postId}-view-content). Not run this iteration to conserve vision-scan credits.",
+  "rca of the issue": "SafetyPreferences card missing on /settings: root cause is a UI wiring oversight in pages/Settings.jsx — the component was imported (line 4) but the JSX to render it was never added below the FireWalletPrivacy block. Reproduction: login stealth → GET /settings → inspect DOM: no [data-testid=safety-preferences]. Mitigation: add <SafetyPreferences /> (wrapped in an or-surface card) between FireWalletPrivacy and Account sections."
+}

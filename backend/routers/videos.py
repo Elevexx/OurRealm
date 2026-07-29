@@ -77,6 +77,10 @@ async def upload_video(
     meta = await db.videos.find_one({"id": rec.id}, {"_id": 0, "audio_detected": 1,
                                                      "audio_published": 1,
                                                      "audio_rights_status": 1})
+    # Content-safety frame scan — async, scan-once, cached on the doc.
+    import asyncio as _aio
+    from services.content_safety import scan_video_record
+    _aio.create_task(scan_video_record(rec.id))
     return {"video": rec.to_dict(), "url": rec.url, "audio": meta or {}}
 
 
