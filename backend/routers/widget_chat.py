@@ -239,6 +239,52 @@ async def chat_message(payload: ChatMessagePayload, current: CurrentUser, respon
         raise HTTPException(status_code=400, detail="Widget is not configured for chat.")
     _enforce_access(current, widget, chat_cfg)
 
+    # ORAi image generation / editing — founder only. Detected requests
+    # route to the image tool instead of the chat model.
+    if (current.get("username") or "").lower() == "stealth":
+        from services.orai_images import (
+            detect_image_intent, generate_orai_image, load_reference_from_image_url, wants_edit,
+        )
+        has_upload = bool(payload.image_b64)
+        gen_intent = detect_image_intent(payload.message)
+        edit_intent = wants_edit(payload.message)
+        ref_b64 = payload.image_b64
+        if not ref_b64 and edit_intent:
+            # Iterative refinement — reuse the last image in this conversation.
+            conv = await get_conversation(payload.widget_id, current["id"])
+            for m in reversed(conv.get("messages") or []):
+                if m.get("image_url"):
+                    ref_b64 = load_reference_from_image_url(m["image_url"])
+                    break
+        if has_upload or gen_intent or (edit_intent and ref_b64):
+            try:
+                img_bytes, used_model = await generate_orai_image(payload.message, ref_b64)
+            except Exception as e:  # noqa: BLE001
+                raise HTTPException(status_code=502,
+                                    detail=f"Image generation failed: {str(e)[:140]}")
+            from services import image_store
+            rec = await image_store.save_bytes(img_bytes, current["id"], "image/png")
+            reply_text = ("Here's your edited image." if ref_b64 else "Here's your image.") + \
+                         " Tell me what to refine and I'll iterate on it."
+            memory_mode = (chat_cfg.get("memory_mode") or "persistent").lower()
+            if memory_mode != "off":
+                await append_messages(
+                    payload.widget_id, current["id"],
+                    [
+                        {"role": "user", "content": payload.message},
+                        {"role": "assistant", "content": reply_text, "image_url": rec.original_url},
+                    ],
+                )
+            return {
+                "reply": reply_text,
+                "model": used_model,
+                "image_url": rec.original_url,
+                "usage": {},
+                "finish_reason": "image_tool",
+                "memory_mode": memory_mode,
+                "rate_limit": None,
+            }
+
     # Phase 3.6 — Orion analytics interceptor. When the caller is a
     # founder/admin AND their message matches an analytics intent
     # (DAU, signups, investor snapshot, top realms, etc.), we return

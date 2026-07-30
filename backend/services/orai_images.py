@@ -27,8 +27,8 @@ IMAGE_GEN_RE = re.compile(
 IMAGE_EDIT_RE = re.compile(
     r"\b(remove (?:the )?background|replace|swap|recolor|change (?:the )?colou?rs?|"
     r"enhance|upscale|sharpen|extend|outpaint|expand|add text|make (?:it|this) "
-    r"(?:photo)?realistic|photorealistic|variation|variations|restyle|"
-    r"edit (?:this|the) " + _SUBJECT + r")\b",
+    r"(?:photo)?realistic|photorealistic|variation|variations|restyle|regenerate|"
+    r"another version|edit (?:this|the) " + _SUBJECT + r")\b",
     re.IGNORECASE)
 
 
@@ -44,17 +44,24 @@ def wants_edit(message: str) -> bool:
 
 
 def load_reference_from_image_url(url: str) -> Optional[str]:
-    """Read a previously stored /api/images/<file> back as base64 so the
-    founder can iteratively refine the last generated image."""
+    """Read a previously stored image back as base64 so the founder can
+    iteratively refine the last generated image. Handles both local
+    /api/images files and cloud-mirrored absolute URLs."""
     try:
-        name = (url or "").split("/api/images/")[-1].split("?")[0]
-        if not name or "/" in name:
-            return None
-        from services.image_store import image_dir
-        p = Path(image_dir()) / name
-        if not p.exists():
-            return None
-        return base64.b64encode(p.read_bytes()).decode()
+        marker = "/api/media/images/" if "/api/media/images/" in (url or "") else "/api/images/"
+        if marker in (url or ""):
+            name = url.split(marker)[-1].split("?")[0]
+            if name and "/" not in name:
+                from services.image_store import image_dir
+                p = Path(image_dir()) / name
+                if p.exists():
+                    return base64.b64encode(p.read_bytes()).decode()
+        if (url or "").startswith("http"):
+            import httpx
+            r = httpx.get(url, timeout=20)
+            if r.status_code == 200 and r.content:
+                return base64.b64encode(r.content).decode()
+        return None
     except Exception:  # noqa: BLE001
         return None
 
@@ -110,10 +117,13 @@ async def generate_orai_image(prompt: str,
     try:
         img = await _gemini_generate(prompt, reference_b64)
         if img:
+            logger.info("ORAi image: provider=gemini model=%s edit=%s", GEMINI_IMAGE_MODEL, bool(reference_b64))
             return img, GEMINI_IMAGE_MODEL
+        logger.warning("ORAi image: gemini returned no image — trying gpt-image-2 FALLBACK.")
     except Exception as e:  # noqa: BLE001
-        logger.warning("ORAi image: gemini failed (%s) — trying gpt-image-2.", str(e)[:120])
+        logger.warning("ORAi image: gemini failed (%s) — trying gpt-image-2 FALLBACK.", str(e)[:120])
     img = await _openai_generate(prompt, reference_b64)
     if img:
+        logger.info("ORAi image: provider=openai model=%s edit=%s (FALLBACK)", OPENAI_IMAGE_MODEL, bool(reference_b64))
         return img, OPENAI_IMAGE_MODEL
     raise RuntimeError("Both image providers are unavailable right now.")

@@ -27,7 +27,7 @@ import { Link } from "react-router-dom";
 import {
   Activity, AlertTriangle, Award, BarChart3, Bell, Bot, BookOpen, Calendar,
   CheckCircle, ChevronDown, ChevronRight, Cog, Compass, Cpu, FileText, Flame, Hash,
-  Hexagon, Layers, LifeBuoy, ListChecks, Loader2, Menu, MessageSquare,
+  Hexagon, ImagePlus, Layers, LifeBuoy, ListChecks, Loader2, Maximize2, Menu, MessageSquare,
   Pin, Plug, Plus, RefreshCw, Search as SearchIcon, Send, Shield, ShieldCheck, Sparkles, Star, Tag,
   Target, Users, Workflow, X, XCircle, Zap,
 } from "lucide-react";
@@ -476,7 +476,29 @@ function OrionChat({ onDraft }) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [attach, setAttach] = useState(null); // {dataUrl, b64, name}
+  const [imgState, setImgState] = useState(""); // "", "Uploading", "Generating image", "Editing image"
+  const fileRef = useRef(null);
   const scrollRef = useRef(null);
+
+  const IMG_INTENT = /\b(create|generate|make|design|draw|render|regenerate)\b.{0,60}\b(image|picture|photo|logo|banner|poster|icon|avatar|pfp|wallpaper|illustration|artwork|art|mockup|thumbnail|graphic)\b|\b(remove (the )?background|photorealistic|variation|upscale|enhance|restyle)\b/i;
+
+  const pickFile = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (!f.type.startsWith("image/")) { setErr("Please attach an image file."); return; }
+    if (f.size > 10 * 1024 * 1024) { setErr("Image too large — 10 MB max."); return; }
+    setImgState("Uploading");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      setAttach({ dataUrl, b64: String(dataUrl).split(",")[1] || "", name: f.name });
+      setImgState("");
+    };
+    reader.onerror = () => { setImgState(""); setErr("Could not read that image."); };
+    reader.readAsDataURL(f);
+  };
 
   // Load history once.
   useEffect(() => {
@@ -507,17 +529,32 @@ function OrionChat({ onDraft }) {
 
   const send = useCallback(async (text) => {
     const body = (text || input || "").trim();
-    if (!body || busy) return;
+    if ((!body && !attach) || busy) return;
+    const message = body || "Edit this image.";
+    const upload = attach;
     setBusy(true); setErr("");
-    setInput("");
-    const userMsg = { role: "user", content: body, created_at: new Date().toISOString() };
+    setInput(""); setAttach(null);
+    const isImage = !!upload || IMG_INTENT.test(message);
+    setImgState(isImage ? (upload ? "Editing image" : "Generating image") : "");
+    const userMsg = { role: "user", content: message, image_url: null, _localImage: upload?.dataUrl || null, created_at: new Date().toISOString() };
     setMessages((p) => [...p, userMsg]);
     try {
       const { data } = await apiClient.post("/widgets/chat/message", {
         widget_id: ORION_WIDGET_ID,
-        message: body,
-      });
+        message,
+        ...(upload ? { image_b64: upload.b64 } : {}),
+      }, { timeout: 180000 });
       const reply = data?.reply || "";
+      if (data?.image_url) {
+        // Image tool result — show immediately, no token streaming.
+        setMessages((p) => [...p, {
+          role: "assistant", content: reply, model: data?.model,
+          image_url: data.image_url, created_at: new Date().toISOString(),
+        }]);
+        setImgState("");
+        setBusy(false);
+        return;
+      }
       // Phase 3.7.2 — simulated token streaming. The ORAi analytics
       // interceptor returns deterministic replies (no upstream OpenAI
       // call for analytics/draft tools), so token-by-token streaming
@@ -549,8 +586,9 @@ function OrionChat({ onDraft }) {
       setErr(e?.response?.data?.detail || "ORAi is unavailable right now.");
     } finally {
       setBusy(false);
+      setImgState("");
     }
-  }, [input, busy, onDraft]);
+  }, [input, busy, onDraft, attach]);
 
   useEffect(() => {
     const handler = () => send();
@@ -591,12 +629,25 @@ function OrionChat({ onDraft }) {
           </div>
         )}
         {messages.map((m, i) => (
-          <ChatBubble key={i} msg={m} onDraft={onDraft} />
+          <ChatBubble key={i} msg={m} onDraft={onDraft} onImageAction={(action) => {
+            if (action === "regenerate") send("Regenerate the same image with the same instructions.");
+            else if (action === "variation") send("Create a variation of this image.");
+            else if (action === "edit") {
+              setInput("Edit this image: ");
+              document.querySelector('[data-testid="orion-cc-input"]')?.focus();
+            }
+          }} />
         ))}
         {busy && (
           <div className="orion-chat-row orion-chat-row-ai">
             <div className="orion-chat-bubble orion-chat-bubble-ai">
-              <ThinkingStates />
+              {imgState ? (
+                <span className="flex items-center gap-2" data-testid="orion-img-progress">
+                  <Loader2 size={13} className="animate-spin" /> {imgState}…
+                </span>
+              ) : (
+                <ThinkingStates />
+              )}
             </div>
           </div>
         )}
@@ -617,11 +668,31 @@ function OrionChat({ onDraft }) {
         className="orion-composer"
         onSubmit={(e) => { e.preventDefault(); send(); }}
       >
+        <input type="file" accept="image/*" ref={fileRef} onChange={pickFile} style={{ display: "none" }} data-testid="orion-cc-file" />
+        <button
+          type="button"
+          className="orion-send-btn"
+          style={{ background: "transparent", border: "1px solid var(--orion-line)" }}
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          title="Attach an image to edit"
+          data-testid="orion-cc-attach"
+        >
+          <ImagePlus size={16} />
+        </button>
+        {attach && (
+          <span className="flex items-center gap-1.5 shrink-0" data-testid="orion-cc-attach-chip">
+            <img src={attach.dataUrl} alt="attachment" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 8, border: "1px solid var(--orion-cyan)" }} />
+            <button type="button" onClick={() => setAttach(null)} style={{ color: "var(--orion-muted)" }} aria-label="Remove attachment" data-testid="orion-cc-attach-remove">
+              <X size={13} />
+            </button>
+          </span>
+        )}
         <textarea
           rows={1}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask ORAi…"
+          placeholder={attach ? "Describe how to edit this image…" : "Ask ORAi…"}
           className="orion-input"
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
@@ -631,7 +702,7 @@ function OrionChat({ onDraft }) {
         <button
           type="submit"
           className="orion-send-btn"
-          disabled={busy || !input.trim()}
+          disabled={busy || (!input.trim() && !attach)}
           data-testid="orion-cc-send"
         >
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
@@ -1189,7 +1260,8 @@ function SettingsPanel({ summary }) {
 // ─────────────────────────────────────────────────────────────────────
 // Chat bubble + lightweight markdown renderer + draft card detection
 // ─────────────────────────────────────────────────────────────────────
-function ChatBubble({ msg, onDraft }) {
+function ChatBubble({ msg, onDraft, onImageAction }) {
+  const imgSrc = (u) => (u && u.startsWith("http") ? u : `${process.env.REACT_APP_BACKEND_URL}${u}`);
   const mine = msg.role === "user";
   return (
     <div className={`orion-chat-row ${mine ? "orion-chat-row-mine" : "orion-chat-row-ai"}`}>
@@ -1203,12 +1275,42 @@ function ChatBubble({ msg, onDraft }) {
           </div>
         )}
         {msg.image_url && (
-          <img
-            src={`${process.env.REACT_APP_BACKEND_URL}${msg.image_url}`}
-            alt="ORAi generated"
-            style={{ maxWidth: "100%", borderRadius: 10, margin: "6px 0" }}
-            data-testid="orion-chat-image"
-          />
+          <>
+            <img
+              src={imgSrc(msg.image_url)}
+              alt="ORAi generated"
+              style={{ maxWidth: "100%", borderRadius: 10, margin: "6px 0" }}
+              data-testid="orion-chat-image"
+            />
+            {!mine && onImageAction && (
+              <div className="flex flex-wrap gap-1.5 mb-1" data-testid="orion-image-actions">
+                <button type="button" className="orion-tile" style={{ padding: "3px 9px", fontSize: 11 }}
+                  onClick={() => onImageAction("regenerate", msg)} data-testid="orion-img-regenerate">
+                  <RefreshCw size={11} /> Regenerate
+                </button>
+                <button type="button" className="orion-tile" style={{ padding: "3px 9px", fontSize: 11 }}
+                  onClick={() => onImageAction("variation", msg)} data-testid="orion-img-variation">
+                  <Sparkles size={11} /> Variation
+                </button>
+                <button type="button" className="orion-tile" style={{ padding: "3px 9px", fontSize: 11 }}
+                  onClick={() => onImageAction("edit", msg)} data-testid="orion-img-edit">
+                  <Cog size={11} /> Edit again
+                </button>
+                <button type="button" className="orion-tile" style={{ padding: "3px 9px", fontSize: 11 }}
+                  onClick={() => window.open(imgSrc(msg.image_url), "_blank")} data-testid="orion-img-fullscreen">
+                  <Maximize2 size={11} /> Full screen
+                </button>
+                <a className="orion-tile" style={{ padding: "3px 9px", fontSize: 11 }}
+                  href={imgSrc(msg.image_url)} download="orai-image.png"
+                  data-testid="orion-img-download">
+                  ↓ Save
+                </a>
+              </div>
+            )}
+          </>
+        )}
+        {msg._localImage && (
+          <img src={msg._localImage} alt="uploaded" style={{ maxWidth: 180, borderRadius: 10, margin: "6px 0" }} data-testid="orion-chat-upload-preview" />
         )}
         <Markdown text={msg.content || ""} onDraft={onDraft} />
       </div>
