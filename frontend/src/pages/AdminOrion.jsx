@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import OraiDashboard from "@/components/admin/OraiDashboard";
 
 // ─────────────────────────────────────────────────────────────────────
 // Constants — sidebar sections + quick-action tiles + suggested chips.
@@ -382,8 +383,9 @@ function SectionRouter({ section, summary, onDraft, sectionNav }) {
   if (section === "widgets")   return <SimplePromptList title="Widgets" intros={["All launched widgets", "Disabled widgets", "Most used widgets"]} onPrompt={(p) => sectionNav("chat") || window.dispatchEvent(new CustomEvent("orion-prefill", { detail: p }))} />;
   if (section === "badges")    return <SimplePromptList title="Badges" intros={["How many VIP holders?", "Show badge stats", "Beta holders"]} onPrompt={(p) => sectionNav("chat") || window.dispatchEvent(new CustomEvent("orion-prefill", { detail: p }))} />;
   if (section === "settings")  return <SettingsPanel summary={summary} />;
-  // Default: dashboard
-  return <Dashboard summary={summary} onSection={sectionNav} />;
+  if (section === "classic")   return <Dashboard summary={summary} onSection={sectionNav} />;
+  // Default: upgraded ORAi control-center dashboard
+  return <OraiDashboard onSection={sectionNav} />;
 }
 
 

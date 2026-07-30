@@ -51,6 +51,7 @@ from routers import api_widgets as api_widgets_router_mod
 from routers import widget_chat as widget_chat_router_mod
 from routers import orion_logs as orion_logs_router_mod
 from routers import orion_health as orion_health_router_mod
+from routers import orion_control as orion_control_router_mod
 from routers import media_proxy as media_proxy_router_mod
 from routers import admin_portals as admin_portals_router_mod
 from routers import admin_data_audit as admin_data_audit_router_mod
@@ -114,6 +115,7 @@ app.include_router(api_widgets_router_mod.router)
 app.include_router(widget_chat_router_mod.router)
 app.include_router(orion_logs_router_mod.router)
 app.include_router(orion_health_router_mod.router)
+app.include_router(orion_control_router_mod.router)
 app.include_router(media_proxy_router_mod.router)
 app.include_router(admin_portals_router_mod.router)
 app.include_router(admin_data_audit_router_mod.router)
