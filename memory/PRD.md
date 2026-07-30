@@ -3005,3 +3005,7 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 - Notifications.jsx now renders descriptive per-kind content: "@actor <verb>" line (like/comment/reply/comment_like/share/save/mention/message/fire with fire_value "sent 25🔥 to your post:"), quoted 2-line-clamped content preview from payload.preview, "Tap to reply." hint on comment/reply/message/mention, sentence-style rendering for friend_request/follow/moderation/premium_username/founding_vip/fire_collectable/realm_activity, graceful fallbacks when preview missing.
 - Relative time added (now/m/h/Yesterday/d/date) — server items previously showed NO timestamp (n.when was undefined).
 - Deep links extended: reply/comment_like → post popup; moderation with post_id → post popup. Backend untouched (payload previews already existed on all producers).
+
+## July 30, 2026 — Notifications: avatars, unread dot, date grouping (browser verified)
+- /api/notifications/list now attaches actor_avatar via one batched users lookup (read path only, no schema change).
+- Notifications.jsx: actor cards show UserAvatar (dicebear fallback) with a small kind-icon badge; system cards keep the icon circle. Glowing blue unread dot (testid notification-unread-dot-*) hides on markOne/markAllRead (these now also update serverItems locally). Section headers Today/Yesterday/Earlier This Week/Older inserted inline (sorting unchanged). Verified: 6 dots → 5 after mark-read, all 4 group headers rendered.

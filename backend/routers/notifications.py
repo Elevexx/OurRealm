@@ -92,6 +92,16 @@ async def list_notifications(current: CurrentUser, limit: int = 50):
     items = []
     async for n in cursor:
         items.append(n)
+    # Attach actor avatars in one batched lookup (read-path only).
+    unames = {n["actor_username"] for n in items if n.get("actor_username")}
+    if unames:
+        avatars = {}
+        async for u in db.users.find({"username": {"$in": list(unames)}},
+                                     {"_id": 0, "username": 1, "avatar_url": 1}):
+            avatars[u["username"]] = u.get("avatar_url")
+        for n in items:
+            if n.get("actor_username"):
+                n["actor_avatar"] = avatars.get(n["actor_username"])
     return {"notifications": items}
 
 

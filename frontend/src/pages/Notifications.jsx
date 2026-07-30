@@ -5,6 +5,7 @@ import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { NOTIFICATION_CATEGORIES } from "@/data/mockData";
 import { openPostPopupById } from "@/lib/postPopupController";
+import UserAvatar from "@/components/UserAvatar";
 
 const ICONS = {
   like: Heart,
@@ -68,6 +69,18 @@ const clamp2 = {
   overflow: "hidden",
   wordBreak: "break-word",
 };
+
+function groupLabel(iso) {
+  const d = new Date(iso || 0);
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startYesterday = new Date(startToday); startYesterday.setDate(startYesterday.getDate() - 1);
+  const startWeek = new Date(startToday); startWeek.setDate(startWeek.getDate() - 6);
+  if (d >= startToday) return "Today";
+  if (d >= startYesterday) return "Yesterday";
+  if (d >= startWeek) return "Earlier This Week";
+  return "Older";
+}
 
 // Defensive client-side filter — server already strips these kinds in
 // `/api/notifications/list`. Mirrored here so any stale cache or future
@@ -147,6 +160,7 @@ export default function Notifications() {
       // Phase-1 deep-link payload — kept on each item so onSelect() can route.
       post_id: n.payload?.post_id || null,
       actor_username: n.actor_username || null,
+      actor_avatar: n.actor_avatar || null,
       // Realm-activity payload — preserved verbatim so onSelect() can
       // navigate directly to /realms/{slug-or-id}.
       payload: n.payload || null,
@@ -170,8 +184,14 @@ export default function Notifications() {
     [cat, merged]
   );
 
-  const markAllRead = () => setItems((arr) => arr.map((n) => ({ ...n, unread: false })));
-  const markOne = (id) => setItems((arr) => arr.map((n) => n.id === id ? { ...n, unread: false } : n));
+  const markAllRead = () => {
+    setItems((arr) => arr.map((n) => ({ ...n, unread: false })));
+    setServerItems((arr) => arr.map((n) => (n.kind === "admin_moderation" ? n : { ...n, seen: true })));
+  };
+  const markOne = (id) => {
+    setItems((arr) => arr.map((n) => n.id === id ? { ...n, unread: false } : n));
+    setServerItems((arr) => arr.map((n) => n.id === id ? { ...n, seen: true } : n));
+  };
 
   /**
    * Phase-1 deep linking — tapping a notification routes to the most
@@ -314,11 +334,19 @@ export default function Notifications() {
             Nothing in this category yet.
           </div>
         )}
-        {filtered.map((n) => {
+        {filtered.map((n, i) => {
           const Icon = ICONS[n.type] || Bell;
+          const label = groupLabel(n.created_at);
+          const showHeader = i === 0 || groupLabel(filtered[i - 1].created_at) !== label;
           return (
+            <React.Fragment key={n.id}>
+            {showHeader && (
+              <div className="text-xs uppercase tracking-[0.2em] pt-2 pb-0.5" style={{ color: "var(--text-muted)" }}
+                data-testid={`notif-group-${label.replace(/\s+/g, "-")}`}>
+                {label}
+              </div>
+            )}
             <div
-              key={n.id}
               role="button"
               tabIndex={0}
               onClick={() => onSelect(n)}
@@ -327,9 +355,24 @@ export default function Notifications() {
               data-testid={`notification-${n.id}`}
               style={{ outline: n.unread ? "1px solid var(--primary)" : "1px solid transparent" }}
             >
-              <div className="p-2 rounded-full" style={{ background: "color-mix(in srgb, var(--primary) 16%, transparent)" }}>
-                <Icon size={18} style={{ color: "var(--primary)" }} />
-              </div>
+              {n.actor_username ? (
+                <span className="relative shrink-0" style={{ lineHeight: 0 }}>
+                  <UserAvatar
+                    user={{ username: n.actor, name: n.actor, avatar_url: n.actor_avatar }}
+                    size={40}
+                    showPresence={false}
+                    testid={`notification-avatar-${n.id}`}
+                  />
+                  <span className="absolute rounded-full flex items-center justify-center"
+                    style={{ bottom: -2, right: -2, width: 18, height: 18, background: "color-mix(in srgb, var(--primary) 24%, #10141f)" }}>
+                    <Icon size={10} style={{ color: "var(--primary)" }} />
+                  </span>
+                </span>
+              ) : (
+                <div className="p-2 rounded-full" style={{ background: "color-mix(in srgb, var(--primary) 16%, transparent)" }}>
+                  <Icon size={18} style={{ color: "var(--primary)" }} />
+                </div>
+              )}
               <div className="flex-1 min-w-0 text-sm" style={{ color: "var(--text-main)" }}>
                 {["fire_collectable", "founding_vip_claimed", "fire_up_complete"].includes(n.type) ? (<>
                   {n.payload?.title && <div className="font-semibold">{n.payload.title}</div>}
@@ -370,11 +413,17 @@ export default function Notifications() {
               </div>
               <div className="text-xs whitespace-nowrap shrink-0" style={{ color: "var(--text-muted)" }} data-testid={`notification-time-${n.id}`}>{timeAgo(n.created_at)}</div>
               {n.unread && (
+                <span className="rounded-full shrink-0" aria-hidden="true"
+                  style={{ width: 8, height: 8, background: "#2EA0FF", boxShadow: "0 0 8px #2EA0FF, 0 0 3px #2EA0FF" }}
+                  data-testid={`notification-unread-dot-${n.id}`} />
+              )}
+              {n.unread && (
                 <button onClick={(e) => { e.stopPropagation(); markOne(n.id); }} className="or-chip" style={{ padding: "0.2rem 0.5rem", fontSize: 11 }} data-testid={`notification-read-${n.id}`}>
                   <Check size={12} />
                 </button>
               )}
             </div>
+            </React.Fragment>
           );
         })}
       </div>
