@@ -3036,3 +3036,9 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 - Constants reserved for future: REALTIME_MODEL="gpt-realtime-1.5", VOICE_RESPONSE_MODEL="gpt-audio-1.5" (no TTS/realtime implemented — push-to-talk unchanged).
 - WidgetBuilder model picker: gpt-5.4-mini (default) / gpt-5.4-nano / gpt-5.6-terra. Legacy gpt-4o-mini/gpt-4o removed from ALL code incl. 4 test files — repo-wide grep = 0 legacy refs. No OpenAI image-gen/embeddings/moderation-endpoint calls exist in this project (images run on Gemini Nano Banana).
 - KNOWN ENV FACT: preview OPENAI_API_KEY returns 403 (rotated) — all OpenAI-direct calls auto-fall back to Emergent key in preview; production key will engage terra + gpt-4o-transcribe.
+
+## July 30, 2026 — OPENAI_API_KEY investigation + real fixes (all verified via live API)
+- KEY IS VALID: preview OPENAI_API_KEY (sk-proj-, project proj_RL4DKF4Sd03UPjtuKsXUefd5) returns 200 on /v1/models listing exactly the user's 9 models. Previous "403" diagnosis was WRONG.
+- REAL ROOT CAUSES (3): (1) ORAi widget stealth_ai_5a6 editor_config.chat.model in widget_registry DB was still "gpt-4o-mini" → OpenAI 403 model_not_found (project lacks that model). Fixed in DB. (2) gpt-5.x rejects max_tokens → switched to max_completion_tokens in call_openai_chat + stream body. (3) gpt-5.6-terra only supports default temperature → temperature omitted for terra.
+- STT: emergentintegrations wrapper hard-validates model to whisper-1 only → primary path now calls OpenAI /v1/audio/transcriptions directly via httpx with gpt-4o-transcribe; whisper-1+Emergent stays as fallback.
+- VERIFIED LIVE: default chat → gpt-5.4-mini-2026-03-17 (direct OpenAI), complex founder message → gpt-5.6-terra, transcription → gpt-4o-transcribe. 403 log line now includes response body for future debugging.

@@ -505,33 +505,44 @@ async def voice_transcribe(current: CurrentUser, audio: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Empty audio upload.")
     if len(data) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Audio too large (25 MB max).")
-    import io
-    from emergentintegrations.llm.openai import OpenAISpeechToText
-
-    async def _run(key: str, model: str):
-        buf = io.BytesIO(data)
-        buf.name = audio.filename or "voice.webm"
-        stt = OpenAISpeechToText(api_key=key)
-        return await stt.transcribe(file=buf, model=model, response_format="json")
-
     openai_key = os.environ.get("OPENAI_API_KEY")
     emergent_key = os.environ.get("EMERGENT_LLM_KEY")
-    resp, used_model, last_err = None, None, None
+    fname = audio.filename or "voice.webm"
+    resp_text, used_model, last_err = None, None, None
     if openai_key:
+        # Direct OpenAI call — the emergentintegrations STT wrapper only
+        # supports whisper-1, so gpt-4o-transcribe goes straight to the API.
+        import httpx
         try:
-            resp = await _run(openai_key, TRANSCRIBE_MODEL)
-            used_model = TRANSCRIBE_MODEL
+            async with httpx.AsyncClient(timeout=60) as client:
+                r = await client.post(
+                    "https://api.openai.com/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {openai_key}"},
+                    files={"file": (fname, data, audio.content_type or "audio/webm")},
+                    data={"model": TRANSCRIBE_MODEL, "response_format": "json"},
+                )
+            if r.status_code == 200:
+                resp_text = (r.json().get("text") or "").strip()
+                used_model = TRANSCRIBE_MODEL
+            else:
+                last_err = f"{r.status_code}: {r.text[:100]}"
         except Exception as e:  # noqa: BLE001
             last_err = str(e)[:120]
-    if resp is None and emergent_key:
+    if resp_text is None and emergent_key:
+        import io
+        from emergentintegrations.llm.openai import OpenAISpeechToText
         try:
-            resp = await _run(emergent_key, TRANSCRIBE_FALLBACK_MODEL)
+            buf = io.BytesIO(data)
+            buf.name = fname
+            stt = OpenAISpeechToText(api_key=emergent_key)
+            resp = await stt.transcribe(file=buf, model=TRANSCRIBE_FALLBACK_MODEL, response_format="json")
+            resp_text = (getattr(resp, "text", "") or "").strip()
             used_model = TRANSCRIBE_FALLBACK_MODEL
         except Exception as e:  # noqa: BLE001
             last_err = str(e)[:120]
-    if resp is None:
+    if resp_text is None:
         raise HTTPException(status_code=502, detail=f"Transcription failed: {last_err or 'no STT key configured'}")
-    text = (getattr(resp, "text", "") or "").strip()
+    text = resp_text
     await _log_action(current, "voice_transcribed",
                       f"Voice input transcribed via {used_model} ({len(text)} chars): {text[:80]}")
     return {"text": text, "model": used_model}

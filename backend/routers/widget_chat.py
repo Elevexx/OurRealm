@@ -470,9 +470,11 @@ async def chat_stream(payload: ChatMessagePayload, current: CurrentUser):
                                    payload.message if (current.get("username") or "").lower() == "stealth" else "") or "gpt-5.4-mini",
         "messages": messages,
         "temperature": float(chat_cfg.get("temperature") if chat_cfg.get("temperature") is not None else 0.7),
-        "max_tokens": int(chat_cfg.get("max_tokens") or 600),
+        "max_completion_tokens": int(chat_cfg.get("max_tokens") or 600),
         "stream": True,
     }
+    if body["model"] == "gpt-5.6-terra":
+        body.pop("temperature", None)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     async def event_source() -> AsyncIterator[bytes]:

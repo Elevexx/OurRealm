@@ -209,8 +209,11 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
         "model": chosen_model,
         "messages": messages,
         "temperature": float(temperature) if temperature is not None else DEFAULT_TEMPERATURE,
-        "max_tokens": int(max_tokens) if max_tokens is not None else DEFAULT_MAX_TOKENS,
+        # gpt-5.x models reject the legacy `max_tokens` parameter.
+        "max_completion_tokens": int(max_tokens) if max_tokens is not None else DEFAULT_MAX_TOKENS,
     }
+    if chosen_model == REASONING_MODEL:
+        body.pop("temperature", None)  # terra only supports the default temperature
     url = "https://api.openai.com/v1/chat/completions"
 
     # ── Attempt 1: direct OpenAI with our own key ─────────────────────
@@ -226,8 +229,8 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
             if resp.status_code == 429:
                 raise HTTPException(status_code=429, detail=f"OpenAI rate-limited: {resp.text[:200]}")
             if resp.status_code in (401, 403):
-                logger.warning("ORAi LLM openai rejected auth (%s) — trying Emergent fallback.",
-                               resp.status_code)
+                logger.warning("ORAi LLM openai rejected auth (%s): %s — trying Emergent fallback.",
+                               resp.status_code, resp.text[:300])
                 last_error = f"openai_{resp.status_code}"
             elif resp.status_code >= 400:
                 logger.warning("ORAi LLM openai returned %s: %s", resp.status_code, resp.text[:200])
