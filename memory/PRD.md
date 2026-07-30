@@ -2996,3 +2996,7 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 
 ## July 30, 2026 — SignUp layout reorder (screenshot verified)
 - "Sign Up with Google" moved directly below heading/subtitle with OR divider beneath it, then form fields → checkboxes → Join button. GoogleSignInButton gained a `divider` prop ("above" default keeps SignIn unchanged; "below" on SignUp). No styling/logic changes.
+
+## July 30, 2026 — Mode order + Text & Icons color (screenshot + live-var verified)
+- MODES array in ThemeContext reordered to [neon, millennium, stealth, business] — single source drives signup ModeSwitcher and Modes page identically. No IDs/routes/logic touched.
+- Modes page "Customize your colors" gained a third PickerRow "Text & icons" (testid modes-color-text) reusing the exact accent-picker architecture: overrides --text-main CSS var via ThemeContext inline vars, per-mode localStorage persistence (ourrealm.customColors), instant live apply, reset restores mode default. Verified: preset applies (#FF3F5A), survives reload, reset → #E6F2FF.

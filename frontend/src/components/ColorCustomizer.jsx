@@ -50,7 +50,7 @@ function PickerRow({ label, varKey, value, onChange, testid }) {
 
 export default function ColorCustomizer() {
   const { mode, customColors, setCustomColor, resetCustomColors } = useTheme();
-  const hasOverride = !!(customColors.primary || customColors.secondary);
+  const hasOverride = !!(customColors.primary || customColors.secondary || customColors["text-main"]);
 
   return (
     <div className="or-surface p-5 mt-6" data-testid="modes-color-customizer">
@@ -65,6 +65,7 @@ export default function ColorCustomizer() {
       <div className="space-y-3">
         <PickerRow label="Primary accent" varKey="primary" value={customColors.primary} onChange={(v) => setCustomColor("primary", v)} testid="modes-color-primary" />
         <PickerRow label="Secondary accent" varKey="secondary" value={customColors.secondary} onChange={(v) => setCustomColor("secondary", v)} testid="modes-color-secondary" />
+        <PickerRow label="Text & icons" varKey="text-main" value={customColors["text-main"]} onChange={(v) => setCustomColor("text-main", v)} testid="modes-color-text" />
       </div>
       <div className="flex items-center gap-3 mt-4">
         <button

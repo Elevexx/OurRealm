@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 
-const MODES = ["neon", "business", "millennium", "stealth"];
+const MODES = ["neon", "millennium", "stealth", "business"];
 const STORAGE_KEY = "ourrealm.mode";
 const COLORS_KEY = "ourrealm.customColors"; // per-mode accent overrides
 
@@ -39,12 +39,12 @@ export function ThemeProvider({ children }) {
   // every mode stylesheet). Removing the property restores mode defaults.
   useEffect(() => {
     const root = document.documentElement.style;
-    ["primary", "secondary"].forEach((key) => {
+    ["primary", "secondary", "text-main"].forEach((key) => {
       const val = customColors[key];
       if (val) root.setProperty(`--${key}`, val);
       else root.removeProperty(`--${key}`);
     });
-  }, [mode, customColors.primary, customColors.secondary]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, customColors.primary, customColors.secondary, customColors["text-main"]]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setMode = useCallback((next) => {
     if (next === "cypher") next = "neon";
