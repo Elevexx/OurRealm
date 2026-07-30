@@ -6,7 +6,7 @@
  */
 import React from "react";
 
-export default function GoogleSignInButton({ label = "Continue with Google" }) {
+export default function GoogleSignInButton({ label = "Continue with Google", divider = "above" }) {
   const start = () => {
     // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT
     // URLS, THIS BREAKS THE AUTH — derive strictly from the live origin.
@@ -14,13 +14,17 @@ export default function GoogleSignInButton({ label = "Continue with Google" }) {
     window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
   };
 
+  const orDivider = (
+    <div className="flex items-center gap-3 my-4">
+      <div className="flex-1 h-px" style={{ background: "var(--border-col)" }} />
+      <span className="text-[11px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>or</span>
+      <div className="flex-1 h-px" style={{ background: "var(--border-col)" }} />
+    </div>
+  );
+
   return (
     <>
-      <div className="flex items-center gap-3 my-4">
-        <div className="flex-1 h-px" style={{ background: "var(--border-col)" }} />
-        <span className="text-[11px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>or</span>
-        <div className="flex-1 h-px" style={{ background: "var(--border-col)" }} />
-      </div>
+      {divider === "above" && orDivider}
       <button
         type="button"
         onClick={start}
@@ -35,6 +39,7 @@ export default function GoogleSignInButton({ label = "Continue with Google" }) {
         </svg>
         {label}
       </button>
+      {divider === "below" && orDivider}
     </>
   );
 }

@@ -112,6 +112,7 @@ export default function SignUp() {
           <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
             Live. Connect. Experience. — claim your handle in seconds.
           </p>
+          <GoogleSignInButton label="Sign up with Google" divider="below" />
           <form onSubmit={onSubmit} className="space-y-3">
             <input
               type="text" placeholder="Display name" required minLength={1}
@@ -176,7 +177,6 @@ export default function SignUp() {
             <button type="submit" disabled={loading || unCheck.status === "taken" || !allAccepted} className="or-btn w-full" data-testid="signup-submit">
               {loading ? "Creating account…" : "Join OurRealm"}
             </button>
-            <GoogleSignInButton label="Sign up with Google" />
           </form>
           <p className="text-[11px] mt-4" style={{ color: "var(--text-muted)" }}>
             By signing up you agree to OurRealm's Terms and Privacy Policy. Social sign-in

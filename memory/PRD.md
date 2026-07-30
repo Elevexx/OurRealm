@@ -2993,3 +2993,6 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 - NEW Google users must accept ToS/T&C/Privacy/13+ BEFORE account creation: /auth/google/session now returns {requires_terms, pending_token} for unknown emails without acceptance flags (Google profile stashed in pending_google_signups, 15-min expiry, token consumed on create). Second call with pending_token + the 4 acceptance booleans creates the account.
 - Shared ComplianceCheckboxes.jsx extracted from SignUp.jsx (identical UI/testids for email signup, "google-" prefix on AuthCallback). AuthCallback shows the acceptance step with Agree/Cancel; existing users and repeat logins unchanged (no prompt).
 - Verified: no user doc before acceptance, token consumed, existing-account link untouched, email signup renders identically.
+
+## July 30, 2026 — SignUp layout reorder (screenshot verified)
+- "Sign Up with Google" moved directly below heading/subtitle with OR divider beneath it, then form fields → checkboxes → Join button. GoogleSignInButton gained a `divider` prop ("above" default keeps SignIn unchanged; "below" on SignUp). No styling/logic changes.
