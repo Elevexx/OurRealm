@@ -40,8 +40,8 @@ from core.db import db
 
 log = logging.getLogger("content_safety")
 
-MODEL_NAME = "gpt-4o-mini"
-MODEL_VERSION = "gpt-4o-mini/safety-v1"
+MODEL_NAME = "gpt-5.4-mini"
+MODEL_VERSION = "gpt-5.4-mini/safety-v1"
 LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 
 VISION_CATEGORIES = (

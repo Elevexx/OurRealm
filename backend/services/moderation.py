@@ -203,7 +203,7 @@ async def llm_review(text: str) -> Optional[ModerationDecision]:
         # Defer the heavy import to runtime so the module loads even when
         # emergentintegrations isn't installed (no LLM mode).
         from emergentintegrations.llm.chat import LlmChat, UserMessage  # type: ignore
-        chat = LlmChat(api_key=LLM_KEY, session_id="moderation").with_model("openai", "gpt-4o-mini")
+        chat = LlmChat(api_key=LLM_KEY, session_id="moderation").with_model("openai", "gpt-5.4-mini")
         prompt = (
             "Classify this user content. Respond with one word from "
             "[approved, pending_review, hidden] and a comma + reason.\n\n"

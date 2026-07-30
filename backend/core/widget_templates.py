@@ -455,7 +455,7 @@ TEMPLATES: List[Dict[str, Any]] = [
             {"body": "—"},
             data_source={
                 "kind": "api", "provider": "openai", "endpoint_key": "chat",
-                "params": {"model": "gpt-4o-mini", "prompt": "Give me one short, original inspirational quote — one sentence, no attribution.", "max_tokens": 80},
+                "params": {"model": "gpt-5.4-mini", "prompt": "Give me one short, original inspirational quote — one sentence, no attribution.", "max_tokens": 80},
                 "response_map": {"body": "choices[0].message.content"},
                 "refresh_seconds": 3600, "cache_seconds": 3600,
             },
@@ -477,7 +477,7 @@ TEMPLATES: List[Dict[str, Any]] = [
             {"title": "Did you know?", "body": "—"},
             data_source={
                 "kind": "api", "provider": "openai", "endpoint_key": "chat",
-                "params": {"model": "gpt-4o-mini", "prompt": "One short fun fact about science or history. Single sentence.", "max_tokens": 80},
+                "params": {"model": "gpt-5.4-mini", "prompt": "One short fun fact about science or history. Single sentence.", "max_tokens": 80},
                 "response_map": {"body": "choices[0].message.content"},
                 "refresh_seconds": 86400, "cache_seconds": 86400,
             },
@@ -496,7 +496,7 @@ TEMPLATES: List[Dict[str, Any]] = [
             {"body": "—"},
             data_source={
                 "kind": "api", "provider": "openai", "endpoint_key": "chat",
-                "params": {"model": "gpt-4o-mini", "prompt": "One creative, fun icebreaker question for a social platform. Just the question.", "max_tokens": 60},
+                "params": {"model": "gpt-5.4-mini", "prompt": "One creative, fun icebreaker question for a social platform. Just the question.", "max_tokens": 60},
                 "response_map": {"body": "choices[0].message.content"},
                 "refresh_seconds": 3600, "cache_seconds": 3600,
             },
@@ -636,7 +636,7 @@ TEMPLATES: List[Dict[str, Any]] = [
                     "(username: {{username}}). Be concise, smart, and helpful. Keep replies under "
                     "150 words unless the user explicitly asks for more. Markdown is allowed."
                 ),
-                "model": "gpt-4o-mini",
+                "model": "gpt-5.4-mini",
                 "temperature": 0.6,
                 "max_tokens": 600,
                 "memory_mode": "persistent",
@@ -671,7 +671,7 @@ TEMPLATES: List[Dict[str, Any]] = [
                     "You are the friendly assistant for {{username}}. Be warm, concise, and helpful. "
                     "If a question is off-topic for a community space, politely steer back to the topic."
                 ),
-                "model": "gpt-4o-mini",
+                "model": "gpt-5.4-mini",
                 "temperature": 0.7,
                 "max_tokens": 500,
                 "memory_mode": "persistent",

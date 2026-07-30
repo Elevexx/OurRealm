@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from core.db import db
@@ -483,6 +483,34 @@ async def test_provider(pid: str, current: CurrentUser):
             "detail": (f"{p['name']} key present ({p['env']})" if configured
                        else f"No {p['env']} configured in the backend environment."),
             field: now_iso}
+
+
+@router.post("/voice/transcribe")
+async def voice_transcribe(current: CurrentUser, audio: UploadFile = File(...)):
+    """Whisper (whisper-1) transcription for the ORAi voice input.
+    Uses the Emergent LLM key; every use is written to the audit log."""
+    _require_founder(current)
+    data = await audio.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty audio upload.")
+    if len(data) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Audio too large (25 MB max).")
+    key = os.environ.get("EMERGENT_LLM_KEY")
+    if not key:
+        raise HTTPException(status_code=503, detail="Transcription key not configured.")
+    import io
+    from emergentintegrations.llm.openai import OpenAISpeechToText
+    buf = io.BytesIO(data)
+    buf.name = audio.filename or "voice.webm"
+    try:
+        stt = OpenAISpeechToText(api_key=key)
+        resp = await stt.transcribe(file=buf, model="whisper-1", response_format="json")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Transcription failed: {str(e)[:120]}")
+    text = (getattr(resp, "text", "") or "").strip()
+    await _log_action(current, "voice_transcribed",
+                      f"Voice input transcribed ({len(text)} chars): {text[:80]}")
+    return {"text": text}
 
 
 @router.get("/recommendations")

@@ -464,7 +464,7 @@ PROVIDERS: List[Dict[str, Any]] = [
                 method="POST",
                 path="/chat/completions",
                 params=[
-                    _p("model", "text", label="Model", required=True, default="gpt-4o-mini", location="body"),
+                    _p("model", "text", label="Model", required=True, default="gpt-5.4-mini", location="body"),
                     _p("prompt", "text", label="Prompt", required=True, default="Give me one fun fact about space.", location="body"),
                     _p("max_tokens", "number", label="Max Tokens", default=120, location="body"),
                 ],

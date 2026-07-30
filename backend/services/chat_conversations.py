@@ -33,7 +33,7 @@ logger = logging.getLogger("ourrealm.chat_conversations")
 
 MAX_HISTORY_TURNS = 40  # Cap context window — older turns get trimmed.
 MAX_MESSAGE_CHARS = 8000
-DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "gpt-5.4-mini"
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 600
 OPENAI_TIMEOUT_SECONDS = 45.0
@@ -253,11 +253,11 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
                 api_key=fallback_key,
                 session_id=f"orion-fallback-{abs(hash(combined)) % 10_000_000}",
                 system_message=system_text.strip() or "You are ORAi, the founder assistant for OurRealm.",
-            ).with_model("openai", "gpt-4o-mini")
+            ).with_model("openai", "gpt-5.4-mini")
             reply = await chat.send_message(UserMessage(text=combined))
             return {
                 "content": reply if isinstance(reply, str) else str(reply),
-                "model": "gpt-4o-mini",
+                "model": "gpt-5.4-mini",
                 "usage": {},
                 "finish_reason": "stop",
                 "provider": "emergent",

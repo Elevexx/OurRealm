@@ -342,7 +342,7 @@ def _validate_chat_config(chat: Any) -> Optional[dict]:
         raise HTTPException(status_code=400, detail="chat.system_prompt must be a string")
     if len(system_prompt) > 8000:
         raise HTTPException(status_code=400, detail="chat.system_prompt exceeds 8000 chars")
-    model = chat.get("model") or "gpt-4o-mini"
+    model = chat.get("model") or "gpt-5.4-mini"
     if not isinstance(model, str) or len(model) > 64:
         raise HTTPException(status_code=400, detail="chat.model must be a string ≤64 chars")
     try:

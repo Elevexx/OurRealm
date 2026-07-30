@@ -99,23 +99,102 @@ function MiniChart({ series }) {
 
 function VoiceBar() {
   const [listening, setListening] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const streamRef = useRef(null);
+  const recRef = useRef(null);
+  const chunksRef = useRef([]);
+
+  const cleanup = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    recRef.current = null;
+    setListening(false);
+  };
+
+  const start = async () => {
+    try {
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      const msg = e?.name === "NotAllowedError"
+        ? "Microphone access denied. Enable it in your browser settings to use voice."
+        : e?.name === "NotFoundError"
+          ? "No microphone detected on this device."
+          : "Could not start the microphone. Please try again.";
+      toast.error(msg);
+      return;
+    }
+    // Safari records audio/mp4; Chrome/Edge audio/webm — Whisper accepts both.
+    const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]
+      .find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+    let rec;
+    try {
+      rec = new MediaRecorder(streamRef.current, mime ? { mimeType: mime } : undefined);
+    } catch {
+      cleanup();
+      toast.error("Voice recording is not supported in this browser.");
+      return;
+    }
+    chunksRef.current = [];
+    rec.ondataavailable = (e) => { if (e.data?.size) chunksRef.current.push(e.data); };
+    rec.onerror = () => { cleanup(); toast.error("Recording error — please try again."); };
+    rec.onstop = async () => {
+      const type = rec.mimeType || mime || "audio/webm";
+      const blob = new Blob(chunksRef.current, { type });
+      cleanup();
+      if (!blob.size) return;
+      setProcessing(true);
+      try {
+        const fd = new FormData();
+        const ext = type.includes("mp4") ? "m4a" : "webm";
+        fd.append("audio", blob, `voice.${ext}`);
+        const { data } = await apiClient.post("/admin/orion/voice/transcribe", fd, {
+          headers: { "Content-Type": "multipart/form-data" }, timeout: 60000,
+        });
+        const text = (data?.text || "").trim();
+        if (text) {
+          window.dispatchEvent(new CustomEvent("orion-prefill", { detail: text }));
+          toast.success("Transcript added to the chat input.");
+        } else {
+          toast.info("No speech detected — try again a little closer to the mic.");
+        }
+      } catch (e) {
+        toast.error(e?.response?.data?.detail || "Transcription failed. Check your connection and try again.");
+      } finally {
+        setProcessing(false);
+      }
+    };
+    rec.start();
+    recRef.current = rec;
+    setListening(true);
+  };
+
+  const toggle = () => {
+    if (processing) return;
+    if (listening) { recRef.current?.stop(); return; }
+    start();
+  };
+
+  useEffect(() => () => streamRef.current?.getTracks().forEach((t) => t.stop()), []);
+
   return (
     <div className="orai-voicebar" data-testid="orai-voicebar">
       <button
         type="button"
         className={`orai-mic ${listening ? "on" : ""}`}
-        onClick={() => setListening((v) => !v)}
-        aria-label={listening ? "Stop listening" : "Start voice input"}
+        onClick={toggle}
+        disabled={processing}
+        aria-label={listening ? "Stop and transcribe" : "Start voice input"}
         data-testid="orai-mic-btn"
       >
-        <Mic size={20} />
+        {processing ? <Loader2 size={20} className="animate-spin" /> : <Mic size={20} />}
       </button>
       <div className={`orai-wave ${listening ? "on" : ""}`} aria-hidden="true">
         {Array.from({ length: 11 }).map((_, i) => (
           <span key={i} style={{ animationDelay: `${i * 0.09}s` }} />
         ))}
       </div>
-      {listening && <span className="orai-listening" data-testid="orai-listening">Listening…</span>}
+      {listening && <span className="orai-listening" data-testid="orai-listening">Listening… tap to finish</span>}
+      {processing && <span className="orai-listening" style={{ color: "var(--orion-cyan)" }} data-testid="orai-processing">Transcribing…</span>}
       <span className="orai-audit-note" data-testid="orai-audit-note">
         <ShieldCheck size={11} /> Voice conversations are transcribed and stored securely.
       </span>

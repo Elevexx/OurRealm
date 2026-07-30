@@ -172,7 +172,7 @@ def _get_chat_config(widget: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "mode": "conversational",
             "system_prompt": (ds.get("params") or {}).get("system_prompt") or "",
-            "model": (ds.get("params") or {}).get("model") or "gpt-4o-mini",
+            "model": (ds.get("params") or {}).get("model") or "gpt-5.4-mini",
             "memory_mode": "persistent",
             "founder_only": False,
         }
@@ -464,7 +464,7 @@ async def chat_stream(payload: ChatMessagePayload, current: CurrentUser):
         raise HTTPException(status_code=503, detail="OpenAI is not configured on the server.")
 
     body = {
-        "model": chat_cfg.get("model") or "gpt-4o-mini",
+        "model": chat_cfg.get("model") or "gpt-5.4-mini",
         "messages": messages,
         "temperature": float(chat_cfg.get("temperature") if chat_cfg.get("temperature") is not None else 0.7),
         "max_tokens": int(chat_cfg.get("max_tokens") or 600),

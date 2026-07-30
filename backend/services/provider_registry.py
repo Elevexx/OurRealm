@@ -36,7 +36,7 @@ HEALTH_TTL_SECONDS = 300  # 5 minutes — matches spec.
 # so we get a real signal (and the result gets cached separately by
 # our health-cache layer below).
 HEALTH_PROBES: Dict[str, Dict[str, Any]] = {
-    "openai":       {"endpoint": "chat",          "params": {"model": "gpt-4o-mini", "prompt": "ping", "max_tokens": 1}},
+    "openai":       {"endpoint": "chat",          "params": {"model": "gpt-5.4-mini", "prompt": "ping", "max_tokens": 1}},
     "newsapi":      {"endpoint": "top_headlines", "params": {"country": "us", "pageSize": 1}},
     "openweather":  {"endpoint": "current",       "params": {"q": "London,uk", "units": "metric"}},
     "alphavantage": {"endpoint": "global_quote",  "params": {"function": "GLOBAL_QUOTE", "symbol": "AAPL"}},
