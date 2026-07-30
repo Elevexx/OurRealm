@@ -108,7 +108,7 @@ export default function SignUp() {
         )}
 
         <div className="or-surface p-7 sm:p-8 grain">
-          <h2 className="text-2xl mb-1" style={{ fontFamily: "var(--font-display)" }}>Create your Realm</h2>
+          <h2 className="text-2xl mb-1" style={{ fontFamily: "var(--font-display)" }}>Join OurRealm</h2>
           <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
             Live. Connect. Experience. — claim your handle in seconds.
           </p>
