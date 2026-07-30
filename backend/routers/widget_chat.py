@@ -118,6 +118,9 @@ class ChatMessagePayload(BaseModel):
     widget_id: str
     message: str = Field(..., min_length=1, max_length=8000)
     realm_id: Optional[str] = None
+    # Optional uploaded image (base64, no data-URL prefix) for ORAi
+    # image editing. ~14M chars ≈ 10 MB binary.
+    image_b64: Optional[str] = Field(default=None, max_length=14_000_000)
 
 
 class ChatClearPayload(BaseModel):
@@ -336,6 +339,8 @@ async def chat_message(payload: ChatMessagePayload, current: CurrentUser, respon
     return {
         "reply": reply["content"],
         "model": reply.get("model"),
+        "provider": reply.get("provider"),
+        "requested_model": reply.get("requested_model"),
         "usage": reply.get("usage") or {},
         "finish_reason": reply.get("finish_reason"),
         "memory_mode": memory_mode,

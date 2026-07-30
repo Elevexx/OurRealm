@@ -44,13 +44,20 @@ COMPLEX_TASK_RE = re.compile(
     re.IGNORECASE)
 
 
+LEGACY_MODELS = ("gpt-4o-mini", "gpt-4o", "gpt-4", "gpt-3.5-turbo")
+
+
 def pick_openai_model(cfg_model, message):
     """Return gpt-5.6-terra for complex-reasoning founder messages when the
     widget runs the default model; otherwise the configured model.
+    Legacy models stored in widget configs are normalized FIRST so a stale
+    DB value can never block the escalation (production bug 2026-07-30).
     The Emergent fallback inside call_openai_chat keeps DEFAULT_MODEL."""
-    if (cfg_model or DEFAULT_MODEL) == DEFAULT_MODEL and message and COMPLEX_TASK_RE.search(message):
+    base = DEFAULT_MODEL if (not cfg_model or cfg_model in LEGACY_MODELS) else cfg_model
+    if base == DEFAULT_MODEL and message and COMPLEX_TASK_RE.search(message):
+        logger.info("ORAi routing: complex-task rule matched — requesting %s", REASONING_MODEL)
         return REASONING_MODEL
-    return cfg_model
+    return base
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 600
 OPENAI_TIMEOUT_SECONDS = 45.0
@@ -170,7 +177,10 @@ def _sanitize_msg(m: Dict[str, Any], default_ts: datetime) -> Dict[str, Any]:
         ts = ts.isoformat()
     elif not isinstance(ts, str):
         ts = default_ts.isoformat()
-    return {"role": role, "content": content, "created_at": ts}
+    out = {"role": role, "content": content, "created_at": ts}
+    if m.get("image_url"):
+        out["image_url"] = str(m["image_url"])[:300]
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -205,7 +215,7 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
         raise HTTPException(status_code=503, detail="ORAi LLM provider is unavailable or misconfigured.")
 
     chosen_model = model or DEFAULT_MODEL
-    if chosen_model in ("gpt-4o-mini", "gpt-4o", "gpt-4", "gpt-3.5-turbo"):
+    if chosen_model in LEGACY_MODELS:
         chosen_model = DEFAULT_MODEL  # legacy configs stored in DB → current default
     body: Dict[str, Any] = {
         "model": chosen_model,
@@ -242,9 +252,12 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
                     data = resp.json()
                     choice = (data.get("choices") or [{}])[0]
                     msg = (choice.get("message") or {}).get("content") or ""
+                    logger.info("ORAi routing: requested=%s returned=%s provider=openai",
+                                chosen_model, data.get("model"))
                     return {
                         "content": msg,
                         "model": data.get("model"),
+                        "requested_model": chosen_model,
                         "usage": data.get("usage") or {},
                         "finish_reason": choice.get("finish_reason"),
                         "provider": "openai",
@@ -277,9 +290,12 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
                 system_message=system_text.strip() or "You are ORAi, the founder assistant for OurRealm.",
             ).with_model("openai", "gpt-5.4-mini")
             reply = await chat.send_message(UserMessage(text=combined))
+            logger.info("ORAi routing: requested=%s returned=gpt-5.4-mini provider=emergent (FALLBACK)",
+                        chosen_model)
             return {
                 "content": reply if isinstance(reply, str) else str(reply),
                 "model": "gpt-5.4-mini",
+                "requested_model": chosen_model,
                 "usage": {},
                 "finish_reason": "stop",
                 "provider": "emergent",

@@ -523,7 +523,12 @@ function OrionChat({ onDraft }) {
       // call for analytics/draft tools), so token-by-token streaming
       // from the model isn't available. We progressively reveal the
       // reply so the UX still feels like a live AI assistant.
-      const aiBase = { role: "assistant", content: "", model: data?.model, created_at: new Date().toISOString(), _streaming: true };
+      const aiBase = {
+        role: "assistant", content: "", model: data?.model,
+        fallback: !!(data?.provider && data.provider !== "openai"),
+        image_url: data?.image_url || null,
+        created_at: new Date().toISOString(), _streaming: true,
+      };
       setMessages((p) => [...p, aiBase]);
       await streamReveal(reply, (partial) => {
         setMessages((p) => {
@@ -1192,8 +1197,18 @@ function ChatBubble({ msg, onDraft }) {
         {!mine && (
           <div className="orion-chat-meta">
             <OrionLogo size={12} />
-            <span className="ml-1.5">ORAi · {msg.model || "—"}</span>
+            <span className="ml-1.5">
+              ORAi · {msg.model || "—"}{msg.fallback ? " · FALLBACK" : ""}
+            </span>
           </div>
+        )}
+        {msg.image_url && (
+          <img
+            src={`${process.env.REACT_APP_BACKEND_URL}${msg.image_url}`}
+            alt="ORAi generated"
+            style={{ maxWidth: "100%", borderRadius: 10, margin: "6px 0" }}
+            data-testid="orion-chat-image"
+          />
         )}
         <Markdown text={msg.content || ""} onDraft={onDraft} />
       </div>
