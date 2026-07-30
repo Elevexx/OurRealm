@@ -31,6 +31,19 @@ const tierFor = (lvl) => POWER_TIERS.find((t) => lvl <= t.max) || POWER_TIERS[3]
 
 const FREQS = ["manual", "hourly", "daily", "weekly", "custom"];
 
+const LEVEL_COLORS = { low: "#34D399", medium: "#F59E0B", high: "#FB7185" };
+const HEALTH_COLORS = { Excellent: "#34D399", Good: "#22D3EE", Warning: "#F59E0B", Critical: "#FB7185" };
+
+function LevelBadge({ value, testid }) {
+  const c = LEVEL_COLORS[(value || "").toLowerCase()] || "#7C8FB3";
+  return (
+    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full"
+      style={{ color: c, border: `1px solid ${c}` }} data-testid={testid}>
+      {value || "—"}
+    </span>
+  );
+}
+
 function Card({ id, title, icon: Icon, accent = "var(--orion-cyan)", children, right }) {
   const [open, setOpen] = useState(true);
   return (
@@ -91,6 +104,8 @@ export default function OraiDashboard({ onSection }) {
   const [recs, setRecs] = useState({ total: 0, rows: [] });
   const [scanBusy, setScanBusy] = useState(false);
   const settingsRef = useRef(null);
+  const recsRef = useRef(null);
+  const activityRef = useRef(null);
   const powerTimer = useRef(null);
 
   const loadAll = () => {
@@ -122,17 +137,22 @@ export default function OraiDashboard({ onSection }) {
   const runScan = async () => {
     setScanBusy(true);
     try {
-      const { data } = await apiClient.post("/admin/orion/scan");
-      setOverview((o) => (o ? { ...o, last_scan: data.last_scan } : o));
+      await apiClient.post("/admin/orion/scan");
       toast.success("Scan complete");
+      apiClient.get("/admin/orion/overview").then((r) => setOverview(r.data)).catch(() => {});
+      apiClient.get("/admin/orion/recommendations").then((r) => setRecs(r.data)).catch(() => {});
       apiClient.get("/admin/orion-logs/actions?limit=8").then((r) => setActivity(r.data?.rows || [])).catch(() => {});
-    } catch { toast.error("Scan failed."); } finally { setScanBusy(false); }
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Scan failed.");
+    } finally { setScanBusy(false); }
   };
 
   const testProvider = async (pid) => {
     try {
       const { data } = await apiClient.post(`/admin/orion/providers/${pid}/test`);
       data.ok ? toast.success(data.detail) : toast.error(data.detail);
+      apiClient.get("/admin/orion/providers").then((r) => setProviders(r.data?.providers || [])).catch(() => {});
+      apiClient.get("/admin/orion-logs/actions?limit=8").then((r) => setActivity(r.data?.rows || [])).catch(() => {});
     } catch { toast.error("Test failed."); }
   };
 
@@ -179,6 +199,55 @@ export default function OraiDashboard({ onSection }) {
         </div>
       </div>
 
+      {/* Today's Review */}
+      <Card id="review" title="Today's Review" icon={Zap} accent={HEALTH_COLORS[overview?.health?.label] || "var(--orion-cyan)"}>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center font-extrabold text-lg"
+              style={{ border: `3px solid ${HEALTH_COLORS[overview?.health?.label] || "#7C8FB3"}`, color: HEALTH_COLORS[overview?.health?.label] || "#7C8FB3" }}
+              data-testid="orai-health-score">
+              {overview?.health?.score ?? "—"}
+            </div>
+            <div>
+              <div className="text-sm font-bold" style={{ color: HEALTH_COLORS[overview?.health?.label] || "var(--orion-fg)" }} data-testid="orai-health-label">
+                {overview?.health?.label || "—"}
+              </div>
+              <div className="text-[10px] uppercase tracking-widest" style={{ color: "var(--orion-muted)" }}>Health Score</div>
+            </div>
+          </div>
+          <div className="flex gap-5 text-xs" style={{ color: "var(--orion-muted)" }}>
+            <div>
+              <div className="uppercase tracking-widest text-[10px]">Recs waiting</div>
+              <div className="text-base font-extrabold" style={{ color: "var(--orion-fg)" }} data-testid="orai-review-recs">{overview?.recommendations ?? "—"}</div>
+            </div>
+            <div>
+              <div className="uppercase tracking-widest text-[10px]">Last scan</div>
+              <div className="text-base font-extrabold" style={{ color: "var(--orion-fg)" }}>{overview?.last_scan ? timeShort(overview.last_scan.at) : "Never"}</div>
+            </div>
+            <div>
+              <div className="uppercase tracking-widest text-[10px]">Next scan</div>
+              <div className="text-base font-extrabold" style={{ color: "var(--orion-fg)" }} data-testid="orai-review-nextscan">
+                {overview?.next_scan ? timeShort(overview.next_scan) : "Manual"}
+              </div>
+            </div>
+          </div>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button className="orion-tile" style={{ ["--tile-accent"]: "#34D399", padding: "6px 12px", fontSize: 12 }}
+              onClick={runScan} disabled={scanBusy} data-testid="orai-review-run-scan">
+              {scanBusy ? <Loader2 size={13} className="animate-spin" /> : <ScanLine size={13} />} Run Scan
+            </button>
+            <button className="orion-tile" style={{ ["--tile-accent"]: "#F59E0B", padding: "6px 12px", fontSize: 12 }}
+              onClick={() => recsRef.current?.scrollIntoView({ behavior: "smooth" })} data-testid="orai-review-recs-btn">
+              <Lightbulb size={13} /> Review Recommendations
+            </button>
+            <button className="orion-tile" style={{ ["--tile-accent"]: "#22D3EE", padding: "6px 12px", fontSize: 12 }}
+              onClick={() => activityRef.current?.scrollIntoView({ behavior: "smooth" })} data-testid="orai-review-activity-btn">
+              <RadioTower size={13} /> Open Activity
+            </button>
+          </div>
+        </div>
+      </Card>
+
       {/* Overview cards */}
       <div className="orion-stat-grid" data-testid="orai-overview-cards">
         <div className="orion-stat">
@@ -211,6 +280,59 @@ export default function OraiDashboard({ onSection }) {
             {overview?.cost_today != null ? `$${overview.cost_today}` : "N/A"}
           </div>
         </div>
+      </div>
+
+      {/* Intelligence report + insights */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card id="report" title="Intelligence Report" icon={Bot} accent="#22D3EE"
+          right={overview?.report?.at && <span className="text-[10px]" style={{ color: "var(--orion-muted)" }}>{timeShort(overview.report.at)}</span>}>
+          {!overview?.report ? (
+            <div className="text-xs py-4 text-center" style={{ color: "var(--orion-muted)" }} data-testid="orai-report-empty">
+              Run a scan to generate the first intelligence report.
+            </div>
+          ) : overview.report.summary === "Not enough activity yet." ? (
+            <div className="text-xs py-4 text-center" style={{ color: "var(--orion-muted)" }} data-testid="orai-report-insufficient">
+              Not enough activity yet.
+            </div>
+          ) : (
+            <div className="text-xs space-y-2" data-testid="orai-report">
+              <ul className="space-y-1">
+                {(overview.report.findings || []).map((f, i) => (
+                  <li key={i} className="flex items-start gap-1.5" style={{ color: "var(--orion-fg)" }}>
+                    <CheckCircle size={11} style={{ color: "#22D3EE", marginTop: 1, flexShrink: 0 }} />{f}
+                  </li>
+                ))}
+              </ul>
+              {overview.report.top_recommendation && (
+                <div style={{ color: "var(--orion-fg)" }}>
+                  <b style={{ color: "#F59E0B" }}>Top recommendation:</b> {overview.report.top_recommendation.title}{" "}
+                  <LevelBadge value={overview.report.top_recommendation.priority} />
+                </div>
+              )}
+              {overview.report.largest_positive && (
+                <div style={{ color: "#34D399" }}>▲ {overview.report.largest_positive.label} +{overview.report.largest_positive.delta} vs previous scan</div>
+              )}
+              {overview.report.largest_negative && (
+                <div style={{ color: "#FB7185" }}>▼ {overview.report.largest_negative.label} {overview.report.largest_negative.delta} vs previous scan</div>
+              )}
+              {(overview.report.warnings || []).map((w, i) => (
+                <div key={i} className="flex items-start gap-1.5" style={{ color: "#F59E0B" }}>
+                  <AlertCircle size={11} style={{ marginTop: 1, flexShrink: 0 }} />{w}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card id="insights" title="Smart Insights" icon={Sparkles} accent="#A78BFA">
+          <ul className="space-y-1.5 text-xs" data-testid="orai-insights">
+            {(overview?.insights || []).slice(0, 5).map((s, i) => (
+              <li key={i} className="flex items-start gap-1.5" style={{ color: "var(--orion-fg)" }}>
+                <Sparkles size={11} style={{ color: "#A78BFA", marginTop: 1, flexShrink: 0 }} />{s}
+              </li>
+            ))}
+          </ul>
+        </Card>
       </div>
 
       {/* Row: power slider + scheduler + usage */}
@@ -302,6 +424,12 @@ export default function OraiDashboard({ onSection }) {
                 </span>
               </div>
               <div className="text-[11px] mb-2" style={{ color: "var(--orion-muted)" }}>{p.models}</div>
+              {(p.last_success_at || p.last_fail_at) && (
+                <div className="text-[10px] mb-2 space-y-0.5" data-testid={`orai-provider-history-${p.id}`}>
+                  {p.last_success_at && <div style={{ color: "#34D399" }}>✓ Last success: {timeShort(p.last_success_at)}</div>}
+                  {p.last_fail_at && <div style={{ color: "#FB7185" }}>✗ Last failure: {timeShort(p.last_fail_at)}</div>}
+                </div>
+              )}
               <div className="flex flex-wrap gap-1.5">
                 <button className="orion-tile" style={{ ["--tile-accent"]: "#22D3EE", padding: "4px 10px", fontSize: 11 }}
                   onClick={() => toggleProvider(p)} data-testid={`orai-provider-toggle-${p.id}`}>
@@ -331,6 +459,7 @@ export default function OraiDashboard({ onSection }) {
 
       {/* Row: activity + recommendations */}
       <div className="grid gap-4 lg:grid-cols-2">
+        <div ref={activityRef}>
         <Card id="activity" title="ORAi Activity Feed" icon={RadioTower} accent="#34D399">
           {activity.length === 0 ? (
             <div className="text-xs py-4 text-center" style={{ color: "var(--orion-muted)" }} data-testid="orai-activity-empty">
@@ -357,7 +486,9 @@ export default function OraiDashboard({ onSection }) {
             </ul>
           )}
         </Card>
+        </div>
 
+        <div ref={recsRef}>
         <Card id="recommendations" title="Pending Recommendations" icon={Lightbulb} accent="#F59E0B"
           right={<span className="text-[10px] px-1.5 rounded-full font-bold" style={{ background: "rgba(245,158,11,0.16)", color: "#F59E0B" }}>{recs.total}</span>}>
           {(!recs.rows || recs.rows.length === 0) ? (
@@ -365,31 +496,38 @@ export default function OraiDashboard({ onSection }) {
               No recommendations yet. ORAi will surface improvement ideas here after future scans.
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-xs" data-testid="orai-recs-table">
               <thead>
                 <tr style={{ color: "var(--orion-muted)" }} className="text-left uppercase tracking-widest text-[10px]">
-                  <th className="pb-2">Priority</th><th className="pb-2">Title</th>
-                  <th className="pb-2">Confidence</th><th className="pb-2">Status</th><th className="pb-2" />
+                  <th className="pb-2 pr-2">Priority</th><th className="pb-2 pr-2">Title</th>
+                  <th className="pb-2 pr-2">Conf.</th><th className="pb-2 pr-2">Impact</th>
+                  <th className="pb-2 pr-2">Effort</th><th className="pb-2 pr-2">Risk</th>
+                  <th className="pb-2 pr-2">Status</th><th className="pb-2" />
                 </tr>
               </thead>
               <tbody>
                 {recs.rows.map((r, i) => (
                   <tr key={r.id || i} style={{ borderTop: "1px solid var(--orion-line)", color: "var(--orion-fg)" }}>
-                    <td className="py-2 font-bold" style={{ color: r.priority === "high" ? "#FB7185" : r.priority === "medium" ? "#F59E0B" : "#34D399" }}>
-                      {r.priority || "—"}
-                    </td>
-                    <td className="py-2">{r.title || "—"}</td>
-                    <td className="py-2">{r.confidence != null ? `${r.confidence}%` : "—"}</td>
-                    <td className="py-2">{r.status || "pending"}</td>
+                    <td className="py-2 pr-2"><LevelBadge value={r.priority} testid={`orai-rec-priority-${i}`} /></td>
+                    <td className="py-2 pr-2">{r.title || "—"}</td>
+                    <td className="py-2 pr-2 font-bold">{r.confidence != null ? `${r.confidence}%` : "—"}</td>
+                    <td className="py-2 pr-2"><LevelBadge value={r.impact} /></td>
+                    <td className="py-2 pr-2"><LevelBadge value={r.effort} /></td>
+                    <td className="py-2 pr-2"><LevelBadge value={r.risk} /></td>
+                    <td className="py-2 pr-2 capitalize" style={{ color: "var(--orion-muted)" }}>{r.status || "pending"}</td>
                     <td className="py-2">
-                      <button className="orion-tile" style={{ ["--tile-accent"]: "#F59E0B", padding: "3px 10px", fontSize: 11 }}>Review</button>
+                      <button className="orion-tile" style={{ ["--tile-accent"]: "#F59E0B", padding: "3px 10px", fontSize: 11 }}
+                        onClick={() => toast.info(r.detail || r.title)}>Review</button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </Card>
+        </div>
       </div>
 
       {/* Settings */}
@@ -409,6 +547,27 @@ export default function OraiDashboard({ onSection }) {
                 <div className="text-[11px]" style={{ color: "var(--orion-muted)" }}>Notify on scans, errors and recommendations.</div>
               </div>
               <Toggle on={settings?.notifications ?? true} onChange={(v) => save({ notifications: v }, "Notification preference saved")} testid="orai-setting-notifications" />
+            </div>
+            <div className="flex items-center justify-between p-3" style={{ ...CARD, borderRadius: 12 }}>
+              <div>
+                <div className="text-sm font-bold" style={{ color: "var(--orion-fg)" }}>Auto Scan</div>
+                <div className="text-[11px]" style={{ color: "var(--orion-muted)" }}>Run scheduled scans automatically ({scan.frequency}).</div>
+              </div>
+              <Toggle on={!!scan.enabled} onChange={(v) => save({ scan: { ...scan, enabled: v } }, v ? "Auto scan on" : "Auto scan off")} testid="orai-setting-autoscan" />
+            </div>
+            <div className="flex items-center justify-between p-3" style={{ ...CARD, borderRadius: 12 }}>
+              <div>
+                <div className="text-sm font-bold" style={{ color: "var(--orion-fg)" }}>Auto Report</div>
+                <div className="text-[11px]" style={{ color: "var(--orion-muted)" }}>Generate an intelligence report after every scan.</div>
+              </div>
+              <Toggle on={settings?.auto_report ?? true} onChange={(v) => save({ auto_report: v }, "Auto report preference saved")} testid="orai-setting-autoreport" />
+            </div>
+            <div className="flex items-center justify-between p-3" style={{ ...CARD, borderRadius: 12 }}>
+              <div>
+                <div className="text-sm font-bold" style={{ color: "var(--orion-fg)" }}>Notify Founder</div>
+                <div className="text-[11px]" style={{ color: "var(--orion-muted)" }}>Send a notification when scans complete.</div>
+              </div>
+              <Toggle on={settings?.notify_founder ?? false} onChange={(v) => save({ notify_founder: v }, "Founder notification preference saved")} testid="orai-setting-notifyfounder" />
             </div>
           </div>
           <p className="text-[11px] mt-3 flex items-center gap-1.5" style={{ color: "var(--orion-muted)" }}>

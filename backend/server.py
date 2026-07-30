@@ -345,6 +345,10 @@ async def on_startup():
     except Exception as e:
         logger.warning(f"[media-rights-migration] startup error: {e}")
     _mod_task = asyncio.create_task(_moderation_loop())
+    try:
+        asyncio.create_task(orion_control_router_mod.scheduler_loop())
+    except Exception as e:
+        logger.warning(f"[orai-scheduler] startup error: {e}")
 
     # Fire Vault — background finalization (Pending → Collectable).
     try:
