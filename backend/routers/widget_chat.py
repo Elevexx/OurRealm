@@ -473,6 +473,8 @@ async def chat_stream(payload: ChatMessagePayload, current: CurrentUser):
         "max_completion_tokens": int(chat_cfg.get("max_tokens") or 600),
         "stream": True,
     }
+    if body["model"] in ("gpt-4o-mini", "gpt-4o", "gpt-4", "gpt-3.5-turbo"):
+        body["model"] = "gpt-5.4-mini"  # legacy DB configs → current default
     if body["model"] == "gpt-5.6-terra":
         body.pop("temperature", None)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}

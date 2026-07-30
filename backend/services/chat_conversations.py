@@ -205,6 +205,8 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
         raise HTTPException(status_code=503, detail="ORAi LLM provider is unavailable or misconfigured.")
 
     chosen_model = model or DEFAULT_MODEL
+    if chosen_model in ("gpt-4o-mini", "gpt-4o", "gpt-4", "gpt-3.5-turbo"):
+        chosen_model = DEFAULT_MODEL  # legacy configs stored in DB → current default
     body: Dict[str, Any] = {
         "model": chosen_model,
         "messages": messages,
