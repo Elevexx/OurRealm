@@ -3000,3 +3000,8 @@ NOTES for implementation: pool release rows can be negative-amount active txns w
 ## July 30, 2026 — Mode order + Text & Icons color (screenshot + live-var verified)
 - MODES array in ThemeContext reordered to [neon, millennium, stealth, business] — single source drives signup ModeSwitcher and Modes page identically. No IDs/routes/logic touched.
 - Modes page "Customize your colors" gained a third PickerRow "Text & icons" (testid modes-color-text) reusing the exact accent-picker architecture: overrides --text-main CSS var via ThemeContext inline vars, per-mode localStorage persistence (ourrealm.customColors), instant live apply, reset restores mode default. Verified: preset applies (#FF3F5A), survives reload, reset → #E6F2FF.
+
+## July 30, 2026 — Notification content upgrade (frontend-only, screenshot verified)
+- Notifications.jsx now renders descriptive per-kind content: "@actor <verb>" line (like/comment/reply/comment_like/share/save/mention/message/fire with fire_value "sent 25🔥 to your post:"), quoted 2-line-clamped content preview from payload.preview, "Tap to reply." hint on comment/reply/message/mention, sentence-style rendering for friend_request/follow/moderation/premium_username/founding_vip/fire_collectable/realm_activity, graceful fallbacks when preview missing.
+- Relative time added (now/m/h/Yesterday/d/date) — server items previously showed NO timestamp (n.when was undefined).
+- Deep links extended: reply/comment_like → post popup; moderation with post_id → post popup. Backend untouched (payload previews already existed on all producers).

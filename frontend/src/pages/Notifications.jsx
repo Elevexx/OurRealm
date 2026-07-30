@@ -9,6 +9,8 @@ import { openPostPopupById } from "@/lib/postPopupController";
 const ICONS = {
   like: Heart,
   comment: MessageCircle,
+  reply: MessageCircle,
+  comment_like: Heart,
   follow: UserPlus,
   mention: AtSign,
   message: Mail,
@@ -17,10 +19,54 @@ const ICONS = {
   friend_request: Users,
   realm_post: Users,
   realm_join: Users,
+  realm_activity: Users,
   event_reminder: Calendar,
   fire_collectable: Flame,
   fire_up_complete: Flame,
   fire: Flame,
+  founding_vip_claimed: Flame,
+  premium_username: Flame,
+  moderation: ShieldAlert,
+};
+
+// Per-kind verb line — actor kinds read "@actor <verb>" with the content
+// preview quoted underneath.
+const VERBS = {
+  like: "liked your post:",
+  comment: "commented on your post:",
+  reply: "replied to your comment:",
+  comment_like: "liked your comment:",
+  share: "shared your post:",
+  save: "saved your post:",
+  mention: "mentioned you in a comment:",
+  message: "sent you a message:",
+  friend_request: "sent you a friend request.",
+  follow: "accepted your friend request.",
+  realm_post: "posted in a Realm:",
+};
+
+// Kinds whose payload.preview is a full sentence (not content to quote).
+const NO_QUOTE_KINDS = new Set(["friend_request", "follow"]);
+
+function timeAgo(iso) {
+  if (!iso) return "";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "";
+  const s = Math.floor((Date.now() - t) / 1000);
+  if (s < 60) return "now";
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  if (s < 172800) return "Yesterday";
+  if (s < 604800) return `${Math.floor(s / 86400)}d`;
+  return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+const clamp2 = {
+  display: "-webkit-box",
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: "vertical",
+  overflow: "hidden",
+  wordBreak: "break-word",
 };
 
 // Defensive client-side filter — server already strips these kinds in
@@ -82,9 +128,10 @@ export default function Notifications() {
       category: n.kind === "friend_request" ? "Friends" :
                 n.kind === "message" ? "Messages" :
                 n.kind === "like" ? "Likes" :
-                n.kind === "comment" ? "Comments" :
+                ["comment", "reply", "comment_like", "mention"].includes(n.kind) ? "Comments" :
                 n.kind === "share" ? "Shares" :
                 n.kind === "save" ? "Saves" :
+                n.kind === "follow" ? "Followers" :
                 n.kind === "realm_activity" ? "Realms" : "All",
       title: n.kind === "realm_activity"
         ? `${n.payload?.realm_avatar || "🌐"} ${n.payload?.realm_name || "Realm"}`
@@ -142,12 +189,17 @@ export default function Notifications() {
         return;
       case "like":
       case "comment":
+      case "reply":
+      case "comment_like":
       case "share":
       case "save":
       case "mention":
       case "fire":
         if (n.post_id) { openPostPopupById(n.post_id); return; }
         navigate("/feed");
+        return;
+      case "moderation":
+        if (n.post_id) { openPostPopupById(n.post_id); }
         return;
       case "follow":
         if (n.actor_username) navigate(`/public/${n.actor_username}`);
@@ -278,31 +330,45 @@ export default function Notifications() {
               <div className="p-2 rounded-full" style={{ background: "color-mix(in srgb, var(--primary) 16%, transparent)" }}>
                 <Icon size={18} style={{ color: "var(--primary)" }} />
               </div>
-              <div className="flex-1 text-sm" style={{ color: "var(--text-main)" }}>
-                {n.type === "fire_collectable" || n.type === "founding_vip_claimed" || n.type === "fire_up_complete" ? (
-                  <span className="font-semibold" data-testid={`notification-fire-msg-${n.id}`}>
+              <div className="flex-1 min-w-0 text-sm" style={{ color: "var(--text-main)" }}>
+                {["fire_collectable", "founding_vip_claimed", "fire_up_complete"].includes(n.type) ? (<>
+                  {n.payload?.title && <div className="font-semibold">{n.payload.title}</div>}
+                  <span className="font-semibold" data-testid={`notification-fire-msg-${n.id}`} style={clamp2}>
                     {n.body || "🔥 You have Fire ready to collect."}
                   </span>
-                ) : (<>
-                <span className="font-semibold">@{n.actor}</span>{" "}
-                <span style={{ color: "var(--text-muted)" }}>
-                  {n.type === "like" && "liked"}
-                  {n.type === "comment" && "commented on"}
-                  {n.type === "follow" && "started following you"}
-                  {n.type === "mention" && "mentioned you"}
-                  {n.type === "message" && "messaged you"}
-                  {n.type === "share" && "shared"}
-                  {n.type === "fire" && "fired your post 🔥"}
-                  {n.type === "friend_request" && "sent a friend request"}
-                  {n.type === "realm_post" && "posted in"}
-                  {n.type === "realm_join" && "—"}
-                  {n.type === "event_reminder" && "—"}
-                </span>
-                {n.target && <span> {n.target}</span>}
-                <span className="text-[10px] uppercase tracking-widest ml-2 px-1.5 py-0.5 rounded" style={{ background: "color-mix(in srgb, var(--primary) 16%, transparent)", color: "var(--primary)" }}>{n.category}</span>
+                </>) : n.type === "moderation" ? (
+                  <span style={clamp2} data-testid={`notification-mod-msg-${n.id}`}>
+                    {n.body || "A moderation decision was made on your content."}
+                  </span>
+                ) : n.type === "premium_username" ? (<>
+                  <div className="font-semibold">{n.payload?.title || "Username update"}</div>
+                  {n.payload?.body && <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)", ...clamp2 }}>{n.payload.body}</div>}
+                </>) : n.type === "realm_activity" ? (<>
+                  <span className="font-semibold">{n.payload?.realm_avatar || "🌐"} {n.payload?.realm_name || "Realm"}</span>{" "}
+                  <span style={{ color: "var(--text-muted)" }}>
+                    has {n.payload?.unread_count || 0} new activit{(n.payload?.unread_count || 0) === 1 ? "y" : "ies"}.
+                  </span>
+                </>) : (<>
+                <div>
+                  <span className="font-semibold">@{n.actor}</span>{" "}
+                  <span style={{ color: "var(--text-muted)" }}>
+                    {n.type === "fire"
+                      ? `sent ${n.payload?.fire_value ? `${n.payload.fire_value}🔥` : "🔥"} to your post:`
+                      : (VERBS[n.type] || "sent you a notification.")}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-widest ml-2 px-1.5 py-0.5 rounded" style={{ background: "color-mix(in srgb, var(--primary) 16%, transparent)", color: "var(--primary)" }}>{n.category}</span>
+                </div>
+                {n.body && !NO_QUOTE_KINDS.has(n.type) && (
+                  <div className="text-xs italic mt-0.5" style={{ color: "var(--text-muted)", ...clamp2 }} data-testid={`notification-preview-${n.id}`}>
+                    “{n.body}”
+                  </div>
+                )}
+                {["comment", "reply", "message", "mention"].includes(n.type) && (
+                  <div className="text-[11px] mt-0.5" style={{ color: "var(--primary)" }}>Tap to reply.</div>
+                )}
                 </>)}
               </div>
-              <div className="text-xs whitespace-nowrap shrink-0" style={{ color: "var(--text-muted)" }}>{n.when}</div>
+              <div className="text-xs whitespace-nowrap shrink-0" style={{ color: "var(--text-muted)" }} data-testid={`notification-time-${n.id}`}>{timeAgo(n.created_at)}</div>
               {n.unread && (
                 <button onClick={(e) => { e.stopPropagation(); markOne(n.id); }} className="or-chip" style={{ padding: "0.2rem 0.5rem", fontSize: 11 }} data-testid={`notification-read-${n.id}`}>
                   <Check size={12} />
