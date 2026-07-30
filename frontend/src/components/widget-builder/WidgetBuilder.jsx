@@ -848,14 +848,15 @@ function ChatSection({ form, setForm }) {
       <div className="grid grid-cols-2 gap-3">
         <Field label="Model">
           <select
-            value={cfg.model || "gpt-4o-mini"}
+            value={cfg.model || "gpt-5.4-mini"}
             onChange={(e) => update({ model: e.target.value })}
             className="w-full text-xs px-2 py-1.5 rounded outline-none"
             style={{ background: "var(--surface-2)", color: "var(--text-main)" }}
             data-testid="chat-cfg-model"
           >
-            <option value="gpt-4o-mini">gpt-4o-mini (fast, cheap)</option>
-            <option value="gpt-4o">gpt-4o (smart)</option>
+            <option value="gpt-5.4-mini">gpt-5.4-mini (fast, default)</option>
+            <option value="gpt-5.4-nano">gpt-5.4-nano (cheapest)</option>
+            <option value="gpt-5.6-terra">gpt-5.6-terra (deep reasoning)</option>
             <option value="gpt-4-turbo">gpt-4-turbo</option>
           </select>
         </Field>
@@ -1007,7 +1008,7 @@ function seedForm(initial) {
       chat: ec.chat || {
         mode: "conversational",
         system_prompt: "",
-        model: "gpt-4o-mini",
+        model: "gpt-5.4-mini",
         temperature: 0.7,
         max_tokens: 600,
         memory_mode: "persistent",

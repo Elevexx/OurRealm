@@ -34,6 +34,23 @@ logger = logging.getLogger("ourrealm.chat_conversations")
 MAX_HISTORY_TURNS = 40  # Cap context window — older turns get trimmed.
 MAX_MESSAGE_CHARS = 8000
 DEFAULT_MODEL = "gpt-5.4-mini"
+# Deep-reasoning escalation — only for the founder's ORAi chat when the
+# message is clearly a complex coding/architecture/planning task.
+REASONING_MODEL = "gpt-5.6-terra"
+COMPLEX_TASK_RE = re.compile(
+    r"\b(debug|refactor|architect(?:ure)?|stack ?trace|traceback|algorithm|"
+    r"code review|write (?:the )?code|implement|optimi[sz]e|database schema|"
+    r"migration plan|long[- ]term plan|roadmap|step[- ]by[- ]step plan|deep dive)\b",
+    re.IGNORECASE)
+
+
+def pick_openai_model(cfg_model, message):
+    """Return gpt-5.6-terra for complex-reasoning founder messages when the
+    widget runs the default model; otherwise the configured model.
+    The Emergent fallback inside call_openai_chat keeps DEFAULT_MODEL."""
+    if (cfg_model or DEFAULT_MODEL) == DEFAULT_MODEL and message and COMPLEX_TASK_RE.search(message):
+        return REASONING_MODEL
+    return cfg_model
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 600
 OPENAI_TIMEOUT_SECONDS = 45.0

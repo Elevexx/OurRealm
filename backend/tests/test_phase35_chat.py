@@ -80,7 +80,7 @@ async def main():
                 "chat": {{
                     "mode": "conversational",
                     "system_prompt": {sp!r},
-                    "model": "gpt-4o-mini",
+                    "model": "gpt-5.4-mini",
                     "temperature": 0.0,
                     "max_tokens": 30,
                     "memory_mode": {memory_mode!r},

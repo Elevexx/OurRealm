@@ -77,7 +77,7 @@ def test_clone_stealth_ai_preserves_chat(stealth_session):
     chat = w["editor_config"].get("chat")
     assert chat is not None, "editor_config.chat must be preserved"
     assert chat["system_prompt"] and len(chat["system_prompt"]) > 0
-    assert chat["model"] == "gpt-4o-mini"
+    assert chat["model"] == "gpt-5.4-mini"
     assert chat["memory_mode"] == "persistent"
     assert chat["founder_only"] is True
     assert chat["enable_streaming"] is True
@@ -106,7 +106,7 @@ def _base_custom_payload(chat_overrides=None):
     chat = {
         "mode": "conversational",
         "system_prompt": "You are a test bot.",
-        "model": "gpt-4o-mini",
+        "model": "gpt-5.4-mini",
         "temperature": 0.5,
         "max_tokens": 30,
         "memory_mode": "session",

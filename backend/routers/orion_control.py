@@ -485,32 +485,56 @@ async def test_provider(pid: str, current: CurrentUser):
             field: now_iso}
 
 
+# ── Voice model configuration ────────────────────────────────────────
+# Primary STT runs on the founder's OpenAI project; the Emergent
+# universal key only supports whisper-1, kept as an automatic fallback.
+TRANSCRIBE_MODEL = "gpt-4o-transcribe"
+TRANSCRIBE_FALLBACK_MODEL = "whisper-1"
+# Reserved for the future continuous-voice mode (not yet implemented):
+REALTIME_MODEL = "gpt-realtime-1.5"
+VOICE_RESPONSE_MODEL = "gpt-audio-1.5"
+
+
 @router.post("/voice/transcribe")
 async def voice_transcribe(current: CurrentUser, audio: UploadFile = File(...)):
-    """Whisper (whisper-1) transcription for the ORAi voice input.
-    Uses the Emergent LLM key; every use is written to the audit log."""
+    """Speech-to-text for the ORAi voice input (gpt-4o-transcribe, with
+    whisper-1/Emergent fallback). Every use is written to the audit log."""
     _require_founder(current)
     data = await audio.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty audio upload.")
     if len(data) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Audio too large (25 MB max).")
-    key = os.environ.get("EMERGENT_LLM_KEY")
-    if not key:
-        raise HTTPException(status_code=503, detail="Transcription key not configured.")
     import io
     from emergentintegrations.llm.openai import OpenAISpeechToText
-    buf = io.BytesIO(data)
-    buf.name = audio.filename or "voice.webm"
-    try:
+
+    async def _run(key: str, model: str):
+        buf = io.BytesIO(data)
+        buf.name = audio.filename or "voice.webm"
         stt = OpenAISpeechToText(api_key=key)
-        resp = await stt.transcribe(file=buf, model="whisper-1", response_format="json")
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Transcription failed: {str(e)[:120]}")
+        return await stt.transcribe(file=buf, model=model, response_format="json")
+
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    emergent_key = os.environ.get("EMERGENT_LLM_KEY")
+    resp, used_model, last_err = None, None, None
+    if openai_key:
+        try:
+            resp = await _run(openai_key, TRANSCRIBE_MODEL)
+            used_model = TRANSCRIBE_MODEL
+        except Exception as e:  # noqa: BLE001
+            last_err = str(e)[:120]
+    if resp is None and emergent_key:
+        try:
+            resp = await _run(emergent_key, TRANSCRIBE_FALLBACK_MODEL)
+            used_model = TRANSCRIBE_FALLBACK_MODEL
+        except Exception as e:  # noqa: BLE001
+            last_err = str(e)[:120]
+    if resp is None:
+        raise HTTPException(status_code=502, detail=f"Transcription failed: {last_err or 'no STT key configured'}")
     text = (getattr(resp, "text", "") or "").strip()
     await _log_action(current, "voice_transcribed",
-                      f"Voice input transcribed ({len(text)} chars): {text[:80]}")
-    return {"text": text}
+                      f"Voice input transcribed via {used_model} ({len(text)} chars): {text[:80]}")
+    return {"text": text, "model": used_model}
 
 
 @router.get("/recommendations")

@@ -79,7 +79,7 @@ def public_widget(founder_headers):
             "chat": {
                 "mode": "conversational",
                 "system_prompt": "Friendly.",
-                "model": "gpt-4o-mini",
+                "model": "gpt-5.4-mini",
                 "memory_mode": "off",
                 "founder_only": False,
             }

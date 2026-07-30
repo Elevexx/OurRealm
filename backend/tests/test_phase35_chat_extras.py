@@ -142,7 +142,7 @@ async def main():
             "default_size": {{"w":2,"h":3}}, "allowed_sizes": [{{"w":2,"h":3}}],
             "editor_config": {{"layout":"chat","chat": {{
                 "system_prompt": "Reply with exactly 'k' (lowercase).",
-                "model": "gpt-4o-mini", "temperature": 0.0,
+                "model": "gpt-5.4-mini", "temperature": 0.0,
                 "max_tokens": 4, "memory_mode": "off",
                 "founder_only": {founder_only}, "enable_streaming": {streaming},
                 "quick_actions": []

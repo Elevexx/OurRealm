@@ -41,7 +41,7 @@ from core.widget_templates import get_template
 from services.provider_registry import is_enabled as provider_is_enabled
 from services.chat_conversations import (
     append_messages, build_context, call_openai_chat, clear_conversation,
-    compose_messages, get_conversation, pop_last_assistant,
+    compose_messages, get_conversation, pick_openai_model, pop_last_assistant,
 )
 from services.orion_analytics import maybe_handle_admin_query
 from utils.sliding_window_rate_limit import rate_limit as sliding_rate_limit
@@ -289,7 +289,8 @@ async def chat_message(payload: ChatMessagePayload, current: CurrentUser, respon
     try:
         reply = await call_openai_chat(
             messages,
-            model=chat_cfg.get("model"),
+            model=pick_openai_model(chat_cfg.get("model"),
+                                    payload.message if (current.get("username") or "").lower() == "stealth" else ""),
             temperature=chat_cfg.get("temperature"),
             max_tokens=chat_cfg.get("max_tokens"),
         )
@@ -395,7 +396,8 @@ async def chat_regenerate(payload: ChatRegeneratePayload, current: CurrentUser, 
 
     reply = await call_openai_chat(
         messages,
-        model=chat_cfg.get("model"),
+        model=pick_openai_model(chat_cfg.get("model"),
+                                last_user_msg if (current.get("username") or "").lower() == "stealth" else ""),
         temperature=chat_cfg.get("temperature"),
         max_tokens=chat_cfg.get("max_tokens"),
     )
@@ -464,7 +466,8 @@ async def chat_stream(payload: ChatMessagePayload, current: CurrentUser):
         raise HTTPException(status_code=503, detail="OpenAI is not configured on the server.")
 
     body = {
-        "model": chat_cfg.get("model") or "gpt-5.4-mini",
+        "model": pick_openai_model(chat_cfg.get("model"),
+                                   payload.message if (current.get("username") or "").lower() == "stealth" else "") or "gpt-5.4-mini",
         "messages": messages,
         "temperature": float(chat_cfg.get("temperature") if chat_cfg.get("temperature") is not None else 0.7),
         "max_tokens": int(chat_cfg.get("max_tokens") or 600),
