@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
-import OraiDashboard from "@/components/admin/OraiDashboard";
+import OraiDashboard, { ORAI_LOGO_URL } from "@/components/admin/OraiDashboard";
 
 // ─────────────────────────────────────────────────────────────────────
 // Constants — sidebar sections + quick-action tiles + suggested chips.
@@ -384,8 +384,8 @@ function SectionRouter({ section, summary, onDraft, sectionNav }) {
   if (section === "badges")    return <SimplePromptList title="Badges" intros={["How many VIP holders?", "Show badge stats", "Beta holders"]} onPrompt={(p) => sectionNav("chat") || window.dispatchEvent(new CustomEvent("orion-prefill", { detail: p }))} />;
   if (section === "settings")  return <SettingsPanel summary={summary} />;
   if (section === "classic")   return <Dashboard summary={summary} onSection={sectionNav} />;
-  // Default: upgraded ORAi control-center dashboard
-  return <OraiDashboard onSection={sectionNav} />;
+  // Default: upgraded ORAi control-center dashboard (hero + live chat)
+  return <OraiDashboard onSection={sectionNav} Chat={OrionChat} onDraft={onDraft} />;
 }
 
 
@@ -1499,10 +1499,16 @@ function Stat({ label, value, hue }) {
 
 function OrionLogo({ size = 24 }) {
   return (
-    <span className="orion-logo" style={{ width: size, height: size }} aria-hidden="true">
-      <span className="orion-logo-glow" />
-      <Sparkles size={Math.max(10, size * 0.55)} />
-    </span>
+    <img
+      src={ORAI_LOGO_URL}
+      alt="ORAi"
+      aria-hidden="true"
+      style={{
+        width: size, height: size, objectFit: "cover", objectPosition: "50% 32%",
+        borderRadius: "50%", flexShrink: 0,
+        boxShadow: "0 0 10px rgba(34,211,238,0.45), 0 0 20px rgba(52,211,153,0.2)",
+      }}
+    />
   );
 }
 
@@ -1745,9 +1751,81 @@ function OrionStyles() {
         font-size: 13px; color: var(--orion-fg);
         background: transparent;
         text-align: left;
-        transition: background 150ms ease, color 150ms ease;
+        transition: background 150ms ease, color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
       }
-      .orion-nav-item:hover { background: var(--orion-cyan-soft); }
+      .orion-nav-item:hover {
+        background: var(--orion-cyan-soft);
+        transform: translateX(3px);
+        box-shadow: 0 0 14px rgba(34,211,238,0.12);
+      }
+
+      /* ── ORAi redesign: hero, voice UI, glass polish ─────────────── */
+      .orai-hero { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+      .orai-hero-logo {
+        width: clamp(220px, 38vw, 420px);
+        height: auto;
+        border-radius: 18px;
+        filter: drop-shadow(0 0 26px rgba(34,211,238,0.35)) drop-shadow(0 0 50px rgba(52,211,153,0.18));
+        animation: orai-hero-in 700ms ease both;
+      }
+      @keyframes orai-hero-in { from { opacity: 0; transform: translateY(-8px) scale(0.97); } to { opacity: 1; transform: none; } }
+      .orai-hero-chat { width: 100%; }
+      .orai-hero-chat .orion-chat-stream { min-height: 180px; max-height: 320px; }
+      .orai-voicebar {
+        width: 100%;
+        display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap;
+        padding: 12px 16px;
+        background: var(--orion-glass);
+        border: 1px solid var(--orion-line);
+        border-radius: 16px;
+        backdrop-filter: blur(14px);
+      }
+      .orai-mic {
+        width: 46px; height: 46px; border-radius: 50%;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: radial-gradient(circle at 35% 30%, rgba(34,211,238,0.28), rgba(10,14,25,0.9));
+        border: 1px solid var(--orion-cyan);
+        color: var(--orion-cyan);
+        transition: box-shadow 200ms ease, transform 150ms ease;
+        box-shadow: 0 0 12px rgba(34,211,238,0.3);
+      }
+      .orai-mic:hover { transform: scale(1.06); box-shadow: 0 0 20px rgba(34,211,238,0.5); }
+      .orai-mic.on {
+        border-color: #34D399; color: #34D399;
+        box-shadow: 0 0 18px rgba(52,211,153,0.55);
+        animation: orai-mic-pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes orai-mic-pulse { 0%,100% { box-shadow: 0 0 10px rgba(52,211,153,0.35); } 50% { box-shadow: 0 0 26px rgba(52,211,153,0.7); } }
+      .orai-wave { display: inline-flex; align-items: center; gap: 3px; height: 26px; }
+      .orai-wave span {
+        width: 3px; height: 6px; border-radius: 2px;
+        background: linear-gradient(180deg, var(--orion-cyan), #34D399);
+        animation: orai-wave-bounce 1s ease-in-out infinite;
+        animation-play-state: paused; opacity: 0.45;
+      }
+      .orai-wave.on span { animation-play-state: running; opacity: 1; }
+      @keyframes orai-wave-bounce { 0%,100% { height: 5px; } 50% { height: 22px; } }
+      .orai-listening { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #34D399; animation: orai-blink 1.2s ease-in-out infinite; }
+      @keyframes orai-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+      .orai-audit-note { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--orion-muted); }
+      [data-testid^="orai-card-"], .orion-stat {
+        transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+      }
+      [data-testid^="orai-card-"]:hover, .orion-stat:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.35), 0 0 18px rgba(34,211,238,0.12);
+        border-color: rgba(34,211,238,0.35);
+      }
+      .orion-composer .orion-input:focus {
+        outline: none;
+        border-color: var(--orion-cyan);
+        box-shadow: 0 0 0 1px var(--orion-cyan), 0 0 18px rgba(34,211,238,0.25);
+      }
+      @media (max-width: 640px) {
+        .orai-hero-logo { width: min(78vw, 300px); }
+        .orai-voicebar { gap: 10px; }
+        .orai-audit-note { width: 100%; justify-content: center; }
+      }
       .orion-nav-item.active {
         background: linear-gradient(90deg, var(--orion-cyan-soft), transparent);
         color: var(--orion-cyan);

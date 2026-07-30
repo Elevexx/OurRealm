@@ -172,7 +172,8 @@ function App() {
             <Route path="/admin/WebsiteMedia" element={<ShellRoute><AdminWebsiteMedia /></ShellRoute>} />
             <Route path="/admin/widgets" element={<ShellRoute><AdminWidgets /></ShellRoute>} />
             <Route path="/admin/orion-logs" element={<ShellRoute><AdminOrionLogs /></ShellRoute>} />
-            <Route path="/admin/orion" element={<ShellRoute><AdminOrion /></ShellRoute>} />
+            <Route path="/admin/orai" element={<ShellRoute><AdminOrion /></ShellRoute>} />
+            <Route path="/admin/orion" element={<Navigate to="/admin/orai" replace />} />
             <Route path="/admin/providers" element={<ShellRoute><AdminProviders /></ShellRoute>} />
             <Route path="/admin/analytics" element={<ShellRoute><AdminAnalytics /></ShellRoute>} />
             <Route path="/admin/realm-pulse" element={<ShellRoute><RealmPulse /></ShellRoute>} />

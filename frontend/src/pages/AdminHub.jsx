@@ -172,7 +172,7 @@ const CARDS = [
   },
   {
     id: "orion",
-    to: "/admin/orion",
+    to: "/admin/orai",
     title: "ORAi Command Center",
     description: "AI assistant hub for founder operations, analytics, reports, drafts, approvals, and ORAi tools.",
     Icon: Sparkles,

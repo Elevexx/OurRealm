@@ -8,11 +8,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Activity, AlertCircle, Bot, ChevronDown, CheckCircle, Cog, Cpu, DollarSign,
-  Gauge, Lightbulb, Loader2, Pause, Play, Plug, Plus, RadioTower, RefreshCw,
-  ScanLine, Sparkles, Timer, Zap,
+  Gauge, Lightbulb, Loader2, Mic, Pause, Play, Plug, Plus, RadioTower, RefreshCw,
+  ScanLine, ShieldCheck, Sparkles, Timer, Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
+
+export const ORAI_LOGO_URL =
+  "https://customer-assets-39nsmqrw.emergentagent.net/job_realm-deploy/artifacts/euhwrktr_572E9969-8177-4D46-B82F-95145CF4F564.png";
 
 const CARD = {
   background: "var(--orion-glass)",
@@ -94,9 +97,35 @@ function MiniChart({ series }) {
   );
 }
 
+function VoiceBar() {
+  const [listening, setListening] = useState(false);
+  return (
+    <div className="orai-voicebar" data-testid="orai-voicebar">
+      <button
+        type="button"
+        className={`orai-mic ${listening ? "on" : ""}`}
+        onClick={() => setListening((v) => !v)}
+        aria-label={listening ? "Stop listening" : "Start voice input"}
+        data-testid="orai-mic-btn"
+      >
+        <Mic size={20} />
+      </button>
+      <div className={`orai-wave ${listening ? "on" : ""}`} aria-hidden="true">
+        {Array.from({ length: 11 }).map((_, i) => (
+          <span key={i} style={{ animationDelay: `${i * 0.09}s` }} />
+        ))}
+      </div>
+      {listening && <span className="orai-listening" data-testid="orai-listening">Listening…</span>}
+      <span className="orai-audit-note" data-testid="orai-audit-note">
+        <ShieldCheck size={11} /> Voice conversations are transcribed and stored securely.
+      </span>
+    </div>
+  );
+}
+
 const timeShort = (iso) => (iso ? String(iso).slice(0, 16).replace("T", " ") : "—");
 
-export default function OraiDashboard({ onSection }) {
+export default function OraiDashboard({ onSection, Chat, onDraft }) {
   const [overview, setOverview] = useState(null);
   const [settings, setSettings] = useState(null);
   const [providers, setProviders] = useState([]);
@@ -172,6 +201,17 @@ export default function OraiDashboard({ onSection }) {
 
   return (
     <div className="orion-section" style={{ maxWidth: 1180 }} data-testid="orai-dashboard">
+      {/* Hero — centered official ORAi logo + live chat + voice UI */}
+      <div className="orai-hero" data-testid="orai-hero">
+        <img src={ORAI_LOGO_URL} alt="ORAi — OurRealm Artificial Intelligence" className="orai-hero-logo" data-testid="orai-hero-logo" />
+        {Chat && (
+          <div className="orai-hero-chat" data-testid="orai-hero-chat">
+            <Chat onDraft={onDraft || (() => {})} />
+          </div>
+        )}
+        <VoiceBar />
+      </div>
+
       {/* Header + quick actions */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0">

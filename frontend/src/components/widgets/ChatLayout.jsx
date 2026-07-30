@@ -186,7 +186,7 @@ export default function ChatLayout({ data, theme, widget }) {
         {(typeof window !== "undefined" &&
           ((JSON.parse(localStorage.getItem("auth_user") || "{}")?.username || "").toLowerCase() === "stealth")) && (
           <a
-            href="/admin/orion"
+            href="/admin/orai"
             className="text-[10px] px-1.5 py-0.5 rounded"
             style={{ background: "color-mix(in srgb, var(--primary) 18%, transparent)", color: "var(--primary)" }}
             data-testid="chat-open-command-center"
