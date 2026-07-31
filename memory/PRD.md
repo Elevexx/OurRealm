@@ -1,5 +1,35 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Responsibility Center — Phase 1, Step 1 (Jul 31, 2026) ✅ COMPLETE — awaiting founder verification
+
+**Verified: testing_agent iteration_95 — 27/27 backend pytest (`tests/test_responsibility_center.py`) + 100% frontend E2E (hub, wizard, dashboard, settings tab). Zero issues.**
+
+### Business rules (Fire Power only — never money)
+- Create a Center: burns **1,000 FP** from creator's `fire_wallets.vault_balance` (atomic conditional `$inc`, idempotent via `client_token` unique-index reservation). Includes creator's first 30-day owner seat.
+- Member seat: **100 FP per user per 30 days**, paid from the **CENTER VAULT** when an invitee accepts (409 with friendly message if vault < 100). Race-safe transition with refund on conflict.
+- Center Vault: any active member funds it from their own Fire Vault (atomic, idempotent per `idempotency_key`).
+- Roles: owner(4) > admin(3) > manager(2) > member(1). Permission sets in `ROLE_PERMISSIONS` (edit_center, invite_members, remove_members, manage_roles, view_vault, view_activity, fund_vault). Owner role can never be assigned/changed/removed; owner cannot leave in Phase 1.
+
+### Backend
+- NEW `/app/backend/services/responsibility_center.py` — create_center, fund_vault, invite_member, respond_invite, set_role, remove_member, leave_center, update_center, list_mine, center_members, center_dashboard, log_activity, ledger.
+- NEW `/app/backend/routers/responsibility_center.py` — `/api/responsibility-center/*`: GET config, POST create, GET mine, GET/{id}, GET/{id}/members, PATCH/{id}, POST/{id}/vault/fund, POST/{id}/invite, POST/{id}/invites/respond, POST/{id}/members/{uid}/role, POST/{id}/members/{uid}/remove, POST/{id}/leave.
+- Collections: `responsibility_centers` (holds vault_balance + member_count), `responsibility_center_memberships` ((center_id,user_id) unique; invited/active/declined/left/removed), `responsibility_center_transactions` (ledger, idempotency_key unique sparse), `responsibility_center_activity_logs`.
+- Invite creates a `notifications` row kind=`responsibility_center_invite` (failure never blocks invite).
+- Dashboard payload gates `vault_transactions` behind `view_vault` (manager+); plain members see balance only.
+
+### Frontend
+- NEW pages: `ResponsibilityCenterHub.jsx` (`/responsibility-center` — explainer, balance, my centers, pending invites accept/decline), `ResponsibilityCenterCreate.jsx` (3-step wizard: type → details → review/confirm burn; disabled when balance < 1,000), `ResponsibilityCenterDashboard.jsx` (`/responsibility-center/:id` — stats + Overview/Members/Vault/Settings tabs; invite, role select, remove, fund vault, edit center, leave).
+- NEW `lib/rcTypes.js` (7 center types + role colors). MOD `App.js` (3 routes), `AccountSettings.jsx` (new "Centers" tab), `Settings.jsx` (Open Responsibility Center link).
+
+### Step 2 (NOT built — next)
+- Admin management panel `/admin/responsibility-center` (founder tools: browse all centers, adjust vaults, force actions, audit).
+- 30-day renewal background scheduler (idempotent seat renewals from Center Vault, grace handling, `responsibility_center_renewal_attempts`), renewal notifications, seat-expiry enforcement.
+- Owner transfer / center closure.
+
+### Test state (preview DB)
+- Demo center "Rivera Family" id=`cf5a475c04cd4860976920cda63fa6ff` (owner stealth, member tftwo). stealth FP vault ≈1,695; tftwo ≈800 (balances were set manually for testing).
+
+
 ## Increment B — Quick Fire Foundation (Jul 25, 2026) ✅ COMPLETE (awaiting founder approval for next increment)
 
 **Verified: 10/10 new pytest (`test_quick_fire.py`) + full fire regression green (phase06 19/19, vault 21/21, fire_up 11/11, widget) + testing-agent E2E pass (iteration_91, all 13 checkpoints, desktop + mobile + newbie).**
