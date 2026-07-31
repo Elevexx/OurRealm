@@ -1,0 +1,111 @@
+"""Responsibility Center endpoints (/api/responsibility-center/*) — Phase 1.
+
+Fire Power only (never money). All balance mutations are atomic and
+idempotent in services/responsibility_center.py.
+"""
+from typing import Optional
+
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+
+from core.deps import CurrentUser
+from services import responsibility_center as rc
+
+router = APIRouter(prefix="/api/responsibility-center", tags=["responsibility-center"])
+
+
+@router.get("/config")
+async def rc_config(current: CurrentUser):
+    return {
+        "create_cost": rc.CREATE_COST_FP,
+        "seat_cost": rc.SEAT_COST_FP,
+        "seat_days": rc.SEAT_DAYS,
+        "center_types": rc.CENTER_TYPES,
+        "roles": rc.ROLES,
+        "my_fire_vault_balance": await rc._wallet_balance(current["id"]),
+    }
+
+
+class CreateBody(BaseModel):
+    name: str = Field(..., max_length=120)
+    center_type: str
+    description: str = Field("", max_length=1000)
+    client_token: Optional[str] = None
+
+
+@router.post("/create")
+async def rc_create(body: CreateBody, current: CurrentUser):
+    return await rc.create_center(current, body.name, body.center_type,
+                                  body.description, body.client_token)
+
+
+@router.get("/mine")
+async def rc_mine(current: CurrentUser):
+    return await rc.list_mine(current)
+
+
+@router.get("/{center_id}")
+async def rc_dashboard(center_id: str, current: CurrentUser):
+    return await rc.center_dashboard(current, center_id)
+
+
+@router.get("/{center_id}/members")
+async def rc_members(center_id: str, current: CurrentUser):
+    return await rc.center_members(current, center_id)
+
+
+class UpdateBody(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+@router.patch("/{center_id}")
+async def rc_update(center_id: str, body: UpdateBody, current: CurrentUser):
+    return await rc.update_center(current, center_id, body.name, body.description)
+
+
+class FundBody(BaseModel):
+    amount: int
+    idempotency_key: Optional[str] = None
+
+
+@router.post("/{center_id}/vault/fund")
+async def rc_fund(center_id: str, body: FundBody, current: CurrentUser):
+    return await rc.fund_vault(current, center_id, body.amount, body.idempotency_key)
+
+
+class InviteBody(BaseModel):
+    username: str
+
+
+@router.post("/{center_id}/invite")
+async def rc_invite(center_id: str, body: InviteBody, current: CurrentUser):
+    return await rc.invite_member(current, center_id, body.username)
+
+
+class RespondBody(BaseModel):
+    accept: bool
+
+
+@router.post("/{center_id}/invites/respond")
+async def rc_respond(center_id: str, body: RespondBody, current: CurrentUser):
+    return await rc.respond_invite(current, center_id, body.accept)
+
+
+class RoleBody(BaseModel):
+    role: str
+
+
+@router.post("/{center_id}/members/{user_id}/role")
+async def rc_set_role(center_id: str, user_id: str, body: RoleBody, current: CurrentUser):
+    return await rc.set_role(current, center_id, user_id, body.role)
+
+
+@router.post("/{center_id}/members/{user_id}/remove")
+async def rc_remove(center_id: str, user_id: str, current: CurrentUser):
+    return await rc.remove_member(current, center_id, user_id)
+
+
+@router.post("/{center_id}/leave")
+async def rc_leave(center_id: str, current: CurrentUser):
+    return await rc.leave_center(current, center_id)

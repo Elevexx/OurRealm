@@ -1,0 +1,27 @@
+{
+  "summary": "OurRealm Responsibility Center (Phase 1) — comprehensive backend + frontend testing. 27/27 pytest tests pass covering role management, remove/leave, PATCH edit, non-member 403s, invite/respond error paths, dashboard permission gating (member excludes vault_transactions, owner includes), fund_vault permission + validation, /mine + /config shape. Frontend E2E covered: hub page (balance, cards, invites), creation wizard (3 steps, disabled Review when name empty, cost panel shows correct balance), dashboard (3 stat cards, 4 tabs, owner sees owner-note & NO Leave button, settings edit save, vault fund 5FP moved balance 200→205), Members tab invite panel, AccountSettings /settings/account 'Centers' tab lists 1 row, Settings page 'Open Responsibility Center' link navigates. Regression /feed loads.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_responsibility_center.py",
+    "/app/test_reports/pytest/iter95_rc.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/responsibility_center.py uses safe conditional atomic $inc for balances (fire_wallets + center vault_balance) — race-safe against concurrent burns. Good pattern.",
+    "Idempotency implemented via unique index on responsibility_center_transactions.idempotency_key + reservation row (status='reserved') → completed. Duplicate create returns {duplicate:true} without double-charge — verified by main agent curls.",
+    "role rank check in set_role is correct: actor_rank < 4 (non-owner) requires target_rank AND requested_role_rank < actor_rank; owner (rank 4) bypasses. Owner role can never be assigned/changed (400 for assign, blocked for change).",
+    "Notification insert on invite is wrapped in try/except so notification failures don't block invites — good defensive coding.",
+    "MongoDB _id is correctly projected out ({\"_id\":0}) everywhere. No serialization risk observed.",
+    "Minor observation: /api/auth/me returned a shape where uid was accessed as .id or .user.id — the test handled both. Not an RC issue.",
+    "Minor: routers/responsibility_center.py has no explicit response_model classes (uses raw dicts). Acceptable for Phase 1 but could tighten later."
+  ],
+  "updated_files": ["/app/backend/tests/test_responsibility_center.py"],
+  "success_rate": {"backend": "100% (27/27)", "frontend": "100% (all critical flows)"},
+  "test_credentials": "stealth/Password1$ (founder), tftwo/pass1234 (member of Rivera Family), auditcheckreal/Password1$ (non-member)",
+  "seed_data_creation": "None — used existing 'Rivera Family' center (id cf5a475c04cd4860976920cda63fa6ff). Role of tftwo toggled admin→member during tests, ended as member. Vault balance moved 200→205 FP via 5 FP fund from stealth (stealth vault 1,700→1,695). Description mutated to 'TEST desc {hex}' + 'E2E desc {timestamp}'.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Rivera Family center id=cf5a475c04cd4860976920cda63fa6ff is owned by stealth with tftwo as active member. Do not test renewal scheduler or admin panel — Step 2, not built. The founder Fire Vault dropped ~5 FP from testing and description was mutated. Tests in /app/backend/tests/test_responsibility_center.py are idempotent enough to rerun. If /api/auth/me shape differs, tests fall back to fetching owner via /members endpoint.",
+  "rca of the issue": "N/A — no bugs found."
+}

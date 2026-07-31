@@ -40,6 +40,9 @@ import WidgetLibrary from "@/pages/WidgetLibrary";
 import Profile from "@/pages/Profile";
 import Settings from "@/pages/Settings";
 import AccountSettings from "@/pages/AccountSettings";
+import ResponsibilityCenterHub from "@/pages/ResponsibilityCenterHub";
+import ResponsibilityCenterCreate from "@/pages/ResponsibilityCenterCreate";
+import ResponsibilityCenterDashboard from "@/pages/ResponsibilityCenterDashboard";
 import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
 import AdminFAQ from "@/pages/AdminFAQ";
@@ -204,6 +207,9 @@ function App() {
             <Route path="/profile" element={<ShellRoute><Profile /></ShellRoute>} />
             <Route path="/settings" element={<ShellRoute><Settings /></ShellRoute>} />
             <Route path="/settings/account" element={<ShellRoute><AccountSettings /></ShellRoute>} />
+            <Route path="/responsibility-center" element={<ShellRoute><ResponsibilityCenterHub /></ShellRoute>} />
+            <Route path="/responsibility-center/create" element={<ShellRoute><ResponsibilityCenterCreate /></ShellRoute>} />
+            <Route path="/responsibility-center/:id" element={<ShellRoute><ResponsibilityCenterDashboard /></ShellRoute>} />
             <Route path="/profile/support" element={<ShellRoute><Support /></ShellRoute>} />
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
             <Route path="/admin/faq" element={<ShellRoute><AdminFAQ /></ShellRoute>} />

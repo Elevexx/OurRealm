@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, Globe2, Users as UsersIcon, Wallet, DollarSign, BadgeCheck, Camera, MapPin, Radar, Trash2, ListMusic } from "lucide-react";
+import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, Globe2, Users as UsersIcon, Wallet, DollarSign, BadgeCheck, Camera, MapPin, Radar, Trash2, ListMusic, Landmark, ChevronRight } from "lucide-react";
 import ManagePlaylistsTab from "@/components/ManagePlaylistsTab";
 import apiClient from "@/api/client";
 import VipBadge from "@/components/VipBadge";
@@ -27,6 +27,7 @@ import AdminSettingsTab from "@/components/AdminSettingsTab";
 const TABS_BASE = [
   { id: "account",  label: "Account",     Icon: UserCog },
   { id: "playlists", label: "Sound Playlists", Icon: ListMusic },
+  { id: "centers",  label: "Centers",     Icon: Landmark },
   { id: "privacy",  label: "Privacy",     Icon: ShieldCheck },
 ];
 
@@ -373,6 +374,9 @@ export default function AccountSettings() {
       {/* ADMIN — founder + support only */}
       {tab === "admin" && <AdminSettingsTab />}
 
+      {/* RESPONSIBILITY CENTERS */}
+      {tab === "centers" && <ResponsibilityCentersTab navigate={navigate} />}
+
       {/* PRIVACY */}
       {tab === "playlists" && <ManagePlaylistsTab />}
 
@@ -467,6 +471,64 @@ function Card({ title, Icon, children }) {
         <h3 className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>{title}</h3>
       </div>
       {children}
+    </div>
+  );
+}
+
+// Responsibility Center — Phase 1 Account Settings tab. Compact list of
+// the user's Centers + pending invites; full management lives at
+// /responsibility-center.
+function ResponsibilityCentersTab({ navigate }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    apiClient.get("/responsibility-center/mine")
+      .then((r) => setData(r.data))
+      .catch((e) => setErr(e?.response?.data?.detail || "Could not load your Centers"));
+  }, []);
+  return (
+    <div className="space-y-4" data-testid="tab-centers">
+      <Card title="Responsibility Centers" Icon={Landmark}>
+        <div className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>
+          The families, businesses, and teams you belong to — powered by Fire Power.
+        </div>
+        {err && <div className="text-sm mb-2" style={{ color: "#FF6B6B" }}>{err}</div>}
+        {!data && !err && <div className="text-sm" style={{ color: "var(--text-muted)" }}>Loading…</div>}
+        {data && (data.centers?.length || 0) === 0 && (data.invites?.length || 0) === 0 && (
+          <div className="text-sm mb-2" style={{ color: "var(--text-muted)" }} data-testid="settings-centers-empty">
+            You don't belong to any Centers yet.
+          </div>
+        )}
+        {data?.invites?.map(({ center }) => (
+          <button key={center.id} className="w-full flex items-center justify-between gap-2 py-2 text-left"
+            style={{ borderBottom: "1px solid var(--border-col, rgba(255,255,255,0.08))" }}
+            onClick={() => navigate("/responsibility-center")}
+            data-testid={`settings-center-invite-${center.id}`}>
+            <div>
+              <div className="text-sm font-semibold">{center.name}</div>
+              <div className="text-xs" style={{ color: "#F4C84A" }}>Invite pending — respond in the hub</div>
+            </div>
+            <ChevronRight size={14} style={{ color: "var(--text-muted)" }} />
+          </button>
+        ))}
+        {data?.centers?.map(({ center, membership }) => (
+          <button key={center.id} className="w-full flex items-center justify-between gap-2 py-2 text-left"
+            style={{ borderBottom: "1px solid var(--border-col, rgba(255,255,255,0.08))" }}
+            onClick={() => navigate(`/responsibility-center/${center.id}`)}
+            data-testid={`settings-center-row-${center.id}`}>
+            <div>
+              <div className="text-sm font-semibold">{center.name}</div>
+              <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                {membership.role.toUpperCase()} · {center.member_count} member{center.member_count === 1 ? "" : "s"} · Vault {center.vault_balance.toLocaleString()} 🔥
+              </div>
+            </div>
+            <ChevronRight size={14} style={{ color: "var(--text-muted)" }} />
+          </button>
+        ))}
+        <button className="or-btn mt-3" onClick={() => navigate("/responsibility-center")} data-testid="settings-centers-open-hub">
+          Open Responsibility Center
+        </button>
+      </Card>
     </div>
   );
 }

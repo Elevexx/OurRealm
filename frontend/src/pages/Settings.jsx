@@ -45,6 +45,16 @@ export default function Settings() {
       </div>
 
       <div className="or-surface p-5 mb-4">
+        <h3 className="text-lg mb-3" style={{ fontFamily: "var(--font-display)" }}>Responsibility Center</h3>
+        <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>
+          Manage the families, businesses, and teams you're responsible for — powered by Fire Power.
+        </p>
+        <button className="or-btn" onClick={() => navigate("/responsibility-center")} data-testid="settings-rc-link">
+          Open Responsibility Center
+        </button>
+      </div>
+
+      <div className="or-surface p-5 mb-4">
         <h3 className="text-lg mb-3" style={{ fontFamily: "var(--font-display)" }}>Help</h3>
         <div className="flex gap-2 flex-wrap">
           <button className="or-btn or-btn-ghost" onClick={() => navigate("/faq")} data-testid="settings-faq-link">

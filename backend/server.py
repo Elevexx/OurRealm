@@ -61,6 +61,7 @@ from routers import progression_admin as progression_admin_router_mod
 from routers import leaderboards as leaderboards_router_mod
 from routers import fire as fire_router_mod
 from routers import founding_vip as founding_vip_router_mod
+from routers import responsibility_center as responsibility_center_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -125,6 +126,7 @@ app.include_router(progression_admin_router_mod.router)
 app.include_router(leaderboards_router_mod.router)
 app.include_router(fire_router_mod.router)
 app.include_router(founding_vip_router_mod.router)
+app.include_router(responsibility_center_router_mod.router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
