@@ -62,6 +62,7 @@ from routers import leaderboards as leaderboards_router_mod
 from routers import fire as fire_router_mod
 from routers import founding_vip as founding_vip_router_mod
 from routers import responsibility_center as responsibility_center_router_mod
+from routers import rc_admin as rc_admin_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -127,6 +128,7 @@ app.include_router(leaderboards_router_mod.router)
 app.include_router(fire_router_mod.router)
 app.include_router(founding_vip_router_mod.router)
 app.include_router(responsibility_center_router_mod.router)
+app.include_router(rc_admin_router_mod.router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
@@ -492,6 +494,14 @@ async def on_startup():
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[purge_cron] startup failed: {e}")
 
+    # Responsibility Center — 30-Day Active Period renewal scheduler
+    # (Bundle A). Idempotent, claim-locked, emergency-pause aware.
+    try:
+        from services.rc_renewals import start_renewal_scheduler
+        start_renewal_scheduler()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[rc-renewals] startup failed: {e}")
+
     # One-time idempotent migration — rewrite any stored media URLs
     # that still point at the public Cloudflare R2 CDN
     # (`media.ourrealm.social`) or the legacy local-disk fallback
@@ -525,6 +535,11 @@ async def on_shutdown():
     try:
         from services.purge_cron import stop_purge_scheduler
         await stop_purge_scheduler()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from services.rc_renewals import stop_renewal_scheduler
+        stop_renewal_scheduler()
     except Exception:  # noqa: BLE001
         pass
     await close_db()

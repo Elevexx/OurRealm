@@ -19,6 +19,7 @@ Collections:
   responsibility_center_activity_logs  — human-readable audit trail
 """
 import logging
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -37,6 +38,43 @@ MAX_NAME = 60
 MAX_DESC = 500
 MAX_FUND_AMOUNT = 100_000
 
+# ── Global settings (founder-controlled, versioned + audited) ───────────
+# Defaults EXACTLY preserve the verified Phase 1 behavior. Changes apply
+# prospectively only — historical transactions/periods are never rewritten.
+RC_SETTINGS_DEFAULTS = {
+    "create_cost": CREATE_COST_FP,            # Fire Power Requirement to create
+    "seat_cost": SEAT_COST_FP,                # per managed member per active period
+    "period_days": SEAT_DAYS,                 # 30-Day Active Period length
+    "creator_first_seat_included": True,      # preserve current behavior
+    "owner_exempt": True,                     # owner seat never auto-renews/pauses
+    "reminder_days": [7, 3, 1],               # renewal warning schedule
+    "grace_days": 0,                          # days in Awaiting Fire Power before pause
+    "auto_renewals_enabled": True,
+    "emergency_renewal_pause": False,         # stops processing, never touches balances
+    "max_centers_per_user": 0,                # 0 = unlimited
+    "max_members_per_center": 0,              # 0 = unlimited
+    "invitation_limit": 50,                   # max pending invites per center
+    "center_creation_enabled": True,
+    "member_activation_enabled": True,
+}
+_settings_cache = {"at": 0.0, "doc": None}
+
+
+async def get_rc_settings() -> dict:
+    now = time.monotonic()
+    if _settings_cache["doc"] is not None and now - _settings_cache["at"] < 10:
+        return _settings_cache["doc"]
+    doc = await db.responsibility_center_settings.find_one({"_id": "settings"}) or {}
+    merged = {**RC_SETTINGS_DEFAULTS,
+              **{k: doc[k] for k in RC_SETTINGS_DEFAULTS if k in doc}}
+    merged["version"] = int(doc.get("version") or 0)
+    _settings_cache.update(at=now, doc=merged)
+    return merged
+
+
+def invalidate_rc_settings_cache() -> None:
+    _settings_cache["doc"] = None
+
 CENTER_TYPES = ["family", "household", "business", "team", "organization", "community", "other"]
 
 ROLES = ["owner", "admin", "manager", "member"]
@@ -44,9 +82,9 @@ ROLE_RANK = {"owner": 4, "admin": 3, "manager": 2, "member": 1}
 
 ROLE_PERMISSIONS = {
     "owner":   {"edit_center", "invite_members", "remove_members", "manage_roles",
-                "view_vault", "view_activity", "fund_vault"},
+                "view_vault", "view_activity", "fund_vault", "manage_renewals"},
     "admin":   {"edit_center", "invite_members", "remove_members", "manage_roles",
-                "view_vault", "view_activity", "fund_vault"},
+                "view_vault", "view_activity", "fund_vault", "manage_renewals"},
     "manager": {"invite_members", "view_vault", "view_activity", "fund_vault"},
     "member":  {"fund_vault"},
 }
@@ -125,7 +163,52 @@ def _public_center(c: dict) -> dict:
         "status": c.get("status", "active"),
         "vault_balance": max(0, int(c.get("vault_balance") or 0)),
         "member_count": max(0, int(c.get("member_count") or 0)),
+        "invitations_locked": bool(c.get("invitations_locked")),
+        "vault_frozen": bool(c.get("vault_frozen")),
+        "official": bool(c.get("official")),
     }
+
+
+def membership_state(m: dict, settings: dict, now: Optional[datetime] = None) -> str:
+    """Derived member state — Active / Renewal Soon / Awaiting Fire Power /
+    Paused / Removed / Left / Invited / Declined."""
+    status = m.get("status")
+    if status != "active":
+        return status or "unknown"
+    if m.get("awaiting_fire_power"):
+        return "awaiting_fire_power"
+    if m.get("role") == "owner" and settings.get("owner_exempt", True):
+        return "active"
+    due = m.get("seat_paid_until")
+    if due:
+        try:
+            now = now or _now()
+            days_left = (datetime.fromisoformat(due) - now).total_seconds() / 86400
+            if days_left <= max(settings.get("reminder_days") or [7]):
+                return "renewal_soon"
+        except (ValueError, TypeError):
+            pass
+    return "active"
+
+
+async def notify_user(uid: str, kind: str, message: str, link: str,
+                      center_id: Optional[str] = None,
+                      center_name: Optional[str] = None,
+                      actor_username: Optional[str] = None) -> None:
+    """Responsibility Center notification via the existing platform
+    notification system. Deep-links via payload.link. Failures never
+    block the calling flow."""
+    try:
+        now_iso = _now_iso()
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()), "recipient_id": uid, "kind": kind,
+            "actor_username": actor_username,
+            "payload": {"message": message, "link": link,
+                        "center_id": center_id, "center_name": center_name},
+            "created_at": now_iso, "updated_at": now_iso,
+            "seen": False, "resolved": False})
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"[rc] notify failed kind={kind}: {e}")
 
 
 def _public_membership(m: dict) -> dict:
@@ -161,7 +244,7 @@ async def create_center(user: dict, name: str, center_type: str,
     reservation_id = None
     if idem:
         try:
-            row = await _ledger(None, uid, "center_created", -CREATE_COST_FP,
+            row = await _ledger(None, uid, "center_created", -create_cost,
                                 idempotency_key=idem, status="reserved")
             reservation_id = row["id"]
         except DuplicateKeyError:
@@ -180,18 +263,18 @@ async def create_center(user: dict, name: str, center_type: str,
 
     # Atomic conditional burn from the creator's Fire Vault.
     res = await db.fire_wallets.update_one(
-        {"user_id": uid, "vault_balance": {"$gte": CREATE_COST_FP}},
-        {"$inc": {"vault_balance": -CREATE_COST_FP}})
+        {"user_id": uid, "vault_balance": {"$gte": create_cost}},
+        {"$inc": {"vault_balance": -create_cost}})
     if res.modified_count != 1:
         await _cleanup_reservation()
         bal = await _wallet_balance(uid)
         raise HTTPException(
             status_code=409,
-            detail=f"Creating a Responsibility Center requires {CREATE_COST_FP:,} Fire Power in your Vault. "
+            detail=f"Creating a Responsibility Center requires {create_cost:,} Fire Power in your Vault. "
                    f"You currently have {bal:,}.")
 
     now_iso = _now_iso()
-    seat_until = (_now() + timedelta(days=SEAT_DAYS)).isoformat()
+    seat_until = (_now() + timedelta(days=int(settings["period_days"]))).isoformat()
     center_id = uuid.uuid4().hex
     try:
         await db.responsibility_centers.insert_one({
@@ -213,17 +296,17 @@ async def create_center(user: dict, name: str, center_type: str,
                 {"$set": {"center_id": center_id, "status": "completed",
                           "meta": {"seat_paid_until": seat_until}}})
         else:
-            await _ledger(center_id, uid, "center_created", -CREATE_COST_FP,
+            await _ledger(center_id, uid, "center_created", -create_cost,
                           meta={"seat_paid_until": seat_until})
         await log_activity(center_id, user, "center_created",
                            f"@{user.get('username')} created the Center \"{name}\" "
-                           f"({CREATE_COST_FP:,} Fire Power)")
+                           f"({create_cost:,} Fire Power)")
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001 — refund on any partial failure
         log.error(f"[rc] create rollback for {uid}: {e}")
         await db.fire_wallets.update_one(
-            {"user_id": uid}, {"$inc": {"vault_balance": CREATE_COST_FP}})
+            {"user_id": uid}, {"$inc": {"vault_balance": create_cost}})
         await db.responsibility_centers.delete_one({"id": center_id})
         await db.responsibility_center_memberships.delete_one(
             {"center_id": center_id, "user_id": uid})
@@ -248,6 +331,10 @@ async def fund_vault(user: dict, center_id: str, amount: int,
     center, membership = await _center_and_membership(center_id, user["id"])
     if not has_permission(membership, "fund_vault"):
         raise HTTPException(status_code=403, detail="Only active Center members can fund the Center Vault")
+    if center.get("vault_frozen"):
+        raise HTTPException(status_code=409, detail="The Center Vault is frozen by an administrator")
+    if center.get("status") == "archived":
+        raise HTTPException(status_code=409, detail="This Center is archived")
 
     uid = user["id"]
     idem = f"rc-fund:{str(idempotency_key)[:96]}" if idempotency_key else None
@@ -309,6 +396,22 @@ async def invite_member(actor: dict, center_id: str, username: str) -> dict:
     center, membership = await _center_and_membership(center_id, actor["id"])
     if not has_permission(membership, "invite_members"):
         raise HTTPException(status_code=403, detail="You don't have permission to invite members")
+    if center.get("status") != "active":
+        raise HTTPException(status_code=409, detail=f"This Center is {center.get('status')} — invitations are unavailable")
+    if center.get("invitations_locked"):
+        raise HTTPException(status_code=409, detail="Invitations are locked for this Center by an administrator")
+    settings = await get_rc_settings()
+    inv_limit = int(settings.get("invitation_limit") or 0)
+    if inv_limit > 0:
+        pending = await db.responsibility_center_memberships.count_documents(
+            {"center_id": center_id, "status": "invited"})
+        if pending >= inv_limit:
+            raise HTTPException(status_code=409,
+                                detail=f"This Center has reached the limit of {inv_limit} pending invitations")
+    max_members = int(settings.get("max_members_per_center") or 0)
+    if max_members > 0 and int(center.get("member_count") or 0) >= max_members:
+        raise HTTPException(status_code=409,
+                            detail=f"This Center has reached the limit of {max_members} members")
     username = (username or "").strip().lstrip("@").lower()
     if not username:
         raise HTTPException(status_code=400, detail="Enter a username to invite")
@@ -365,37 +468,48 @@ async def respond_invite(user: dict, center_id: str, accept: bool) -> dict:
                            f"@{user.get('username')} declined the invite")
         return {"ok": True, "joined": False}
 
+    settings = await get_rc_settings()
+    if not settings.get("member_activation_enabled", True):
+        raise HTTPException(status_code=403, detail="Member activation is temporarily disabled")
+    if center.get("status") != "active":
+        raise HTTPException(status_code=409, detail=f"This Center is {center.get('status')} — activation is unavailable")
+    if center.get("vault_frozen"):
+        raise HTTPException(status_code=409, detail="The Center Vault is frozen by an administrator")
+    seat_cost = int(settings["seat_cost"])
+    period_days = int(settings["period_days"])
+
     # Seat charge — atomic conditional debit from the CENTER Vault.
     res = await db.responsibility_centers.update_one(
-        {"id": center_id, "vault_balance": {"$gte": SEAT_COST_FP}},
-        {"$inc": {"vault_balance": -SEAT_COST_FP}})
+        {"id": center_id, "vault_balance": {"$gte": seat_cost}},
+        {"$inc": {"vault_balance": -seat_cost}})
     if res.modified_count != 1:
         fresh = await db.responsibility_centers.find_one(
             {"id": center_id}, {"_id": 0, "vault_balance": 1}) or {}
         raise HTTPException(
             status_code=409,
-            detail=f"The Center Vault needs at least {SEAT_COST_FP} Fire Power to activate your "
-                   f"{SEAT_DAYS}-day seat (current vault: {int(fresh.get('vault_balance') or 0):,}). "
+            detail=f"The Center Vault needs at least {seat_cost} Fire Power to activate your "
+                   f"{period_days}-day seat (current vault: {int(fresh.get('vault_balance') or 0):,}). "
                    f"Ask a Center member to fund the vault, then accept again.")
 
     now_iso = _now_iso()
-    seat_until = (_now() + timedelta(days=SEAT_DAYS)).isoformat()
+    seat_until = (_now() + timedelta(days=period_days)).isoformat()
     upd = await db.responsibility_center_memberships.update_one(
         {"center_id": center_id, "user_id": user["id"], "status": "invited"},
         {"$set": {"status": "active", "joined_at": now_iso,
-                  "seat_paid_until": seat_until, "responded_at": now_iso}})
+                  "seat_paid_until": seat_until, "responded_at": now_iso,
+                  "warnings_sent": [], "awaiting_fire_power": False}})
     if upd.modified_count != 1:
         # Someone raced the transition — refund the vault, nothing changed.
         await db.responsibility_centers.update_one(
-            {"id": center_id}, {"$inc": {"vault_balance": SEAT_COST_FP}})
+            {"id": center_id}, {"$inc": {"vault_balance": seat_cost}})
         raise HTTPException(status_code=409, detail="Invite was already handled")
     await db.responsibility_centers.update_one(
         {"id": center_id}, {"$inc": {"member_count": 1}})
-    await _ledger(center_id, user["id"], "seat_charge", -SEAT_COST_FP,
-                  meta={"seat_paid_until": seat_until, "seat_days": SEAT_DAYS})
+    await _ledger(center_id, user["id"], "seat_charge", -seat_cost,
+                  meta={"seat_paid_until": seat_until, "seat_days": period_days})
     await log_activity(center_id, user, "member_joined",
-                       f"@{user.get('username')} joined ({SEAT_COST_FP} Fire Power seat, "
-                       f"{SEAT_DAYS} days)")
+                       f"@{user.get('username')} joined ({seat_cost} Fire Power seat, "
+                       f"{period_days} days)")
     return {"ok": True, "joined": True, "seat_paid_until": seat_until}
 
 
@@ -505,7 +619,7 @@ async def _users_map(user_ids: list) -> dict:
 async def list_mine(user: dict) -> dict:
     await ensure_rc_indexes()
     memberships = await db.responsibility_center_memberships.find(
-        {"user_id": user["id"], "status": {"$in": ["active", "invited"]}},
+        {"user_id": user["id"], "status": {"$in": ["active", "invited", "paused"]}},
         {"_id": 0}).to_list(200)
     center_ids = [m["center_id"] for m in memberships]
     centers = {}
@@ -513,15 +627,22 @@ async def list_mine(user: dict) -> dict:
         async for c in db.responsibility_centers.find(
                 {"id": {"$in": center_ids}, "status": {"$ne": "deleted"}}, {"_id": 0}):
             centers[c["id"]] = c
-    my_centers, invites = [], []
+    settings = await get_rc_settings()
+    my_centers, invites, paused = [], [], []
     for m in memberships:
         c = centers.get(m["center_id"])
         if not c:
             continue
-        row = {"center": _public_center(c), "membership": _public_membership(m)}
-        (my_centers if m["status"] == "active" else invites).append(row)
+        row = {"center": _public_center(c), "membership": _public_membership(m),
+               "state": membership_state(m, settings)}
+        if m["status"] == "active":
+            my_centers.append(row)
+        elif m["status"] == "invited":
+            invites.append(row)
+        else:
+            paused.append(row)
     my_centers.sort(key=lambda r: r["center"]["created_at"], reverse=True)
-    return {"centers": my_centers, "invites": invites,
+    return {"centers": my_centers, "invites": invites, "paused": paused,
             "my_fire_vault_balance": await _wallet_balance(user["id"])}
 
 
@@ -529,31 +650,53 @@ async def center_members(user: dict, center_id: str) -> dict:
     _, membership = await _center_and_membership(center_id, user["id"])
     _require_member(membership)
     rows = await db.responsibility_center_memberships.find(
-        {"center_id": center_id, "status": {"$in": ["active", "invited"]}},
+        {"center_id": center_id, "status": {"$in": ["active", "invited", "paused"]}},
         {"_id": 0}).to_list(500)
     users = await _users_map([r["user_id"] for r in rows])
+    settings = await get_rc_settings()
     members = []
     for r in rows:
         u = users.get(r["user_id"]) or {}
         members.append({**_public_membership(r),
                         "username": u.get("username"), "name": u.get("name"),
-                        "avatar_url": u.get("avatar_url")})
-    members.sort(key=lambda m: (0 if m["status"] == "active" else 1,
+                        "avatar_url": u.get("avatar_url"),
+                        "state": membership_state(r, settings),
+                        "awaiting_fire_power": bool(r.get("awaiting_fire_power"))})
+    members.sort(key=lambda m: (0 if m["status"] == "active" else (1 if m["status"] == "paused" else 2),
                                 -ROLE_RANK.get(m["role"], 0)))
     return {"members": members}
 
 
 async def center_dashboard(user: dict, center_id: str) -> dict:
     center, membership = await _center_and_membership(center_id, user["id"])
-    if not membership or membership.get("status") not in ("active", "invited"):
+    if not membership or membership.get("status") not in ("active", "invited", "paused"):
         raise HTTPException(status_code=403, detail="You are not a member of this Center")
+    settings = await get_rc_settings()
+    cfg = {"create_cost": int(settings["create_cost"]),
+           "seat_cost": int(settings["seat_cost"]),
+           "seat_days": int(settings["period_days"])}
     out = {
         "center": _public_center(center),
         "my_membership": _public_membership(membership),
-        "config": {"create_cost": CREATE_COST_FP, "seat_cost": SEAT_COST_FP,
-                   "seat_days": SEAT_DAYS},
+        "my_state": membership_state(membership, settings),
+        "config": cfg,
         "my_fire_vault_balance": await _wallet_balance(user["id"]),
     }
+    # Paused members see ONLY safe status information — no members,
+    # activity, vault transactions, or private Center content.
+    if membership.get("status") == "paused":
+        out["paused_notice"] = {
+            "message": "Your membership is paused because your seat's Fire Power "
+                       "Requirement couldn't be covered by the Center Vault.",
+            "fire_power_needed": cfg["seat_cost"],
+            "vault_balance": out["center"]["vault_balance"],
+            "help": "Ask a Center member to Add Fire Power to the Vault. A "
+                    "Center manager can then reactivate your seat.",
+            "paused_at": membership.get("paused_at"),
+        }
+        out["center"] = {k: out["center"][k] for k in
+                         ("id", "name", "center_type", "status", "vault_balance")}
+        return out
     if membership.get("status") == "active":
         members = await center_members(user, center_id)
         out["members"] = members["members"]
@@ -568,4 +711,131 @@ async def center_dashboard(user: dict, center_id: str) -> dict:
             for t in txns:
                 t["username"] = (users.get(t.get("user_id")) or {}).get("username")
             out["vault_transactions"] = txns
+        if has_permission(membership, "manage_renewals"):
+            out["renewal_summary"] = await renewal_summary(center, settings)
     return out
+
+
+async def renewal_summary(center: dict, settings: Optional[dict] = None) -> dict:
+    """Owner/Admin dashboard panel — upcoming Fire Power Requirements,
+    paused members, and Vault Coverage. Server-authoritative."""
+    settings = settings or await get_rc_settings()
+    seat_cost = int(settings["seat_cost"])
+    now = _now()
+    q = {"center_id": center["id"], "status": "active"}
+    if settings.get("owner_exempt", True):
+        q["role"] = {"$ne": "owner"}
+    rows = await db.responsibility_center_memberships.find(
+        q, {"_id": 0, "user_id": 1, "seat_paid_until": 1, "awaiting_fire_power": 1}).to_list(1000)
+    due_7 = due_3 = due_1 = awaiting = 0
+    for m in rows:
+        if m.get("awaiting_fire_power"):
+            awaiting += 1
+        due = m.get("seat_paid_until")
+        if not due:
+            continue
+        try:
+            days = (datetime.fromisoformat(due) - now).total_seconds() / 86400
+        except (ValueError, TypeError):
+            continue
+        if days <= 1:
+            due_1 += 1
+        if days <= 3:
+            due_3 += 1
+        if days <= 7:
+            due_7 += 1
+    paused = await db.responsibility_center_memberships.count_documents(
+        {"center_id": center["id"], "status": "paused"})
+    vault = max(0, int(center.get("vault_balance") or 0))
+    fp_needed_7d = due_7 * seat_cost
+    return {
+        "renewing_in_7_days": due_7, "renewing_in_3_days": due_3,
+        "renewing_in_1_day": due_1, "awaiting_fire_power": awaiting,
+        "paused_members": paused, "vault_balance": vault,
+        "seat_cost": seat_cost,
+        "fire_power_needed_7d": fp_needed_7d,
+        "fire_power_shortfall_7d": max(0, fp_needed_7d - vault),
+        "vault_coverage_seats": vault // seat_cost if seat_cost else 0,
+        "paused_reactivation_cost": paused * seat_cost,
+    }
+
+
+async def reactivate_member(actor: dict, center_id: str, target_user_id: str) -> dict:
+    """Reactivate a paused member — burns the configured Fire Power
+    Requirement from the Center Vault and starts a NEW active period from
+    now. Race-safe + duplicate-safe (status transition is the guard)."""
+    center, membership = await _center_and_membership(center_id, actor["id"])
+    if not has_permission(membership, "manage_renewals"):
+        raise HTTPException(status_code=403, detail="You don't have permission to reactivate members")
+    if center.get("status") != "active":
+        raise HTTPException(status_code=409, detail=f"This Center is {center.get('status')}")
+    if center.get("vault_frozen"):
+        raise HTTPException(status_code=409, detail="The Center Vault is frozen by an administrator")
+    target = await db.responsibility_center_memberships.find_one(
+        {"center_id": center_id, "user_id": target_user_id, "status": "paused"}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="That member is not paused")
+    settings = await get_rc_settings()
+    seat_cost = int(settings["seat_cost"])
+    period_days = int(settings["period_days"])
+
+    res = await db.responsibility_centers.update_one(
+        {"id": center_id, "vault_balance": {"$gte": seat_cost}, "vault_frozen": {"$ne": True}},
+        {"$inc": {"vault_balance": -seat_cost}})
+    if res.modified_count != 1:
+        fresh = await db.responsibility_centers.find_one(
+            {"id": center_id}, {"_id": 0, "vault_balance": 1}) or {}
+        raise HTTPException(
+            status_code=409,
+            detail=f"The Center Vault needs at least {seat_cost} Fire Power to reactivate this "
+                   f"member (current vault: {int(fresh.get('vault_balance') or 0):,}).")
+    now_iso = _now_iso()
+    seat_until = (_now() + timedelta(days=period_days)).isoformat()
+    upd = await db.responsibility_center_memberships.update_one(
+        {"center_id": center_id, "user_id": target_user_id, "status": "paused"},
+        {"$set": {"status": "active", "seat_paid_until": seat_until,
+                  "warnings_sent": [], "awaiting_fire_power": False,
+                  "reactivated_at": now_iso, "reactivated_by": actor["id"]},
+         "$unset": {"paused_at": "", "paused_reason": ""}})
+    if upd.modified_count != 1:
+        await db.responsibility_centers.update_one(
+            {"id": center_id}, {"$inc": {"vault_balance": seat_cost}})
+        raise HTTPException(status_code=409, detail="Member was already reactivated")
+    await db.responsibility_centers.update_one(
+        {"id": center_id}, {"$inc": {"member_count": 1}})
+    await _ledger(center_id, target_user_id, "seat_reactivation", -seat_cost,
+                  meta={"seat_paid_until": seat_until, "reactivated_by": actor["id"]})
+    await db.responsibility_center_renewal_attempts.insert_one({
+        "id": uuid.uuid4().hex, "center_id": center_id,
+        "membership_user_id": target_user_id, "result": "reactivated",
+        "amount": seat_cost, "source": "manual_reactivation",
+        "actor_id": actor["id"], "period_end": seat_until,
+        "created_at": now_iso})
+    await log_activity(center_id, actor, "member_reactivated",
+                       f"@{actor.get('username')} reactivated a member's seat "
+                       f"({seat_cost} Fire Power, {period_days} days)")
+    await notify_user(target_user_id, "responsibility_center_reactivated",
+                      f"Your seat in \"{center['name']}\" has been reactivated — "
+                      f"your new {period_days}-day active period has started.",
+                      f"/responsibility-center/{center_id}",
+                      center_id, center["name"], actor.get("username"))
+    return {"ok": True, "seat_paid_until": seat_until}
+
+
+async def reactivate_eligible(actor: dict, center_id: str) -> dict:
+    """Reactivate as many paused members as the Vault can cover."""
+    center, membership = await _center_and_membership(center_id, actor["id"])
+    if not has_permission(membership, "manage_renewals"):
+        raise HTTPException(status_code=403, detail="You don't have permission to reactivate members")
+    paused = await db.responsibility_center_memberships.find(
+        {"center_id": center_id, "status": "paused"},
+        {"_id": 0, "user_id": 1}).sort("paused_at", 1).to_list(500)
+    reactivated, failed = 0, 0
+    for m in paused:
+        try:
+            await reactivate_member(actor, center_id, m["user_id"])
+            reactivated += 1
+        except HTTPException:
+            failed += 1
+            break  # vault exhausted or frozen — stop cleanly
+    return {"ok": True, "reactivated": reactivated, "remaining_paused": len(paused) - reactivated}

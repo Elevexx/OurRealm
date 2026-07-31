@@ -16,12 +16,14 @@ router = APIRouter(prefix="/api/responsibility-center", tags=["responsibility-ce
 
 @router.get("/config")
 async def rc_config(current: CurrentUser):
+    settings = await rc.get_rc_settings()
     return {
-        "create_cost": rc.CREATE_COST_FP,
-        "seat_cost": rc.SEAT_COST_FP,
-        "seat_days": rc.SEAT_DAYS,
+        "create_cost": int(settings["create_cost"]),
+        "seat_cost": int(settings["seat_cost"]),
+        "seat_days": int(settings["period_days"]),
         "center_types": rc.CENTER_TYPES,
         "roles": rc.ROLES,
+        "center_creation_enabled": bool(settings.get("center_creation_enabled", True)),
         "my_fire_vault_balance": await rc._wallet_balance(current["id"]),
     }
 
@@ -109,3 +111,13 @@ async def rc_remove(center_id: str, user_id: str, current: CurrentUser):
 @router.post("/{center_id}/leave")
 async def rc_leave(center_id: str, current: CurrentUser):
     return await rc.leave_center(current, center_id)
+
+
+@router.post("/{center_id}/members/{user_id}/reactivate")
+async def rc_reactivate(center_id: str, user_id: str, current: CurrentUser):
+    return await rc.reactivate_member(current, center_id, user_id)
+
+
+@router.post("/{center_id}/reactivate-eligible")
+async def rc_reactivate_eligible(center_id: str, current: CurrentUser):
+    return await rc.reactivate_eligible(current, center_id)

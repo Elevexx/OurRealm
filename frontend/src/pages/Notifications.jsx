@@ -242,6 +242,11 @@ export default function Notifications() {
         navigate(user?.username ? `/profile/${user.username}` : "/feed");
         return;
       default:
+        // Responsibility Center + any future kinds deep-link via
+        // payload.link (server-provided, always an internal path).
+        if (n.payload?.link && String(n.payload.link).startsWith("/")) {
+          navigate(n.payload.link);
+        }
         return;
     }
   };

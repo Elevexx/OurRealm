@@ -16,7 +16,7 @@ import { Link } from "react-router-dom";
 import {
   BarChart3, Zap, Hash, Headphones, HelpCircle, LifeBuoy,
   Crown, ShieldCheck, ShieldAlert, ChevronRight, Loader2, Sparkles, LayoutGrid, Database,
-  Image as ImageIcon, Trophy, Flame,
+  Image as ImageIcon, Trophy, Flame, Landmark,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -217,6 +217,18 @@ const CARDS = [
     roles: ["founder"],
     statKey: null,
     footer: "◈ Open Website Media",
+  },
+  {
+    id: "responsibility-center",
+    to: "/admin/responsibility-center",
+    title: "Responsibility Center",
+    description: "Centers, memberships, Center Vaults, seat renewals, Fire Power activity, and global settings.",
+    Icon: Landmark,
+    accent: "#F4C84A",
+    badge: "Admin",
+    roles: ["founder", "admin"],
+    statKey: null,
+    footer: "◈ Open Responsibility Center Admin",
   },
 ];
 

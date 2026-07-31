@@ -60,6 +60,40 @@ export default function ResponsibilityCenterDashboard() {
   const perms = new Set(me.permissions || []);
   const canViewVault = perms.has("view_vault");
 
+  // Paused membership — safe status information ONLY. No members,
+  // activity, vault history, or private Center content.
+  if (data.paused_notice) {
+    return (
+      <div className="max-w-2xl mx-auto" data-testid="rc-dash-paused">
+        <button className="or-btn or-btn-ghost mb-4" onClick={() => navigate("/responsibility-center")} data-testid="rc-dash-back">
+          <ChevronLeft size={14} /> All Centers
+        </button>
+        <div className="or-surface p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="rounded-full flex items-center justify-center shrink-0"
+              style={{ width: 44, height: 44, background: "rgba(244,200,74,0.15)", color: "#F4C84A" }}>
+              <Clock size={22} />
+            </div>
+            <div>
+              <h1 className="text-xl" style={{ fontFamily: "var(--font-display)" }}>{center.name}</h1>
+              <div className="text-xs uppercase font-semibold" style={{ color: "#F4C84A" }} data-testid="rc-paused-badge">Membership Paused</div>
+            </div>
+          </div>
+          <p className="text-sm mb-3" data-testid="rc-paused-message">{data.paused_notice.message}</p>
+          <div className="p-3 rounded text-xs space-y-1 mb-4" style={{ background: "rgba(244,200,74,0.08)", border: "1px solid rgba(244,200,74,0.3)" }}>
+            <div>Fire Power Requirement to reactivate: <b>{data.paused_notice.fire_power_needed} 🔥</b></div>
+            <div>Current Center Vault: <b>{data.paused_notice.vault_balance.toLocaleString()} 🔥</b></div>
+            {data.paused_notice.paused_at && <div>Paused since: {fmtDate(data.paused_notice.paused_at)}</div>}
+          </div>
+          <p className="text-xs" style={{ color: "var(--text-muted)" }} data-testid="rc-paused-help">{data.paused_notice.help}</p>
+          <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+            Your history, assignments, and records in this Center are fully preserved.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto" data-testid="rc-dash-page">
       <button className="or-btn or-btn-ghost mb-4" onClick={() => navigate("/responsibility-center")} data-testid="rc-dash-back">
@@ -99,7 +133,7 @@ export default function ResponsibilityCenterDashboard() {
         ))}
       </div>
 
-      {tab === "overview" && <OverviewTab data={data} />}
+      {tab === "overview" && <OverviewTab data={data} reload={load} centerId={id} goVault={() => setTab("vault")} />}
       {tab === "members" && <MembersTab data={data} me={me} perms={perms} reload={load} centerId={id} config={config} />}
       {tab === "vault" && <VaultTab data={data} canViewVault={canViewVault} reload={load} centerId={id} config={config} />}
       {tab === "settings" && <SettingsTab data={data} me={me} perms={perms} reload={load} centerId={id} navigate={navigate} userId={user?.id} />}
@@ -114,26 +148,79 @@ const StatCard = ({ label, value, testid }) => (
   </div>
 );
 
-function OverviewTab({ data }) {
+function OverviewTab({ data, reload, centerId, goVault }) {
   const activity = data.activity || [];
+  const rs = data.renewal_summary;
+  const [busy, setBusy] = useState(false);
+  const reactivateAll = async () => {
+    setBusy(true);
+    try {
+      const r = await apiClient.post(`/responsibility-center/${centerId}/reactivate-eligible`);
+      toast.success(`${r.data.reactivated} member(s) reactivated${r.data.remaining_paused ? ` — ${r.data.remaining_paused} still paused (Vault needs more Fire Power)` : ""}`);
+      reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Reactivation failed");
+    } finally { setBusy(false); }
+  };
+  const needsAttention = rs && (rs.paused_members > 0 || rs.awaiting_fire_power > 0 || rs.fire_power_shortfall_7d > 0);
   return (
-    <div className="or-surface p-5" data-testid="rc-tab-overview">
-      <h3 className="text-lg mb-3" style={{ fontFamily: "var(--font-display)" }}>
-        <Clock size={16} className="inline mr-1" /> Recent Activity
-      </h3>
-      {activity.length === 0 ? (
-        <div className="text-sm" style={{ color: "var(--text-muted)" }}>No activity yet.</div>
-      ) : (
-        <div className="space-y-2">
-          {activity.map((a) => (
-            <div key={a.id} className="text-sm flex justify-between gap-3 py-1.5"
-              style={{ borderBottom: "1px solid var(--border-col, rgba(255,255,255,0.08))" }}>
-              <span>{a.detail}</span>
-              <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>{fmtDate(a.created_at)}</span>
+    <div className="space-y-4" data-testid="rc-tab-overview">
+      {rs && (
+        <div className="or-surface p-4" data-testid="rc-renewal-panel"
+          style={needsAttention ? { borderColor: "rgba(244,200,74,0.45)" } : undefined}>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h3 className="text-sm font-semibold">Seat Renewals & Vault Coverage</h3>
+            {needsAttention && (
+              <span className="text-[11px] uppercase font-semibold" style={{ color: "#F4C84A" }} data-testid="rc-renewal-warning">Needs attention</span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm mb-3">
+            {[["Renewing in 7 days", rs.renewing_in_7_days], ["Renewing in 3 days", rs.renewing_in_3_days],
+              ["Renewing tomorrow", rs.renewing_in_1_day],
+              ["Awaiting Fire Power", rs.awaiting_fire_power, rs.awaiting_fire_power ? "#FF8A5A" : undefined],
+              ["Paused members", rs.paused_members, rs.paused_members ? "#FF6B6B" : undefined],
+              ["Vault balance", `${rs.vault_balance.toLocaleString()} 🔥`, "#F4C84A"],
+              ["Needed next 7 days", `${rs.fire_power_needed_7d} 🔥`],
+              ["Vault coverage", `${rs.vault_coverage_seats} seat${rs.vault_coverage_seats === 1 ? "" : "s"}`]].map(([l, v, col]) => (
+              <div key={l} className="p-2 rounded" style={{ background: "var(--surface-1, rgba(255,255,255,0.03))" }}>
+                <div className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{l}</div>
+                <div className="font-semibold" style={col ? { color: col } : undefined}>{v}</div>
+              </div>
+            ))}
+          </div>
+          {rs.fire_power_shortfall_7d > 0 && (
+            <div className="text-xs mb-2" style={{ color: "#FF8A5A" }} data-testid="rc-renewal-shortfall">
+              The Vault needs {rs.fire_power_shortfall_7d.toLocaleString()} more Fire Power to cover the next 7 days of renewals.
             </div>
-          ))}
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button className="or-btn text-xs" onClick={goVault} data-testid="rc-renewal-add-fp">Add Fire Power</button>
+            {rs.paused_members > 0 && (
+              <button className="or-btn or-btn-ghost text-xs" disabled={busy} onClick={reactivateAll} data-testid="rc-reactivate-eligible-btn">
+                {busy ? "Reactivating…" : `Reactivate Eligible Members (${rs.seat_cost} 🔥 each)`}
+              </button>
+            )}
+          </div>
         </div>
       )}
+      <div className="or-surface p-5">
+        <h3 className="text-lg mb-3" style={{ fontFamily: "var(--font-display)" }}>
+          <Clock size={16} className="inline mr-1" /> Recent Activity
+        </h3>
+        {activity.length === 0 ? (
+          <div className="text-sm" style={{ color: "var(--text-muted)" }}>No activity yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {activity.map((a) => (
+              <div key={a.id} className="text-sm flex justify-between gap-3 py-1.5"
+                style={{ borderBottom: "1px solid var(--border-col, rgba(255,255,255,0.08))" }}>
+                <span>{a.detail}</span>
+                <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>{fmtDate(a.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -176,6 +263,21 @@ function MembersTab({ data, me, perms, reload, centerId, config }) {
     } catch (e) { toast.error(e?.response?.data?.detail || "Remove failed"); }
   };
 
+  const reactivate = async (uid, username) => {
+    try {
+      await apiClient.post(`/responsibility-center/${centerId}/members/${uid}/reactivate`);
+      toast.success(`@${username}'s seat reactivated — new ${config?.seat_days ?? 30}-day active period started`);
+      reload();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Reactivation failed"); }
+  };
+  const canReactivate = perms.has("manage_renewals");
+
+  const STATE_LABELS = {
+    active: ["ACTIVE", "#7BD88F"], renewal_soon: ["RENEWAL SOON", "#F4C84A"],
+    awaiting_fire_power: ["AWAITING 🔥", "#FF8A5A"], paused: ["PAUSED", "#FF6B6B"],
+    invited: ["INVITED", "#9AA7BD"],
+  };
+
   return (
     <div className="space-y-4" data-testid="rc-tab-members">
       {canInvite && (
@@ -213,12 +315,26 @@ function MembersTab({ data, me, perms, reload, centerId, config }) {
                     @{m.username}
                     {m.status === "invited"
                       ? " · Invite pending"
-                      : m.seat_paid_until ? ` · Seat until ${fmtDate(m.seat_paid_until)}` : ""}
+                      : m.status === "paused"
+                        ? " · Seat paused — records preserved"
+                        : m.seat_paid_until ? ` · Seat until ${fmtDate(m.seat_paid_until)}` : ""}
                   </div>
                 </div>
-                <span className="text-xs uppercase tracking-wide font-semibold" style={{ color: ROLE_COLORS[m.role] }}>
-                  {m.status === "invited" ? "invited" : m.role}
-                </span>
+                {(() => {
+                  const [label, color] = STATE_LABELS[m.state || m.status] || [m.role.toUpperCase(), ROLE_COLORS[m.role]];
+                  return (
+                    <span className="text-xs uppercase tracking-wide font-semibold" style={{ color }}
+                      data-testid={`rc-member-state-${m.username}`}>
+                      {m.status === "active" && m.state === "active" ? m.role : label}
+                    </span>
+                  );
+                })()}
+                {canReactivate && m.status === "paused" && (
+                  <button className="or-btn text-xs" onClick={() => reactivate(m.user_id, m.username)}
+                    data-testid={`rc-member-reactivate-${m.username}`}>
+                    Reactivate ({config?.seat_cost ?? 100} 🔥)
+                  </button>
+                )}
                 {canManage && manageable && (
                   <select className="or-input text-xs py-1" value={m.role}
                     onChange={(e) => setRole(m.user_id, e.target.value)}
