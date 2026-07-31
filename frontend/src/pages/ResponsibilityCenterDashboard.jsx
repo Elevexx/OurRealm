@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { rcTypeMeta, ROLE_COLORS } from "@/lib/rcTypes";
+import { RcImg } from "@/lib/rcAssets";
 
 const uuid = () =>
   (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -69,6 +70,8 @@ export default function ResponsibilityCenterDashboard() {
           <ChevronLeft size={14} /> All Centers
         </button>
         <div className="or-surface p-6">
+          <RcImg assetKey="responsibility_center.landing.paused_member" className="w-full rounded-lg mb-4"
+            style={{ maxHeight: 180, objectFit: "cover" }} fallback={null} />
           <div className="flex items-center gap-3 mb-3">
             <div className="rounded-full flex items-center justify-center shrink-0"
               style={{ width: 44, height: 44, background: "rgba(244,200,74,0.15)", color: "#F4C84A" }}>
@@ -102,9 +105,15 @@ export default function ResponsibilityCenterDashboard() {
 
       <div className="or-surface p-5 mb-4">
         <div className="flex items-center gap-4">
-          <div className="rounded-full flex items-center justify-center shrink-0"
+          <div className="rounded-full flex items-center justify-center shrink-0 overflow-hidden"
             style={{ width: 52, height: 52, background: `${meta.color}22`, color: meta.color }}>
-            <meta.Icon size={26} />
+            {center.branding?.icon_url || center.branding?.logo_url ? (
+              <img src={center.branding.icon_url || center.branding.logo_url} alt=""
+                style={{ width: 52, height: 52, objectFit: "cover" }} data-testid="rc-dash-center-logo" />
+            ) : (
+              <RcImg assetKey="responsibility_center.default_center_icon" width={30} height={30}
+                fallback={<meta.Icon size={26} />} />
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl truncate" style={{ fontFamily: "var(--font-display)" }} data-testid="rc-dash-name">{center.name}</h1>

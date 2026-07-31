@@ -4,6 +4,7 @@ import { ChevronLeft, Flame, Check } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { RC_TYPES, rcTypeMeta } from "@/lib/rcTypes";
+import { RcImg } from "@/lib/rcAssets";
 
 const uuid = () =>
   (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -74,6 +75,8 @@ export default function ResponsibilityCenterCreate() {
 
       {step === 1 && (
         <div data-testid="rc-create-step-type">
+          <RcImg assetKey="responsibility_center.landing.create_center" className="w-full rounded-xl mb-3"
+            style={{ maxHeight: 180, objectFit: "cover" }} fallback={null} />
           <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>
             What kind of group will this Center be responsible for?
           </p>

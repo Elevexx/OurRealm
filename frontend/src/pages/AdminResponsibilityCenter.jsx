@@ -4,6 +4,7 @@ import { Landmark, Search, RefreshCw, Settings as SettingsIcon, LayoutGrid, Tabl
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { rcTypeMeta } from "@/lib/rcTypes";
+import { RcImg } from "@/lib/rcAssets";
 
 const fmtDate = (iso) => {
   if (!iso) return "—";
@@ -52,10 +53,18 @@ export default function AdminResponsibilityCenter() {
         <div>
           <div className="text-xs uppercase tracking-[0.25em]" style={{ color: "var(--text-muted)" }}>Admin</div>
           <h1 className="text-3xl sm:text-4xl" style={{ fontFamily: "var(--font-display)" }}>
-            <Landmark size={26} className="inline mr-2" style={{ color: "#F4C84A" }} />Responsibility Center
+            <RcImg assetKey="responsibility_center.admin_icon" width={30} height={30} eager
+              className="inline mr-2 align-[-4px]"
+              fallback={<Landmark size={26} className="inline mr-2" style={{ color: "#F4C84A" }} />} />
+            Responsibility Center
           </h1>
         </div>
-        <button className="or-btn or-btn-ghost" onClick={loadOverview} data-testid="rc-admin-refresh"><RefreshCw size={14} /> Refresh</button>
+        <div className="flex gap-2">
+          <button className="or-btn or-btn-ghost" onClick={() => navigate("/admin/media/responsibility-center")} data-testid="rc-admin-media-link">
+            Media
+          </button>
+          <button className="or-btn or-btn-ghost" onClick={loadOverview} data-testid="rc-admin-refresh"><RefreshCw size={14} /> Refresh</button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 mb-4 overflow-x-auto no-scrollbar">

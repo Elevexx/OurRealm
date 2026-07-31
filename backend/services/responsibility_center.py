@@ -166,6 +166,7 @@ def _public_center(c: dict) -> dict:
         "invitations_locked": bool(c.get("invitations_locked")),
         "vault_frozen": bool(c.get("vault_frozen")),
         "official": bool(c.get("official")),
+        "branding": c.get("branding") or None,
     }
 
 

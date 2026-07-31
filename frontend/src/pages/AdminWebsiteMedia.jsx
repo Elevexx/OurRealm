@@ -545,6 +545,17 @@ export default function AdminWebsiteMedia() {
         <Badge color="#2EA0FF">STEALTH ONLY ACCESS</Badge>
       </div>
 
+      <div className="or-surface p-4 mb-5 flex flex-wrap items-center justify-between gap-3" data-testid="wm-rc-media-link">
+        <div>
+          <div className="text-sm font-semibold" style={{ color: "var(--text-main)" }}>Responsibility Center</div>
+          <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+            Logos, navigation icons, illustrations, Center type artwork, and branding for the Responsibility Center.
+          </div>
+        </div>
+        <button className="or-btn" onClick={() => (window.location.href = "/admin/media/responsibility-center")}
+          data-testid="wm-open-rc-media">Open Responsibility Center Media</button>
+      </div>
+
       <div className="grid lg:grid-cols-2 gap-5">
         <div>
           <h2 className="text-base font-bold mb-3 flex items-center gap-2" style={{ color: "var(--text-main)" }}>

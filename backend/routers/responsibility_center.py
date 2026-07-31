@@ -46,6 +46,28 @@ async def rc_mine(current: CurrentUser):
     return await rc.list_mine(current)
 
 
+@router.get("/preferences")
+async def rc_get_prefs(current: CurrentUser):
+    from services.rc_renewals import get_rc_prefs, PREF_DEFAULTS
+    return {"preferences": await get_rc_prefs(current["id"]), "defaults": PREF_DEFAULTS}
+
+
+class PrefsBody(BaseModel):
+    updates: dict
+
+
+@router.patch("/preferences")
+async def rc_patch_prefs(body: PrefsBody, current: CurrentUser):
+    from services.rc_renewals import get_rc_prefs, PREF_DEFAULTS
+    from core.db import db
+    sets = {k: bool(v) for k, v in (body.updates or {}).items() if k in PREF_DEFAULTS}
+    if sets:
+        await db.rc_notification_prefs.update_one(
+            {"user_id": current["id"]},
+            {"$set": sets, "$setOnInsert": {"user_id": current["id"]}}, upsert=True)
+    return {"ok": True, "preferences": await get_rc_prefs(current["id"])}
+
+
 @router.get("/{center_id}")
 async def rc_dashboard(center_id: str, current: CurrentUser):
     return await rc.center_dashboard(current, center_id)

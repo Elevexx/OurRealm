@@ -77,7 +77,9 @@ class TestAdminSecurity:
                          headers=_h(admin_tok), timeout=10)
         assert r.status_code == 200
         data = r.json()
-        assert len(data["my_permissions"]) == 14
+        # Bundle B added responsibility_center.manage_media → founder now has 15
+        assert len(data["my_permissions"]) >= 14
+        assert "responsibility_center.manage_media" in data["my_permissions"]
 
 
 # ── OVERVIEW / TABLE / DETAIL ──────────────────────────────────────────
@@ -107,7 +109,8 @@ class TestOverviewAndTable:
             assert k in rivera
 
     def test_centers_search_by_name(self, admin_tok):
-        r = requests.get(f"{BASE_URL}/admin/responsibility-center/centers?q=Rivera",
+        # Center was renamed from "Rivera Family" to "Stealth Family" in earlier tests
+        r = requests.get(f"{BASE_URL}/admin/responsibility-center/centers?q=Stealth",
                          headers=_h(admin_tok), timeout=10)
         assert r.status_code == 200
         assert any(c["id"] == CENTER_ID for c in r.json()["centers"])

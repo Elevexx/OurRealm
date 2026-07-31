@@ -4,6 +4,7 @@ import { Flame, Plus, ShieldCheck, Vault, Users, ChevronRight, Mail } from "luci
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { RC_TYPES, rcTypeMeta, ROLE_COLORS } from "@/lib/rcTypes";
+import { RcImg, useRcBranding } from "@/lib/rcAssets";
 
 // Responsibility Center — landing hub (Phase 1).
 // Explains the system, lists my Centers + pending invites, and links
@@ -52,18 +53,27 @@ export default function ResponsibilityCenterHub() {
 
   const balance = data?.my_fire_vault_balance ?? 0;
   const createCost = config?.create_cost ?? 1000;
+  const branding = useRcBranding();
 
   return (
     <div className="max-w-4xl mx-auto" data-testid="rc-hub-page">
-      <div className="mb-6">
-        <div className="text-xs uppercase tracking-[0.25em]" style={{ color: "var(--text-muted)" }}>OurRealm</div>
-        <h1 className="text-3xl sm:text-4xl" style={{ fontFamily: "var(--font-display)" }}>Responsibility Center</h1>
-        <p className="text-sm mt-2 max-w-2xl" style={{ color: "var(--text-muted)" }}>
-          A universal home for the groups you're responsible for — families, businesses, teams,
-          and organizations. Each Center has its own members, roles, and a shared Center Vault
-          powered entirely by Fire Power.
-        </p>
+      <div className="mb-6 flex items-start gap-4">
+        <RcImg assetKey="responsibility_center.main_logo" height={64} eager
+          fallback={null} testid="rc-hub-logo" />
+        <div className="min-w-0">
+          <div className="text-xs uppercase tracking-[0.25em]" style={{ color: "var(--text-muted)" }}>OurRealm</div>
+          <h1 className="text-3xl sm:text-4xl" style={{ fontFamily: "var(--font-display)" }} data-testid="rc-hub-title">{branding.short_name}</h1>
+          <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }} data-testid="rc-hub-tagline">{branding.tagline}</div>
+          <p className="text-sm mt-2 max-w-2xl" style={{ color: "var(--text-muted)" }}>
+            A universal home for the groups you're responsible for — families, businesses, teams,
+            and organizations. Each Center has its own members, roles, and a shared Center Vault
+            powered entirely by Fire Power.
+          </p>
+        </div>
       </div>
+
+      <RcImg assetKey="responsibility_center.landing.hero" className="w-full rounded-xl mb-6"
+        style={{ maxHeight: 260, objectFit: "cover" }} fallback={null} testid="rc-hub-hero" />
 
       {/* How it works */}
       <div className="grid sm:grid-cols-3 gap-3 mb-6">
@@ -149,6 +159,8 @@ export default function ResponsibilityCenterHub() {
           <h3 className="text-lg mb-2" style={{ fontFamily: "var(--font-display)" }}>My Centers</h3>
           {(data?.centers?.length || 0) === 0 ? (
             <div className="or-surface p-8 text-center" data-testid="rc-hub-empty">
+              <RcImg assetKey="responsibility_center.landing.no_centers" className="mx-auto mb-3"
+                style={{ maxHeight: 160 }} fallback={null} />
               <div className="text-sm" style={{ color: "var(--text-muted)" }}>
                 You don't belong to any Responsibility Centers yet.
               </div>

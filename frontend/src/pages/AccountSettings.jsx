@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ShieldCheck, Lock, UserCog, KeyRound, AtSign, MailCheck, Globe2, Users as UsersIcon, Wallet, DollarSign, BadgeCheck, Camera, MapPin, Radar, Trash2, ListMusic, Landmark, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 import ManagePlaylistsTab from "@/components/ManagePlaylistsTab";
 import apiClient from "@/api/client";
 import VipBadge from "@/components/VipBadge";
@@ -477,15 +478,36 @@ function Card({ title, Icon, children }) {
 
 // Responsibility Center — Phase 1 Account Settings tab. Compact list of
 // the user's Centers + pending invites; full management lives at
-// /responsibility-center.
+// /responsibility-center. Bundle B adds notification preferences.
+const RC_PREFS = [
+  { key: "daily_digest", label: "Daily Renewal Digest", desc: "One grouped renewal summary per Center per day (reduces individual reminders)" },
+  { key: "critical_alerts", label: "Immediate Critical Renewal Alerts", desc: "Renewal failures, paused members, frozen vaults — always timely" },
+  { key: "low_vault_alerts", label: "Low Vault Alerts", desc: "Warn when a Center Vault can't cover upcoming Fire Power Requirements" },
+  { key: "paused_member_alerts", label: "Paused Member Alerts", desc: "Notify when a member's seat is paused" },
+  { key: "renewal_success", label: "Renewal Success Notifications", desc: "Notify when a member's seat renews successfully" },
+];
+
 function ResponsibilityCentersTab({ navigate }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
+  const [prefs, setPrefs] = useState(null);
   useEffect(() => {
     apiClient.get("/responsibility-center/mine")
       .then((r) => setData(r.data))
       .catch((e) => setErr(e?.response?.data?.detail || "Could not load your Centers"));
+    apiClient.get("/responsibility-center/preferences")
+      .then((r) => setPrefs(r.data.preferences)).catch(() => {});
   }, []);
+  const togglePref = async (key) => {
+    const next = { ...prefs, [key]: !prefs[key] };
+    setPrefs(next);
+    try {
+      await apiClient.patch("/responsibility-center/preferences", { updates: { [key]: next[key] } });
+    } catch {
+      setPrefs(prefs);
+      toast.error("Could not save preference");
+    }
+  };
   return (
     <div className="space-y-4" data-testid="tab-centers">
       <Card title="Responsibility Centers" Icon={Landmark}>
@@ -528,6 +550,24 @@ function ResponsibilityCentersTab({ navigate }) {
         <button className="or-btn mt-3" onClick={() => navigate("/responsibility-center")} data-testid="settings-centers-open-hub">
           Open Responsibility Center
         </button>
+      </Card>
+      <Card title="Center Notifications" Icon={Landmark}>
+        <div className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+          Control how the Responsibility Center notifies you about seat renewals and Fire Power.
+        </div>
+        {!prefs ? (
+          <div className="text-sm" style={{ color: "var(--text-muted)" }}>Loading…</div>
+        ) : RC_PREFS.map((p) => (
+          <div key={p.key} className="flex items-center justify-between gap-3 py-2"
+            style={{ borderBottom: "1px solid var(--border-col, rgba(255,255,255,0.08))" }}>
+            <div>
+              <div className="text-sm">{p.label}</div>
+              <div className="text-xs" style={{ color: "var(--text-muted)" }}>{p.desc}</div>
+            </div>
+            <button className="or-chip shrink-0" data-active={!!prefs[p.key]} onClick={() => togglePref(p.key)}
+              data-testid={`rc-pref-${p.key}`}>{prefs[p.key] ? "ON" : "OFF"}</button>
+          </div>
+        ))}
       </Card>
     </div>
   );

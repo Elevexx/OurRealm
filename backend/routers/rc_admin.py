@@ -35,6 +35,7 @@ RC_ADMIN_PERMS = {
     "responsibility_center.reverse_transactions",
     "responsibility_center.retry_renewals",
     "responsibility_center.manage_settings",
+    "responsibility_center.manage_media",
     "responsibility_center.view_activity",
     "responsibility_center.view_audit_logs",
     "responsibility_center.export_data",

@@ -42,6 +42,7 @@ import Settings from "@/pages/Settings";
 import AccountSettings from "@/pages/AccountSettings";
 import AdminResponsibilityCenter from "@/pages/AdminResponsibilityCenter";
 import AdminResponsibilityCenterDetail from "@/pages/AdminResponsibilityCenterDetail";
+import AdminRcMedia from "@/pages/AdminRcMedia";
 import ResponsibilityCenterHub from "@/pages/ResponsibilityCenterHub";
 import ResponsibilityCenterCreate from "@/pages/ResponsibilityCenterCreate";
 import ResponsibilityCenterDashboard from "@/pages/ResponsibilityCenterDashboard";
@@ -211,6 +212,7 @@ function App() {
             <Route path="/settings/account" element={<ShellRoute><AccountSettings /></ShellRoute>} />
             <Route path="/responsibility-center" element={<ShellRoute><ResponsibilityCenterHub /></ShellRoute>} />
             <Route path="/admin/responsibility-center" element={<ShellRoute><AdminResponsibilityCenter /></ShellRoute>} />
+            <Route path="/admin/media/responsibility-center" element={<ShellRoute><AdminRcMedia /></ShellRoute>} />
             <Route path="/admin/responsibility-center/:centerId" element={<ShellRoute><AdminResponsibilityCenterDetail /></ShellRoute>} />
             <Route path="/responsibility-center/create" element={<ShellRoute><ResponsibilityCenterCreate /></ShellRoute>} />
             <Route path="/responsibility-center/:id" element={<ShellRoute><ResponsibilityCenterDashboard /></ShellRoute>} />
