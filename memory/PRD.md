@@ -1,5 +1,25 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Responsibility Center — Bundle B (Jul 31, 2026) ✅ COMPLETE — awaiting founder review
+**Verified: testing_agent iteration_97 — 24/24 new pytest (`tests/test_bundle_b_rc_media.py`) + 61/61 regression (Bundle A 34 + Phase 1 27) + 8/8 renewal sim + full frontend E2E. Zero issues. Real logo upload E2E through /api/images/upload verified.**
+
+### Admin Media & Branding
+- NEW `services/rc_media.py`: system-asset registry — 69 stable asset keys in 6 sections (branding 10, landing 10, center_types 13, dashboard 13, education 11, admin_system 12). Collections: `rc_system_assets`, `rc_system_asset_versions`, `rc_branding`. One active version per (key, theme, device variant); history preserved; restore/reset audited; 30s-cached manifest invalidated on activation; durable-URL-only (blob:/data: rejected); binary uploads reuse the EXISTING /api/images/upload R2 pipeline (MIME+signature+size+content-safety).
+- NEW `routers/rc_media.py`: `/api/admin/responsibility-center/media/*` (assets list, versions, upload version [inactive-first], activate, reset, alt text, branding GET/PATCH) + authenticated `/api/responsibility-center/media/manifest` + feature-flagged `PATCH /api/responsibility-center/{cid}/branding` (center-specific branding foundation; fallback order center→template→global→built-in). New admin perm `responsibility_center.manage_media` (founder). All mutations: reason (min 5) + immutable audit (media_version_uploaded/activated, media_reset_to_default, media_alt_text_changed, branding_changed).
+- Branding config: product_name / short_name / tagline (defaults "OurRealm Responsibility Center" / "Responsibility Center" / "One System. Endless Possibilities.") + flags center_branding_enabled, template_logo_overrides_enabled, user_center_logo_allowed, user_center_cover_allowed (all default false).
+- NEW frontend `pages/AdminRcMedia.jsx` (`/admin/media/responsibility-center`): section chips, asset cards (preview/key-copy/usage/dims/version info), upload modal (current-vs-new preview, client validation PNG/JPEG/WebP ≤3MB, dims capture, variant selects, reason, inactive-first then explicit Activate), versions modal (restore), branding settings panel. Linked from AdminResponsibilityCenter ("Media" btn) + AdminWebsiteMedia card.
+- NEW `lib/rcAssets.js`: session-cached manifest, `RcImg` (lazy, reserved dims, onError fallback — never broken images), `useRcBranding`, `refreshRcManifest`. Integrated: hub (main_logo, hero, no_centers, title/tagline from branding), wizard (create_center illustration), dashboard (center branding icon → default_center_icon → lucide fallback; paused_member illustration), AdminResponsibilityCenter header (admin_icon). Zero visual regression when no assets uploaded.
+
+### Renewal Digest & Preferences
+- `run_digest_pass()` in rc_renewals.py: one grouped digest per Center per UTC day (unique dedup_key claim in `responsibility_center_digests` — overlap-safe), recipients owner+admins, empty digests never sent, counts+vault+shortfall in message, deep-link payload, send status recorded. Runs in the hourly scheduler loop (self-dedups daily).
+- Warning suppression: when recipient's daily_digest pref on, 7/3-day individual reminders are covered by the digest (keys marked); 1-day reminder + all critical alerts (failed/paused/frozen) stay immediate. Digest off → individual reminders resume.
+- Preferences: `rc_notification_prefs` (5 keys, default true) via GET/PATCH `/api/responsibility-center/preferences` (route ordered BEFORE /{center_id}); gates renewal-success + paused-member owner notifications. UI: Account Settings → Centers tab (5 toggles).
+
+### Bundle B limitations/deferred
+- Center timezone for digest timing = UTC (no center timezone field yet). SVG uploads not accepted (no sanitizer — by design). Template-specific asset overrides = flag only (templates ship in later bundle). Center-owner branding UI minimal (API + flags done; richer UI later). Education assets = media support only.
+
+### Next: Bundle C (Responsibilities & Tasks) — NOT STARTED, awaiting founder approval
+
 ## Responsibility Center — Bundle A (Jul 31, 2026) ✅ COMPLETE — awaiting founder review
 **Verified: testing_agent iteration_96 — 34/34 admin pytest (`tests/test_bundle_a_rc_admin.py`) + 8/8 renewal engine sim (`tests/sim_bundle_a_renewals.py`) + 27/27 Phase 1 regression + full frontend E2E. Zero issues.**
 
