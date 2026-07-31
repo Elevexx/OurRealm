@@ -1,5 +1,43 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Responsibility Center — Bundle A (Jul 31, 2026) ✅ COMPLETE — awaiting founder review
+**Verified: testing_agent iteration_96 — 34/34 admin pytest (`tests/test_bundle_a_rc_admin.py`) + 8/8 renewal engine sim (`tests/sim_bundle_a_renewals.py`) + 27/27 Phase 1 regression + full frontend E2E. Zero issues.**
+
+### 1. Admin Panel (`/admin/responsibility-center` + `/:centerId`)
+- NEW `routers/rc_admin.py` (~18 endpoints, prefix `/api/admin/responsibility-center`): overview (real DB stats: center growth, memberships/adoption, vault coverage/warnings, Fire Power activity, recent admin actions), All Centers table (search name/ID/owner, status+flag filters, pagination), center detail + members/transactions/renewals/activity/audit/notes subresources, actions (pause/restore/archive/lock+unlock invitations/freeze+unfreeze vault/mark+clear needs_review), vault adjust (±, idempotent, before/after), transaction reverse (compensating txn, single-shot), member retry-renewal/reactivate, settings GET/PATCH, JSON export (logged).
+- Granular perms: 14 `responsibility_center.*` perms; founder=all, other admin roles=view-only. Enforced backend-side (`require_rc_perm`). Non-admins 403 everywhere.
+- Every mutation requires written reason (min 5 chars) → immutable audit row in `responsibility_center_admin_audit` (admin identity, timestamp, before/after).
+- NEW frontend: `AdminResponsibilityCenter.jsx` (Overview/All Centers/Global Settings tabs), `AdminResponsibilityCenterDetail.jsx` (9 tabs + ReasonModal), AdminHub card, App.js routes.
+
+### 2. Global Settings (versioned, audited, prospective-only)
+- `responsibility_center_settings` (_id="settings") + `_settings_history`. 14 keys: create_cost(1000), seat_cost(100), period_days(30), creator_first_seat_included(T), owner_exempt(T — owner seat never auto-renews/pauses), reminder_days([7,3,1]), grace_days(0), auto_renewals_enabled(T), emergency_renewal_pause(F), max_centers_per_user(0), max_members_per_center(0), invitation_limit(50), center_creation_enabled(T), member_activation_enabled(T).
+- `get_rc_settings()` (10s cache) wired into create/invite/accept/config. Defaults exactly preserve Phase 1 behavior.
+
+### 3. Renewal Scheduler (`services/rc_renewals.py`)
+- Hourly asyncio worker (env `RC_RENEWAL_INTERVAL_SECONDS`, default 3600), started/stopped in server.py lifespan (purge_cron pattern). UTC internal.
+- Claim-based locking (`renewal_claim_until`, 10 min) + period-scoped unique idempotency key (`rc-renew:{cid}:{uid}:{period_end}`) → PROVEN: 2 concurrent workers = exactly 1 burn.
+- Success: burn seat_cost from Center Vault (conditional $gte), extend period from due date, ledger `seat_renewal`, attempt record, activity, owner notification.
+- Insufficient: NO burn, membership → paused (or `awaiting_fire_power` during grace_days>0), attempt record with exact FP needed, owner+member notified, all data preserved.
+- Warnings pass: 7/3/1-day reminders to owner, deduped per (period, closest threshold) via `warnings_sent`; larger thresholds marked covered (bug found+fixed in testing).
+- Emergency pause: skips processing, touches nothing.
+
+### 4. Paused-member & warning flows
+- Member states: active / renewal_soon / awaiting_fire_power / paused / invited / declined / left / removed (derived via `membership_state`).
+- Paused dashboard: safe status info ONLY (paused_notice payload — no members/activity/vault txns). Paused members blocked from all actions (_require_member).
+- Owner dashboard renewal panel: renewing 7/3/1-day counts, awaiting, paused, vault balance/coverage, FP needed+shortfall 7d, Add Fire Power btn, Reactivate Eligible Members btn.
+- Reactivation: `POST /{cid}/members/{uid}/reactivate` + `/reactivate-eligible` (perm `manage_renewals` = owner/admin) — burns seat_cost, NEW period from now, duplicate-safe, ledger `seat_reactivation`, member notified.
+- New notification kinds: rc renewal_reminder / renewal / renewal_failed / member_paused / paused / reactivated / admin_action — all deep-link via payload.link (Notifications.jsx default case navigates).
+- Enforcements: vault_frozen blocks fund/accept/renew/reactivate; invitations_locked blocks invites; paused/archived center blocks invites+activation (funding allowed while paused for recovery).
+
+### New collections (Bundle A, additive)
+`responsibility_center_settings`, `_settings_history`, `_renewal_attempts`, `_admin_audit`, `_admin_notes`. New ledger txn types: `seat_renewal`, `seat_reactivation`, `admin_adjustment`, `admin_reversal`.
+
+### Bundle A known limitations / deferred
+- Admin table "Official" flag settable only via DB (create_official UI = later bundle). Export = JSON (PDF/CSV in Bundle F). Owner transfer/closure = Bundle D. Reported-centers stat reads `open_reports` field (moderation integration = later bundle). Admin roles other than founder are view-only (per-admin perm assignment later).
+
+### Next: Bundle B (admin media & logo management) — NOT STARTED, awaiting founder approval
+Then C = Responsibilities & Tasks, D = Owner Transfer + Granular Permissions, E = Groups + Calendar, F = Reports + Notifications expansion, G = Templates/Widgets/Search/Moderation/polish.
+
 ## Responsibility Center — Phase 1, Step 1 (Jul 31, 2026) ✅ COMPLETE — awaiting founder verification
 
 **Verified: testing_agent iteration_95 — 27/27 backend pytest (`tests/test_responsibility_center.py`) + 100% frontend E2E (hub, wizard, dashboard, settings tab). Zero issues.**
