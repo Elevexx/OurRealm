@@ -25,9 +25,12 @@ access control. Variable interpolation supports {{user_message}},
 {{username}}, {{display_name}}, {{profile_id}}, {{widget_id}}, {{realm_id}}.
 """
 from __future__ import annotations
+import asyncio
 import json
 import logging
 import os
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 import httpx
@@ -48,6 +51,52 @@ from utils.sliding_window_rate_limit import rate_limit as sliding_rate_limit
 
 logger = logging.getLogger("ourrealm.widget_chat")
 router = APIRouter(prefix="/api/widgets/chat", tags=["widget-chat"])
+
+
+async def _run_image_job(job_id: str, prompt: str, ref_b64: Optional[str],
+                         widget_id: str, user_id: str, memory_mode: str) -> None:
+    """Background ORAi image job — real provider errors land on the job doc."""
+    def _now() -> str:
+        return datetime.now(timezone.utc).isoformat()
+    await db.orai_image_jobs.update_one({"id": job_id},
+                                        {"$set": {"status": "running", "started_at": _now()}})
+    try:
+        from services.orai_images import generate_orai_image
+        from services import image_store
+        img_bytes, used_model = await generate_orai_image(prompt, ref_b64)
+        rec = await image_store.save_bytes(img_bytes, user_id, "image/png")
+        reply_text = ("Here's your edited image." if ref_b64 else "Here's your image.") + \
+                     " Tell me what to refine and I'll iterate on it."
+        if memory_mode != "off":
+            await append_messages(widget_id, user_id,
+                                  [{"role": "assistant", "content": reply_text,
+                                    "image_url": rec.original_url}])
+        await db.orai_image_jobs.update_one({"id": job_id}, {"$set": {
+            "status": "complete", "image_url": rec.original_url,
+            "model": used_model, "reply": reply_text, "finished_at": _now()}})
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ORAi image job %s failed: %s", job_id, str(e)[:200])
+        await db.orai_image_jobs.update_one({"id": job_id}, {"$set": {
+            "status": "failed", "error": str(e)[:200], "finished_at": _now()}})
+
+
+@router.get("/image-jobs/active")
+async def active_image_job(widget_id: str, current: CurrentUser):
+    fresh_cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    job = await db.orai_image_jobs.find_one(
+        {"user_id": current["id"], "widget_id": widget_id,
+         "status": {"$in": ["pending", "running"]},
+         "created_at": {"$gte": fresh_cutoff}},
+        {"_id": 0}, sort=[("created_at", -1)])
+    return {"job": job}
+
+
+@router.get("/image-job/{job_id}")
+async def image_job_status(job_id: str, current: CurrentUser):
+    job = await db.orai_image_jobs.find_one({"id": job_id, "user_id": current["id"]}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return job
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -257,33 +306,34 @@ async def chat_message(payload: ChatMessagePayload, current: CurrentUser, respon
                     ref_b64 = load_reference_from_image_url(m["image_url"])
                     break
         if has_upload or gen_intent or (edit_intent and ref_b64):
-            try:
-                img_bytes, used_model = await generate_orai_image(payload.message, ref_b64)
-            except Exception as e:  # noqa: BLE001
-                raise HTTPException(status_code=502,
-                                    detail=f"Image generation failed: {str(e)[:140]}")
-            from services import image_store
-            rec = await image_store.save_bytes(img_bytes, current["id"], "image/png")
-            reply_text = ("Here's your edited image." if ref_b64 else "Here's your image.") + \
-                         " Tell me what to refine and I'll iterate on it."
+            # Async image job — Cloudflare kills long requests, so we
+            # return a job id immediately and generate in the background.
             memory_mode = (chat_cfg.get("memory_mode") or "persistent").lower()
+            fresh_cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+            active = await db.orai_image_jobs.find_one(
+                {"user_id": current["id"], "widget_id": payload.widget_id,
+                 "status": {"$in": ["pending", "running"]},
+                 "created_at": {"$gte": fresh_cutoff}},
+                {"_id": 0, "id": 1})
+            if active:
+                return {"reply": "", "image_job_id": active["id"], "model": None,
+                        "usage": {}, "finish_reason": "image_job",
+                        "memory_mode": memory_mode, "rate_limit": None}
+            job_id = str(uuid.uuid4())
+            await db.orai_image_jobs.insert_one({
+                "id": job_id, "user_id": current["id"], "widget_id": payload.widget_id,
+                "prompt": payload.message[:2000], "status": "pending",
+                "has_reference": bool(ref_b64),
+                "created_at": datetime.now(timezone.utc).isoformat()})
             if memory_mode != "off":
-                await append_messages(
-                    payload.widget_id, current["id"],
-                    [
-                        {"role": "user", "content": payload.message},
-                        {"role": "assistant", "content": reply_text, "image_url": rec.original_url},
-                    ],
-                )
-            return {
-                "reply": reply_text,
-                "model": used_model,
-                "image_url": rec.original_url,
-                "usage": {},
-                "finish_reason": "image_tool",
-                "memory_mode": memory_mode,
-                "rate_limit": None,
-            }
+                await append_messages(payload.widget_id, current["id"],
+                                      [{"role": "user", "content": payload.message}])
+            asyncio.create_task(_run_image_job(
+                job_id, payload.message, ref_b64, payload.widget_id,
+                current["id"], memory_mode))
+            return {"reply": "", "image_job_id": job_id, "model": None,
+                    "usage": {}, "finish_reason": "image_job",
+                    "memory_mode": memory_mode, "rate_limit": None}
 
     # Phase 3.6 — Orion analytics interceptor. When the caller is a
     # founder/admin AND their message matches an analytics intent
