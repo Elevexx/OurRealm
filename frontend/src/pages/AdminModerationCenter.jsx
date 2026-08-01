@@ -200,6 +200,7 @@ export default function AdminModerationCenter() {
   const [removed, setRemoved] = useState([]);
   const [logItems, setLogItems] = useState([]);
   const [reportStatus, setReportStatus] = useState("open");
+  const [reportGroup, setReportGroup] = useState("all");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -215,7 +216,8 @@ export default function AdminModerationCenter() {
         const c = await apiClient.get(`/admin/moderation/cases?tab=${tab}&limit=50`);
         setCases(c.data?.items || []);
       } else if (tab === "reports") {
-        const r = await apiClient.get(`/admin/moderation/reports?status=${reportStatus}&limit=100`);
+        const grp = reportGroup === "all" ? "" : `&content_group=${reportGroup}`;
+        const r = await apiClient.get(`/admin/moderation/reports?status=${reportStatus}&limit=100${grp}`);
         setReports(r.data?.reports || []);
       } else if (tab === "removed") {
         const r = await apiClient.get("/admin/moderation/removed?limit=50");
@@ -227,7 +229,7 @@ export default function AdminModerationCenter() {
     } catch (e) {
       setErr(e?.response?.data?.detail || "Failed to load Trust & Safety data");
     } finally { setLoading(false); }
-  }, [tab, reportStatus]);
+  }, [tab, reportStatus, reportGroup]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -381,6 +383,14 @@ export default function AdminModerationCenter() {
                 style={reportStatus === s ? { color: "var(--primary)", borderColor: "var(--primary)" } : undefined}
                 onClick={() => { setReportStatus(s); setSelectedReports([]); }} data-testid={`ts-report-filter-${s}`}>
                 {s}
+              </button>
+            ))}
+            <span className="mx-1 text-[10px] uppercase" style={{ color: "var(--text-muted)" }}>·</span>
+            {[["all", "All content"], ["core", "Social"], ["rc", "Responsibility Center"]].map(([g, label]) => (
+              <button key={g} className="or-chip text-[11px]"
+                style={reportGroup === g ? { color: "var(--primary)", borderColor: "var(--primary)" } : undefined}
+                onClick={() => { setReportGroup(g); setSelectedReports([]); }} data-testid={`ts-report-group-${g}`}>
+                {label}
               </button>
             ))}
             {selectedReports.length >= 2 && (

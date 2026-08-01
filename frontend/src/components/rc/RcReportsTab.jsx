@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Download, Printer, RefreshCw, Save, Trash2, FileText, FileSpreadsheet, File, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
+import { RcScheduledReportsPanel } from "./RcScheduledReportsPanel";
 
 const uuid = () => (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
@@ -309,6 +310,10 @@ export const RcReportsTab = ({ centerId, data }) => {
           </div>
         ))}
       </div>
+
+      {catalog.can_export && (
+        <RcScheduledReportsPanel centerId={centerId} catalog={catalog} members={data?.members || []} />
+      )}
     </div>
   );
 };

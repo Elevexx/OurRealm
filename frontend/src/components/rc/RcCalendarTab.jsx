@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, ChevronLeft, ChevronRight, X, MapPin, Video, Repeat, AlertTriangle } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, X, MapPin, Video, Repeat, AlertTriangle, Flag } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { RcRecurrenceEditor, DEFAULT_RECURRENCE, recurrenceLabel } from "./RcRecurrenceEditor";
+import ReportModal from "@/components/ReportModal";
 
 const uuid = () =>
   (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -378,6 +379,7 @@ function EventDrawer({ centerId, eventId, onClose }) {
   const [marks, setMarks] = useState({});
   const [editing, setEditing] = useState(false);
   const [edit, setEdit] = useState({});
+  const [reportOpen, setReportOpen] = useState(false);
   const load = useCallback(async () => {
     try {
       const r = await apiClient.get(`/responsibility-center/${centerId}/events/${eventId}`);
@@ -478,8 +480,16 @@ function EventDrawer({ centerId, eventId, onClose }) {
             </div>
             <h3 className="text-lg leading-snug" style={{ fontFamily: "var(--font-display)" }} data-testid="rc-event-drawer-title">{ev.title}</h3>
           </div>
-          <button className="or-btn or-btn-ghost p-1.5 shrink-0" onClick={onClose} aria-label="Close" data-testid="rc-event-drawer-close"><X size={16} /></button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button className="or-btn or-btn-ghost p-1.5" onClick={() => setReportOpen(true)}
+              title="Report this event" aria-label="Report this event" data-testid="rc-event-drawer-report">
+              <Flag size={14} />
+            </button>
+            <button className="or-btn or-btn-ghost p-1.5" onClick={onClose} aria-label="Close" data-testid="rc-event-drawer-close"><X size={16} /></button>
+          </div>
         </div>
+        <ReportModal open={reportOpen} targetType="rc_event" targetId={ev.series_id || ev.id}
+          onClose={() => setReportOpen(false)} testid="rc-event-report-modal" />
 
         <div className="text-sm mb-1" data-testid="rc-event-drawer-time">
           {new Date(ev.start_at).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}

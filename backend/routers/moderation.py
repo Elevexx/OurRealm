@@ -819,7 +819,8 @@ async def safety_cases(current: CurrentUser, tab: str = "ai", limit: int = 50):
 
 @router.get("/api/admin/moderation/reports")
 async def admin_reports(current: CurrentUser, status: str = "open",
-                        reason: Optional[str] = None, limit: int = 100):
+                        reason: Optional[str] = None, limit: int = 100,
+                        content_group: Optional[str] = None):
     _require_admin(current)
     q: dict = {}
     if status == "open":
@@ -830,6 +831,10 @@ async def admin_reports(current: CurrentUser, status: str = "open",
         q = {"removed_from_active_queue": True}
     if reason:
         q["reason"] = reason
+    if content_group == "rc":
+        q["content_type"] = {"$regex": "^rc_"}
+    elif content_group == "core":
+        q["content_type"] = {"$not": {"$regex": "^rc_"}}
     out = []
     cursor = db.reports.find(q, {"_id": 0}).sort("created_at", -1).limit(min(max(1, limit), 300))
     async for r in cursor:

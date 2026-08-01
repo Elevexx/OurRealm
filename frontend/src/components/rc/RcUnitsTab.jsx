@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, ChevronRight, ChevronDown, Users, Archive, ArchiveRestore, Pencil, ArrowUp, ArrowDown, Search, FolderTree, List } from "lucide-react";
+import { Plus, ChevronRight, ChevronDown, Users, Archive, ArchiveRestore, Pencil, ArrowUp, ArrowDown, Search, FolderTree, List, Flag } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
+import ReportModal from "@/components/ReportModal";
 
 const uuid = () =>
   (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -24,6 +25,7 @@ export const RcUnitsTab = ({ centerId, data }) => {
   const [collapsed, setCollapsed] = useState({});
   const [modal, setModal] = useState(null); // {mode:'create'|'edit', unit?}
   const [membersFor, setMembersFor] = useState(null); // unit
+  const [reportUnit, setReportUnit] = useState(null); // unit
 
   const load = useCallback(async () => {
     try {
@@ -122,6 +124,8 @@ export const RcUnitsTab = ({ centerId, data }) => {
                 : <button className="or-btn or-btn-ghost p-1.5" title="Restore" onClick={() => setStatus(u, "active")} data-testid={`rc-unit-restore-${u.id}`}><ArchiveRestore size={13} /></button>}
             </div>
           )}
+          <button className="or-btn or-btn-ghost p-1.5 shrink-0" title="Report this group" aria-label="Report this group"
+            onClick={() => setReportUnit(u)} data-testid={`rc-unit-report-${u.id}`}><Flag size={12} /></button>
         </div>
       </div>
     );
@@ -129,6 +133,8 @@ export const RcUnitsTab = ({ centerId, data }) => {
 
   return (
     <div className="space-y-4" data-testid="rc-tab-groups">
+      <ReportModal open={!!reportUnit} targetType="rc_unit" targetId={reportUnit?.id}
+        onClose={() => setReportUnit(null)} testid="rc-unit-report-modal" />
       <div className="or-surface p-4">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <h3 className="text-sm font-semibold uppercase tracking-wide">{payload?.unit_label || "Groups"} ({units.length})</h3>

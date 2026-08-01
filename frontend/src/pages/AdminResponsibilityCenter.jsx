@@ -61,6 +61,9 @@ export default function AdminResponsibilityCenter() {
           </h1>
         </div>
         <div className="flex gap-2">
+          <button className="or-btn or-btn-ghost" onClick={() => navigate("/admin/responsibility-center/templates")} data-testid="rc-admin-templates-link">
+            Templates
+          </button>
           <button className="or-btn or-btn-ghost" onClick={() => navigate("/admin/media/responsibility-center")} data-testid="rc-admin-media-link">
             Media
           </button>

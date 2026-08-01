@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { X, CheckSquare, MessageSquare, Paperclip, History, Repeat, Trash2, Upload } from "lucide-react";
+import { X, CheckSquare, MessageSquare, Paperclip, History, Repeat, Trash2, Upload, Flag } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { recurrenceLabel } from "./RcRecurrenceEditor";
 import { RcConvertModal } from "./RcConvertModal";
+import ReportModal from "@/components/ReportModal";
 
 const fmt = (iso) => {
   if (!iso) return "—";
@@ -35,6 +36,7 @@ const DESTRUCTIVE = new Set(["cancel", "archive", "decline"]);
 
 // Full item detail — right drawer on desktop, full-screen sheet on mobile.
 export const RcItemDrawer = ({ centerId, itemId, onClose, onChanged }) => {
+  const [reportTarget, setReportTarget] = useState(null); // {type, id}
   const [data, setData] = useState(null);
   const [comment, setComment] = useState("");
   const [checkInput, setCheckInput] = useState("");
@@ -162,10 +164,18 @@ export const RcItemDrawer = ({ centerId, itemId, onClose, onChanged }) => {
             </div>
             <h3 className="text-lg leading-snug" style={{ fontFamily: "var(--font-display)" }} data-testid="rc-drawer-title">{item.title}</h3>
           </div>
-          <button className="or-btn or-btn-ghost p-1.5 shrink-0" onClick={onClose} aria-label="Close" data-testid="rc-drawer-close">
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button className="or-btn or-btn-ghost p-1.5" onClick={() => setReportTarget({ type: "rc_item", id: itemId })}
+              title="Report this item" aria-label="Report this item" data-testid="rc-drawer-report-item">
+              <Flag size={14} />
+            </button>
+            <button className="or-btn or-btn-ghost p-1.5" onClick={onClose} aria-label="Close" data-testid="rc-drawer-close">
+              <X size={16} />
+            </button>
+          </div>
         </div>
+        <ReportModal open={!!reportTarget} targetType={reportTarget?.type} targetId={reportTarget?.id}
+          onClose={() => setReportTarget(null)} testid="rc-item-report-modal" />
 
         {item.description && <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>{item.description}</p>}
 
@@ -181,21 +191,21 @@ export const RcItemDrawer = ({ centerId, itemId, onClose, onChanged }) => {
           <div>Visibility: {item.visibility}</div>
         </div>
 
-        {/* Education conversion — self-task → official assignment */}
+        {/* Education conversion — self-task → Center assignment */}
         {item.converted_to?.length > 0 && (
           <div className="rounded p-2 mb-3 text-xs" style={{ background: "rgba(123,216,143,0.1)", color: "#7BD88F" }} data-testid="rc-drawer-converted-banner">
-            This personal task was converted to an official assignment.
+            This personal task was converted to a Center assignment.
           </div>
         )}
         {item.source_item_id && (
           <div className="rounded p-2 mb-3 text-xs" style={{ background: "rgba(90,178,255,0.1)", color: "#5AB2FF" }} data-testid="rc-drawer-source-banner">
-            Official assignment — created from @{item.source_created_by_username}'s personal task suggestion.
+            Center assignment — created from @{item.source_created_by_username}'s personal task suggestion.
           </div>
         )}
         {me.can_convert && (
           <button className="or-btn text-xs mb-3" style={{ borderColor: "#7BD88F", color: "#7BD88F" }}
             onClick={() => setShowConvert(true)} data-testid="rc-drawer-convert-btn">
-            Convert to official assignment
+            Convert to Center assignment
           </button>
         )}
         {showConvert && (
@@ -349,7 +359,13 @@ export const RcItemDrawer = ({ centerId, itemId, onClose, onChanged }) => {
               data-testid={`rc-comment-${c.id}`}>
               <div className="flex justify-between gap-2">
                 <b className="text-xs">@{c.author_username}</b>
-                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{fmt(c.created_at)}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{fmt(c.created_at)}</span>
+                  <button className="p-0.5" onClick={() => setReportTarget({ type: "rc_comment", id: c.id })}
+                    title="Report comment" aria-label="Report comment" data-testid={`rc-comment-report-${c.id}`}>
+                    <Flag size={10} style={{ color: "var(--text-muted)" }} />
+                  </button>
+                </span>
               </div>
               <div className="mt-0.5">{c.body}</div>
             </div>

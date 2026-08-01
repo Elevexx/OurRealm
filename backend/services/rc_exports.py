@@ -53,7 +53,7 @@ def _safe_cell(v):
     return s
 
 
-def _build_csv(report: dict) -> bytes:
+def _build_csv(report: dict, footer: str = "") -> bytes:
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow([_safe_cell(f"{report['center_name']} — {report['name']}")])
@@ -76,6 +76,9 @@ def _build_csv(report: dict) -> bytes:
         w.writerow([_safe_cell(c.replace("_", " ")) for c in cols])
         for r in report["rows"]:
             w.writerow([_safe_cell(r.get(c)) for c in cols])
+    if footer:
+        w.writerow([])
+        w.writerow([_safe_cell(footer)])
     return buf.getvalue().encode("utf-8-sig")
 
 
@@ -108,12 +111,15 @@ def _build_xlsx(report: dict) -> bytes:
             ds.append([_safe_cell(r.get(c)) for c in cols])
         for i, c in enumerate(cols, 1):
             ds.column_dimensions[get_column_letter(i)].width = max(14, min(len(c) + 6, 34))
+    if footer:
+        ws.append([])
+        ws.append([_safe_cell(footer)])
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue()
 
 
-def _build_pdf(report: dict, requested_by: str) -> bytes:
+def _build_pdf(report: dict, requested_by: str, footer: str = "") -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import getSampleStyleSheet
@@ -124,11 +130,14 @@ def _build_pdf(report: dict, requested_by: str) -> bytes:
         return str("" if v is None else v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")[:180]
     buf = io.BytesIO()
 
-    def footer(canvas, doc):
+    def footer_fn(canvas, doc):
         canvas.saveState()
-        canvas.setFont("Helvetica", 7)
-        canvas.drawString(0.6 * inch, 0.45 * inch,
-                          f"OurRealm Responsibility Center · Confidential — for authorized Center members only · Page {doc.page}")
+        canvas.setFont("Helvetica", 6)
+        note = footer or "For authorized Center members."
+        for i, chunk in enumerate([note[j:j + 150] for j in range(0, len(note), 150)][:3]):
+            canvas.drawString(0.6 * inch, 0.62 * inch - i * 0.11 * inch, chunk)
+        canvas.drawString(0.6 * inch, 0.28 * inch,
+                          f"OurRealm Responsibility Center · Page {doc.page}")
         canvas.restoreState()
     doc = SimpleDocTemplate(buf, pagesize=letter, topMargin=0.6 * inch, bottomMargin=0.7 * inch)
     st = getSampleStyleSheet()
@@ -171,7 +180,7 @@ def _build_pdf(report: dict, requested_by: str) -> bytes:
         story.append(dt)
     if report.get("note"):
         story += [Spacer(1, 8), Paragraph(_esc(report["note"]), st["Italic"])]
-    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    doc.build(story, onFirstPage=footer_fn, onLaterPages=footer_fn)
     return buf.getvalue()
 
 
@@ -267,12 +276,14 @@ async def run_export_pass() -> dict:
         try:
             user = await db.users.find_one({"id": run["requested_by"]}, {"_id": 0, "id": 1, "username": 1})
             report = await rc_reports.run_report(user, run["center_id"], run["report_key"], run["filters"])
+            comp = await get_compliance_settings()
+            footer = comp["export_footer_text"] if comp["export_footer_enabled"] else ""
             if run["format"] == "csv":
-                data = _build_csv(report)
+                data = _build_csv(report, footer)
             elif run["format"] == "xlsx":
-                data = _build_xlsx(report)
+                data = _build_xlsx(report, footer)
             else:
-                data = _build_pdf(report, run.get("requested_by_username") or "")
+                data = _build_pdf(report, run.get("requested_by_username") or "", footer)
             expires = (now + timedelta(hours=FILE_TTL_HOURS)).isoformat()
             await db.responsibility_center_report_files.update_one(
                 {"run_id": run["id"]},
@@ -464,6 +475,33 @@ def _next_run(freq: str, now=None):
     return (now + (timedelta(days=7) if freq == "weekly" else timedelta(days=30))).isoformat()
 
 
+def _next_run_for(sched: dict, now=None) -> str:
+    """Next occurrence honouring day / hour / timezone, returned as UTC iso."""
+    from zoneinfo import ZoneInfo
+    now = now or datetime.now(timezone.utc)
+    try:
+        tz = ZoneInfo(sched.get("timezone") or "UTC")
+    except Exception:  # noqa: BLE001
+        tz = timezone.utc
+    hour = sched.get("send_hour")
+    hour = 8 if hour is None else min(max(int(hour), 0), 23)
+    local = now.astimezone(tz)
+    if (sched.get("frequency") or "weekly") == "weekly":
+        dow = sched.get("day_of_week")
+        dow = 0 if dow is None else min(max(int(dow), 0), 6)
+        cand = (local + timedelta(days=(dow - local.weekday()) % 7)).replace(
+            hour=hour, minute=0, second=0, microsecond=0)
+        if cand <= local:
+            cand += timedelta(days=7)
+    else:
+        dom = sched.get("day_of_month")
+        dom = 1 if dom is None else min(max(int(dom), 1), 28)
+        cand = local.replace(day=dom, hour=hour, minute=0, second=0, microsecond=0)
+        if cand <= local:
+            cand = (cand.replace(day=1) + timedelta(days=32)).replace(day=dom)
+    return cand.astimezone(timezone.utc).isoformat()
+
+
 async def create_schedule(user: dict, center_id: str, body: dict) -> dict:
     from services import rc_reports
     center, membership, perms = await _ctx(center_id, user, "view_reports", write=False)
@@ -480,16 +518,26 @@ async def create_schedule(user: dict, center_id: str, body: dict) -> dict:
     fmt = body.get("format") or "csv"
     if fmt not in FORMATS:
         raise HTTPException(status_code=400, detail="Invalid format")
+    from zoneinfo import ZoneInfo
+    tzname = (body.get("timezone") or "UTC").strip()
+    try:
+        ZoneInfo(tzname)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid timezone")
     sched = {"id": uuid.uuid4().hex, "center_id": center_id, "report_key": body["report_key"],
              "report_name": meta["name"], "frequency": freq, "format": fmt,
              "filters": rc_reports.parse_filters(body.get("filters") or {}),
              "recipient_ids": list(dict.fromkeys(body.get("recipient_ids") or [user["id"]]))[:20],
              "delivery_channel": "in_app",  # email deferred — never silent external delivery
              "enabled": bool(body.get("enabled", False)),  # OFF unless explicitly enabled
+             "day_of_week": None if body.get("day_of_week") is None else min(max(int(body["day_of_week"]), 0), 6),
+             "day_of_month": None if body.get("day_of_month") is None else min(max(int(body["day_of_month"]), 1), 28),
+             "send_hour": None if body.get("send_hour") is None else min(max(int(body["send_hour"]), 0), 23),
+             "timezone": tzname,
              "owner_id": user["id"], "owner_username": user.get("username"),
-             "next_run_at": _next_run(freq) if body.get("enabled") else None,
              "last_run_at": None, "failure_count": 0,
              "created_at": _iso(), "updated_at": _iso()}
+    sched["next_run_at"] = _next_run_for(sched) if sched["enabled"] else None
     await db.responsibility_center_scheduled_reports.insert_one({**sched})
     await rc.log_activity(center_id, user, "scheduled_report_created",
                           f"@{user.get('username')} scheduled the {meta['name']} report ({freq})")
@@ -507,21 +555,50 @@ async def update_schedule(user: dict, center_id: str, schedule_id: str, body: di
     center, membership, perms = await _ctx(center_id, user, "view_reports", write=False)
     if "export_reports" not in perms:
         raise HTTPException(status_code=403, detail="You can't manage report schedules")
+    sched = await db.responsibility_center_scheduled_reports.find_one(
+        {"id": schedule_id, "center_id": center_id}, {"_id": 0})
+    if not sched:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if body.get("delete"):
+        await db.responsibility_center_scheduled_reports.delete_one(
+            {"id": schedule_id, "center_id": center_id})
+        # audit history (activity log + run claims) is preserved after deletion
+        await rc.log_activity(center_id, user, "scheduled_report_deleted",
+                              f"@{user.get('username')} deleted the {sched['report_name']} schedule")
+        return {"ok": True, "deleted": True}
+    from zoneinfo import ZoneInfo
     sets = {"updated_at": _iso()}
+    if "frequency" in body:
+        if body["frequency"] not in SCHED_FREQS:
+            raise HTTPException(status_code=400, detail="Frequency must be weekly or monthly")
+        sets["frequency"] = body["frequency"]
+    if "format" in body:
+        if body["format"] not in FORMATS:
+            raise HTTPException(status_code=400, detail="Invalid format")
+        sets["format"] = body["format"]
+    if "timezone" in body:
+        tzname = (body["timezone"] or "UTC").strip()
+        try:
+            ZoneInfo(tzname)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="Invalid timezone")
+        sets["timezone"] = tzname
+    for f, lo, hi in (("day_of_week", 0, 6), ("day_of_month", 1, 28), ("send_hour", 0, 23)):
+        if f in body:
+            sets[f] = None if body[f] is None else min(max(int(body[f]), lo), hi)
+    if "recipient_ids" in body:
+        sets["recipient_ids"] = list(dict.fromkeys(body["recipient_ids"] or [user["id"]]))[:20]
+    if "filters" in body:
+        from services import rc_reports
+        sets["filters"] = rc_reports.parse_filters(body["filters"] or {})
     if "enabled" in body:
         sets["enabled"] = bool(body["enabled"])
-        sched = await db.responsibility_center_scheduled_reports.find_one(
-            {"id": schedule_id, "center_id": center_id}, {"_id": 0, "frequency": 1})
-        if not sched:
-            raise HTTPException(status_code=404, detail="Schedule not found")
-        sets["next_run_at"] = _next_run(sched["frequency"]) if sets["enabled"] else None
         sets["failure_count"] = 0
-    if body.get("delete"):
-        r = await db.responsibility_center_scheduled_reports.delete_one(
-            {"id": schedule_id, "center_id": center_id})
-        if r.deleted_count != 1:
-            raise HTTPException(status_code=404, detail="Schedule not found")
-        return {"ok": True, "deleted": True}
+    merged = {**sched, **sets}
+    if merged.get("enabled"):
+        sets["next_run_at"] = _next_run_for(merged)
+    elif "enabled" in body:
+        sets["next_run_at"] = None
     await db.responsibility_center_scheduled_reports.update_one(
         {"id": schedule_id, "center_id": center_id}, {"$set": sets})
     return {"ok": True}
@@ -574,13 +651,13 @@ async def run_scheduled_reports_pass() -> dict:
                                          sched["center_id"])
             await db.responsibility_center_scheduled_reports.update_one(
                 {"id": sched["id"]},
-                {"$set": {"last_run_at": _iso(), "next_run_at": _next_run(sched["frequency"], now),
+                {"$set": {"last_run_at": _iso(), "next_run_at": _next_run_for(sched, now),
                           "failure_count": 0, "updated_at": _iso()}})
             ran += 1
         except Exception as e:  # noqa: BLE001
             fails = int(sched.get("failure_count") or 0) + 1
             sets = {"failure_count": fails, "last_failure": str(e)[:200],
-                    "next_run_at": _next_run(sched["frequency"], now), "updated_at": _iso()}
+                    "next_run_at": _next_run_for(sched, now), "updated_at": _iso()}
             if fails >= 3:
                 sets["enabled"] = False  # disabled after repeated failures, with notice
                 await rc.notify_user(sched["owner_id"], "responsibility_center_scheduled_report_failed",
@@ -590,3 +667,35 @@ async def run_scheduled_reports_pass() -> dict:
             await db.responsibility_center_scheduled_reports.update_one(
                 {"id": sched["id"]}, {"$set": sets})
     return {"scheduled_reports_ran": ran}
+
+
+# ── Legal & Compliance settings (Bundle G review — admin configurable) ───
+DEFAULT_EXPORT_FOOTER = ("This report is generated from information recorded within this "
+                         "Responsibility Center. It is provided for organizational and informational "
+                         "purposes and may not constitute an official, certified, legally recognized, "
+                         "educational, employment, governmental, financial, or medical record.")
+COMPLIANCE_DEFAULTS = {
+    "export_footer_enabled": True,
+    "export_footer_text": DEFAULT_EXPORT_FOOTER,
+    "fire_power_note": "Fire Power is an internal engagement resource. It is never money, has no monetary value, and cannot be redeemed or exchanged.",
+    "attendance_note": "Attendance tracking within this Center is informational and is not a certified or legally recognized record.",
+    "platform_descriptor": "Organizational collaboration and responsibility management platform.",
+    "show_disclaimers": True,
+}
+
+
+async def get_compliance_settings() -> dict:
+    row = await db.rc_compliance_settings.find_one({"id": "main"}, {"_id": 0}) or {}
+    return {**COMPLIANCE_DEFAULTS, **{k: v for k, v in row.items() if k in COMPLIANCE_DEFAULTS}}
+
+
+async def update_compliance_settings(body: dict) -> dict:
+    sets = {}
+    for k in COMPLIANCE_DEFAULTS:
+        if k in body:
+            v = body[k]
+            sets[k] = bool(v) if isinstance(COMPLIANCE_DEFAULTS[k], bool) else str(v)[:600]
+    if sets:
+        await db.rc_compliance_settings.update_one(
+            {"id": "main"}, {"$set": sets, "$setOnInsert": {"id": "main"}}, upsert=True)
+    return await get_compliance_settings()

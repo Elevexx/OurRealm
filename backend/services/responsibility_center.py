@@ -295,6 +295,11 @@ async def create_center(user: dict, name: str, center_type: str,
     if center_type not in CENTER_TYPES:
         raise HTTPException(status_code=400, detail="Choose a valid Center type")
 
+    settings = await get_rc_settings()
+    create_cost = int(settings.get("create_cost", CREATE_COST_FP))
+    if not settings.get("center_creation_enabled", True):
+        raise HTTPException(status_code=403, detail="Center creation is temporarily disabled")
+
     uid = user["id"]
     idem = f"rc-create:{str(client_token)[:96]}" if client_token else None
 

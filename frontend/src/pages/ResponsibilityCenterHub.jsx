@@ -6,6 +6,7 @@ import apiClient from "@/api/client";
 import { RC_TYPES, rcTypeMeta, ROLE_COLORS } from "@/lib/rcTypes";
 import { RcImg, useRcBranding } from "@/lib/rcAssets";
 import { RcMyWork } from "@/components/rc/RcMyWork";
+import { RcSearchPanel } from "@/components/rc/RcSearchPanel";
 
 // Responsibility Center — landing hub (Phase 1).
 // Explains the system, lists my Centers + pending invites, and links
@@ -89,7 +90,7 @@ export default function ResponsibilityCenterHub() {
           <Vault size={18} style={{ color: "#F4C84A" }} />
           <div className="text-sm font-semibold mt-2">Fund the Center Vault</div>
           <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-            Members move Fire Power into the shared vault. Each member seat costs {config?.seat_cost ?? 100} 🔥 per {config?.seat_days ?? 30} days, paid by the vault.
+            Members move Fire Power into the shared Vault — the Center's long-term storage for engagement resources. Each member seat requires {config?.seat_cost ?? 100} 🔥 per {config?.seat_days ?? 30} days, drawn from the Vault. Fire Power is an internal engagement resource, never money.
           </div>
         </div>
         <div className="or-surface p-4" data-testid="rc-hub-how-roles">
@@ -106,7 +107,7 @@ export default function ResponsibilityCenterHub() {
         <div>
           <div className="text-lg" style={{ fontFamily: "var(--font-display)" }}>Start a new Center</div>
           <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-            Cost: <b style={{ color: "#FF8A5A" }}>{createCost.toLocaleString()} 🔥</b> · Your Fire Vault:{" "}
+            Requires: <b style={{ color: "#FF8A5A" }}>{createCost.toLocaleString()} 🔥</b> · Your Fire Power:{" "}
             <b style={{ color: balance >= createCost ? "var(--brand-green, #7BD88F)" : "#FF6B6B" }} data-testid="rc-hub-balance">
               {balance.toLocaleString()} 🔥
             </b>
@@ -115,6 +116,10 @@ export default function ResponsibilityCenterHub() {
         <button className="or-btn" onClick={() => navigate("/responsibility-center/create")} data-testid="rc-hub-create-btn">
           <Plus size={14} /> Create a Center
         </button>
+      </div>
+
+      <div className="mb-6" data-testid="rc-hub-search">
+        <RcSearchPanel />
       </div>
 
       {loading && (

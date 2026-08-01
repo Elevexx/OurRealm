@@ -26,7 +26,7 @@ export const RcConvertModal = ({ centerId, item, onClose, onConverted }) => {
       await apiClient.post(`/responsibility-center/${centerId}/items/${item.id}/convert`, {
         mode, assignee_ids: assigneeIds, unit_id: unitId || null, unit_mode: unitMode,
       });
-      toast.success("Converted to an official assignment");
+      toast.success("Converted to a Center assignment");
       onConverted();
     } catch (e) {
       toast.error(typeof e?.response?.data?.detail === "string" ? e.response.data.detail : "Conversion failed");
@@ -37,12 +37,12 @@ export const RcConvertModal = ({ centerId, item, onClose, onConverted }) => {
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}
       onClick={onClose} data-testid="rc-convert-modal">
       <div className="or-surface w-full max-w-md p-5 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-base font-semibold mb-1">Convert to official assignment</h3>
+        <h3 className="text-base font-semibold mb-1">Convert to Center assignment</h3>
         <div className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
           "{item.title}" — created by @{item.created_by_username}. The original personal task stays unchanged and is linked to the new assignment.
         </div>
         <div className="space-y-2 mb-3">
-          {[["personal", "Approve as an official personal assignment (same person)"],
+          {[["personal", "Approve as a Center personal assignment (same person)"],
             ["selected", "Copy as an assignment for selected members"],
             ["unit", "Convert to a class / unit assignment"]].map(([v, l]) => (
             <label key={v} className="flex items-start gap-2 text-sm cursor-pointer" data-testid={`rc-convert-mode-${v}`}>

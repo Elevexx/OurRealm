@@ -437,7 +437,7 @@ async def convert_self_task(user: dict, center_id: str, item_id: str, body: dict
     if not original.get("is_self_task"):
         raise HTTPException(status_code=400, detail="Only personal self-tasks can be converted")
     if original.get("converted_to"):
-        raise HTTPException(status_code=409, detail="This task was already converted to an official assignment")
+        raise HTTPException(status_code=409, detail="This task was already converted to a Center assignment")
     mode = body.get("mode") or "personal"
     if mode not in ("personal", "selected", "unit"):
         raise HTTPException(status_code=400, detail="Invalid conversion mode")

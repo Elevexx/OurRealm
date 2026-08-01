@@ -44,6 +44,11 @@ const TARGET_LABELS = {
   comment: "this comment",
   reply:   "this reply",
   message: "this message",
+  rc_center:  "this Center",
+  rc_item:    "this work item",
+  rc_comment: "this comment",
+  rc_event:   "this event",
+  rc_unit:    "this group",
 };
 
 const MAX_SHOTS = 8;

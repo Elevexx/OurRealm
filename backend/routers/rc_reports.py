@@ -154,12 +154,12 @@ from services import rc_templates, rc_widgets, rc_exports as _rcx  # noqa: E402
 
 @router.get("/templates")
 async def templates_list(current: CurrentUser):
-    return rc_templates.list_templates()
+    return await rc_templates.list_templates()
 
 
 @router.get("/templates/{template_key}")
 async def templates_get(template_key: str, current: CurrentUser):
-    return rc_templates.get_template(template_key)
+    return await rc_templates.get_template(template_key)
 
 
 @router.post("/{center_id}/apply-template")
@@ -222,6 +222,43 @@ async def admin_templates(current: CurrentUser):
     return await rc_templates.admin_template_usage()
 
 
+# ── Bundle G — Admin Template Manager ────────────────────────────────────
+@admin_router.get("/templates/manage")
+async def admin_tpl_list(current: CurrentUser):
+    require_rc_perm(current, "responsibility_center.view")
+    return await rc_templates.admin_manage_list()
+
+
+@admin_router.post("/templates/manage")
+async def admin_tpl_create(body: dict, current: CurrentUser):
+    require_rc_perm(current, "responsibility_center.manage_settings")
+    return await rc_templates.admin_create_template(current, body or {})
+
+
+@admin_router.get("/templates/manage/{template_key}")
+async def admin_tpl_get(template_key: str, current: CurrentUser):
+    require_rc_perm(current, "responsibility_center.view")
+    return await rc_templates.admin_manage_get(template_key)
+
+
+@admin_router.patch("/templates/manage/{template_key}")
+async def admin_tpl_update(template_key: str, body: dict, current: CurrentUser):
+    require_rc_perm(current, "responsibility_center.manage_settings")
+    return await rc_templates.admin_update_template(current, template_key, body or {})
+
+
+@admin_router.post("/templates/manage/{template_key}/status")
+async def admin_tpl_status(template_key: str, body: dict, current: CurrentUser):
+    require_rc_perm(current, "responsibility_center.manage_settings")
+    return await rc_templates.admin_template_status(current, template_key, body or {})
+
+
+@admin_router.post("/templates/manage/{template_key}/duplicate")
+async def admin_tpl_duplicate(template_key: str, current: CurrentUser):
+    require_rc_perm(current, "responsibility_center.manage_settings")
+    return await rc_templates.admin_duplicate_template(current, template_key)
+
+
 @admin_router.get("/system-health")
 async def admin_system_health(current: CurrentUser):
     require_rc_perm(current, "responsibility_center.view")
@@ -235,3 +272,21 @@ async def admin_system_health(current: CurrentUser):
             "active_report_schedules": schedules,
             "template_registry": {"templates": len(rc_templates.TEMPLATES),
                                   "version": rc_templates.TEMPLATE_VERSION}}
+
+
+# ── Legal & Compliance (global review) ───────────────────────────────────
+@router.get("/compliance")
+async def compliance_public(current: CurrentUser):
+    return await _rcx.get_compliance_settings()
+
+
+@admin_router.get("/compliance")
+async def compliance_admin_get(current: CurrentUser):
+    require_rc_perm(current, "responsibility_center.manage_settings")
+    return await _rcx.get_compliance_settings()
+
+
+@admin_router.patch("/compliance")
+async def compliance_admin_patch(body: dict, current: CurrentUser):
+    require_rc_perm(current, "responsibility_center.manage_settings")
+    return await _rcx.update_compliance_settings(body or {})

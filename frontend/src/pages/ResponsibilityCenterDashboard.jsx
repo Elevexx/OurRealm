@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ChevronLeft, Users, Vault, Activity, Settings as SettingsIcon, UserPlus, Flame, LogOut, Clock, ClipboardList, FolderTree, CalendarDays, BarChart3 } from "lucide-react";
+import { ChevronLeft, Users, Vault, Activity, Settings as SettingsIcon, UserPlus, Flame, LogOut, Clock, ClipboardList, FolderTree, CalendarDays, BarChart3, Flag } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,6 +12,9 @@ import { RcUnitsTab } from "@/components/rc/RcUnitsTab";
 import { RcCalendarTab } from "@/components/rc/RcCalendarTab";
 import { RcReportsTab } from "@/components/rc/RcReportsTab";
 import { RcBirthdayPanel } from "@/components/rc/RcBirthdayPanel";
+import { RcWidgetBoard } from "@/components/rc/RcWidgetBoard";
+import { RcSearchPanel } from "@/components/rc/RcSearchPanel";
+import ReportModal from "@/components/ReportModal";
 
 const uuid = () =>
   (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -44,6 +47,7 @@ export default function ResponsibilityCenterDashboard() {
   const [deepItem, setDeepItem] = useState(searchParams.get("item") || null);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [reportOpen, setReportOpen] = useState(false);
 
   useEffect(() => {
     const t = searchParams.get("tab");
@@ -142,7 +146,15 @@ export default function ResponsibilityCenterDashboard() {
               <b className="uppercase tracking-wide" style={{ color: ROLE_COLORS[me.role] }} data-testid="rc-dash-my-role">{me.role}</b>
             </div>
           </div>
+          {me.role !== "owner" && (
+            <button className="or-btn or-btn-ghost p-1.5 shrink-0" title="Report this Center"
+              onClick={() => setReportOpen(true)} aria-label="Report this Center" data-testid="rc-dash-report-center">
+              <Flag size={14} />
+            </button>
+          )}
         </div>
+        <ReportModal open={reportOpen} targetType="rc_center" targetId={id}
+          onClose={() => setReportOpen(false)} testid="rc-center-report-modal" />
         {center.description && (
           <p className="text-sm mt-3" style={{ color: "var(--text-muted)" }}>{center.description}</p>
         )}
@@ -212,6 +224,7 @@ function OverviewTab({ data, reload, centerId, goVault }) {
   const needsAttention = rs && (rs.paused_members > 0 || rs.awaiting_fire_power > 0 || rs.fire_power_shortfall_7d > 0);
   return (
     <div className="space-y-4" data-testid="rc-tab-overview">
+      <RcWidgetBoard centerId={centerId} />
       {rs && (
         <div className="or-surface p-4" data-testid="rc-renewal-panel"
           style={needsAttention ? { borderColor: "rgba(244,200,74,0.45)" } : undefined}>
@@ -331,7 +344,7 @@ function MembersTab({ data, me, perms, reload, centerId, config }) {
         <div className="or-surface p-4" data-testid="rc-invite-panel">
           <div className="text-sm font-semibold mb-2"><UserPlus size={14} className="inline mr-1" /> Invite a member</div>
           <div className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
-            When they accept, their {config?.seat_days ?? 30}-day seat ({config?.seat_cost ?? 100} 🔥) is paid from the Center Vault.
+            When they accept, their {config?.seat_days ?? 30}-day seat ({config?.seat_cost ?? 100} 🔥) is drawn from the Center Vault.
           </div>
           <div className="flex gap-2">
             <input className="or-input flex-1" placeholder="username" value={inviteName}
@@ -446,7 +459,7 @@ function VaultTab({ data, canViewVault, reload, centerId, config }) {
             </div>
             <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
               Your Fire Vault: <b data-testid="rc-vault-my-balance">{(data.my_fire_vault_balance ?? 0).toLocaleString()} 🔥</b> ·
-              Member seats cost {config?.seat_cost ?? 100} 🔥 per {config?.seat_days ?? 30} days from this vault.
+              Each member seat requires {config?.seat_cost ?? 100} 🔥 per {config?.seat_days ?? 30} days, drawn from this Vault. The Vault is simply the Center's long-term storage for engagement resources — Fire Power is never money and has no monetary value.
             </div>
           </div>
         </div>
@@ -592,7 +605,7 @@ function SettingsTab({ data, me, perms, reload, centerId, navigate }) {
         <div className="text-sm font-semibold mb-2">My membership</div>
         <div className="text-xs space-y-1" style={{ color: "var(--text-muted)" }}>
           <div>Role: <b className="uppercase" style={{ color: ROLE_COLORS[me.role] }}>{me.role}</b></div>
-          <div>Seat paid until: <b style={{ color: "var(--text-main)" }}>{fmtDate(me.seat_paid_until)}</b></div>
+          <div>Seat active until: <b style={{ color: "var(--text-main)" }}>{fmtDate(me.seat_paid_until)}</b></div>
           <div>Permissions: {(me.permissions || []).join(", ") || "—"}</div>
         </div>
         {!isOwner && (
