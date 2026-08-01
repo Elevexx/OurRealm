@@ -3,6 +3,7 @@ import { X, CheckSquare, MessageSquare, Paperclip, History, Repeat, Trash2, Uplo
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { recurrenceLabel } from "./RcRecurrenceEditor";
+import { RcConvertModal } from "./RcConvertModal";
 
 const fmt = (iso) => {
   if (!iso) return "—";
@@ -39,6 +40,7 @@ export const RcItemDrawer = ({ centerId, itemId, onClose, onChanged }) => {
   const [checkInput, setCheckInput] = useState("");
   const [progressDraft, setProgressDraft] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [showConvert, setShowConvert] = useState(false);
   const fileRef = useRef(null);
   const progressTimer = useRef(null);
 
@@ -178,6 +180,29 @@ export const RcItemDrawer = ({ centerId, itemId, onClose, onChanged }) => {
           {item.category && <div>Category: {item.category}</div>}
           <div>Visibility: {item.visibility}</div>
         </div>
+
+        {/* Education conversion — self-task → official assignment */}
+        {item.converted_to?.length > 0 && (
+          <div className="rounded p-2 mb-3 text-xs" style={{ background: "rgba(123,216,143,0.1)", color: "#7BD88F" }} data-testid="rc-drawer-converted-banner">
+            This personal task was converted to an official assignment.
+          </div>
+        )}
+        {item.source_item_id && (
+          <div className="rounded p-2 mb-3 text-xs" style={{ background: "rgba(90,178,255,0.1)", color: "#5AB2FF" }} data-testid="rc-drawer-source-banner">
+            Official assignment — created from @{item.source_created_by_username}'s personal task suggestion.
+          </div>
+        )}
+        {me.can_convert && (
+          <button className="or-btn text-xs mb-3" style={{ borderColor: "#7BD88F", color: "#7BD88F" }}
+            onClick={() => setShowConvert(true)} data-testid="rc-drawer-convert-btn">
+            Convert to official assignment
+          </button>
+        )}
+        {showConvert && (
+          <RcConvertModal centerId={centerId} item={item}
+            onClose={() => setShowConvert(false)}
+            onConverted={() => { setShowConvert(false); refresh(); }} />
+        )}
 
         {/* Progress */}
         <div className="mb-4" data-testid="rc-drawer-progress">

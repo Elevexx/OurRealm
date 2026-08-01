@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ChevronLeft, Users, Vault, Activity, Settings as SettingsIcon, UserPlus, Flame, LogOut, Clock, ClipboardList } from "lucide-react";
+import { ChevronLeft, Users, Vault, Activity, Settings as SettingsIcon, UserPlus, Flame, LogOut, Clock, ClipboardList, FolderTree, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,6 +8,8 @@ import { rcTypeMeta, ROLE_COLORS } from "@/lib/rcTypes";
 import { RcImg } from "@/lib/rcAssets";
 import { RcWorkTab } from "@/components/rc/RcWorkTab";
 import { RcLifecyclePanel } from "@/components/rc/RcLifecyclePanel";
+import { RcUnitsTab } from "@/components/rc/RcUnitsTab";
+import { RcCalendarTab } from "@/components/rc/RcCalendarTab";
 
 const uuid = () =>
   (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -21,6 +23,8 @@ const fmtDate = (iso) => {
 const TABS = [
   { id: "overview", label: "Overview", Icon: Activity },
   { id: "work",     label: "Work",     Icon: ClipboardList },
+  { id: "units",    label: "Groups",   Icon: FolderTree },
+  { id: "calendar", label: "Calendar", Icon: CalendarDays },
   { id: "members",  label: "Members",  Icon: Users },
   { id: "vault",    label: "Vault",    Icon: Vault },
   { id: "settings", label: "Settings", Icon: SettingsIcon },
@@ -162,6 +166,13 @@ export default function ResponsibilityCenterDashboard() {
             setDeepItem(iid);
             setSearchParams(iid ? { tab: "work", item: iid } : { tab: "work" }, { replace: true });
           }} />
+      )}
+      {tab === "units" && <RcUnitsTab centerId={id} data={data} />}
+      {tab === "calendar" && (
+        <RcCalendarTab centerId={id} data={data}
+          initialEventId={searchParams.get("event") || null}
+          onOpenItem={(iid) => setSearchParams({ tab: "work", item: iid })}
+          onEventOpenChange={(eid) => setSearchParams(eid ? { tab: "calendar", event: eid } : { tab: "calendar" }, { replace: true })} />
       )}
       {tab === "members" && <MembersTab data={data} me={me} perms={perms} reload={load} centerId={id} config={config} />}
       {tab === "vault" && <VaultTab data={data} canViewVault={canViewVault} reload={load} centerId={id} config={config} />}

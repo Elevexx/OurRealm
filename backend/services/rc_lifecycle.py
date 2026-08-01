@@ -485,6 +485,8 @@ async def leave_center_safe(user: dict, center_id: str) -> dict:
     if transfer:
         raise HTTPException(status_code=409, detail="Resolve the pending ownership transfer before leaving")
     result = await rc.leave_center(user, center_id)  # owner check + counts live here
+    from services import rc_units
+    await rc_units.deactivate_center_member_units(center_id, user["id"])
     await _audit(center_id, user, "member_left")
     # notify managers
     async for m in db.responsibility_center_memberships.find(
@@ -503,6 +505,8 @@ async def remove_member_safe(actor: dict, center_id: str, target_user_id: str,
     if len((reason or "").strip()) < 5:
         raise HTTPException(status_code=400, detail="A written reason is required to remove a member")
     result = await rc.remove_member(actor, center_id, target_user_id)  # perms + rank live here
+    from services import rc_units
+    await rc_units.deactivate_center_member_units(center_id, target_user_id)
     await _audit(center_id, actor, "member_removed",
                  before={"user_id": target_user_id}, reason=reason)
     handled = {"mode": work_mode, "items": 0}

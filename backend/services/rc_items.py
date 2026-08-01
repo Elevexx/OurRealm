@@ -995,7 +995,14 @@ async def item_detail(user: dict, center_id: str, item_id: str) -> dict:
           "can_edit": _can_edit(item, user["id"], perms)
           or (item.get("is_self_task") and item.get("created_by") == user["id"]),
           "can_assign": "assign_items" in perms,
-          "can_moderate": "moderate_comments" in perms}
+          "can_moderate": "moderate_comments" in perms,
+          "can_convert": bool(item.get("is_self_task"))
+          and not item.get("converted_to")
+          and "convert_student_task_to_assignment" in perms}
+    p["converted_to"] = item.get("converted_to")
+    p["source_item_id"] = item.get("source_item_id")
+    p["source_created_by_username"] = item.get("source_created_by_username")
+    p["is_self_task"] = bool(item.get("is_self_task"))
     return {"item": p, "comments": comments, "approvals": approvals,
             "activity": activity, "subtasks": [_public(s) for s in subtasks],
             "dependencies": dependencies, "series": series, "me": my}

@@ -448,11 +448,17 @@ async def _loop():
             m = await rc_recurrence.run_due_reminder_pass()
             from services import rc_lifecycle
             lf = await rc_lifecycle.run_lifecycle_pass()
+            from services import rc_calendar
+            ev = await rc_calendar.run_event_recurrence_pass()
+            er = await rc_calendar.run_event_reminder_pass()
+            dg = await rc_calendar.run_work_digest_pass()
             if s["processed"] or w["warnings"] or d["digests_sent"] \
                     or r["occurrences_generated"] or m["reminders_sent"] \
-                    or lf["transfers_expired"] or lf["closures_completed"]:
-                log.info("[rc-renewals] pass complete: renewals=%s warnings=%s digest=%s recurrence=%s reminders=%s lifecycle=%s",
-                         s, w, d, r, m, lf)
+                    or lf["transfers_expired"] or lf["closures_completed"] \
+                    or ev["occurrences_generated"] or er["event_reminders_sent"] \
+                    or dg["digests_sent"]:
+                log.info("[rc-renewals] pass complete: renewals=%s warnings=%s digest=%s recurrence=%s reminders=%s lifecycle=%s events=%s ev_reminders=%s work_digest=%s",
+                         s, w, d, r, m, lf, ev, er, dg)
             await asyncio.sleep(INTERVAL_SECONDS)
         except asyncio.CancelledError:
             log.info("[rc-renewals] worker cancelled")

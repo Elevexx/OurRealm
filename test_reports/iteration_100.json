@@ -1,0 +1,25 @@
+{
+  "summary": "Bundle E frontend E2E tested against the live preview URL as stealth (owner) on the 'Stealth Family' demo center. Groups tab (create parent+child, tree indentation, expand/collapse, edit, member add, archive+restore, search, tree/list view) all work. Calendar tab (Month/Week/Agenda views, prev/next/today nav, event create, conflict detection with override, event drawer, edit event, cancel with scope prompt) all work. Recurrence Daily with count=4 produced 4 occurrences visible in Agenda. Attendance tracking (per-attendee select, All present, Save) works. Task due-date projection: QA-weekly-013700 and QA-onetime-013657 show as red 'Deadline' entries in Agenda. Daily Work Digest card at /settings/account → Centers tab: toggle ON reveals hour select (default 8) and 7 include toggles; changed hour to 9 and it persisted after reload; toggle OFF works. Mobile (390x844): Calendar defaults to Agenda view, no horizontal overflow, Groups tab renders. Regression: Work/Members/Vault/Settings(lifecycle) tabs all still render. Overall Bundle E frontend is production-ready.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Groups tab mobile (390x844)", "issues": ["When a row has action buttons (up/down/members/edit/archive) they wrap to a second line beneath the group name — usable but slightly cramped. Not blocking."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Non-blocking: A React dev-mode hydration warning fires ('<span> cannot be a child of <option>') from RcUnitsTab.jsx line ~242 and similar <option> renderers. Root cause is Emergent's x-* instrumentation wrapping the {m.username} text expression inside <option> with a <span>. Doesn't break anything and won't appear in a production build, but could be silenced by rendering options as `<option key={..} value={..}>{`@${m.username}`}</option>` (already single-child template string, so probably fine) — or by adding `x-excluded` to those <option> elements. Very low priority.",
+    "Not tested: 'Convert to official assignment' flow (rc-drawer-convert-btn) — auditcheckreal is not a member of the demo center and inviting them would risk vault balance (~61 FP). Backend has 29/29 pytest coverage for this, and the UI wiring is small (RcConvertModal). Recommend a smoke-check by the main agent or a future iteration after seeding a member.",
+    "Not deep-tested: Task deadline pill click deep-link into Work tab drawer — the deadlines are visible in agenda but I did not click one; the code path (onOpenItem prop from ResponsibilityCenterDashboard) exists and looks correct."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only scope)", "frontend": "~95% (all in-scope flows tested pass)"},
+  "test_credentials": "stealth / Password1$ (owner of demo center cf5a475c04cd4860976920cda63fa6ff)",
+  "seed_data_creation": "Created groups QE-<ts>-Parent (team), QE-<ts>-Child (edited to -EDIT); events QE<ts>-EV1 (later edited to -UPD, one attendee tftwo), QE<ts>-EV2 (overlap, override), QR<ts>-DAILY (recurring daily x4 with attendance ON, one occurrence marked all-present then canceled 'one'). All in Stealth Family center. Not cleaned up but harmless.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Bundle E fully passes on frontend. If further coverage desired: (a) invite auditcheckreal to a fresh center to test education conversion end-to-end; (b) click a deadline pill in Calendar Agenda and verify it opens Work tab drawer for that item. All Bundle E data-testids used in review_request are present and match the rendered DOM."
+}

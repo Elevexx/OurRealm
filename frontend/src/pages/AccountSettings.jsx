@@ -11,6 +11,7 @@ import { usePresence } from "@/contexts/PresenceContext";
 import { isAdmin } from "@/lib/isAdmin";
 import DeleteAccountModal from "@/components/DeleteAccountModal";
 import AdminSettingsTab from "@/components/AdminSettingsTab";
+import { RcWorkDigestCard } from "@/components/rc/RcWorkDigestCard";
 
 /**
  * Account Settings — Phase C. Implements:
@@ -568,6 +569,9 @@ function ResponsibilityCentersTab({ navigate }) {
               data-testid={`rc-pref-${p.key}`}>{prefs[p.key] ? "ON" : "OFF"}</button>
           </div>
         ))}
+      </Card>
+      <Card title="Daily Work Digest" Icon={Landmark}>
+        <RcWorkDigestCard />
       </Card>
     </div>
   );
