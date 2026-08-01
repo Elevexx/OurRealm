@@ -3285,3 +3285,10 @@ User approved 4-phase plan: P1 ORAi text chat (DONE) → P2 Voice Mode (record�
 - Frontend: components/rc/RcOraiPanel.jsx (drawer: session chips, prompts, md-bold rendering, disclaimer). Wired: dashboard header '✦ ORAi' + ?orai=1; education FAB (edu-orai-fab, bottom-24 md:bottom-6 z-[60] after overlap fix) + 'AI Teaching' nav; hub 'Open AI Assistant'.
 - TESTED: iteration_104.json — backend 15/16 (1 skip), frontend all flows incl mobile; FAB overlap bug FIXED and re-verified via elementFromPoint on desktop+mobile. Compliance reply check passed (Fire Power never money).
 - Minor noted: no member-facing /activity read route (admin path only) — optional later.
+
+## Aug 1, 2026 — RC Branding & Media Upgrade (user-provided logo)
+- New official RC logo seeded as ACTIVE version across 10 branding slots via scripts/seed_rc_logo.py (PIL variants: 1024 full, 512/256 squares, 192/128 emblem-crops for nav/favicon — aspect preserved, never stretched). Stored through image_store (R2 mirror) + rc_media create_version/activate_version with audit reason.
+- Live wiring: TopStarBar RC nav item now renders RcImg navigation_icon (ShieldCheck fallback); hub sidebar main_logo now displays; education header/sidebar use education.logo + education.compact_icon.
+- AdminRcMedia upgrades: clickable thumbnails → Lightbox; "Preview in App" per asset + "Preview Changes Across App" in upload modal (device toggle mobile/tablet/desktop, 6 context mocks); "Built-in default" boxes replaced with icon+label; existing before/after, apply/cancel/reset/rollback, version history w/ thumbnails, usage list all retained.
+- NOTE: /api/media/* images require auth cookie (access_token) — works in browser, 401 via bare curl (expected).
+- Self-tested via browser automation (lightbox=1, preview modal=1, version thumbs=20, nav+hub logo loaded). Phase 2 Voice Mode still awaiting start approval.

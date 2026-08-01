@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Star, Globe, Bell, MessageSquare, ShieldCheck } from "lucide-react";
 import Logo from "@/components/Logo";
+import { RcImg } from "@/lib/rcAssets";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import apiClient from "@/api/client";
@@ -12,7 +13,7 @@ import apiClient from "@/api/client";
 // app, profile links, mentions, friends, realm members, etc.
 const ITEMS = [
   { to: "/featured",      label: "Featured",      Icon: Star,         testid: "star-featured",      color: "#F4C84A" },
-  { to: "/responsibility-center", label: "Responsibility Center", Icon: ShieldCheck,
+  { to: "/responsibility-center", label: "Responsibility Center", Icon: ShieldCheck, rcLogo: true,
     testid: "star-responsibility-center", color: "var(--brand-green, #10E670)", matchPrefix: true,
     tooltip: "Responsibility Center — Manage responsibilities, tasks, teams, families, schools, businesses and organizations." },
   { to: "/discover",      label: "Discover",      Icon: Globe,        testid: "star-discover",      color: "var(--brand-blue)" },
@@ -107,7 +108,7 @@ export default function TopStarBar() {
           data-testid="star-bar"
           style={{ scrollSnapType: "x mandatory" }}
         >
-          {ITEMS.map(({ to, label, Icon, testid, color, isNotif, matchPrefix, tooltip }) => {
+          {ITEMS.map(({ to, label, Icon, testid, color, isNotif, matchPrefix, tooltip, rcLogo }) => {
             const pathOnly = to.split("?")[0];
             const active = matchPrefix ? location.pathname.startsWith(pathOnly) : location.pathname === pathOnly;
             const badgeText = isNotif && unread > 0 ? (unread > 99 ? "99+" : String(unread)) : null;
@@ -122,7 +123,13 @@ export default function TopStarBar() {
                 title={tooltip || label}
                 style={{ color: active ? "var(--primary)" : color, scrollSnapAlign: "end" }}
               >
-                <Icon size={20} />
+                {rcLogo ? (
+                  <RcImg assetKey="responsibility_center.navigation_icon" eager
+                    width={22} height={22} style={{ borderRadius: 6 }}
+                    fallback={<Icon size={20} />} testid="star-rc-logo" />
+                ) : (
+                  <Icon size={20} />
+                )}
                 {badgeText && <span className="starbar-badge" data-testid={`${testid}-badge`}>{badgeText}</span>}
                 <span className="sr-only">{label}</span>
               </button>

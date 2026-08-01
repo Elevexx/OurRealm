@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import Logo from "@/components/Logo";
+import { RcImg } from "@/lib/rcAssets";
 import { RcItemCreateModal } from "@/components/rc/RcItemCreateModal";
 import { RcItemDrawer } from "@/components/rc/RcItemDrawer";
 import { RcOraiPanel } from "@/components/rc/RcOraiPanel";
@@ -133,7 +134,8 @@ export default function EducationCenterDashboard() {
       <div className={mobile ? "" : "sticky top-20"}>
         <Card className="mb-3">
           <div className="flex items-center gap-2 mb-1">
-            <GraduationCap size={22} style={{ color: "#10E670" }} />
+            <RcImg assetKey="responsibility_center.education.compact_icon" width={30} height={30}
+              style={{ borderRadius: 8 }} eager fallback={<GraduationCap size={22} style={{ color: "#10E670" }} />} />
             <div className="font-extrabold leading-tight tracking-wide" style={{ fontFamily: "var(--font-display)", color: BLUE }}>
               EDUCATION<br />CENTER
             </div>
@@ -177,7 +179,8 @@ export default function EducationCenterDashboard() {
           <button className="or-btn or-btn-ghost p-1.5 lg:hidden" onClick={() => setNavOpen(true)} aria-label="Open Education menu" data-testid="edu-menu-btn">
             <Menu size={16} />
           </button>
-          <Logo size={36} />
+          <RcImg assetKey="responsibility_center.education.logo" width={38} height={38} eager
+            style={{ borderRadius: 10 }} fallback={<Logo size={36} />} testid="edu-header-logo" />
           <div className="min-w-0">
             <div className="font-bold truncate" style={{ fontFamily: "var(--font-display)" }}>{ov.center.name}</div>
             <button className="text-[10px] flex items-center gap-1" style={{ color: "var(--text-muted)" }}

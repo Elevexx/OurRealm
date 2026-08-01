@@ -34,6 +34,8 @@ export default function AdminRcMedia() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   const [uploadAsset, setUploadAsset] = useState(null);
+  const [lightbox, setLightbox] = useState(null); // {url, title}
+  const [previewApp, setPreviewApp] = useState(null); // {url, title}
   const [versionsAsset, setVersionsAsset] = useState(null);
 
   const load = useCallback(async () => {
@@ -84,18 +86,23 @@ export default function AdminRcMedia() {
             <AssetCard key={a.asset_key} asset={a}
               onReplace={() => setUploadAsset(a)}
               onVersions={() => setVersionsAsset(a)}
+              onZoom={(url) => setLightbox({ url, title: a.display_name })}
+              onPreviewApp={(url) => setPreviewApp({ url, title: a.display_name })}
               reload={load} />
           ))}
         </div>
       )}
 
-      {uploadAsset && <UploadModal asset={uploadAsset} close={() => setUploadAsset(null)} reload={load} />}
+      {uploadAsset && <UploadModal asset={uploadAsset} close={() => setUploadAsset(null)} reload={load}
+        onPreviewApp={(url) => setPreviewApp({ url, title: uploadAsset.display_name })} />}
       {versionsAsset && <VersionsModal asset={versionsAsset} close={() => setVersionsAsset(null)} reload={load} />}
+      {lightbox && <Lightbox {...lightbox} close={() => setLightbox(null)} />}
+      {previewApp && <PreviewAcrossApp {...previewApp} close={() => setPreviewApp(null)} />}
     </div>
   );
 }
 
-function AssetCard({ asset, onReplace, onVersions, reload }) {
+function AssetCard({ asset, onReplace, onVersions, onZoom, onPreviewApp, reload }) {
   const active = asset.active;
   const copyKey = () => {
     navigator.clipboard?.writeText(asset.asset_key);
@@ -125,16 +132,24 @@ function AssetCard({ asset, onReplace, onVersions, reload }) {
   };
   return (
     <div className="or-surface p-3 flex flex-col" data-testid={`rc-media-card-${asset.asset_key}`}>
-      <div className="rounded flex items-center justify-center mb-2 overflow-hidden"
-        style={{ height: 110, background: "var(--surface-1, rgba(255,255,255,0.04))" }}>
+      <button className="rounded flex items-center justify-center mb-2 overflow-hidden w-full"
+        style={{ height: 110, background: "var(--surface-1, rgba(255,255,255,0.04))",
+          cursor: active ? "zoom-in" : "default" }}
+        onClick={() => active && onZoom(active.url)}
+        aria-label={active ? `Enlarge ${asset.display_name}` : undefined}
+        data-testid={`rc-media-thumb-${asset.asset_key}`}>
         {active ? (
           <img src={active.url} alt={asset.alt_text} loading="lazy"
             style={{ maxHeight: 100, maxWidth: "95%", objectFit: "contain" }}
             data-testid={`rc-media-preview-${asset.asset_key}`} />
         ) : (
-          <span className="text-xs" style={{ color: "var(--text-muted)" }} data-testid={`rc-media-default-${asset.asset_key}`}>Built-in default</span>
+          <span className="flex flex-col items-center gap-1 text-[10px]"
+            style={{ color: "var(--text-muted)" }} data-testid={`rc-media-default-${asset.asset_key}`}>
+            <ImageIcon size={20} />
+            No custom image — built-in style in use
+          </span>
         )}
-      </div>
+      </button>
       <div className="text-sm font-semibold">{asset.display_name}</div>
       <button className="text-[10px] font-mono text-left truncate" style={{ color: "var(--text-muted)" }}
         onClick={copyKey} title="Copy asset key" data-testid={`rc-media-key-${asset.asset_key}`}>
@@ -150,6 +165,8 @@ function AssetCard({ asset, onReplace, onVersions, reload }) {
       <div className="flex flex-wrap gap-1.5 mt-2">
         <button className="or-btn text-xs" onClick={onReplace} data-testid={`rc-media-replace-${asset.asset_key}`}><Upload size={11} /> Replace</button>
         <button className="or-btn or-btn-ghost text-xs" onClick={onVersions} data-testid={`rc-media-versions-${asset.asset_key}`}><History size={11} /> Versions</button>
+        {active && <button className="or-btn or-btn-ghost text-xs" onClick={() => onPreviewApp(active.url)}
+          data-testid={`rc-media-previewapp-${asset.asset_key}`}>Preview in App</button>}
         {active && <button className="or-btn or-btn-ghost text-xs" onClick={reset} data-testid={`rc-media-reset-${asset.asset_key}`}><RotateCcw size={11} /> Reset</button>}
         <button className="or-btn or-btn-ghost text-xs" onClick={editAlt} data-testid={`rc-media-alt-${asset.asset_key}`}>Alt</button>
       </div>
@@ -157,7 +174,7 @@ function AssetCard({ asset, onReplace, onVersions, reload }) {
   );
 }
 
-function UploadModal({ asset, close, reload }) {
+function UploadModal({ asset, close, reload, onPreviewApp }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [dims, setDims] = useState(null);
@@ -254,6 +271,12 @@ function UploadModal({ asset, close, reload }) {
         <input className="or-input w-full mb-3" placeholder="Written reason (required, min 5 characters)"
           value={reason} onChange={(e) => setReason(e.target.value)} data-testid="rc-media-upload-reason" />
         <div className="flex justify-end gap-2">
+          {(preview || uploaded) && (
+            <button className="or-btn or-btn-ghost text-xs mr-auto" disabled={busy}
+              onClick={() => onPreviewApp(uploaded?.url || preview)} data-testid="rc-media-preview-changes">
+              Preview Changes Across App
+            </button>
+          )}
           <button className="or-btn or-btn-ghost" onClick={close} disabled={busy}>Cancel</button>
           {!uploaded ? (
             <button className="or-btn" disabled={busy || !file || reason.trim().length < 5} onClick={upload} data-testid="rc-media-upload-btn">
@@ -321,6 +344,79 @@ function VersionsModal({ asset, close, reload }) {
   );
 }
 
+function Lightbox({ url, title, close }) {
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.8)" }}
+      onClick={close} role="dialog" aria-label={`${title} preview`} data-testid="rc-media-lightbox">
+      <div className="text-center" onClick={(e) => e.stopPropagation()}>
+        <img src={url} alt={title} className="mx-auto rounded-xl"
+          style={{ maxWidth: "85vw", maxHeight: "78vh", objectFit: "contain", background: "rgba(255,255,255,0.03)" }} />
+        <div className="text-sm mt-3">{title}</div>
+        <button className="or-btn or-btn-ghost text-xs mt-2" onClick={close} data-testid="rc-media-lightbox-close">Close</button>
+      </div>
+    </div>
+  );
+}
+
+const APP_CONTEXTS = [
+  { label: "Top Navigation", size: 22, chrome: "nav" },
+  { label: "Hub Sidebar", size: 38, chrome: "sidebar" },
+  { label: "Education Header", size: 36, chrome: "edu" },
+  { label: "Loading Screen", size: 72, chrome: "loading" },
+  { label: "Empty State", size: 120, chrome: "empty" },
+  { label: "Center Card", size: 40, chrome: "card" },
+];
+const DEVICE_WIDTHS = [["Mobile", 320], ["Tablet", 620], ["Desktop", 920]];
+
+function PreviewAcrossApp({ url, title, close }) {
+  const [device, setDevice] = useState(1);
+  const width = DEVICE_WIDTHS[device][1];
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center px-4 py-6 overflow-y-auto"
+      style={{ background: "rgba(0,0,0,0.75)" }} onClick={close} role="dialog"
+      aria-label="Preview across app" data-testid="rc-media-previewapp-modal">
+      <div className="or-surface p-5 w-full" style={{ maxWidth: 1000 }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h3 className="text-lg" style={{ fontFamily: "var(--font-display)" }}>Preview Across App — {title}</h3>
+          <div className="flex gap-1.5">
+            {DEVICE_WIDTHS.map(([label], i) => (
+              <button key={label} className="or-chip text-[11px]" data-active={device === i}
+                onClick={() => setDevice(i)} data-testid={`rc-media-device-${label.toLowerCase()}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+        <div className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>
+          A visual simulation of where this asset appears. Nothing is published until you activate the version.
+        </div>
+        <div className="mx-auto space-y-3 rounded-xl p-4 overflow-x-hidden"
+          style={{ maxWidth: width, background: "#070D18", border: "1px solid rgba(46,160,255,0.3)" }}
+          data-testid="rc-media-previewapp-canvas">
+          {/* nav mock */}
+          <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: "rgba(255,255,255,0.05)" }}>
+            <img src={url} alt="" style={{ width: 22, height: 22, borderRadius: 5, objectFit: "cover" }} />
+            <span className="text-[10px]" style={{ color: "#9AA7BD" }}>⭐ 🌐 🔔 💬 — Top navigation</span>
+          </div>
+          <div className="grid gap-3" style={{ gridTemplateColumns: width > 500 ? "1fr 1fr" : "1fr" }}>
+            {APP_CONTEXTS.slice(1).map((c) => (
+              <div key={c.label} className="rounded-lg p-3 flex items-center gap-3"
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <img src={url} alt="" style={{ width: c.size, height: c.size, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+                <div>
+                  <div className="text-[11px] font-semibold" style={{ color: "#E7EEF9" }}>{c.label}</div>
+                  <div className="text-[9px]" style={{ color: "#9AA7BD" }}>Scaled to {c.size}px — never stretched</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end mt-3">
+          <button className="or-btn or-btn-ghost" onClick={close} data-testid="rc-media-previewapp-close">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const BRAND_FIELDS = [
   { key: "product_name", label: "Product Display Name", type: "text" },
   { key: "short_name", label: "Short Display Name", type: "text" },
@@ -377,3 +473,4 @@ function BrandingSettings({ branding, reload }) {
     </div>
   );
 }
+
