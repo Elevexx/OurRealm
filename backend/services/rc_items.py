@@ -99,13 +99,24 @@ def self_tasks_allowed(center: dict) -> bool:
     return SELF_TASK_TEMPLATE_DEFAULTS.get(center.get("center_type") or "other", False)
 
 
-async def _ctx(center_id: str, user: dict):
+async def _ctx(center_id: str, user: dict, write: bool = True):
     """Center + active membership + effective perms. Paused/removed blocked.
-    Plain members gain `create_self_tasks` when the Center allows it."""
+    Closed Centers are inaccessible; paused/archived Centers are read-only
+    for owner/admin/manager and blocked for plain members."""
     center, membership = await rc._center_and_membership(center_id, user["id"])
     if not membership or membership.get("status") != "active":
         raise HTTPException(status_code=403, detail="You are not an active member of this Center")
-    perms = set(rc.ROLE_PERMISSIONS.get(membership.get("role") or "member", set()))
+    op = center.get("status") or "active"
+    if op == "closed":
+        raise HTTPException(status_code=409, detail="This Center is closed")
+    role = membership.get("role") or "member"
+    if op in ("paused", "archived"):
+        if role == "member":
+            raise HTTPException(status_code=403, detail=f"This Center is {op}")
+        if write:
+            raise HTTPException(status_code=409,
+                                detail=f"This Center is {op} — restore it before making changes")
+    perms = set(rc.ROLE_PERMISSIONS.get(role, set()))
     if "create_items" not in perms and self_tasks_allowed(center):
         perms.add("create_self_tasks")
     return center, membership, perms
@@ -845,7 +856,7 @@ async def list_items(user: dict, center_id: str, q: str = "", item_type: str = "
                      due_to: str = "", sort: str = "due", page: int = 1,
                      limit: int = 25) -> dict:
     await ensure_item_indexes()
-    center, membership, perms = await _ctx(center_id, user)
+    center, membership, perms = await _ctx(center_id, user, write=False)
     query: dict = {"center_id": center_id}
     if scope == "series":
         query["is_series"] = True
@@ -947,7 +958,7 @@ async def list_items(user: dict, center_id: str, q: str = "", item_type: str = "
 
 
 async def item_detail(user: dict, center_id: str, item_id: str) -> dict:
-    center, membership, perms = await _ctx(center_id, user)
+    center, membership, perms = await _ctx(center_id, user, write=False)
     item = await _get_item(center_id, item_id)
     if not _can_see(item, user["id"], perms):
         raise HTTPException(status_code=403, detail="You can't access this item")
@@ -991,7 +1002,7 @@ async def item_detail(user: dict, center_id: str, item_id: str) -> dict:
 
 
 async def work_summary(user: dict, center_id: str) -> dict:
-    center, membership, perms = await _ctx(center_id, user)
+    center, membership, perms = await _ctx(center_id, user, write=False)
     now_iso = _now()
     end_today = datetime.now(timezone.utc).replace(hour=23, minute=59, second=59).isoformat()
     base = {"center_id": center_id, "is_series": {"$ne": True}}
@@ -1025,7 +1036,8 @@ async def my_work(user: dict) -> dict:
     center_ids = [m["center_id"] for m in memberships]
     centers = {}
     async for c in db.responsibility_centers.find(
-            {"id": {"$in": center_ids}, "status": {"$nin": ["deleted", "archived"]}},
+            {"id": {"$in": center_ids},
+             "status": {"$nin": ["deleted", "archived", "paused", "closed"]}},
             {"_id": 0, "id": 1, "name": 1, "center_type": 1}):
         centers[c["id"]] = c
     live_ids = list(centers)

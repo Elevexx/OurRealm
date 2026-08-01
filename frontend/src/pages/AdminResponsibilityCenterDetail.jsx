@@ -4,6 +4,7 @@ import { ChevronLeft, ExternalLink, Snowflake, Lock, Unlock, PauseCircle, PlayCi
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { rcTypeMeta, ROLE_COLORS } from "@/lib/rcTypes";
+import { RcLifecycleAdminTab } from "@/components/admin/RcLifecycleAdminTab";
 
 const fmt = (iso) => {
   if (!iso) return "—";
@@ -11,7 +12,7 @@ const fmt = (iso) => {
   catch { return iso; }
 };
 
-const TABS = ["Overview", "Members", "Vault", "Transactions", "Renewals", "Activity", "Admin Notes", "Audit History", "Settings"];
+const TABS = ["Overview", "Members", "Vault", "Transactions", "Renewals", "Activity", "Lifecycle", "Admin Notes", "Audit History", "Settings"];
 
 // Responsibility Center — Admin Center Detail (Bundle A).
 // Every mutating action requires a written reason; the backend records
@@ -120,6 +121,7 @@ export default function AdminResponsibilityCenterDetail() {
       {tab === "Transactions" && <ListPane url={`/admin/responsibility-center/centers/${centerId}/transactions`} field="transactions" render={TxnRow} testid="rc-admin-detail-txns" />}
       {tab === "Renewals" && <ListPane url={`/admin/responsibility-center/centers/${centerId}/renewals`} field="renewal_attempts" render={RenewalRow} testid="rc-admin-detail-renewals" />}
       {tab === "Activity" && <ListPane url={`/admin/responsibility-center/centers/${centerId}/activity`} field="activity" render={ActivityRow} testid="rc-admin-detail-activity" />}
+      {tab === "Lifecycle" && <RcLifecycleAdminTab centerId={centerId} />}
       {tab === "Admin Notes" && <NotesPane centerId={centerId} />}
       {tab === "Audit History" && <ListPane url={`/admin/responsibility-center/centers/${centerId}/audit`} field="audit" render={AuditRow} testid="rc-admin-detail-audit" />}
       {tab === "Settings" && <SettingsPane center={center} owner={owner} />}

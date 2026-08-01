@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { rcTypeMeta, ROLE_COLORS } from "@/lib/rcTypes";
 import { RcImg } from "@/lib/rcAssets";
 import { RcWorkTab } from "@/components/rc/RcWorkTab";
+import { RcLifecyclePanel } from "@/components/rc/RcLifecyclePanel";
 
 const uuid = () =>
   (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -577,18 +578,17 @@ function SettingsTab({ data, me, perms, reload, centerId, navigate }) {
           <div>Permissions: {(me.permissions || []).join(", ") || "—"}</div>
         </div>
         {!isOwner && (
-          <button className="or-btn or-btn-ghost mt-4" onClick={leave}
-            style={{ borderColor: "rgba(255,107,107,0.4)", color: "#FF6B6B" }}
-            data-testid="rc-settings-leave-btn">
-            <LogOut size={14} /> Leave Center
-          </button>
+          <div className="text-[11px] mt-2" style={{ color: "var(--text-muted)" }}>
+            Departure options moved to the Center Lifecycle section below.
+          </div>
         )}
         {isOwner && (
           <div className="text-xs mt-4" style={{ color: "var(--text-muted)" }} data-testid="rc-settings-owner-note">
-            As the Owner you can't leave your Center in Phase 1. Center transfer and closure arrive with the admin tools phase.
+            Ownership transfer, pause, archive, export, and closure live in the Center Lifecycle section below.
           </div>
         )}
       </div>
+      <RcLifecyclePanel centerId={centerId} members={data.members} reload={reload} />
     </div>
   );
 }

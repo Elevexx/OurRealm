@@ -200,7 +200,7 @@ async def generate_for_series(series: dict, notify: bool = True) -> int:
     backfill_floor = _utcnow() - timedelta(hours=24)
     center = await db.responsibility_centers.find_one(
         {"id": series["center_id"]}, {"_id": 0, "id": 1, "name": 1, "status": 1})
-    if not center or center.get("status") in ("archived", "deleted", "paused"):
+    if not center or center.get("status") in ("archived", "deleted", "paused", "closed"):
         return 0
     while created < MAX_PER_PASS:
         try:
@@ -348,7 +348,7 @@ async def run_due_reminder_pass() -> dict:
             continue
         center = await db.responsibility_centers.find_one(
             {"id": item["center_id"]}, {"_id": 0, "name": 1, "status": 1})
-        if not center or center.get("status") in ("archived", "deleted"):
+        if not center or center.get("status") in ("archived", "deleted", "paused", "closed"):
             continue
         recipients = list(dict.fromkeys(
             (item.get("assignee_ids") or []) or [item.get("created_by")]))

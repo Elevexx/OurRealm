@@ -56,6 +56,16 @@ RC_SETTINGS_DEFAULTS = {
     "invitation_limit": 50,                   # max pending invites per center
     "center_creation_enabled": True,
     "member_activation_enabled": True,
+    # Bundle D — lifecycle
+    "transfer_expiry_days": 7,
+    "closure_cancel_window_days": 14,
+    "closure_requires_admin_approval": True,
+    "allow_owner_pause": True,
+    "allow_owner_archive": True,
+    "allow_owner_closure": True,
+    "allow_member_leave": True,
+    "allow_recovery_requests": True,
+    "freeze_vault_on_closure": True,
 }
 _settings_cache = {"at": 0.0, "doc": None}
 

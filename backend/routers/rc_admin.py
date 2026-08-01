@@ -39,6 +39,12 @@ RC_ADMIN_PERMS = {
     "responsibility_center.view_activity",
     "responsibility_center.view_audit_logs",
     "responsibility_center.export_data",
+    "responsibility_center.transfer_ownership",
+    "responsibility_center.manage_ownership_recovery",
+    "responsibility_center.review_closure",
+    "responsibility_center.cancel_closure",
+    "responsibility_center.manage_retention_hold",
+    "responsibility_center.view_lifecycle_audit",
 }
 _VIEW_ONLY = {"responsibility_center.view", "responsibility_center.view_activity",
               "responsibility_center.view_audit_logs"}
