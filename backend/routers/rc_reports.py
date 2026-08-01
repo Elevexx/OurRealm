@@ -188,6 +188,30 @@ async def widgets_reset(center_id: str, current: CurrentUser, scope: str = "user
     return await rc_widgets.reset_layout(current, center_id, scope)
 
 
+# ── ORAi — per-Center assistant (suggestions only, fully logged) ────────
+from services import rc_orai  # noqa: E402
+
+
+@router.post("/{center_id}/orai/chat")
+async def orai_chat(center_id: str, body: dict, current: CurrentUser):
+    return await rc_orai.chat(current, center_id, body or {})
+
+
+@router.get("/{center_id}/orai/sessions")
+async def orai_sessions(center_id: str, current: CurrentUser):
+    return await rc_orai.sessions(current, center_id)
+
+
+@router.get("/{center_id}/orai/sessions/{session_id}/messages")
+async def orai_messages(center_id: str, session_id: str, current: CurrentUser):
+    return await rc_orai.messages(current, center_id, session_id)
+
+
+@router.delete("/{center_id}/orai/sessions/{session_id}")
+async def orai_delete(center_id: str, session_id: str, current: CurrentUser):
+    return await rc_orai.delete_session(current, center_id, session_id)
+
+
 # ── Education dashboard (built on the universal RC engine) ──────────────
 from services import rc_education  # noqa: E402
 

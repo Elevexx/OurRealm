@@ -1,0 +1,37 @@
+{
+  "summary": "Bundle I / Phase 1 ORAi per-Center AI assistant tested end-to-end (backend + frontend). Backend: 15/16 pytest cases passed (1 skipped due to activity route path; activity logging visually confirmed on classic dashboard 'Recent Activity' widget showing '@stealth started an ORAi conversation' entries). Frontend: classic dashboard header ORAi button, ?orai=1 auto-open, prompt chips, typed input, multi-turn assistant replies, session switching, New (+), delete-with-confirm, close, disclaimer, bold markdown rendering, and mobile full-width panel all work. Hub (rc-hub-orai) shows 4 insights and 'Open AI Assistant' navigates. rc-search-panel confirmed present on classic dashboard (regression pass). ONE FRONTEND BUG: edu-orai-fab at bottom-right (y=832, right=20px) is overlapped by the mobile-style bottom navigation 'Profile' tab — clicking it navigates to /profile instead of opening ORAi panel. JS click on the FAB works fine (panel opens correctly), and the sidebar 'AI Teaching' entry works. So the ORAi feature itself is fine; only the FAB z-index/position needs fixing.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/responsibility-center/{cid}/activity", "issue": "Route path 'activity' not exposed for regular members (returned 404); activity logs live under /rc-admin/centers/{cid}/activity. Not a blocker — orai_session_started entries ARE created (visible on classic dashboard 'Recent Activity' widget)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "EducationCenterDashboard FAB", "issue": "edu-orai-fab (fixed bottom-5 right-5, z-40) is obscured by the app's bottom navigation bar (bottom-profile button). document.elementFromPoint at the FAB center returns the bottom-nav Profile button, so a real user click on the sparkles FAB navigates to /profile instead of opening the ORAi panel. JS click still opens the panel correctly.", "selector": "[data-testid=\"edu-orai-fab\"]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "EducationCenterDashboard", "issues": ["FAB needs bottom offset (e.g. bottom-24 md:bottom-5) or higher z-index (>= 60) to clear the bottom nav on viewports where the bottom nav is rendered."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_bundle_i_orai.py", "/app/test_reports/pytest/bundle_i_orai.xml"],
+  "action_items": [
+    "Fix edu-orai-fab overlap with bottom navigation: raise z-index above the bottom nav OR increase bottom offset so the sparkles button is tappable (currently swallows to Profile tab). Suggested: className '... bottom-20 md:bottom-5 z-[60] ...'.",
+    "(Optional) Consider exposing /api/responsibility-center/{cid}/activity read for members (currently only /rc-admin path)."
+  ],
+  "critical_code_review_comments": [
+    "rc_orai._center_context correctly gates: vault balance only shown with view_vault, non-managers only see their own items (q['assignee_ids'] = user['id']). Good permission isolation.",
+    "System prompt includes explicit compliance rules (Fire Power = engagement resource, no medical/legal/financial/accreditation claims, suggest-only). Live compliance test passed — model refused to advise selling FP.",
+    "call_openai_chat is awaited; messages persisted after reply; session updated_at refreshed. Clean.",
+    "delete_session correctly scoped by user_id and center_id in the delete filter — cross-user deletion returns 404 as verified.",
+    "Minor: MAX_HISTORY=20 truncation happens after full read of 200 messages — small perf hit but not critical."
+  ],
+  "updated_files": ["/app/backend/tests/test_bundle_i_orai.py"],
+  "success_rate": {"backend": "94% (15/16, 1 skip)", "frontend": "92% (only FAB overlap failing)"},
+  "test_credentials": "stealth / Password1$ (founder, edu owner); tftwo / pass1234 (non-member).",
+  "seed_data_creation": "Created and cleaned up 1 ORAi session via chat + delete during backend test. During frontend testing 2-3 additional live ORAi sessions were created on the education center (real OpenAI calls, ~5-7 chat calls total).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "ORAi backend + panel UI are green. Only issue is edu-orai-fab is under the bottom nav on desktop viewport (1440x900) — need z-index bump or higher bottom offset. When re-testing, don't rely on force=True click alone; either scroll into view + normal click or verify document.elementFromPoint at the FAB center returns the FAB (not bottom-profile). Real OpenAI chat calls cost money — reuse the created_session_id fixture pattern."
+}

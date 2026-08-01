@@ -11,6 +11,7 @@ import apiClient from "@/api/client";
 import Logo from "@/components/Logo";
 import { RcItemCreateModal } from "@/components/rc/RcItemCreateModal";
 import { RcItemDrawer } from "@/components/rc/RcItemDrawer";
+import { RcOraiPanel } from "@/components/rc/RcOraiPanel";
 
 const BLUE = "#2EA0FF";
 const EDGE = "rgba(46,160,255,0.35)";
@@ -64,6 +65,7 @@ export default function EducationCenterDashboard() {
   const [navOpen, setNavOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [openItem, setOpenItem] = useState(null);
+  const [oraiOpen, setOraiOpen] = useState(false);
   const refs = { students: useRef(null), ai: useRef(null), lessons: useRef(null), progress: useRef(null), reports: useRef(null) };
 
   const load = useCallback(async (studentId = "") => {
@@ -107,7 +109,7 @@ export default function EducationCenterDashboard() {
     { group: "MAIN", items: [
       { label: "Overview", Icon: LayoutDashboard, act: () => window.scrollTo({ top: 0, behavior: "smooth" }), active: true },
       { label: "Students", Icon: Users, act: () => scrollTo("students") },
-      { label: "AI Teaching", Icon: Bot, act: () => scrollTo("ai") },
+      { label: "AI Teaching", Icon: Bot, act: () => { setOraiOpen(true); setNavOpen(false); } },
       { label: "Lessons & Tasks", Icon: BookOpen, act: () => scrollTo("lessons") },
       canManage && { label: "Grades & Approvals", Icon: ClipboardCheck, act: () => goTab("work") },
       perms.has("view_reports") && { label: "Reports", Icon: BarChart3, act: () => goTab("reports") },
@@ -320,6 +322,13 @@ export default function EducationCenterDashboard() {
         <RcItemDrawer centerId={id} itemId={openItem}
           onClose={() => setOpenItem(null)} onChanged={() => load(sel?.user_id)} />
       )}
+      <RcOraiPanel centerId={id} centerName={ov.center.name} open={oraiOpen} onClose={() => setOraiOpen(false)} />
+      <button onClick={() => setOraiOpen(true)}
+        className="fixed bottom-5 right-5 z-40 rounded-full p-3.5 transition-transform hover:scale-105"
+        style={{ background: "linear-gradient(135deg, #C26BFF, #2EA0FF)", boxShadow: "0 0 18px rgba(194,107,255,0.5)", color: "#fff" }}
+        aria-label="Ask ORAi Tutor" title="Ask ORAi Tutor" data-testid="edu-orai-fab">
+        <Sparkles size={20} />
+      </button>
     </div>
   );
 }

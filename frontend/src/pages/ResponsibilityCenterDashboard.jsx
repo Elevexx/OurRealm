@@ -15,6 +15,7 @@ import { RcBirthdayPanel } from "@/components/rc/RcBirthdayPanel";
 import { RcWidgetBoard } from "@/components/rc/RcWidgetBoard";
 import { RcSearchPanel } from "@/components/rc/RcSearchPanel";
 import ReportModal from "@/components/ReportModal";
+import { RcOraiPanel } from "@/components/rc/RcOraiPanel";
 
 const uuid = () =>
   (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -48,6 +49,7 @@ export default function ResponsibilityCenterDashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [reportOpen, setReportOpen] = useState(false);
+  const [oraiOpen, setOraiOpen] = useState(() => searchParams.get("orai") === "1");
 
   useEffect(() => {
     const t = searchParams.get("tab");
@@ -146,6 +148,10 @@ export default function ResponsibilityCenterDashboard() {
               <b className="uppercase tracking-wide" style={{ color: ROLE_COLORS[me.role] }} data-testid="rc-dash-my-role">{me.role}</b>
             </div>
           </div>
+          <button className="or-btn or-btn-ghost text-xs shrink-0" onClick={() => setOraiOpen(true)}
+            title="Ask ORAi about this Center" data-testid="rc-dash-orai-btn">
+            ✦ ORAi
+          </button>
           {center.center_type === "education" && (
             <button className="or-btn text-xs shrink-0" onClick={() => navigate(`/responsibility-center/${id}/education`)}
               data-testid="rc-dash-education-link">
@@ -161,6 +167,7 @@ export default function ResponsibilityCenterDashboard() {
         </div>
         <ReportModal open={reportOpen} targetType="rc_center" targetId={id}
           onClose={() => setReportOpen(false)} testid="rc-center-report-modal" />
+        <RcOraiPanel centerId={id} centerName={center.name} open={oraiOpen} onClose={() => setOraiOpen(false)} />
         {center.description && (
           <p className="text-sm mt-3" style={{ color: "var(--text-muted)" }}>{center.description}</p>
         )}

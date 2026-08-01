@@ -145,8 +145,9 @@ export default function ResponsibilityCenterHub() {
           {ins.text}
         </button>
       ))}
-      {user?.admin_role && (
-        <button className="or-btn or-btn-ghost w-full text-xs mt-1" onClick={() => navigate("/admin/orai")} data-testid="rc-hub-orai-open">
+      {!!managed && (
+        <button className="or-btn or-btn-ghost w-full text-xs mt-1"
+          onClick={() => navigate(`/responsibility-center/${managed.id}?orai=1`)} data-testid="rc-hub-orai-open">
           <Bot size={12} /> Open AI Assistant
         </button>
       )}
