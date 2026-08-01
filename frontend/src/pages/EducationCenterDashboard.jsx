@@ -324,7 +324,7 @@ export default function EducationCenterDashboard() {
       )}
       <RcOraiPanel centerId={id} centerName={ov.center.name} open={oraiOpen} onClose={() => setOraiOpen(false)} />
       <button onClick={() => setOraiOpen(true)}
-        className="fixed bottom-5 right-5 z-40 rounded-full p-3.5 transition-transform hover:scale-105"
+        className="fixed bottom-24 md:bottom-6 right-5 z-[60] rounded-full p-3.5 transition-transform hover:scale-105"
         style={{ background: "linear-gradient(135deg, #C26BFF, #2EA0FF)", boxShadow: "0 0 18px rgba(194,107,255,0.5)", color: "#fff" }}
         aria-label="Ask ORAi Tutor" title="Ask ORAi Tutor" data-testid="edu-orai-fab">
         <Sparkles size={20} />
