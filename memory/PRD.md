@@ -1,5 +1,42 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Responsibility Center — Bundle F (Aug 1, 2026) ✅ COMPLETE — awaiting founder review (STOPPED before Bundle G)
+**Verified: 21/21 new pytest (`tests/test_bundle_f_reports.py`) + Bundle E (29) & D (16) re-passed after changes + testing_agent iteration_101 frontend E2E (100% of in-scope flows, zero action items).**
+
+### Universal reporting engine (`services/rc_reports.py`)
+- ONE registry (`REPORTS`) for every Center type — 12 real-data reports: work_summary, member_workload (with non-judgmental workload indicator + disclaimer), unit_workload, approval_report (immutable history), attendance_summary, attendance_detail (perm `view_detailed_attendance`, privacy note), calendar_summary (RSVP dist, cancellations, conflict overrides), fire_power_activity (non-monetary language, transaction_type ledger), vault_report (balance, added/burned, coverage estimate), renewal_report (membership_user_id/result/fire_power_needed), membership_summary, lifecycle_report (explicitly states permanent deletion NOT implemented — locked-closed state).
+- Common filters via `parse_filters`: date range (max 366d validated), member/unit/status/priority/item_type/event_type/include_archived/group_by; server-side aggregation ($group, $unwind for assignee arrays), row caps (200-500 detail, 100 shown in UI), UTC internal + Center timezone echoed.
+- Endpoints (routers/rc_reports.py): GET `/{cid}/reports` (perm-filtered catalog), POST `/{cid}/reports/{key}` (data), POST `/{cid}/reports-export`, GET `/{cid}/report-runs` (+/{id}/download, /{id}/retry POST), saved views CRUD `/{cid}/saved-report-views`, GET `/digest/preview`, GET/PATCH `/{cid}/birthday-settings`, POST `/{cid}/birthday-consent`, admin GET `/api/admin/responsibility-center/reports/overview`.
+
+### Export engine (`services/rc_exports.py`)
+- Async report runs: statuses queued→processing→ready/failed/expired; idempotency_key unique partial index (same client_token = one run, duplicate:true); claim-locked worker `run_export_pass()` (claim_until, PROVEN one-file under concurrent workers in pytest); immediate kick via asyncio.create_task + hourly scheduler pass; rate limit 15 exports/10min/user.
+- **CSV**: UTF-8-sig, header meta, formula-injection neutralized ('-prefix for =,+,-,@ — pytest-proven). **XLSX**: openpyxl, Summary+Data sheets, frozen header, safe cells, column widths. **PDF**: reportlab platypus — center name, title, range, generated-by, summary/breakdown/detail tables (row caps), HTML-escaped text, page-number+confidentiality footer. Logo embedding deferred (text branding).
+- Files stored as bytes in `responsibility_center_report_files` (48h TTL); download endpoint re-checks membership + report perm + requester (or manage_roles) + expiry (410 after) and marks downloaded_at once; expiry sweep deletes files but PRESERVES run audit rows (status=expired); retry re-queues own failed/expired runs; notifications report_ready/report_failed deep-link `?tab=reports&run=`.
+- **Birthday auto-events**: center opt-in flags (birthday_auto_events_enabled/show_year, owner PATCH, off by default) + per-member explicit consent (`responsibility_center_birthday_consents` — user provides month/day, nothing inferred; no dob field exists on users); `run_birthday_pass()` (hourly) creates yearly all-day birthday events for consented ACTIVE members in enabled ACTIVE centers within 180d window — unique (center,user,year) claim index (concurrent-proof); consent withdrawal cancels active event + deletes claim.
+- **Digest preview** (`rc_calendar.digest_preview`): builds live sections with current settings/permissions, NEVER inserts digest_log / consumes dedup key (pytest-proven), labeled "Preview — Not Sent", empty message included.
+
+### Permissions (added to ROLE_PERMISSIONS)
+- REPORT_PERMS_FULL (owner/admin): view/create/export_reports, saved views, all work/attendance/fire-power/vault/renewal/lifecycle report+export perms. REPORT_PERMS_MANAGER: work + attendance + saved views + export (NO fire power/vault/renewal/lifecycle). member: none (Reports tab hidden in UI, backend 403).
+
+### Frontend
+- NEW `components/rc/RcReportsTab.jsx`: catalog cards by category (perm-filtered), viewer (date presets last7/30/90/this-last month/this year/next30/custom, member+unit filters, Apply), summary tile grid, accessible CSS bar breakdowns (aria-labels), detail table (100-row cap + export hint), CSV/Excel/PDF export buttons, Print (body.rc-printing + @media print CSS in index.css — visibility-based, black-on-white, row page-break rules), Save view (prompt), saved views list (open/delete), Export History (status chips, blob download, retry, refresh). Reports tab hidden for roles without view_reports.
+- NEW `components/rc/RcBirthdayPanel.jsx` (in Center Settings tab): center toggle (managers) + personal month/day opt-in / stop-sharing.
+- MOD `RcWorkDigestCard.jsx`: "Preview My Work Digest" button + panel (label, delivery time, per-section items with links, empty message).
+- MOD `AdminResponsibilityCenter.jsx`: new "Reports" tab (rc-admin-tab-reports) — platform aggregate metric cards + status/type breakdowns + range select (counts only, no private content).
+- MOD `ResponsibilityCenterDashboard.jsx`: Reports tab (BarChart3) between Calendar and Members.
+
+### New collections (additive)
+`responsibility_center_report_runs` (uniq center+idempotency_key), `responsibility_center_report_files` (bytes, TTL-swept), `responsibility_center_saved_report_views`, `responsibility_center_birthday_consents`, `responsibility_center_birthday_events` (uniq center+user+year).
+
+### Bundle F deferred / notes
+- Scheduled report DELIVERY: foundation-only per spec (no `responsibility_center_scheduled_reports` delivery loop built — deliberately not silently enabled; collection/endpoints can be added in Bundle G if wanted).
+- PDF chart images + Media-Manager logo embedding in PDFs: deferred (accurate tables/summaries exported instead of fake chart screenshots, per spec).
+- Report definitions are code-registry-based (system reports) rather than DB `report_definitions` rows — simpler, equally universal; custom user-defined report definitions deferred.
+- group_by filter parsed/validated but breakdowns are per-report fixed sets.
+- Dev-mode React warning from platform x-* instrumentation on <option> elements (cosmetic, dev only).
+
+### Next: Bundle G (Templates, widgets, universal search, moderation integration, final polish) — NOT STARTED, awaiting founder approval.
+
 ## Responsibility Center — Bundle E (Aug 1, 2026) ✅ COMPLETE — awaiting founder review (STOPPED before Bundle F)
 **Verified: 29/29 new pytest (`tests/test_bundle_e_units_calendar.py`, incl. recurrence + digest concurrency proofs) + all prior suites pass individually (A 34, B 24, C+Phase1 52, D 16 = 155 total) + testing_agent iteration_100 frontend E2E (~95%, zero action items) + main-agent self-test of conversion UI & deadline deep-link (screenshots).**
 

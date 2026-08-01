@@ -155,7 +155,7 @@ export default function ResponsibilityCenterDashboard() {
       </div>
 
       <div className="flex items-center gap-2 mb-4 overflow-x-auto no-scrollbar">
-        {TABS.map(({ id: tid, label, Icon }) => (
+        {TABS.filter(({ id: tid }) => tid !== "reports" || perms.has("view_reports")).map(({ id: tid, label, Icon }) => (
           <button key={tid} className="or-chip shrink-0" data-active={tab === tid} onClick={() => setTab(tid)} data-testid={`rc-dash-tab-${tid}`}>
             <Icon size={12} /> {label}
           </button>
