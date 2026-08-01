@@ -91,3 +91,7 @@ Belongs to Sound Admin / Copyright Tool / moderation / support-ticket / audit ph
 - Phase 4 Course Player: DONE (prev/next/resume, graded quizzes, checkpoint approvals, achievements, non-accredited certificate, manager reports, ORAi Tutor w/ voice).
 - Polish: DONE (cinematic ORRC logo, page transitions, loaders, hover lifts).
 - Remaining backlog: split AdminOrion.jsx (tech debt), Phase 2 moderation detection workflows (see Jul 27 entry), voice input for course search (idea).
+
+## STATUS UPDATE (Aug 2026) — Phase 5 ORAi Intelligence & Automation DONE (iter-106, 34/34)
+All 10 sections shipped: Center Memory (audited), Recommendations, Automation Builder (approval-gated awards), Universal Template Library, Course Sharing w/ credit, Intelligence Dashboard, Admin AI Command Center, Workflow Drafts, Health Score, Voice improvements (read lessons/suggestions aloud, dashboard voice guide).
+Remaining backlog: Public course sharing (marked 'future' in UI), invite-picker UI for invite-only sharing (backend supports center_ids), split AdminOrion.jsx (tech debt), birthday data entry UI for memberships (trigger engine ready).

@@ -175,7 +175,8 @@ function Audit() {
   return (
     <div className="or-surface p-3" data-testid="orai-admin-audit">
       {d.activity.map((a, i) => (
-        <div key={i} className="text-[11px] py-1.5 flex gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+        <div key={i} className="text-[11px] py-1.5 flex gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+          data-testid={`orai-audit-row-${i}`}>
           <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0 h-fit" style={{ background: "rgba(194,107,255,0.14)", color: "#C26BFF" }}>{a.action}</span>
           <span className="flex-1">{a.detail}</span>
           <span className="text-[9px] shrink-0" style={{ color: "var(--text-muted)" }}>{a.created_at?.slice(0, 16).replace("T", " ")}</span>
