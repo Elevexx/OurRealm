@@ -33,7 +33,14 @@ CONTENT_TYPES = {"post": "posts", "comment": "comments", "profile": "users",
                  # Phase B/4 — replies are stored in the same `comments`
                  # collection (distinguished by `parent_id`). Messages get
                  # special privacy treatment — see submit_report below.
-                 "reply": "comments", "message": "messages"}
+                 "reply": "comments", "message": "messages",
+                 # Bundle G — Responsibility Center entities (same universal
+                 # moderation pipeline; membership verified in submit_report)
+                 "rc_center": "responsibility_centers",
+                 "rc_item": "responsibility_items",
+                 "rc_comment": "responsibility_item_comments",
+                 "rc_event": "responsibility_center_calendar_events",
+                 "rc_unit": "responsibility_center_units"}
 
 
 # Extended reason set (Phase 4 — Universal Reporting). Mirrors the
@@ -75,6 +82,19 @@ async def submit_report(payload: ReportPayload, current: CurrentUser):
     screenshots = (payload.screenshots or [])[:8]
     if any(not isinstance(x, str) or not x for x in screenshots):
         raise HTTPException(status_code=400, detail="Invalid screenshot id")
+
+    # RC entities: reporter must be able to access the entity's Center —
+    # blocks cross-Center ID probing (existence not revealed).
+    if payload.content_type.startswith("rc_"):
+        coll = getattr(db, CONTENT_TYPES[payload.content_type])
+        doc = await coll.find_one({"id": payload.content_id},
+                                  {"_id": 0, "id": 1, "center_id": 1})
+        cid = (doc or {}).get("center_id") or (doc or {}).get("id")
+        member = cid and await db.responsibility_center_memberships.find_one(
+            {"center_id": cid, "user_id": current["id"],
+             "status": {"$in": ["active", "paused"]}}, {"_id": 1})
+        if not doc or not member:
+            raise HTTPException(status_code=404, detail="Content not found")
 
     # Prevent duplicates from the same user against the same content.
     existing = await db.reports.find_one({

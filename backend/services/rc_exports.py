@@ -145,6 +145,9 @@ def _build_pdf(report: dict, requested_by: str) -> bytes:
                            ("FONTSIZE", (0, 0), (-1, -1), 8),
                            ("GRID", (0, 0), (-1, -1), 0.4, colors.grey)]))
     story += [t, Spacer(1, 10)]
+    chart = _pdf_chart(report)
+    if chart is not None:
+        story += [chart, Spacer(1, 6)]
     for bname, rows in (report.get("breakdowns") or {}).items():
         if not rows:
             continue
@@ -175,6 +178,31 @@ def _build_pdf(report: dict, requested_by: str) -> bytes:
 MIME = {"csv": "text/csv; charset=utf-8",
         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "pdf": "application/pdf"}
+
+
+def _pdf_chart(report: dict):
+    """Rendered bar chart from real breakdown data; None on any failure."""
+    try:
+        from reportlab.graphics.shapes import Drawing, String
+        from reportlab.graphics.charts.barcharts import VerticalBarChart
+        from reportlab.lib import colors
+        bname, rows = next(((k, v) for k, v in (report.get("breakdowns") or {}).items() if v), (None, None))
+        if not rows:
+            return None
+        rows = rows[:8]
+        d = Drawing(440, 190)
+        chart = VerticalBarChart()
+        chart.x, chart.y, chart.width, chart.height = 30, 30, 390, 130
+        chart.data = [[r.get("count") or 0 for r in rows]]
+        chart.categoryAxis.categoryNames = [str(r.get("label") or r.get("key"))[:14] for r in rows]
+        chart.categoryAxis.labels.fontSize = 6
+        chart.valueAxis.valueMin = 0
+        chart.bars[0].fillColor = colors.HexColor("#2f6db3")
+        d.add(chart)
+        d.add(String(30, 172, f"{bname.replace('_', ' ').title()} (chart of the table below)", fontSize=8))
+        return d
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # ── Report runs ──────────────────────────────────────────────────────────
@@ -425,3 +453,140 @@ async def run_birthday_pass() -> dict:
                 "version": 1, "created_at": _iso(), "updated_at": _iso(), "canceled_at": None})
             created += 1
     return {"birthday_events_created": created}
+
+
+# ── Scheduled report delivery (Bundle G — explicit opt-in only) ──────────
+SCHED_FREQS = ("weekly", "monthly")
+
+
+def _next_run(freq: str, now=None):
+    now = now or datetime.now(timezone.utc)
+    return (now + (timedelta(days=7) if freq == "weekly" else timedelta(days=30))).isoformat()
+
+
+async def create_schedule(user: dict, center_id: str, body: dict) -> dict:
+    from services import rc_reports
+    center, membership, perms = await _ctx(center_id, user, "view_reports", write=False)
+    if "export_reports" not in perms:
+        raise HTTPException(status_code=403, detail="You don't have permission to schedule reports")
+    meta = rc_reports.REPORTS.get(body.get("report_key"))
+    if not meta:
+        raise HTTPException(status_code=404, detail="Unknown report")
+    if meta["perm"] not in perms:
+        raise HTTPException(status_code=403, detail="You don't have access to this report")
+    freq = body.get("frequency") or "weekly"
+    if freq not in SCHED_FREQS:
+        raise HTTPException(status_code=400, detail="Frequency must be weekly or monthly")
+    fmt = body.get("format") or "csv"
+    if fmt not in FORMATS:
+        raise HTTPException(status_code=400, detail="Invalid format")
+    sched = {"id": uuid.uuid4().hex, "center_id": center_id, "report_key": body["report_key"],
+             "report_name": meta["name"], "frequency": freq, "format": fmt,
+             "filters": rc_reports.parse_filters(body.get("filters") or {}),
+             "recipient_ids": list(dict.fromkeys(body.get("recipient_ids") or [user["id"]]))[:20],
+             "delivery_channel": "in_app",  # email deferred — never silent external delivery
+             "enabled": bool(body.get("enabled", False)),  # OFF unless explicitly enabled
+             "owner_id": user["id"], "owner_username": user.get("username"),
+             "next_run_at": _next_run(freq) if body.get("enabled") else None,
+             "last_run_at": None, "failure_count": 0,
+             "created_at": _iso(), "updated_at": _iso()}
+    await db.responsibility_center_scheduled_reports.insert_one({**sched})
+    await rc.log_activity(center_id, user, "scheduled_report_created",
+                          f"@{user.get('username')} scheduled the {meta['name']} report ({freq})")
+    return {"schedule": sched}
+
+
+async def list_schedules(user: dict, center_id: str) -> dict:
+    center, membership, perms = await _ctx(center_id, user, "view_reports", write=False)
+    rows = await db.responsibility_center_scheduled_reports.find(
+        {"center_id": center_id}, {"_id": 0}).sort("created_at", -1).to_list(30)
+    return {"schedules": rows}
+
+
+async def update_schedule(user: dict, center_id: str, schedule_id: str, body: dict) -> dict:
+    center, membership, perms = await _ctx(center_id, user, "view_reports", write=False)
+    if "export_reports" not in perms:
+        raise HTTPException(status_code=403, detail="You can't manage report schedules")
+    sets = {"updated_at": _iso()}
+    if "enabled" in body:
+        sets["enabled"] = bool(body["enabled"])
+        sched = await db.responsibility_center_scheduled_reports.find_one(
+            {"id": schedule_id, "center_id": center_id}, {"_id": 0, "frequency": 1})
+        if not sched:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        sets["next_run_at"] = _next_run(sched["frequency"]) if sets["enabled"] else None
+        sets["failure_count"] = 0
+    if body.get("delete"):
+        r = await db.responsibility_center_scheduled_reports.delete_one(
+            {"id": schedule_id, "center_id": center_id})
+        if r.deleted_count != 1:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        return {"ok": True, "deleted": True}
+    await db.responsibility_center_scheduled_reports.update_one(
+        {"id": schedule_id, "center_id": center_id}, {"$set": sets})
+    return {"ok": True}
+
+
+async def run_scheduled_reports_pass() -> dict:
+    """Claim-locked, idempotent per period — one run per schedule period
+    even under overlapping workers. Permissions rechecked at run time."""
+    from services import rc_reports
+    now = datetime.now(timezone.utc)
+    ran = 0
+    try:
+        await db.responsibility_center_scheduled_report_runs.create_index(
+            [("period_key", 1)], unique=True, name="uniq_sched_period")
+    except Exception:  # noqa: BLE001
+        pass
+    async for sched in db.responsibility_center_scheduled_reports.find(
+            {"enabled": True, "next_run_at": {"$lte": now.isoformat()}}, {"_id": 0}).limit(25):
+        period_key = f"{sched['id']}:{(sched.get('next_run_at') or now.isoformat())[:10]}"
+        try:
+            await db.responsibility_center_scheduled_report_runs.insert_one(
+                {"period_key": period_key, "schedule_id": sched["id"], "ran_at": _iso()})
+        except DuplicateKeyError:
+            continue  # another worker claimed this period
+        try:
+            center = await db.responsibility_centers.find_one({"id": sched["center_id"]}, {"_id": 0})
+            owner = await db.users.find_one({"id": sched["owner_id"]}, {"_id": 0, "id": 1, "username": 1})
+            if not center or (center.get("status") or "active") != "active" or not owner:
+                raise ValueError("Center inactive or owner missing")
+            m = await db.responsibility_center_memberships.find_one(
+                {"center_id": sched["center_id"], "user_id": sched["owner_id"], "status": "active"}, {"_id": 0, "role": 1})
+            perms = set(rc.ROLE_PERMISSIONS.get((m or {}).get("role") or "member", set()))
+            meta = rc_reports.REPORTS.get(sched["report_key"]) or {}
+            if "export_reports" not in perms or meta.get("perm") not in perms:
+                raise ValueError("Owner no longer has report permission")
+            filters = dict(sched.get("filters") or {})
+            span = 7 if sched["frequency"] == "weekly" else 30
+            filters["date_from"] = (now - timedelta(days=span)).isoformat()
+            filters["date_to"] = now.isoformat()
+            run = await create_run(owner, sched["center_id"],
+                                   {"report_key": sched["report_key"], "format": sched["format"],
+                                    "filters": filters, "client_token": f"sched:{period_key}"})
+            for rid in sched.get("recipient_ids") or []:
+                rm = await db.responsibility_center_memberships.find_one(
+                    {"center_id": sched["center_id"], "user_id": rid, "status": "active"}, {"_id": 1})
+                if rm:  # removed recipients excluded
+                    await rc.notify_user(rid, "responsibility_center_scheduled_report",
+                                         f"Your scheduled \"{sched['report_name']}\" report is being generated.",
+                                         f"/responsibility-center/{sched['center_id']}?tab=reports",
+                                         sched["center_id"])
+            await db.responsibility_center_scheduled_reports.update_one(
+                {"id": sched["id"]},
+                {"$set": {"last_run_at": _iso(), "next_run_at": _next_run(sched["frequency"], now),
+                          "failure_count": 0, "updated_at": _iso()}})
+            ran += 1
+        except Exception as e:  # noqa: BLE001
+            fails = int(sched.get("failure_count") or 0) + 1
+            sets = {"failure_count": fails, "last_failure": str(e)[:200],
+                    "next_run_at": _next_run(sched["frequency"], now), "updated_at": _iso()}
+            if fails >= 3:
+                sets["enabled"] = False  # disabled after repeated failures, with notice
+                await rc.notify_user(sched["owner_id"], "responsibility_center_scheduled_report_failed",
+                                     f"Your scheduled \"{sched['report_name']}\" report was paused after repeated failures.",
+                                     f"/responsibility-center/{sched['center_id']}?tab=reports",
+                                     sched["center_id"])
+            await db.responsibility_center_scheduled_reports.update_one(
+                {"id": sched["id"]}, {"$set": sets})
+    return {"scheduled_reports_ran": ran}

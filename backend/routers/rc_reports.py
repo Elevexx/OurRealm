@@ -146,3 +146,92 @@ async def admin_reports(current: CurrentUser, date_from: str = "", date_to: str 
                                   "date_to": date_to or now.isoformat()})
     data = await rc_reports.admin_reports_overview(f["date_from"], f["date_to"])
     return {"range": {"date_from": f["date_from"], "date_to": f["date_to"]}, **data}
+
+
+# ── Bundle G — templates ─────────────────────────────────────────────────
+from services import rc_templates, rc_widgets, rc_exports as _rcx  # noqa: E402
+
+
+@router.get("/templates")
+async def templates_list(current: CurrentUser):
+    return rc_templates.list_templates()
+
+
+@router.get("/templates/{template_key}")
+async def templates_get(template_key: str, current: CurrentUser):
+    return rc_templates.get_template(template_key)
+
+
+@router.post("/{center_id}/apply-template")
+async def templates_apply(center_id: str, body: dict, current: CurrentUser):
+    return await rc_templates.apply_template(current, center_id, body or {})
+
+
+@router.get("/{center_id}/template-status")
+async def templates_status(center_id: str, current: CurrentUser):
+    return await rc_templates.template_status(current, center_id)
+
+
+# ── Bundle G — widgets ───────────────────────────────────────────────────
+@router.get("/{center_id}/dashboard-widgets")
+async def widgets_dashboard(center_id: str, current: CurrentUser):
+    return await rc_widgets.dashboard(current, center_id)
+
+
+@router.put("/{center_id}/widget-layout")
+async def widgets_save(center_id: str, body: dict, current: CurrentUser):
+    return await rc_widgets.save_layout(current, center_id, body or {})
+
+
+@router.delete("/{center_id}/widget-layout")
+async def widgets_reset(center_id: str, current: CurrentUser, scope: str = "user"):
+    return await rc_widgets.reset_layout(current, center_id, scope)
+
+
+# ── Bundle G — universal search ──────────────────────────────────────────
+@router.get("/search")
+async def rc_search_global(q: str, current: CurrentUser):
+    return await rc_widgets.search(current, q)
+
+
+@router.get("/{center_id}/search")
+async def rc_search_center(center_id: str, q: str, current: CurrentUser):
+    return await rc_widgets.search(current, q, center_id)
+
+
+# ── Bundle G — scheduled reports (explicit opt-in) ───────────────────────
+@router.get("/{center_id}/scheduled-reports")
+async def schedules_list(center_id: str, current: CurrentUser):
+    return await _rcx.list_schedules(current, center_id)
+
+
+@router.post("/{center_id}/scheduled-reports")
+async def schedules_create(center_id: str, body: dict, current: CurrentUser):
+    return await _rcx.create_schedule(current, center_id, body or {})
+
+
+@router.patch("/{center_id}/scheduled-reports/{schedule_id}")
+async def schedules_update(center_id: str, schedule_id: str, body: dict, current: CurrentUser):
+    return await _rcx.update_schedule(current, center_id, schedule_id, body or {})
+
+
+# ── Bundle G — admin: template usage + system health ─────────────────────
+@admin_router.get("/templates/usage")
+async def admin_templates(current: CurrentUser):
+    require_rc_perm(current, "responsibility_center.view")
+    return await rc_templates.admin_template_usage()
+
+
+@admin_router.get("/system-health")
+async def admin_system_health(current: CurrentUser):
+    require_rc_perm(current, "responsibility_center.view")
+    hb = await db.rc_scheduler_heartbeat.find_one({"id": "main"}, {"_id": 0}) or {}
+    queued = await db.responsibility_center_report_runs.count_documents({"status": "queued"})
+    processing = await db.responsibility_center_report_runs.count_documents({"status": "processing"})
+    failed = await db.responsibility_center_report_runs.count_documents({"status": "failed"})
+    schedules = await db.responsibility_center_scheduled_reports.count_documents({"enabled": True})
+    return {"scheduler_heartbeat": hb, "export_queue_depth": queued,
+            "exports_processing": processing, "exports_failed": failed,
+            "active_report_schedules": schedules,
+            "template_registry": {"templates": len(rc_templates.TEMPLATES),
+                                  "version": rc_templates.TEMPLATE_VERSION}}

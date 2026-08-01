@@ -455,6 +455,13 @@ async def _loop():
             from services import rc_exports
             ex = await rc_exports.run_export_pass()
             bd = await rc_exports.run_birthday_pass()
+            sr = await rc_exports.run_scheduled_reports_pass()
+            await db.rc_scheduler_heartbeat.update_one(
+                {"id": "main"},
+                {"$set": {"last_run_at": _now_iso(), "event_recurrence": ev,
+                          "event_reminders": er, "work_digest": dg,
+                          "exports": ex, "birthdays": bd, "scheduled_reports": sr}},
+                upsert=True)
             if s["processed"] or w["warnings"] or d["digests_sent"] \
                     or r["occurrences_generated"] or m["reminders_sent"] \
                     or lf["transfers_expired"] or lf["closures_completed"] \
