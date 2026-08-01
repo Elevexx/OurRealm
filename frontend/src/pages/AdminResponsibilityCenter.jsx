@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Landmark, Search, RefreshCw, Settings as SettingsIcon, LayoutGrid, Table2, AlertTriangle } from "lucide-react";
+import { Landmark, Search, RefreshCw, Settings as SettingsIcon, LayoutGrid, Table2, AlertTriangle, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { rcTypeMeta } from "@/lib/rcTypes";
@@ -44,6 +44,7 @@ export default function AdminResponsibilityCenter() {
   const TABS = [
     { id: "overview", label: "Overview", Icon: LayoutGrid },
     { id: "centers",  label: "All Centers", Icon: Table2 },
+    { id: "reports",  label: "Reports", Icon: BarChart3 },
     { id: "settings", label: "Global Settings", Icon: SettingsIcon },
   ];
 
@@ -77,6 +78,7 @@ export default function AdminResponsibilityCenter() {
 
       {tab === "overview" && <OverviewTab data={overview} navigate={navigate} />}
       {tab === "centers" && <CentersTab navigate={navigate} />}
+      {tab === "reports" && <AdminReportsTab />}
       {tab === "settings" && <SettingsTab canManage={overview?.my_permissions?.includes("responsibility_center.manage_settings")} />}
     </div>
   );
@@ -88,6 +90,58 @@ const Stat = ({ label, value, accent, testid }) => (
     <div className="text-lg font-semibold mt-0.5" style={accent ? { color: accent } : undefined}>{value ?? "—"}</div>
   </div>
 );
+
+// Bundle F — platform-level aggregated analytics (counts only, no private content)
+function AdminReportsTab() {
+  const [days, setDays] = useState(30);
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    const from = new Date(Date.now() - days * 86400000).toISOString();
+    apiClient.get("/admin/responsibility-center/reports/overview", { params: { date_from: from } })
+      .then((r) => setData(r.data))
+      .catch((e) => setErr(e?.response?.data?.detail || "Could not load analytics"));
+  }, [days]);
+  if (err) return <div className="or-surface p-6 text-sm" style={{ color: "#FF6B6B" }} data-testid="rc-admin-reports-error">{err}</div>;
+  if (!data) return <div className="or-surface p-6 text-sm" style={{ color: "var(--text-muted)" }}>Loading analytics…</div>;
+  const cards = Object.entries(data).filter(([k, v]) => typeof v === "number");
+  const lists = Object.entries(data).filter(([, v]) => Array.isArray(v));
+  return (
+    <div className="space-y-4" data-testid="rc-admin-reports-tab">
+      <div className="or-surface p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide">Platform analytics</h3>
+          <select className="or-input text-xs" style={{ width: "auto" }} value={days}
+            onChange={(e) => setDays(parseInt(e.target.value, 10))} data-testid="rc-admin-reports-range">
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+            <option value={365}>Last year</option>
+          </select>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {cards.map(([k, v]) => (
+            <div key={k} className="rounded p-2.5" style={{ background: "rgba(255,255,255,0.04)" }} data-testid={`rc-admin-metric-${k}`}>
+              <div className="text-lg font-semibold">{v}</div>
+              <div className="text-[10px] uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{k.replace(/_/g, " ")}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {lists.map(([k, rows]) => (
+        <div key={k} className="or-surface p-4" data-testid={`rc-admin-breakdown-${k}`}>
+          <h4 className="text-xs font-semibold uppercase tracking-wide mb-2">{k.replace(/_/g, " ")}</h4>
+          {rows.map((r) => (
+            <div key={String(r.key)} className="flex items-center justify-between py-1 text-sm"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+              <span>{String(r.key).replace(/_/g, " ")}</span><span>{r.count}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function OverviewTab({ data, navigate }) {
   if (!data) return <div className="or-surface p-6 text-sm text-center" style={{ color: "var(--text-muted)" }} data-testid="rc-admin-loading">Loading…</div>;

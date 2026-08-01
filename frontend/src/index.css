@@ -884,3 +884,17 @@ html[data-mode="stealth"] .or-btn::after {
 @media (prefers-reduced-motion: reduce) {
   .founding-vip-card, .founding-vip-confetti span { animation: none; }
 }
+
+/* Bundle F — printable report views */
+@media print {
+  body.rc-printing * { visibility: hidden; }
+  body.rc-printing .rc-print-area, body.rc-printing .rc-print-area * { visibility: visible; }
+  body.rc-printing .rc-print-area {
+    position: absolute; left: 0; top: 0; width: 100%;
+    background: #fff !important; color: #000 !important;
+  }
+  body.rc-printing .rc-print-area * { color: #000 !important; border-color: #999 !important; }
+  body.rc-printing .no-print { display: none !important; }
+  body.rc-printing .rc-print-area table { page-break-inside: auto; }
+  body.rc-printing .rc-print-area tr { page-break-inside: avoid; }
+}

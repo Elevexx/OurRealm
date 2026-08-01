@@ -123,6 +123,27 @@ ROLE_PERMISSIONS = {
                 "view_units", "view_calendar"},
 }
 
+REPORT_PERMS_FULL = {
+    "view_reports", "create_reports", "export_reports",
+    "view_saved_reports", "manage_saved_reports",
+    "view_work_reports", "view_member_workload", "view_unit_workload",
+    "view_approval_reports",
+    "view_attendance_reports", "view_detailed_attendance", "export_attendance",
+    "view_fire_power_reports", "view_vault_reports", "view_renewal_reports",
+    "export_fire_power_activity",
+    "view_lifecycle_reports", "export_lifecycle_reports",
+}
+REPORT_PERMS_MANAGER = {
+    "view_reports", "create_reports", "export_reports",
+    "view_saved_reports", "manage_saved_reports",
+    "view_work_reports", "view_member_workload", "view_unit_workload",
+    "view_approval_reports",
+    "view_attendance_reports", "view_detailed_attendance", "export_attendance",
+}
+ROLE_PERMISSIONS["owner"] |= REPORT_PERMS_FULL
+ROLE_PERMISSIONS["admin"] |= REPORT_PERMS_FULL
+ROLE_PERMISSIONS["manager"] |= REPORT_PERMS_MANAGER
+
 _INDEXES_READY = False
 
 

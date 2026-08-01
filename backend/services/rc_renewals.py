@@ -452,6 +452,9 @@ async def _loop():
             ev = await rc_calendar.run_event_recurrence_pass()
             er = await rc_calendar.run_event_reminder_pass()
             dg = await rc_calendar.run_work_digest_pass()
+            from services import rc_exports
+            ex = await rc_exports.run_export_pass()
+            bd = await rc_exports.run_birthday_pass()
             if s["processed"] or w["warnings"] or d["digests_sent"] \
                     or r["occurrences_generated"] or m["reminders_sent"] \
                     or lf["transfers_expired"] or lf["closures_completed"] \

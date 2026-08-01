@@ -677,6 +677,26 @@ async def get_latest_digest(user: dict) -> dict:
     return {"digest": row}
 
 
+async def digest_preview(user: dict) -> dict:
+    """Live preview of today's digest — never inserts a log row and
+    never consumes the daily deduplication key."""
+    pref = await get_digest_settings(user)
+    try:
+        tz = ZoneInfo(pref.get("digest_timezone") or "UTC")
+    except Exception:  # noqa: BLE001
+        tz = timezone.utc
+    local = datetime.now(timezone.utc).astimezone(tz)
+    center_names = await _digest_active_centers(user["id"])
+    sections = await _build_digest_sections(
+        {"id": user["id"], "username": user.get("username")}, pref, local, center_names) \
+        if center_names else {}
+    return {"preview": True, "label": "Preview — Not Sent",
+            "settings": pref, "local_time": local.isoformat(),
+            "sections": sections, "counts": {k: len(v) for k, v in sections.items()},
+            "empty": sum(len(v) for v in sections.values()) == 0,
+            "empty_message": "Nothing is currently scheduled for this digest."}
+
+
 async def _digest_active_centers(user_id: str) -> dict:
     """Active memberships in active Centers only — paused/archived/closed excluded."""
     ms = await db.responsibility_center_memberships.find(

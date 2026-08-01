@@ -19,10 +19,20 @@ const INCLUDES = [
 // Daily Work Digest settings — one in-app morning summary, off by default.
 export const RcWorkDigestCard = () => {
   const [prefs, setPrefs] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
   useEffect(() => {
     apiClient.get("/responsibility-center/digest-settings")
       .then((r) => setPrefs(r.data)).catch(() => {});
   }, []);
+  const loadPreview = async () => {
+    setLoadingPreview(true);
+    try {
+      const r = await apiClient.get("/responsibility-center/digest/preview");
+      setPreview(r.data);
+    } catch (e) { toast.error("Could not build the preview"); }
+    finally { setLoadingPreview(false); }
+  };
   const patch = async (updates) => {
     const prev = prefs;
     setPrefs((p) => ({ ...p, ...updates }));
@@ -71,6 +81,31 @@ export const RcWorkDigestCard = () => {
           ))}
         </div>
       )}
+      <div className="pt-2">
+        <button className="or-btn or-btn-ghost text-xs" disabled={loadingPreview} onClick={loadPreview} data-testid="rc-digest-preview-btn">
+          {loadingPreview ? "Building…" : "Preview My Work Digest"}
+        </button>
+        {preview && (
+          <div className="mt-2 rounded p-3" style={{ background: "rgba(255,255,255,0.04)" }} data-testid="rc-digest-preview-panel">
+            <div className="text-[10px] uppercase tracking-wide font-semibold mb-1" style={{ color: "#F4C84A" }} data-testid="rc-digest-preview-label">{preview.label}</div>
+            <div className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
+              Delivery: {preview.settings.digest_hour}:00 · {preview.settings.digest_timezone}
+            </div>
+            {preview.empty ? (
+              <div className="text-sm" data-testid="rc-digest-preview-empty">{preview.empty_message}</div>
+            ) : Object.entries(preview.sections).map(([sec, items]) => (
+              <div key={sec} className="mb-2" data-testid={`rc-digest-preview-${sec}`}>
+                <div className="text-xs font-semibold uppercase tracking-wide">{sec.replace(/_/g, " ")} ({items.length})</div>
+                {items.slice(0, 5).map((it) => (
+                  <a key={it.id} href={it.link} className="block text-xs py-0.5 truncate" style={{ color: "#5AB2FF" }}>
+                    {it.center_name}: {it.title}{it.due_at ? ` · due ${new Date(it.due_at).toLocaleDateString()}` : it.start_at ? ` · ${new Date(it.start_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}` : ""}
+                  </a>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
