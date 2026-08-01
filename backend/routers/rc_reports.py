@@ -188,6 +188,26 @@ async def widgets_reset(center_id: str, current: CurrentUser, scope: str = "user
     return await rc_widgets.reset_layout(current, center_id, scope)
 
 
+# ── Education dashboard (built on the universal RC engine) ──────────────
+from services import rc_education  # noqa: E402
+
+
+@router.get("/{center_id}/education/overview")
+async def education_overview(center_id: str, current: CurrentUser, student_id: str = ""):
+    return await rc_education.overview(current, center_id, student_id)
+
+
+@router.patch("/{center_id}/education/students/{student_id}")
+async def education_update_student(center_id: str, student_id: str, body: dict, current: CurrentUser):
+    return await rc_education.update_student(current, center_id, student_id, body or {})
+
+
+# ── Home page combined overview ──────────────────────────────────────────
+@router.get("/home-overview")
+async def home_overview(current: CurrentUser):
+    return await rc_widgets.home_overview(current)
+
+
 # ── Bundle G — universal search ──────────────────────────────────────────
 @router.get("/search")
 async def rc_search_global(q: str, current: CurrentUser):

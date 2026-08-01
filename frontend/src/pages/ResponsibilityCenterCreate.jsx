@@ -114,7 +114,7 @@ export default function ResponsibilityCenterCreate() {
   const STEPS = ["Type", "Details", "Starter Setup", "Confirm"];
 
   return (
-    <div className="max-w-2xl mx-auto" data-testid="rc-create-page">
+    <div className="max-w-2xl mx-auto rcx-scope" data-testid="rc-create-page">
       <button className="or-btn or-btn-ghost mb-4" onClick={() => navigate("/responsibility-center")} data-testid="rc-create-back">
         <ChevronLeft size={14} /> Responsibility Center
       </button>

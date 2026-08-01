@@ -31,7 +31,7 @@ export default function AdminRcTemplates({ mode = "list" }) {
   const { templateId } = useParams();
   const base = "/admin/responsibility-center/templates";
   return (
-    <div className="max-w-5xl mx-auto" data-testid="rc-admin-templates-page">
+    <div className="max-w-5xl mx-auto rcx-scope" data-testid="rc-admin-templates-page">
       <button className="or-btn or-btn-ghost mb-4" onClick={() => navigate(mode === "list" ? "/admin/responsibility-center" : base)}
         data-testid="rc-tpl-back">
         <ChevronLeft size={14} /> {mode === "list" ? "Responsibility Center Admin" : "All templates"}

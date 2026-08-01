@@ -47,6 +47,7 @@ import AdminRcMedia from "@/pages/AdminRcMedia";
 import ResponsibilityCenterHub from "@/pages/ResponsibilityCenterHub";
 import ResponsibilityCenterCreate from "@/pages/ResponsibilityCenterCreate";
 import ResponsibilityCenterDashboard from "@/pages/ResponsibilityCenterDashboard";
+import EducationCenterDashboard from "@/pages/EducationCenterDashboard";
 import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
 import AdminFAQ from "@/pages/AdminFAQ";
@@ -222,6 +223,7 @@ function App() {
             <Route path="/admin/responsibility-center/:centerId" element={<ShellRoute><AdminResponsibilityCenterDetail /></ShellRoute>} />
             <Route path="/responsibility-center/create" element={<ShellRoute><ResponsibilityCenterCreate /></ShellRoute>} />
             <Route path="/responsibility-center/:id" element={<ShellRoute><ResponsibilityCenterDashboard /></ShellRoute>} />
+            <Route path="/responsibility-center/:id/education" element={<ShellRoute><EducationCenterDashboard /></ShellRoute>} />
             <Route path="/profile/support" element={<ShellRoute><Support /></ShellRoute>} />
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
             <Route path="/admin/faq" element={<ShellRoute><AdminFAQ /></ShellRoute>} />

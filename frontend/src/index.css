@@ -898,3 +898,76 @@ html[data-mode="stealth"] .or-btn::after {
   body.rc-printing .rc-print-area table { page-break-inside: auto; }
   body.rc-printing .rc-print-area tr { page-break-inside: avoid; }
 }
+
+/* Education Center sliders — glowing handle, gradient track set inline */
+.edu-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+}
+.edu-slider:disabled { cursor: not-allowed; opacity: 0.55; }
+.edu-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid #2EA0FF;
+  box-shadow: 0 0 10px rgba(46,160,255,0.8);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.edu-slider::-webkit-slider-thumb:hover { transform: scale(1.12); }
+.edu-slider::-moz-range-thumb {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid #2EA0FF;
+  box-shadow: 0 0 10px rgba(46,160,255,0.8);
+}
+.edu-slider:focus-visible {
+  box-shadow: 0 0 0 2px rgba(46,160,255,0.6);
+}
+@media (prefers-reduced-motion: reduce) {
+  .edu-slider::-webkit-slider-thumb { transition: none; }
+}
+
+/* ── Responsibility Center design language (reference: glowing navy) ── */
+html:not([data-mode="business"]) .rcx-scope .or-surface {
+  background: linear-gradient(165deg,
+    color-mix(in srgb, var(--bgc) 62%, #0B1526),
+    color-mix(in srgb, var(--bgc) 80%, #060D18));
+  border: 1px solid rgba(46,160,255,0.28);
+  border-radius: 14px;
+  box-shadow: 0 0 14px rgba(46,160,255,0.10), inset 0 0 24px rgba(46,160,255,0.03);
+}
+html[data-mode="business"] .rcx-scope .or-surface {
+  border: 1px solid rgba(46,160,255,0.35);
+  border-radius: 14px;
+  box-shadow: 0 0 10px rgba(46,160,255,0.10);
+}
+.rcx-side-item {
+  display: flex; align-items: center; gap: 0.5rem;
+  width: 100%; text-align: left;
+  padding: 0.45rem 0.65rem; border-radius: 10px;
+  font-size: 0.78rem; color: var(--text-muted);
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.rcx-side-item:hover { background: rgba(46,160,255,0.08); color: var(--text-main); }
+.rcx-side-item[data-active="true"] {
+  background: rgba(46,160,255,0.16);
+  color: #2EA0FF;
+  border-color: rgba(46,160,255,0.4);
+  box-shadow: 0 0 10px rgba(46,160,255,0.15);
+}
+.rcx-stat-tile {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rcx-side-item { transition: none; }
+}

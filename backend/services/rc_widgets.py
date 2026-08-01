@@ -280,3 +280,142 @@ async def search(user: dict, q: str, center_id: str = "") -> dict:
                                 "link": f"/responsibility-center/{center['id']}"})
             results += await _search_one_center(center, user, perms, q, limit=4)
     return {"results": results[:60], "query": q}
+
+
+# ── Home page combined overview (one request for the whole hub) ─────────
+async def home_overview(user: dict) -> dict:
+    from services import responsibility_center as _rc
+    uid = user["id"]
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_ago = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+    week_ahead = now + timedelta(days=7)
+    DONE = ["completed", "approved"]
+    CLOSED = ["canceled", "archived", "declined"]
+
+    mems = await db.responsibility_center_memberships.find(
+        {"user_id": uid, "status": "active"}, {"_id": 0}).to_list(100)
+    cids = [m["center_id"] for m in mems]
+    roles = {m["center_id"]: m.get("role") for m in mems}
+    managed_ids = [cid for cid, r in roles.items() if r in ("owner", "admin", "manager")]
+    centers = await db.responsibility_centers.find(
+        {"id": {"$in": cids}, "status": {"$ne": "deleted"}}, {"_id": 0}).to_list(100)
+    settings = await _rc.get_rc_settings()
+    seat_cost = int(settings.get("seat_cost") or 100)
+
+    # per-center item stats in one aggregation
+    stats = {}
+    async for row in db.responsibility_items.aggregate([
+        {"$match": {"center_id": {"$in": cids}, "is_series": {"$ne": True},
+                    "status": {"$nin": CLOSED}}},
+        {"$group": {"_id": {"c": "$center_id",
+                            "done": {"$in": ["$status", DONE]}},
+                    "n": {"$sum": 1}}}]):
+        s = stats.setdefault(row["_id"]["c"], {"total": 0, "done": 0})
+        s["total"] += row["n"]
+        if row["_id"]["done"]:
+            s["done"] += row["n"]
+    member_counts = {}
+    async for row in db.responsibility_center_memberships.aggregate([
+        {"$match": {"center_id": {"$in": cids}, "status": "active"}},
+        {"$group": {"_id": "$center_id", "n": {"$sum": 1}}}]):
+        member_counts[row["_id"]] = row["n"]
+
+    cards = []
+    for c in centers:
+        cid = c["id"]
+        s = stats.get(cid, {"total": 0, "done": 0})
+        completion = round(100 * s["done"] / s["total"]) if s["total"] else 0
+        members = member_counts.get(cid, 0)
+        coverage = min(100, round(100 * (c.get("vault_balance") or 0) / max(1, members * seat_cost)))
+        cards.append({"id": cid, "name": c["name"], "center_type": c.get("center_type"),
+                      "role": roles.get(cid), "members": members,
+                      "open_tasks": s["total"] - s["done"],
+                      "completion_pct": completion,
+                      "health": round(0.6 * completion + 0.4 * coverage),
+                      "vault_balance": int(c.get("vault_balance") or 0),
+                      "status": c.get("status") or "active"})
+    cards.sort(key=lambda x: -x["health"])
+
+    my_open = {"assignee_ids": uid, "center_id": {"$in": cids}, "is_series": {"$ne": True},
+               "status": {"$nin": CLOSED + DONE}}
+    responsibilities = await db.responsibility_items.count_documents(
+        {**my_open, "item_type": "responsibility"})
+    due_today = await db.responsibility_items.count_documents(
+        {**my_open, "due_at": {"$gte": today_start.isoformat(),
+                               "$lt": (today_start + timedelta(days=1)).isoformat()}})
+    approvals = await db.responsibility_items.count_documents(
+        {"center_id": {"$in": managed_ids}, "status": "pending_approval",
+         "is_series": {"$ne": True}}) if managed_ids else 0
+    events_7d = await db.responsibility_center_calendar_events.count_documents(
+        {"center_id": {"$in": cids}, "status": {"$ne": "canceled"},
+         "start_at": {"$gte": now.isoformat(), "$lt": week_ahead.isoformat()}})
+    fire_week = 0
+    async for row in db.responsibility_center_transactions.aggregate([
+        {"$match": {"center_id": {"$in": cids}, "created_at": {"$gte": week_ago.isoformat()}}},
+        {"$group": {"_id": None, "n": {"$sum": 1}}}]):
+        fire_week = row["n"]
+
+    # 7-day completion trend (items reaching a done status, by day)
+    trend = {}
+    async for row in db.responsibility_items.aggregate([
+        {"$match": {"center_id": {"$in": cids}, "status": {"$in": DONE},
+                    "updated_at": {"$gte": week_ago.isoformat()}}},
+        {"$group": {"_id": {"$substr": ["$updated_at", 0, 10]}, "n": {"$sum": 1}}}]):
+        trend[row["_id"]] = row["n"]
+    trend_days = []
+    for i in range(7):
+        d = (week_ago + timedelta(days=i)).date().isoformat()
+        trend_days.append({"day": d, "completed": trend.get(d, 0)})
+
+    activity = await db.responsibility_center_activity_logs.find(
+        {"center_id": {"$in": cids}}, {"_id": 0}).sort("created_at", -1).to_list(10)
+    names = {c["id"]: c["name"] for c in centers}
+    for a in activity:
+        a["center_name"] = names.get(a["center_id"], "")
+
+    # factual alerts only
+    alerts = []
+    for c in cards:
+        if c["status"] != "active":
+            alerts.append({"kind": "center_paused", "severity": "high",
+                           "center_id": c["id"],
+                           "text": f"{c['name']} is {c['status']} — open it to review."})
+        elif c["role"] in ("owner", "admin") and c["members"] * seat_cost > c["vault_balance"]:
+            alerts.append({"kind": "low_vault", "severity": "medium", "center_id": c["id"],
+                           "text": f"{c['name']}: Fire Storage below the next renewal requirement "
+                                   f"({c['vault_balance']} 🔥 of {c['members'] * seat_cost} 🔥 needed)."})
+    if managed_ids:
+        soon = await db.responsibility_center_memberships.count_documents(
+            {"center_id": {"$in": managed_ids}, "status": "active",
+             "seat_paid_until": {"$lt": week_ahead.isoformat()}})
+        if soon:
+            alerts.append({"kind": "renewals_soon", "severity": "low", "center_id": None,
+                           "text": f"{soon} member seat{'s' if soon != 1 else ''} renew within 7 days."})
+    overdue = await db.responsibility_items.count_documents(
+        {**my_open, "due_at": {"$lt": now.isoformat(), "$ne": None}})
+    if overdue:
+        alerts.append({"kind": "overdue", "severity": "high", "center_id": None,
+                       "text": f"You have {overdue} overdue item{'s' if overdue != 1 else ''}."})
+
+    enabled_scheds = await db.responsibility_center_scheduled_reports.count_documents(
+        {"center_id": {"$in": cids}, "enabled": True}) if cids else 0
+    status_rows = [
+        {"label": "Auto-Renewals", "ok": bool(settings.get("auto_renewals_enabled")),
+         "note": "Paused" if not settings.get("auto_renewals_enabled") else "Operational"},
+        {"label": "Scheduled Reports", "ok": True,
+         "note": f"{enabled_scheds} active" if enabled_scheds else "None enabled"},
+        {"label": "My Centers", "ok": all(c["status"] == "active" for c in cards),
+         "note": f"{sum(1 for c in cards if c['status'] == 'active')} of {len(cards)} active"},
+        {"label": "Fire Storage",
+         "ok": not any(a["kind"] == "low_vault" for a in alerts),
+         "note": "Attention needed" if any(a["kind"] == "low_vault" for a in alerts) else "Healthy"},
+    ]
+
+    return {"totals": {"centers_managed": len(managed_ids), "centers_total": len(cards),
+                       "active_members": sum(member_counts.values()),
+                       "responsibilities": responsibilities, "tasks_due_today": due_today,
+                       "pending_approvals": approvals, "upcoming_events": events_7d,
+                       "fire_activity_week": fire_week},
+            "centers": cards, "trend": trend_days, "activity": activity,
+            "alerts": alerts, "system_status": status_rows}

@@ -122,7 +122,7 @@ export default function ResponsibilityCenterDashboard() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto" data-testid="rc-dash-page">
+    <div className="max-w-4xl mx-auto rcx-scope" data-testid="rc-dash-page">
       <button className="or-btn or-btn-ghost mb-4" onClick={() => navigate("/responsibility-center")} data-testid="rc-dash-back">
         <ChevronLeft size={14} /> All Centers
       </button>
@@ -146,6 +146,12 @@ export default function ResponsibilityCenterDashboard() {
               <b className="uppercase tracking-wide" style={{ color: ROLE_COLORS[me.role] }} data-testid="rc-dash-my-role">{me.role}</b>
             </div>
           </div>
+          {center.center_type === "education" && (
+            <button className="or-btn text-xs shrink-0" onClick={() => navigate(`/responsibility-center/${id}/education`)}
+              data-testid="rc-dash-education-link">
+              Education Dashboard
+            </button>
+          )}
           {me.role !== "owner" && (
             <button className="or-btn or-btn-ghost p-1.5 shrink-0" title="Report this Center"
               onClick={() => setReportOpen(true)} aria-label="Report this Center" data-testid="rc-dash-report-center">

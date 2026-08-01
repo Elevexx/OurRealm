@@ -54,6 +54,14 @@ RC_SETTINGS_DEFAULTS = {
     "max_centers_per_user": 0,                # 0 = unlimited
     "max_members_per_center": 0,              # 0 = unlimited
     "invitation_limit": 50,                   # max pending invites per center
+    # Education dashboard — AI Power tiers (admin-configurable; Fire Power
+    # requirement per day is an engagement-resource estimate, never money)
+    "education_ai_power_levels": [
+        {"key": "economy",  "label": "Economy",  "fp_per_day": 25},
+        {"key": "standard", "label": "Standard", "fp_per_day": 50},
+        {"key": "enhanced", "label": "Enhanced", "fp_per_day": 100},
+        {"key": "high",     "label": "High",     "fp_per_day": 200},
+    ],
     "center_creation_enabled": True,
     "member_activation_enabled": True,
     # Bundle D — lifecycle
@@ -85,7 +93,8 @@ async def get_rc_settings() -> dict:
 def invalidate_rc_settings_cache() -> None:
     _settings_cache["doc"] = None
 
-CENTER_TYPES = ["family", "household", "business", "team", "organization", "community", "other"]
+CENTER_TYPES = ["personal", "family", "household", "education", "business", "team",
+                "organization", "church", "sports", "community", "volunteer", "other"]
 
 ROLES = ["owner", "admin", "manager", "member"]
 ROLE_RANK = {"owner": 4, "admin": 3, "manager": 2, "member": 1}
