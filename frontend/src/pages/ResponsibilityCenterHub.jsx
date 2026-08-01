@@ -194,16 +194,16 @@ export default function ResponsibilityCenterHub() {
         {/* ── Left sidebar ── */}
         <aside className="hidden lg:block w-60 shrink-0" data-testid="rc-hub-sidebar">
           <div className="sticky top-20 space-y-3 max-h-[calc(100vh-6rem)] overflow-y-auto no-scrollbar pb-4">
-            <div className="or-surface p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <RcImg assetKey="responsibility_center.main_logo" height={38} eager
-                  fallback={<ShieldCheck size={26} style={{ color: BLUE }} />} testid="rc-hub-logo" />
-                <div className="leading-tight">
-                  <div className="text-[13px] font-extrabold tracking-wide" style={{ fontFamily: "var(--font-display)" }}>OURREALM</div>
-                  <div className="text-[9px] tracking-[0.2em] uppercase" style={{ color: BLUE }}>{branding.short_name}</div>
-                </div>
+            <div className="or-surface p-4 text-center">
+              <RcImg assetKey="responsibility_center.main_logo" eager
+                className="block mx-auto"
+                style={{ width: "88%", height: "auto" }}
+                fallback={<ShieldCheck size={52} className="mx-auto" style={{ color: BLUE }} />} testid="rc-hub-logo" />
+              <div className="leading-tight mt-2.5">
+                <div className="text-[13px] font-extrabold tracking-wide" style={{ fontFamily: "var(--font-display)" }}>OURREALM</div>
+                <div className="text-[9px] tracking-[0.2em] uppercase" style={{ color: BLUE }}>{branding.short_name}</div>
               </div>
-              <div className="text-[10px]" style={{ color: "var(--text-muted)" }} data-testid="rc-hub-tagline">{branding.tagline}</div>
+              <div className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }} data-testid="rc-hub-tagline">{branding.tagline}</div>
             </div>
             <div className="or-surface p-2">
               {SIDE.map(({ label, Icon, act, active, badge, beta }) => (
@@ -246,6 +246,15 @@ export default function ResponsibilityCenterHub() {
 
         {/* ── Main column ── */}
         <main className="flex-1 min-w-0">
+          {/* Mobile hero logo — sits fully below the sticky top nav */}
+          <div className="lg:hidden text-center mb-3"
+            style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 20px)" }}
+            data-testid="rc-hub-mobile-hero">
+            <RcImg assetKey="responsibility_center.main_logo" eager
+              className="block mx-auto"
+              style={{ width: "72%", maxWidth: 340, height: "auto" }}
+              fallback={<ShieldCheck size={72} className="mx-auto" style={{ color: BLUE }} />} testid="rc-hub-mobile-logo" />
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4" data-testid="rc-hub-header">
             <div>
               <h1 className="text-2xl sm:text-3xl" style={{ fontFamily: "var(--font-display)" }} data-testid="rc-hub-title">
