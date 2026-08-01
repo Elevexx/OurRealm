@@ -82,11 +82,19 @@ ROLE_RANK = {"owner": 4, "admin": 3, "manager": 2, "member": 1}
 
 ROLE_PERMISSIONS = {
     "owner":   {"edit_center", "invite_members", "remove_members", "manage_roles",
-                "view_vault", "view_activity", "fund_vault", "manage_renewals"},
+                "view_vault", "view_activity", "fund_vault", "manage_renewals",
+                "view_items", "create_items", "edit_any_item", "assign_items",
+                "approve_items", "archive_items", "comment_items", "moderate_comments",
+                "view_private_items"},
     "admin":   {"edit_center", "invite_members", "remove_members", "manage_roles",
-                "view_vault", "view_activity", "fund_vault", "manage_renewals"},
-    "manager": {"invite_members", "view_vault", "view_activity", "fund_vault"},
-    "member":  {"fund_vault"},
+                "view_vault", "view_activity", "fund_vault", "manage_renewals",
+                "view_items", "create_items", "edit_any_item", "assign_items",
+                "approve_items", "archive_items", "comment_items", "moderate_comments",
+                "view_private_items"},
+    "manager": {"invite_members", "view_vault", "view_activity", "fund_vault",
+                "view_items", "create_items", "assign_items", "approve_items",
+                "comment_items", "view_private_items"},
+    "member":  {"fund_vault", "view_items", "comment_items"},
 }
 
 _INDEXES_READY = False
