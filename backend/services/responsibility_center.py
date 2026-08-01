@@ -393,7 +393,7 @@ async def fund_vault(user: dict, center_id: str, amount: int,
 
     center, membership = await _center_and_membership(center_id, user["id"])
     if not has_permission(membership, "fund_vault"):
-        raise HTTPException(status_code=403, detail="Only active Center members can fund the Center Vault")
+        raise HTTPException(status_code=403, detail="Only active Center members can fire up the Center Vault")
     if center.get("vault_frozen"):
         raise HTTPException(status_code=409, detail="The Center Vault is frozen by an administrator")
     if center.get("status") == "archived":
@@ -552,7 +552,7 @@ async def respond_invite(user: dict, center_id: str, accept: bool) -> dict:
             status_code=409,
             detail=f"The Center Vault needs at least {seat_cost} Fire Power to activate your "
                    f"{period_days}-day seat (current vault: {int(fresh.get('vault_balance') or 0):,}). "
-                   f"Ask a Center member to fund the vault, then accept again.")
+                   f"Ask a Center member to fire up the Vault, then accept again.")
 
     now_iso = _now_iso()
     seat_until = (_now() + timedelta(days=period_days)).isoformat()

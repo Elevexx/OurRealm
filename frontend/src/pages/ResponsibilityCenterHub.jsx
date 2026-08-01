@@ -88,7 +88,7 @@ export default function ResponsibilityCenterHub() {
         </div>
         <div className="or-surface p-4" data-testid="rc-hub-how-vault">
           <Vault size={18} style={{ color: "#F4C84A" }} />
-          <div className="text-sm font-semibold mt-2">Fund the Center Vault</div>
+          <div className="text-sm font-semibold mt-2">Fire Up the Center Vault</div>
           <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
             Members move Fire Power into the shared Vault — the Center's long-term storage for engagement resources. Each member seat requires {config?.seat_cost ?? 100} 🔥 per {config?.seat_days ?? 30} days, drawn from the Vault. Fire Power is an internal engagement resource, never money.
           </div>

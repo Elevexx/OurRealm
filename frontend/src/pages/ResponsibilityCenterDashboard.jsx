@@ -166,6 +166,10 @@ export default function ResponsibilityCenterDashboard() {
         <StatCard label="My seat until" value={fmtDate(me.seat_paid_until)} testid="rc-stat-seat" />
       </div>
 
+      <div className="mb-4">
+        <RcSearchPanel centerId={id} />
+      </div>
+
       <div className="flex items-center gap-2 mb-4 overflow-x-auto no-scrollbar">
         {TABS.filter(({ id: tid }) => tid !== "reports" || perms.has("view_reports")).map(({ id: tid, label, Icon }) => (
           <button key={tid} className="or-chip shrink-0" data-active={tab === tid} onClick={() => setTab(tid)} data-testid={`rc-dash-tab-${tid}`}>
@@ -239,7 +243,7 @@ function OverviewTab({ data, reload, centerId, goVault }) {
               ["Renewing tomorrow", rs.renewing_in_1_day],
               ["Awaiting Fire Power", rs.awaiting_fire_power, rs.awaiting_fire_power ? "#FF8A5A" : undefined],
               ["Paused members", rs.paused_members, rs.paused_members ? "#FF6B6B" : undefined],
-              ["Vault balance", `${rs.vault_balance.toLocaleString()} 🔥`, "#F4C84A"],
+              ["Vault Fire Power", `${rs.vault_balance.toLocaleString()} 🔥`, "#F4C84A"],
               ["Needed next 7 days", `${rs.fire_power_needed_7d} 🔥`],
               ["Vault coverage", `${rs.vault_coverage_seats} seat${rs.vault_coverage_seats === 1 ? "" : "s"}`]].map(([l, v, col]) => (
               <div key={l} className="p-2 rounded" style={{ background: "var(--surface-1, rgba(255,255,255,0.03))" }}>
@@ -437,13 +441,13 @@ function VaultTab({ data, canViewVault, reload, centerId, config }) {
       setKeySalt((s) => s + 1);
       reload();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Funding failed");
+      toast.error(e?.response?.data?.detail || "Fire Up failed");
     } finally { setBusy(false); }
   };
 
   const TXN_LABELS = {
     center_created: "Center created (burn)",
-    vault_fund: "Vault funded",
+    vault_fund: "Vault fired up",
     seat_charge: "Member seat (30 days)",
     seat_renewal: "Seat renewal",
   };
@@ -467,7 +471,7 @@ function VaultTab({ data, canViewVault, reload, centerId, config }) {
           <input className="or-input flex-1" type="number" min="1" placeholder="Amount of Fire Power"
             value={amount} onChange={(e) => setAmount(e.target.value)} data-testid="rc-vault-fund-input" />
           <button className="or-btn" disabled={busy || !amount} onClick={fund} data-testid="rc-vault-fund-btn">
-            <Flame size={14} /> Fund Vault
+            <Flame size={14} /> Fire Up Vault
           </button>
         </div>
       </div>
