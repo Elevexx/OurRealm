@@ -44,6 +44,7 @@ const ORION_WIDGET_ID = "stealth_ai_5a6";  // founder-only chat widget seeded by
 const NAV_SECTIONS = [
   { id: "dashboard", label: "Dashboard",       icon: Hexagon },
   { id: "chat",      label: "ORAi Chat",      icon: MessageSquare },
+  { id: "ai-command", label: "AI Command",    icon: Cpu, href: "/admin/orai-control" },
   { id: "briefing",  label: "Founder Briefing", icon: BarChart3 },
   { id: "actions",   label: "Quick Actions",   icon: Zap },
   { id: "reports",   label: "Reports",         icon: FileText },
@@ -303,7 +304,7 @@ export default function AdminOrion() {
               <NavItem
                 key={s.id}
                 active={section === s.id}
-                onClick={() => { setSection(s.id); setSidebarOpen(false); }}
+                onClick={() => { if (s.href) { window.location.href = s.href; return; } setSection(s.id); setSidebarOpen(false); }}
                 icon={s.icon}
                 label={s.label}
                 soon={s.soon}

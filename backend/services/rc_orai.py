@@ -87,7 +87,12 @@ async def _center_context(user: dict, center, membership, perms: set) -> str:
     return "\n".join(lines)[:6000]
 
 
-def _system_prompt(center, context: str) -> str:
+def _system_prompt(center, context: str, memory: str = "", safety_rules: str = "") -> str:
+    extra = ""
+    if memory:
+        extra += f"\n\n{memory}"
+    if safety_rules:
+        extra += f"\n\nADMIN SAFETY RULES (must follow):\n{safety_rules[:2000]}"
     return f"""You are ORAi, the built-in assistant for the "{center['name']}" Responsibility Center on OurRealm.
 
 STRICT RULES:
@@ -99,7 +104,27 @@ STRICT RULES:
 - Only discuss data from THIS Center's context below. If asked about data you don't see, say the member may lack permission or it doesn't exist.
 
 CURRENT CENTER CONTEXT (real data, permission-filtered):
-{context}"""
+{context}{extra}"""
+
+
+async def _memory_ctx(center_id: str) -> str:
+    try:
+        from routers.rc_intelligence import build_memory_context
+        from routers.admin_orai import get_orai_config
+        cfg = await get_orai_config()
+        if not cfg.get("memory_enabled_global", True):
+            return ""
+        return await build_memory_context(center_id)
+    except Exception:
+        return ""
+
+
+async def _safety_rules() -> str:
+    try:
+        from routers.admin_orai import get_orai_config
+        return (await get_orai_config()).get("safety_rules") or ""
+    except Exception:
+        return ""
 
 
 async def chat(user: dict, center_id: str, body: dict) -> dict:
@@ -134,7 +159,9 @@ async def chat(user: dict, center_id: str, body: dict) -> dict:
     temperature, max_tokens = POWER_TUNING.get(power, POWER_TUNING["standard"])
     model = pick_openai_model(None, message) if power in ("enhanced", "high") else None
 
-    messages = ([{"role": "system", "content": _system_prompt(center, context)}]
+    messages = ([{"role": "system", "content": _system_prompt(
+        center, context, memory=await _memory_ctx(center_id),
+        safety_rules=await _safety_rules())}]
                 + history + [{"role": "user", "content": message}])
     result = await call_openai_chat(messages, model=model,
                                     temperature=temperature, max_tokens=max_tokens)

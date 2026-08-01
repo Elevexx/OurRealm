@@ -1,0 +1,46 @@
+{
+  "summary": "Iter-106 verified Phase 5 ORAi Intelligence & Automation end-to-end. Backend pytest 34/34 pass (memory CRUD + audit + settings, recommendations, health 7-factor score, automations CRUD/validation/run-check, template full lifecycle, course sharing + import with creator credit, admin AI Command Center config/prompts/analytics/audit/providers/memory/automations/templates, intelligence overview with manager vs member gating, ORAi chat memory-injection reflects stored astronomy topic). Frontend flows on preview URL confirmed: /responsibility-center/{cid}/intelligence renders health ring (score 56, 'Needs Attention'), all 7 factors, 6 stat cards, 7-day trend, all 6 tabs; Suggestions tab shows 3 recs + Read aloud button; Memory tab add/pin/delete/export/toggle work with real backend round-trips; Automations tab New builder → trigger + notify_member action + save creates card, toggle + delete work; Drafts tab controls present (didn't LLM-call); Templates tab shows saved 'Solar system starter' card. Admin /admin/orai-control shows all 8 tabs, Provider Health shows 3 engines with green dots (no provider name leaks), Config save works, Analytics numeric. RC dashboard shows rc-dash-intelligence-btn alongside ORAi FAB. Course Studio /courses has course-share-1 + course-template-2 buttons; share modal opens with 3 visibility radios + confirm. Second center /courses shows 'Shared with this Center' section + shared-import button. CoursePlayer /learn route shows player-read-aloud-btn. Ed dashboard sidebar has 'Intelligence' text. tftwo member view correctly hides Memory/Automations/Drafts/Templates tabs — only Overview + Suggestions visible. No console errors beyond the expected 401 preflight noise on the /signin page (pre-login).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminOraiControl config save", "issue": "Save button click succeeded (config persisted per PUT /api/admin/orai/config test), but no visible toast/status element matched .toast/[role='status'] selectors after click. Users may not see confirmation. Consider adding a data-testid=orai-cfg-saved toast.", "selector": "[data-testid=\"orai-cfg-save\"]", "priority": "LOW"},
+      {"component": "AdminOraiControl audit tab", "issue": "Audit list renders (data present via /api/admin/orai/audit) but individual rows do NOT have per-row data-testid (e.g. orai-audit-<id>). Adding row-level testids would help automation.", "selector": "orai-audit-*", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "CoursePlayer + Intelligence page", "issues": ["Shared bottom mobile-nav (Home/For You/Sounds/Plus/Realms/Friends/Profile) still renders at 1440x900 desktop viewports (carry-over from iter-104/105). Not a Phase-5-specific regression but continues to be the click-through hazard for FABs/tutor-send/etc."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase5_intelligence.py",
+    "/app/test_reports/pytest/iter106.xml"
+  ],
+  "action_items": [
+    "(nice-to-have) Add toast/data-testid=orai-cfg-saved status element on Admin AI Command Center after successful config save so the user (and automation) can confirm the save landed.",
+    "(nice-to-have) Add per-row data-testid to Audit log rows in Admin AI Command Center for automation robustness.",
+    "(carry-over from iter-104/105) Hide the mobile bottom nav on md+ viewports or raise z-index of floating actions so they aren't intercepted."
+  ],
+  "critical_code_review_comments": [
+    "rc_intelligence.build_memory_context correctly respects orai_memory_enabled flag and injects pinned-first memory into ORAi chat prompts — verified end-to-end by TestOraiChat.test_chat_uses_memory reply containing space/astronomy keywords.",
+    "rc_intelligence.health_score always returns exactly 7 factors with positive weights summing to 1.0 (0.2+0.2+0.15+0.1+0.1+0.1+0.15). Fine. Label thresholds map to score correctly.",
+    "rc_intelligence permission gating: managers-only endpoints uniformly call _require_manager (403 for tftwo). Overview strips memory_count/drafts_pending for non-managers. ",
+    "rc_automations.approve_run uses an atomic MongoDB filter {vault_balance:{$gte:amount}} + $inc:-amount to guard against overspend — good; on failure the pending action is marked ok:false 'Vault balance too low' without side-effects.",
+    "rc_automations.fire_trigger cleanly separates safe actions (executed) from award_fire_power (pending_actions queue). Every catch keeps other actions running. Good.",
+    "rc_courses.import_shared_course returns {course_id, credit} (not {course:{id}}); credit includes original_creator + original_center — verified in tests.",
+    "admin_orai config write is founder-only (write=True), reads are any-admin — matches spec. Audit doc inserted for every write.",
+    "MINOR: rc_intelligence.approve_draft — for 'task/reminder' path the created returns id via rc_items.create_item(...).get('item', item).get('id') — the shape assumption is fragile; consider always returning the created item id explicitly. Not a bug since only used for tracking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase5_intelligence.py (NEW — 34 tests, 1 LLM call)"
+  ],
+  "success_rate": {"backend": "100% (34/34)", "frontend": "100% of listed selectors present + working"},
+  "test_credentials": "stealth / Password1$ (founder, manager of Johnson Family Learning + second center). tftwo / pass1234 (active member of 3ed43c2b… only).",
+  "seed_data_creation": "One import of shared course 075f90… into center bcef1ec0… (creates another editable draft copy with credit — expected per problem statement; each run adds one). One TEST_iter106 memory row and one TEST_iter106 automation added and then deleted during UI test. One TEST_iter106_ui memory row added + pinned + deleted through the browser. Admin config safety_rules is now 'TEST_iter106 be encouraging.' and course_generator={max_lessons:15, temperature:0.7} — main agent may want to restore prior copy.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase 5 (memory/recs/health/automations/templates/sharing/admin/drafts/intelligence-overview) is fully green backend + frontend on preview. Signin page selector: use first two <input>s (email/username, then password) — /auth/login redirects to a JOIN page and confuses selectors; always use /signin. Course Player route is /courses/{cid}/learn NOT /play. Ed dashboard sidebar contains 'Intelligence' link. Do NOT re-run TestOraiChat unless needed — it's the only paid LLM call in the file. Each rerun of TestSharing.test_import_shared_creates_editable_copy creates another draft course copy in center bcef1ec0… so drafts accumulate over time.",
+  "rca of the issue": "N/A — no blocking issues found in Phase 5. Only cosmetic feedback (missing save toast + per-row audit testids) and the still-open cross-cutting bottom-nav overlap from earlier iterations."
+}

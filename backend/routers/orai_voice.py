@@ -13,6 +13,8 @@ are NEVER exposed through the API responses or UI.
 import logging
 import os
 import tempfile
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -156,11 +158,26 @@ async def tts(body: TtsBody, current: CurrentUser):
     if not text:
         raise HTTPException(status_code=400, detail="Nothing to say")
     prefs = await _prefs_for(current["id"])
+    cfg = await _admin_cfg()
     voice_id = body.voice_id if body.voice_id in VOICE_MAP else prefs["voice_id"]
+    if voice_id in cfg.get("voices_disabled", []):
+        voice_id = cfg.get("default_voice") or "nova"
     speed = body.speed if body.speed is not None else prefs["speed"]
     audio = await _tts_bytes(text, voice_id, speed)
+    await db.orai_voice_usage.insert_one({
+        "id": uuid.uuid4().hex, "user_id": current["id"], "kind": "tts",
+        "chars": len(text[:4000]), "voice_id": voice_id,
+        "created_at": datetime.now(timezone.utc).isoformat()})
     return Response(content=audio, media_type="audio/mpeg",
                     headers={"Cache-Control": "no-store"})
+
+
+async def _admin_cfg() -> dict:
+    try:
+        from routers.admin_orai import get_orai_config
+        return await get_orai_config()
+    except Exception:
+        return {}
 
 
 @router.get("/preview/{voice_id}")
@@ -202,6 +219,10 @@ async def transcribe(current: CurrentUser, audio: UploadFile = File(...)):
             with open(tmp, "rb") as fh:
                 resp = await stt.transcribe(file=fh, model="whisper-1",
                                             response_format="json")
+            await db.orai_voice_usage.insert_one({
+                "id": uuid.uuid4().hex, "user_id": current["id"], "kind": "stt",
+                "chars": len(raw), "voice_id": None,
+                "created_at": datetime.now(timezone.utc).isoformat()})
             return {"text": (getattr(resp, "text", "") or "").strip()}
         except Exception as e:
             last_err = e

@@ -175,9 +175,20 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
         extras.append(f"Requested lesson count: {int(body['lesson_count'])}")
     user_msg = prompt + ("\n\n" + "\n".join(extras) if extras else "")
 
+    try:
+        from routers.admin_orai import get_orai_config
+        cfg = await get_orai_config()
+        gen_cfg = cfg.get("course_generator", {})
+    except Exception:
+        gen_cfg = {}
+    max_lessons = int(gen_cfg.get("max_lessons") or 20)
+    temperature = float(gen_cfg.get("temperature") or 0.7)
+    if body.get("lesson_count") and int(body["lesson_count"]) > max_lessons:
+        user_msg += f"\nHard cap: at most {max_lessons} lessons."
+
     result = await call_openai_chat(
         [{"role": "system", "content": GEN_SYSTEM}, {"role": "user", "content": user_msg}],
-        temperature=0.7, max_tokens=8000)
+        temperature=temperature, max_tokens=8000)
     try:
         data = _parse_course_json(result.get("content") or "")
     except Exception as e:
@@ -457,6 +468,14 @@ async def complete_lesson(center_id: str, course_id: str, lesson_id: str, body: 
     await db.rc_course_progress.update_one(
         {"course_id": course_id, "lesson_id": lesson_id, "user_id": current["id"]},
         {"$set": doc}, upsert=True)
+    if doc["status"] == "completed":
+        try:
+            from routers.rc_automations import fire_trigger
+            await fire_trigger(center_id, "lesson_completed",
+                               {"user_id": current["id"], "username": current.get("username"),
+                                "lesson_title": lesson["title"]})
+        except Exception as e:
+            log.warning("lesson_completed automation failed: %s", e)
     return {"progress": doc, "needs_approval": needs_approval}
 
 
@@ -511,6 +530,13 @@ async def decide_approval(center_id: str, course_id: str, progress_id: str, body
         await db.rc_course_progress.update_one(
             {"id": progress_id},
             {"$set": {"status": "completed", "approved_by": current["id"], "approved_at": _iso()}})
+        try:
+            from routers.rc_automations import fire_trigger
+            await fire_trigger(center_id, "checkpoint_approved",
+                               {"user_id": p["user_id"], "username": p.get("username"),
+                                "lesson_title": p.get("lesson_title")})
+        except Exception as e:
+            log.warning("checkpoint_approved automation failed: %s", e)
     else:
         await db.rc_course_progress.delete_one({"id": progress_id})
     await rc.log_activity(center_id, current, "course_checkpoint_review",
@@ -622,3 +648,99 @@ async def tutor_chat(center_id: str, course_id: str, body: dict, current: Curren
          "content": reply, "created_at": _iso()},
     ])
     return {"reply": reply}
+
+
+# ── Course Sharing (Phase 5) ────────────────────────────────────────────
+SHARE_VISIBILITIES = {"private", "invite", "organization"}
+
+
+@router.post("/{center_id}/courses/{course_id}/share")
+async def share_course(center_id: str, course_id: str, body: dict, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "edit_center")
+    course = await _course(center_id, course_id)
+    if course["status"] != "published":
+        raise HTTPException(status_code=409, detail="Publish the course before sharing it")
+    visibility = body.get("visibility")
+    if visibility not in SHARE_VISIBILITIES:
+        raise HTTPException(status_code=400, detail="Pick a valid share visibility")
+    await db.rc_courses.update_one({"id": course_id}, {"$set": {"share_visibility": visibility, "updated_at": _iso()}})
+    await db.rc_course_shares.delete_many({"course_id": course_id})
+    shares = []
+    if visibility == "invite":
+        for tcid in (body.get("center_ids") or [])[:20]:
+            tc = await db.responsibility_centers.find_one({"id": tcid}, {"_id": 0, "id": 1, "name": 1})
+            if not tc or tcid == center_id:
+                continue
+            shares.append({"id": uuid.uuid4().hex, "course_id": course_id,
+                           "from_center_id": center_id, "from_center_name": center["name"],
+                           "to_center_id": tcid, "visibility": "invite",
+                           "created_by": current["id"], "created_at": _iso()})
+    elif visibility == "organization":
+        owned = await db.responsibility_centers.find(
+            {"created_by": center["created_by"], "id": {"$ne": center_id}}, {"_id": 0, "id": 1}).to_list(50)
+        for tc in owned:
+            shares.append({"id": uuid.uuid4().hex, "course_id": course_id,
+                           "from_center_id": center_id, "from_center_name": center["name"],
+                           "to_center_id": tc["id"], "visibility": "organization",
+                           "created_by": current["id"], "created_at": _iso()})
+    if shares:
+        await db.rc_course_shares.insert_many([{**s} for s in shares])
+    await rc.log_activity(center_id, current, "course_shared",
+                          f"@{current.get('username')} shared \"{course['title']}\" ({visibility})")
+    return {"visibility": visibility, "shared_with": len(shares)}
+
+
+@router.get("/{center_id}/courses-shared")
+async def shared_with_me(center_id: str, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
+    shares = await db.rc_course_shares.find({"to_center_id": center_id}, {"_id": 0}).to_list(100)
+    out = []
+    for s in shares:
+        c = await db.rc_courses.find_one(
+            {"id": s["course_id"], "status": "published"},
+            {"_id": 0, "id": 1, "title": 1, "subject": 1, "description": 1,
+             "grade_level": 1, "lesson_count": 1, "color": 1, "created_by": 1})
+        if not c:
+            continue
+        creator = await db.users.find_one({"id": c["created_by"]}, {"username": 1})
+        out.append({**c, "from_center_name": s["from_center_name"],
+                    "creator_username": (creator or {}).get("username"),
+                    "share_id": s["id"]})
+    return {"shared": out, "can_import": _can_manage(perms)}
+
+
+@router.post("/{center_id}/courses-shared/{course_id}/import")
+async def import_shared_course(center_id: str, course_id: str, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "edit_center")
+    share = await db.rc_course_shares.find_one(
+        {"course_id": course_id, "to_center_id": center_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=403, detail="This course isn't shared with your Center")
+    src = await db.rc_courses.find_one({"id": course_id}, {"_id": 0})
+    if not src:
+        raise HTTPException(status_code=404, detail="Course not found")
+    creator = await db.users.find_one({"id": src["created_by"]}, {"username": 1})
+    lessons = await db.rc_course_lessons.find({"course_id": course_id}, {"_id": 0}).to_list(300)
+    new_id = uuid.uuid4().hex
+    id_map = {}
+    new_lessons = []
+    for les in lessons:
+        nl = {**les, "id": uuid.uuid4().hex, "course_id": new_id, "center_id": center_id,
+              "created_at": _iso(), "updated_at": _iso()}
+        id_map[les["id"]] = nl["id"]
+        new_lessons.append(nl)
+    course = {**src, "id": new_id, "center_id": center_id, "status": "draft",
+              "published_at": None, "share_visibility": "private",
+              "created_by": current["id"], "created_at": _iso(), "updated_at": _iso(),
+              "credit": {"original_course_id": course_id,
+                         "original_center": share["from_center_name"],
+                         "original_creator": (creator or {}).get("username")},
+              "modules": [{**m, "lesson_ids": [id_map.get(x) for x in m.get("lesson_ids", []) if id_map.get(x)]}
+                          for m in src.get("modules", [])]}
+    await db.rc_courses.insert_one({**course})
+    if new_lessons:
+        await db.rc_course_lessons.insert_many([{**d} for d in new_lessons])
+    await rc.log_activity(center_id, current, "course_imported",
+                          f"@{current.get('username')} imported \"{src['title']}\" "
+                          f"(credit: @{(creator or {}).get('username')} · {share['from_center_name']})")
+    return {"course_id": new_id, "credit": course["credit"]}

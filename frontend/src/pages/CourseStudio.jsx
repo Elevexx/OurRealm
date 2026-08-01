@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Sparkles, BookOpen, Pencil, Play, Trash2, Loader2, BarChart3, GraduationCap, X } from "lucide-react";
+import { ArrowLeft, Sparkles, BookOpen, Pencil, Play, Trash2, Loader2, BarChart3, GraduationCap, X, Share2, Library, Download } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 
@@ -43,6 +43,47 @@ function ReportModal({ centerId, course, onClose }) {
   );
 }
 
+function ShareModal({ centerId, course, onClose }) {
+  const [visibility, setVisibility] = useState("organization");
+  const [busy, setBusy] = useState(false);
+  const share = async () => {
+    setBusy(true);
+    try {
+      const r = await apiClient.post(`/responsibility-center/${centerId}/courses/${course.id}/share`, { visibility });
+      toast.success(visibility === "private" ? "Sharing turned off" : `Shared with ${r.data.shared_with} Center(s)`);
+      onClose();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Could not share"); }
+    finally { setBusy(false); }
+  };
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-3" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+      <div className="or-surface w-full max-w-sm p-4 rcx-scope" onClick={(e) => e.stopPropagation()} data-testid="course-share-modal">
+        <div className="text-sm font-bold mb-1" style={{ fontFamily: "var(--font-display)" }}>Share "{course.title}"</div>
+        <div className="text-[10px] mb-3" style={{ color: "var(--text-muted)" }}>
+          Imported copies stay editable and always credit you as the original creator.
+        </div>
+        {[["private", "Private", "Only this Center"],
+          ["organization", "Organization", "Every Center you own"],
+          ["invite", "Invite only", "Specific Centers (manage below)"]].map(([v, label, desc]) => (
+          <label key={v} className="flex items-center gap-2 py-1.5 cursor-pointer" data-testid={`course-share-${v}`}>
+            <input type="radio" checked={visibility === v} onChange={() => setVisibility(v)} className="accent-[#2EA0FF]" />
+            <span className="text-[12px] font-semibold w-24">{label}</span>
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{desc}</span>
+          </label>
+        ))}
+        <div className="text-[9px] mt-1 mb-3" style={{ color: "var(--text-muted)" }}>Public sharing is coming in a future update.</div>
+        <div className="flex gap-2">
+          <button className="or-btn text-xs flex-1" onClick={share} disabled={busy} data-testid="course-share-confirm">
+            {busy ? <Loader2 size={12} className="animate-spin" /> : <Share2 size={12} />} Apply
+          </button>
+          <button className="or-btn or-btn-ghost text-xs" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // Course Studio — list + AI generation for a Center's courses.
 export default function CourseStudio() {
   const { id } = useParams();
@@ -54,11 +95,15 @@ export default function CourseStudio() {
   const [count, setCount] = useState("");
   const [genStep, setGenStep] = useState(-1);
   const [report, setReport] = useState(null);
+  const [sharing, setSharing] = useState(null);
+  const [shared, setShared] = useState([]);
 
   const load = useCallback(() => {
     apiClient.get(`/responsibility-center/${id}/courses`)
       .then((r) => { setCourses(r.data.courses); setCanManage(r.data.can_manage); })
       .catch((e) => toast.error(e?.response?.data?.detail || "Could not load courses"));
+    apiClient.get(`/responsibility-center/${id}/courses-shared`)
+      .then((r) => setShared(r.data.shared || [])).catch(() => {});
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
@@ -167,6 +212,16 @@ export default function CourseStudio() {
                       data-testid={`course-edit-${c.id}`}><Pencil size={12} /></button>
                     <button className="or-btn or-btn-ghost text-xs" onClick={() => setReport(c)} title="Progress report"
                       data-testid={`course-report-${c.id}`}><BarChart3 size={12} /></button>
+                    {c.status === "published" && (
+                      <button className="or-btn or-btn-ghost text-xs" onClick={() => setSharing(c)} title="Share course"
+                        data-testid={`course-share-${c.id}`}><Share2 size={12} /></button>
+                    )}
+                    <button className="or-btn or-btn-ghost text-xs" title="Save as template" data-testid={`course-template-${c.id}`}
+                      onClick={() => apiClient.post(`/responsibility-center/${id}/templates`, { kind: "course", name: c.title, source_id: c.id })
+                        .then(() => toast.success("Saved to your Template Library"))
+                        .catch((e) => toast.error(e?.response?.data?.detail || "Failed"))}>
+                      <Library size={12} />
+                    </button>
                     <button className="or-btn or-btn-ghost text-xs" onClick={() => remove(c)} title="Delete"
                       data-testid={`course-delete-${c.id}`}><Trash2 size={12} /></button>
                   </>
@@ -177,6 +232,37 @@ export default function CourseStudio() {
         </div>
       )}
       {report && <ReportModal centerId={id} course={report} onClose={() => setReport(null)} />}
+      {sharing && <ShareModal centerId={id} course={sharing} onClose={() => setSharing(null)} />}
+
+      {!!shared.length && (
+        <div className="mt-6" data-testid="course-shared-section">
+          <div className="text-[11px] font-bold uppercase tracking-[0.16em] mb-2 flex items-center gap-1.5" style={{ color: "#4DD6C1" }}>
+            <Share2 size={13} /> Shared with this Center
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {shared.map((c) => (
+              <div key={c.share_id} className="or-surface p-4" style={{ borderTop: `2px solid ${c.color || "#4DD6C1"}` }}
+                data-testid={`shared-course-${c.id}`}>
+                <div className="text-sm font-bold mb-0.5">{c.title}</div>
+                <div className="text-[10px] mb-2" style={{ color: "var(--text-muted)" }}>
+                  {[c.subject, c.grade_level, `${c.lesson_count} lessons`].filter(Boolean).join(" · ")}
+                </div>
+                <div className="text-[10px] mb-3" style={{ color: "#4DD6C1" }}>
+                  by @{c.creator_username} · {c.from_center_name}
+                </div>
+                {canManage && (
+                  <button className="or-btn text-xs w-full" data-testid={`shared-import-${c.id}`}
+                    onClick={() => apiClient.post(`/responsibility-center/${id}/courses-shared/${c.id}/import`)
+                      .then(() => { toast.success("Imported as an editable draft — creator credited"); load(); })
+                      .catch((e) => toast.error(e?.response?.data?.detail || "Could not import"))}>
+                    <Download size={12} /> Import editable copy
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,11 +4,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, ArrowRight, CheckCircle2, Circle, Trophy, Award, GraduationCap,
   Sparkles, Send, X, BookOpen, Beaker, FileText, Home as HomeIcon, Hammer,
-  RefreshCcw, Clock, Bot, Loader2, ShieldCheck,
+  RefreshCcw, Clock, Bot, Loader2, ShieldCheck, Volume2,
 } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { OraiVoiceBar } from "@/components/orai/OraiVoiceBar";
+import { oraiVoice } from "@/lib/oraiVoiceEngine";
 
 const BLOCK_META = {
   text: { Icon: BookOpen, color: "#2EA0FF", label: "Lesson" },
@@ -320,6 +321,15 @@ export default function CoursePlayer() {
                 <span className="text-[9px] px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-muted)" }}>
                   <Clock size={9} className="inline mr-0.5" /> ~{lesson.duration_min} min
                 </span>
+                <button className="or-btn or-btn-ghost text-xs" title="ORAi reads this lesson aloud"
+                  onClick={() => {
+                    if (oraiVoice.state === "speaking") { oraiVoice.stopSpeaking(); return; }
+                    const text = `${lesson.title}. ` + (lesson.blocks || []).map((b) => `${b.title ? b.title + ". " : ""}${b.body}`).join(" ");
+                    oraiVoice.speak(text).catch(() => toast.error("ORAi voice is unavailable right now"));
+                  }}
+                  data-testid="player-read-aloud-btn">
+                  <Volume2 size={13} /> Read aloud
+                </button>
               </div>
               {myState?.status === "pending_approval" && (
                 <div className="text-[10px] mb-3 px-3 py-2 rounded-lg flex items-center gap-1.5"
