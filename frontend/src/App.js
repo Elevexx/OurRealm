@@ -48,11 +48,12 @@ import ResponsibilityCenterHub from "@/pages/ResponsibilityCenterHub";
 import ResponsibilityCenterCreate from "@/pages/ResponsibilityCenterCreate";
 import ResponsibilityCenterDashboard from "@/pages/ResponsibilityCenterDashboard";
 import EducationCenterDashboard from "@/pages/EducationCenterDashboard";
-import CourseStudio from "@/pages/CourseStudio";
-import CourseEditor from "@/pages/CourseEditor";
-import CoursePlayer from "@/pages/CoursePlayer";
-import RcIntelligence from "@/pages/RcIntelligence";
-import AdminOraiControl from "@/pages/AdminOraiControl";
+const CourseStudio = React.lazy(() => import("@/pages/CourseStudio"));
+const CourseEditor = React.lazy(() => import("@/pages/CourseEditor"));
+const CoursePlayer = React.lazy(() => import("@/pages/CoursePlayer"));
+const RcIntelligence = React.lazy(() => import("@/pages/RcIntelligence"));
+const AdminOraiControl = React.lazy(() => import("@/pages/AdminOraiControl"));
+const Lazy = ({ children }) => <React.Suspense fallback={null}>{children}</React.Suspense>;
 import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
 import AdminFAQ from "@/pages/AdminFAQ";
@@ -229,11 +230,11 @@ function App() {
             <Route path="/responsibility-center/create" element={<ShellRoute><ResponsibilityCenterCreate /></ShellRoute>} />
             <Route path="/responsibility-center/:id" element={<ShellRoute><ResponsibilityCenterDashboard /></ShellRoute>} />
             <Route path="/responsibility-center/:id/education" element={<ShellRoute><EducationCenterDashboard /></ShellRoute>} />
-            <Route path="/responsibility-center/:id/courses" element={<ShellRoute><CourseStudio /></ShellRoute>} />
-            <Route path="/responsibility-center/:id/courses/:courseId/edit" element={<ShellRoute><CourseEditor /></ShellRoute>} />
-            <Route path="/responsibility-center/:id/courses/:courseId/learn" element={<ShellRoute><CoursePlayer /></ShellRoute>} />
-            <Route path="/responsibility-center/:id/intelligence" element={<ShellRoute><RcIntelligence /></ShellRoute>} />
-            <Route path="/admin/orai-control" element={<ShellRoute><AdminOraiControl /></ShellRoute>} />
+            <Route path="/responsibility-center/:id/courses" element={<ShellRoute><Lazy><CourseStudio /></Lazy></ShellRoute>} />
+            <Route path="/responsibility-center/:id/courses/:courseId/edit" element={<ShellRoute><Lazy><CourseEditor /></Lazy></ShellRoute>} />
+            <Route path="/responsibility-center/:id/courses/:courseId/learn" element={<ShellRoute><Lazy><CoursePlayer /></Lazy></ShellRoute>} />
+            <Route path="/responsibility-center/:id/intelligence" element={<ShellRoute><Lazy><RcIntelligence /></Lazy></ShellRoute>} />
+            <Route path="/admin/orai-control" element={<ShellRoute><Lazy><AdminOraiControl /></Lazy></ShellRoute>} />
             <Route path="/profile/support" element={<ShellRoute><Support /></ShellRoute>} />
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
             <Route path="/admin/faq" element={<ShellRoute><AdminFAQ /></ShellRoute>} />

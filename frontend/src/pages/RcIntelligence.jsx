@@ -211,11 +211,11 @@ function Memory({ cid }) {
             style={{ background: "rgba(194,107,255,0.15)", color: "#C26BFF" }}>{m.category}</span>
           <div className="text-[11px] flex-1">{m.content}</div>
           <button onClick={() => act(() => apiClient.patch(`/responsibility-center/${cid}/orai/memory/${m.id}`, { pinned: !m.pinned }))}
-            title={m.pinned ? "Unpin" : "Pin"} data-testid={`intel-memory-pin-${m.id}`}>
+            title={m.pinned ? "Unpin" : "Pin"} aria-label={m.pinned ? "Unpin memory" : "Pin memory"} data-testid={`intel-memory-pin-${m.id}`}>
             {m.pinned ? <Pin size={13} style={{ color: "#F4A73B" }} /> : <PinOff size={13} style={{ color: "var(--text-muted)" }} />}
           </button>
           <button onClick={() => act(() => apiClient.delete(`/responsibility-center/${cid}/orai/memory/${m.id}`), "Memory deleted")}
-            data-testid={`intel-memory-del-${m.id}`}><Trash2 size={13} style={{ color: "var(--text-muted)" }} /></button>
+            aria-label="Delete memory" data-testid={`intel-memory-del-${m.id}`}><Trash2 size={13} style={{ color: "var(--text-muted)" }} /></button>
         </div>
       ))}
     </div>
@@ -266,9 +266,9 @@ function AutomationBuilder({ cid, meta, onSaved, onCancel }) {
                 onChange={(e) => setActions(actions.map((x, j) => j === i ? { ...x, amount: Number(e.target.value) } : x))}
                 data-testid={`automation-amount-${i}`} />
             )}
-            <button onClick={() => move(i, i - 1)} data-testid={`automation-up-${i}`}><ArrowUp size={11} /></button>
-            <button onClick={() => move(i, i + 1)} data-testid={`automation-down-${i}`}><ArrowDown size={11} /></button>
-            <button onClick={() => setActions(actions.filter((_, j) => j !== i))} data-testid={`automation-remove-${i}`}><X size={12} /></button>
+            <button onClick={() => move(i, i - 1)} aria-label="Move action up" data-testid={`automation-up-${i}`}><ArrowUp size={11} /></button>
+            <button onClick={() => move(i, i + 1)} aria-label="Move action down" data-testid={`automation-down-${i}`}><ArrowDown size={11} /></button>
+            <button onClick={() => setActions(actions.filter((_, j) => j !== i))} aria-label="Remove action" data-testid={`automation-remove-${i}`}><X size={12} /></button>
           </div>
         ))}
       </div>
@@ -353,7 +353,7 @@ function Automations({ cid }) {
             </button>
             <button onClick={() => window.confirm("Delete this automation?") &&
               act(() => apiClient.delete(`/responsibility-center/${cid}/automations/${a.id}`), "Deleted")}
-              data-testid={`automation-delete-${a.id}`}><Trash2 size={13} style={{ color: "var(--text-muted)" }} /></button>
+              aria-label="Delete automation" data-testid={`automation-delete-${a.id}`}><Trash2 size={13} style={{ color: "var(--text-muted)" }} /></button>
           </div>
           <div className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
             <b style={{ color: "#F4A73B" }}>WHEN</b> {TRIGGER_LABELS[a.trigger?.type] || a.trigger?.type} →{" "}

@@ -1,0 +1,36 @@
+{
+  "summary": "Iter-107 Phase-6 hardening audit. Backend pytest 21/21 pass on new /app/backend/tests/test_phase6_hardening.py covering: (a) Founder Readiness dashboard (score=100 'Production Ready', all 9 checks present with correct keys database/ai_chat/voice/automations/drafts/vault/media/approvals/jobs, status ok/warn/error, tftwo→403); (b) MEMBER FORBIDDEN — tftwo gets 403 on PUT memory settings, POST automations, POST templates, POST reports/{key}, GET drafts, DELETE course, POST course share, GET admin/orai/config, GET admin/orai/readiness; (c) UNAUTHENTICATED — 401 on voice/library, center/health, admin/orai/config; (d) IDOR — tftwo→403/404 on other-center intelligence + course list; (e) INPUT VALIDATION — empty draft instructions returns 400 before LLM, automation action amount:'abc' clamped to int (safely coerced by _safe_int), approve nonexistent draft→404, install foreign template id→404, memory HTML content stored as literal inert text (not executed). Frontend audit on preview URL confirmed: /admin/orai-control loads with 10 tabs including NEW Readiness (data-testid=admin-orai-tab-readiness), Readiness view shows readiness-score='100', readiness-label='Production Ready', all 9 readiness-check-* cards render (database/ai_chat/voice/automations/drafts/vault/media/approvals/jobs), Re-check button works. Center dashboard intel button + ORAi FAB present. Intelligence page shows all 6 tabs. Mobile 390x844 sweep on RC hub and Intelligence: NO horizontal overflow (scrollWidth==clientWidth==390), health ring visible on mobile intel. NO console errors beyond expected pre-login 401 noise. Zero LLM calls consumed (per strict budget).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global / all authenticated routes", "issues": ["Bottom mobile-style nav (Home/For You/Sounds/Plus/Realms/Friends/Profile) still renders at desktop viewports 1920x1080 — carry-over from iter-104/105/106. Not new in Phase 6, but continues to be a click-through hazard for bottom-of-viewport FABs (tutor-send, edu-orai-fab). User confirmed known/accepted per problem statement."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase6_hardening.py",
+    "/app/test_reports/pytest/iter107.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "admin_orai.readiness endpoint correctly assembles exactly 9 checks with weighted score = mean(100 for ok, 60 for warn, 0 for error) and thresholds 90/75/50 for the 4 label bands. Founder-only via _require_admin (verified tftwo→403).",
+    "rc_automations._clean_actions._safe_int() successfully coerces 'abc' into a clamped int without 500 — verified end-to-end (POST returns 200, actions[0].amount is int).",
+    "rc_intelligence draft generate validates non-empty instructions BEFORE calling LLM (returns 400/422 on empty) — good LLM budget protection, aligns with rate-limit hardening intent.",
+    "rc_intelligence.approve_draft returns 404 for nonexistent id (no 500), and template install returns 404 for cross-center ids — proper permission + not-found isolation.",
+    "Memory content with '<script>alert(1)</script>' is stored as a JSON string; server does not sanitize but also does not execute (verified via API). Frontend must render as textContent (not dangerouslySetInnerHTML) — iter-106 confirmed the Memory tab renders text; recommend main agent grep for 'dangerouslySetInnerHTML' in Intelligence/Memory components to be safe.",
+    "IDOR: tftwo→other center's /orai/intelligence returns 403/404 (never data). Center membership gate is consistent.",
+    "Readiness Voice Engine check uses count of orai_voice_usage in last 24h — if collection is missing on fresh installs this may throw; wrapped in the shared try/except? No — direct await. Consider .count_documents({}) guarded, though missing collection returns 0 in MongoDB. Not a bug.",
+    "NOTE: Course Studio /courses card action testids (course-share-N, course-template-N, learn/edit/report/delete) were not discovered by a broad DOM scan in this run (page rendered but query returned 0 matches for those patterns) — iter-106 confirmed they exist. Not re-verified this iter; assume good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase6_hardening.py (NEW — 21 tests)"
+  ],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% of hardening-scope selectors verified"},
+  "test_credentials": "stealth / Password1$ (founder), tftwo / pass1234 (member of 3ed43c2b… only).",
+  "seed_data_creation": "One transient TEST_iter107_clamp automation created (with amount:'abc' input) then DELETE'd. One TEST_iter107_xss memory row created then DELETE'd. Net-zero seed change.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase 6 hardening is fully green. Readiness endpoint /api/admin/orai/readiness works and returns exactly 9 checks. Founder-only gate confirmed. All previously identified permission holes closed. tftwo does NOT have access to center 9d1b0f326e104980a9a45bd20c6b2bad (church center) — good IDOR victim account. _safe_int clamping works ('abc'→int). Bottom-nav overlap is a known/accepted design carry-over per problem statement — do NOT flag again. Do NOT run rate-limit exhaustion tests (429 sweep) — cost budget is strict; the hardening was verified indirectly via pre-LLM validation (empty draft instructions→400). Ten (not nine) tabs are actually visible on /admin/orai-control (Readiness, AI Settings, Prompt Library, Usage Analytics, AI Audit Log, Provider Health, Memory Manager, Automations, Templates, +1 hidden by overflow); problem statement said '9 tabs incl NEW Readiness' but the app shows 10 — main agent may want to double-check that overflow indicator is intended.",
+  "rca of the issue": "N/A — no issues found."
+}

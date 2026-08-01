@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Cpu, BookMarked, BarChart3, ScrollText, ServerCog, BrainCircuit,
-  Zap, Library, Plus, Trash2, Save, Check, X, Loader2,
+  Zap, Library, Plus, Trash2, Save, Check, X, Loader2, Gauge, RefreshCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 
 const SECTIONS = [
+  { id: "readiness", label: "Readiness", Icon: Gauge },
   { id: "config", label: "AI Settings", Icon: Cpu },
   { id: "prompts", label: "Prompt Library", Icon: BookMarked },
   { id: "analytics", label: "Usage Analytics", Icon: BarChart3 },
@@ -18,6 +19,52 @@ const SECTIONS = [
   { id: "templates", label: "Templates", Icon: Library },
 ];
 const VOICES = ["nova", "atlas", "aurora", "ember", "luna", "orion", "echo", "titan"];
+const READY_COLORS = { ok: "#10E670", warn: "#F4A73B", error: "#FF6B6B" };
+
+function Readiness() {
+  const [d, setD] = useState(null);
+  const load = useCallback(() => {
+    setD(null);
+    apiClient.get("/admin/orai/readiness").then((r) => setD(r.data)).catch(() => toast.error("Could not run readiness checks"));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  if (!d) return <div className="rcx-loader" />;
+  const color = d.score >= 90 ? "#10E670" : d.score >= 75 ? "#2EA0FF" : d.score >= 50 ? "#F4A73B" : "#FF6B6B";
+  return (
+    <div className="space-y-3" data-testid="orai-admin-readiness">
+      <div className="or-surface p-4 flex items-center gap-4">
+        <div className="relative shrink-0" style={{ width: 96, height: 96 }}>
+          <svg viewBox="0 0 120 120" width="96" height="96">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="10" />
+            <circle cx="60" cy="60" r="52" fill="none" stroke={color} strokeWidth="10" strokeLinecap="round"
+              strokeDasharray={`${(d.score / 100) * 326} 326`} transform="rotate(-90 60 60)" />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <div className="text-xl font-extrabold" data-testid="readiness-score">{d.score}</div>
+          </div>
+        </div>
+        <div className="flex-1">
+          <div className="text-base font-bold" style={{ color, fontFamily: "var(--font-display)" }} data-testid="readiness-label">{d.label}</div>
+          <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>Checked {d.checked_at?.slice(0, 16).replace("T", " ")} UTC</div>
+        </div>
+        <button className="or-btn or-btn-ghost text-xs" onClick={load} aria-label="Re-run readiness checks" data-testid="readiness-refresh">
+          <RefreshCcw size={12} /> Re-check
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {d.checks.map((c) => (
+          <div key={c.key} className="or-surface p-3 flex items-center gap-2.5" data-testid={`readiness-check-${c.key}`}>
+            <span className="rounded-full inline-block shrink-0" style={{ width: 9, height: 9, background: READY_COLORS[c.status], boxShadow: `0 0 8px ${READY_COLORS[c.status]}` }} />
+            <div className="min-w-0">
+              <div className="text-[12px] font-bold">{c.label}</div>
+              <div className="text-[9px] truncate" style={{ color: "var(--text-muted)" }}>{c.detail}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function Config() {
   const [cfg, setCfg] = useState(null);
@@ -129,7 +176,7 @@ function Prompts() {
             <div className="text-[12px] font-bold">{p.title}</div>
             <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>{p.body.slice(0, 180)}</div>
           </div>
-          <button onClick={() => apiClient.delete(`/admin/orai/prompts/${p.id}`).then(load)} data-testid={`orai-prompt-del-${p.id}`}>
+          <button onClick={() => apiClient.delete(`/admin/orai/prompts/${p.id}`).then(load)} aria-label="Delete prompt" data-testid={`orai-prompt-del-${p.id}`}>
             <Trash2 size={13} style={{ color: "var(--text-muted)" }} />
           </button>
         </div>
@@ -221,7 +268,7 @@ function MemoryManager() {
           <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "rgba(194,107,255,0.14)", color: "#C26BFF" }}>{m.category}</span>
           <div className="text-[11px] flex-1">{m.content}</div>
           <button onClick={() => apiClient.delete(`/admin/orai/memory/${m.id}`).then(() => { toast.success("Deleted"); load(); })}
-            data-testid={`orai-admin-memory-del-${m.id}`}><Trash2 size={13} style={{ color: "var(--text-muted)" }} /></button>
+            aria-label="Delete memory" data-testid={`orai-admin-memory-del-${m.id}`}><Trash2 size={13} style={{ color: "var(--text-muted)" }} /></button>
         </div>
       ))}
       {!rows.length && <div className="text-xs text-center py-6" style={{ color: "var(--text-muted)" }}>No memories platform-wide.</div>}
@@ -276,7 +323,7 @@ function TemplateManager() {
 // Admin AI Command Center — founder ORAi controls, no code edits needed.
 export default function AdminOraiControl() {
   const navigate = useNavigate();
-  const [section, setSection] = useState("config");
+  const [section, setSection] = useState("readiness");
   return (
     <div className="max-w-4xl mx-auto rcx-scope rcx-page-enter pb-10" data-testid="admin-orai-page">
       <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -299,6 +346,7 @@ export default function AdminOraiControl() {
           </button>
         ))}
       </div>
+      {section === "readiness" && <Readiness />}
       {section === "config" && <Config />}
       {section === "prompts" && <Prompts />}
       {section === "analytics" && <Analytics />}

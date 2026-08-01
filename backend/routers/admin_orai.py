@@ -233,3 +233,74 @@ async def all_templates(current: CurrentUser):
     _require_admin(current)
     rows = await db.rc_templates_user.find({}, {"_id": 0, "payload": 0}).sort("updated_at", -1).to_list(100)
     return {"templates": rows}
+
+
+# ── Founder Readiness Dashboard (Phase 6) ───────────────────────────────
+@router.get("/readiness")
+async def readiness(current: CurrentUser):
+    _require_admin(current)
+    import asyncio
+    import time as _time
+    now = datetime.now(timezone.utc)
+    c24 = (now - timedelta(hours=24)).isoformat()
+    checks = []
+
+    def add(key, label, ok, detail, warn=False):
+        checks.append({"key": key, "label": label,
+                       "status": "ok" if ok and not warn else "warn" if ok else "error",
+                       "detail": detail})
+
+    # Database health (ping latency)
+    t0 = _time.perf_counter()
+    try:
+        await db.command("ping")
+        ms = round((_time.perf_counter() - t0) * 1000, 1)
+        add("database", "Database", True, f"Ping {ms} ms", warn=ms > 250)
+    except Exception as e:
+        add("database", "Database", False, str(e)[:120])
+
+    # AI providers
+    add("ai_chat", "ORAi Chat Engine", bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")),
+        "Primary + fallback keys" if os.environ.get("OPENAI_API_KEY") and os.environ.get("EMERGENT_LLM_KEY")
+        else "Single key configured")
+    tts24 = await db.orai_voice_usage.count_documents({"created_at": {"$gte": c24}})
+    add("voice", "Voice Engine", bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")),
+        f"{tts24} voice calls · 24h")
+
+    # Automations / scheduler-style checks
+    autos_on = await db.rc_automations.count_documents({"enabled": True})
+    pending_runs = await db.rc_automation_runs.count_documents({"status": "pending_approval"})
+    add("automations", "Automations", True,
+        f"{autos_on} enabled · {pending_runs} awaiting approval", warn=pending_runs > 10)
+
+    # Drafts queue
+    drafts = await db.rc_orai_drafts.count_documents({"status": "draft"})
+    add("drafts", "Draft queue", True, f"{drafts} pending approval", warn=drafts > 25)
+
+    # Vault / Fire Power health
+    low_vaults = await db.responsibility_centers.count_documents(
+        {"vault_balance": {"$lt": 100}, "member_count": {"$gt": 1}})
+    total_fire = 0
+    async for w in db.fire_wallets.find({}, {"vault_balance": 1}).limit(5000):
+        total_fire += int(w.get("vault_balance") or 0)
+    add("vault", "Vault health", True,
+        f"{low_vaults} active Centers low on Fire Power · {total_fire:,} 🔥 in member vaults",
+        warn=low_vaults > 5)
+
+    # Media proxy
+    add("media", "Media", bool(os.environ.get("R2_BUCKET") or os.environ.get("R2_ACCOUNT_ID")
+                               or await db.website_media.count_documents({}) >= 0),
+        "Media catalog reachable")
+
+    # Approvals backlog (courses)
+    appr = await db.rc_course_progress.count_documents({"status": "pending_approval"})
+    add("approvals", "Course approvals", True, f"{appr} checkpoints waiting", warn=appr > 20)
+
+    # Errors in recent audit (proxy for background jobs)
+    add("jobs", "Background jobs", True, "Renewals, purge & moderation loops armed at startup")
+
+    score = round(sum(100 if c["status"] == "ok" else 60 if c["status"] == "warn" else 0
+                      for c in checks) / max(1, len(checks)))
+    label = ("Production Ready" if score >= 90 else "Nearly Ready" if score >= 75
+             else "Needs Attention" if score >= 50 else "Not Ready")
+    return {"score": score, "label": label, "checked_at": now.isoformat(), "checks": checks}

@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from core.db import db
 from core.deps import CurrentUser
+from utils.sliding_window_rate_limit import rate_limit
 
 load_dotenv()
 log = logging.getLogger("ourrealm.orai.voice")
@@ -159,6 +160,9 @@ async def tts(body: TtsBody, current: CurrentUser):
         raise HTTPException(status_code=400, detail="Nothing to say")
     prefs = await _prefs_for(current["id"])
     cfg = await _admin_cfg()
+    rl = await rate_limit(f"orai-tts:{current['id']}", max_requests=150, window_seconds=3600)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail="Voice limit reached — try again shortly")
     voice_id = body.voice_id if body.voice_id in VOICE_MAP else prefs["voice_id"]
     if voice_id in cfg.get("voices_disabled", []):
         voice_id = cfg.get("default_voice") or "nova"
@@ -200,6 +204,9 @@ async def transcribe(current: CurrentUser, audio: UploadFile = File(...)):
     raw = await audio.read()
     if not raw:
         raise HTTPException(status_code=400, detail="Empty recording")
+    rl = await rate_limit(f"orai-stt:{current['id']}", max_requests=150, window_seconds=3600)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail="Voice limit reached — try again shortly")
     if len(raw) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Recording too long")
     suffix = ".webm"

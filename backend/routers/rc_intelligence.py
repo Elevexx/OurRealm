@@ -17,6 +17,7 @@ from core.deps import CurrentUser
 from services.chat_conversations import call_openai_chat
 from services.rc_units import _ctx
 from services import responsibility_center as rc
+from utils.sliding_window_rate_limit import rate_limit
 
 log = logging.getLogger("ourrealm.rc.intel")
 router = APIRouter(prefix="/api/responsibility-center", tags=["rc-intelligence"])
@@ -25,6 +26,13 @@ MEMORY_CATEGORIES = {"preference", "organization", "roles", "learning_style", "t
                      "ai_settings", "tasks", "calendar", "prompts", "courses", "reports",
                      "goals", "routines", "workflows", "general"}
 DRAFT_KINDS = {"task", "lesson", "course_outline", "report", "event", "announcement", "reminder"}
+
+
+def _safe_int(v, default, lo, hi):
+    try:
+        return max(lo, min(hi, int(v)))
+    except (TypeError, ValueError):
+        return default
 
 
 def _iso():
@@ -354,6 +362,9 @@ async def generate_draft(center_id: str, body: dict, current: CurrentUser):
     instructions = (body.get("instructions") or "").strip()
     if not instructions:
         raise HTTPException(status_code=400, detail="Tell ORAi what to draft")
+    rl = await rate_limit(f"orai-draft:{current['id']}", max_requests=15, window_seconds=3600)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=f"Draft limit reached — try again in {rl['retry_after']}s")
     mem = await build_memory_context(center_id, limit=6)
     result = await call_openai_chat(
         [{"role": "system", "content": DRAFT_SYSTEM.format(kind=kind) + ("\n\n" + mem if mem else "")},
@@ -420,7 +431,7 @@ async def approve_draft(center_id: str, draft_id: str, body: dict, current: Curr
             "description": c.get("description") or "",
             "priority": c.get("priority") if c.get("priority") in ("low", "normal", "high") else "normal",
             "category": c.get("category") or ("reminder" if kind == "reminder" else "general"),
-            "due_at": (now + timedelta(days=int(c.get("due_in_days") or 3))).isoformat()})
+            "due_at": (now + timedelta(days=_safe_int(c.get("due_in_days"), 3, 0, 365))).isoformat()})
         created = {"type": "item", "id": item.get("item", item).get("id") if isinstance(item, dict) else None}
     elif kind == "event":
         ev = {"id": uuid.uuid4().hex, "center_id": center_id, "unit_id": None,
@@ -428,9 +439,9 @@ async def approve_draft(center_id: str, draft_id: str, body: dict, current: Curr
               "description": c.get("description") or "", "visibility": "members",
               "created_by": current["id"], "created_by_username": current.get("username"),
               "organizer_id": current["id"],
-              "start_at": (now + timedelta(days=int(c.get("start_in_days") or 1))).isoformat(),
-              "end_at": (now + timedelta(days=int(c.get("start_in_days") or 1),
-                                         minutes=int(c.get("duration_min") or 60))).isoformat(),
+              "start_at": (now + timedelta(days=_safe_int(c.get("start_in_days"), 1, 0, 365))).isoformat(),
+              "end_at": (now + timedelta(days=_safe_int(c.get("start_in_days"), 1, 0, 365),
+                                         minutes=_safe_int(c.get("duration_min"), 60, 5, 1440))).isoformat(),
               "all_day": False, "timezone": center.get("timezone") or "UTC", "location": "",
               "virtual_link": "", "status": "scheduled", "attendance_enabled": False,
               "reminders": [], "attendees": [], "related_item_id": None, "version": 1,
@@ -558,3 +569,28 @@ async def intelligence_overview(center_id: str, current: CurrentUser):
         "trend": trend,
         "can_manage": manage,
     }
+
+
+async def ensure_indexes():
+    """Indexes for Phase 2-5 collections (idempotent)."""
+    await db.rc_courses.create_index([("center_id", 1), ("status", 1), ("created_at", -1)])
+    await db.rc_course_lessons.create_index([("course_id", 1), ("order", 1)])
+    try:
+        await db.rc_course_progress.create_index(
+            [("course_id", 1), ("user_id", 1), ("lesson_id", 1)], unique=True)
+    except Exception as e:
+        log.warning("rc_course_progress unique index skipped: %s", e)
+    await db.rc_course_progress.create_index([("center_id", 1), ("status", 1)])
+    await db.rc_course_progress.create_index([("center_id", 1), ("completed_at", -1)])
+    await db.rc_course_tutor_messages.create_index([("course_id", 1), ("lesson_id", 1), ("user_id", 1), ("created_at", 1)])
+    await db.rc_course_shares.create_index([("to_center_id", 1)])
+    await db.rc_course_shares.create_index([("course_id", 1)])
+    await db.rc_orai_memory.create_index([("center_id", 1), ("pinned", -1), ("updated_at", -1)])
+    await db.rc_orai_drafts.create_index([("center_id", 1), ("status", 1), ("created_at", -1)])
+    await db.rc_automations.create_index([("center_id", 1), ("enabled", 1), ("trigger.type", 1)])
+    await db.rc_automation_runs.create_index([("center_id", 1), ("created_at", -1)])
+    await db.rc_automation_runs.create_index([("center_id", 1), ("context.dedupe_key", 1)])
+    await db.rc_templates_user.create_index([("center_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.orai_voice_usage.create_index([("user_id", 1), ("created_at", -1)])
+    await db.orai_voice_usage.create_index([("created_at", -1)])
+    await db.orai_prompt_library.create_index([("updated_at", -1)])

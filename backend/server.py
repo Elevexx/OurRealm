@@ -438,6 +438,7 @@ async def on_startup():
         from utils import sliding_window_rate_limit
         await api_widget_proxy.ensure_indexes()
         await sliding_window_rate_limit.ensure_indexes()
+        await rc_intelligence_router_mod.ensure_indexes()
     except Exception as e:
         logger.warning(f"[api_widgets] startup failed: {e}")
 

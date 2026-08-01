@@ -167,6 +167,13 @@ async def list_automations(center_id: str, current: CurrentUser):
     return {"automations": rows, "triggers": sorted(TRIGGERS), "actions": sorted(ACTIONS)}
 
 
+def _safe_int(v, default, lo, hi):
+    try:
+        return max(lo, min(hi, int(v)))
+    except (TypeError, ValueError):
+        return default
+
+
 def _clean_actions(actions) -> list:
     out = []
     for a in (actions or [])[:8]:
@@ -174,8 +181,9 @@ def _clean_actions(actions) -> list:
             continue
         out.append({"type": a["type"], "message": str(a.get("message") or "")[:500],
                     "title": str(a.get("title") or "")[:200],
-                    "amount": int(a.get("amount") or 10), "due_in_days": int(a.get("due_in_days") or 2),
-                    "start_in_days": int(a.get("start_in_days") or 1)})
+                    "amount": _safe_int(a.get("amount"), 10, 1, 1000),
+                    "due_in_days": _safe_int(a.get("due_in_days"), 2, 1, 60),
+                    "start_in_days": _safe_int(a.get("start_in_days"), 1, 0, 60)})
     return out
 
 

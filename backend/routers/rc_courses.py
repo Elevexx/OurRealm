@@ -22,6 +22,7 @@ from core.deps import CurrentUser
 from services.chat_conversations import call_openai_chat
 from services.rc_units import _ctx
 from services import responsibility_center as rc
+from utils.sliding_window_rate_limit import rate_limit
 
 log = logging.getLogger("ourrealm.rc.courses")
 router = APIRouter(prefix="/api/responsibility-center", tags=["rc-courses"])
@@ -163,6 +164,9 @@ def _achievements(done: int, total: int, avg_score) -> list:
 @router.post("/{center_id}/courses/generate")
 async def generate_course(center_id: str, body: dict, current: CurrentUser):
     center, membership, perms = await _ctx(center_id, current, "edit_center")
+    rl = await rate_limit(f"course-gen:{current['id']}", max_requests=6, window_seconds=3600)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=f"Course generation limit reached — try again in {rl['retry_after']}s")
     prompt = (body.get("prompt") or "").strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="Describe the course you want first")
@@ -250,10 +254,14 @@ async def list_courses(center_id: str, current: CurrentUser):
     if not manage:
         q["status"] = "published"
     rows = await db.rc_courses.find(q, {"_id": 0, "source_prompt": 0}).sort("created_at", -1).to_list(100)
+    # single aggregation instead of a per-course progress query
+    agg = await db.rc_course_progress.aggregate([
+        {"$match": {"center_id": center_id, "user_id": current["id"], "status": "completed"}},
+        {"$group": {"_id": "$course_id", "done": {"$sum": 1}}}]).to_list(200)
+    done_map = {a["_id"]: a["done"] for a in agg}
     out = []
     for c in rows:
-        prog = await _progress_map(c["id"], current["id"])
-        done = sum(1 for p in prog.values() if p["status"] == "completed")
+        done = done_map.get(c["id"], 0)
         out.append({**c, "my_completed": done,
                     "my_pct": round(done / c["lesson_count"] * 100) if c.get("lesson_count") else 0})
     return {"courses": out, "can_manage": manage}
@@ -618,6 +626,9 @@ async def tutor_history(center_id: str, course_id: str, lesson_id: str, current:
 @router.post("/{center_id}/courses/{course_id}/tutor")
 async def tutor_chat(center_id: str, course_id: str, body: dict, current: CurrentUser):
     await _ctx(center_id, current, "view_items", write=False)
+    rl = await rate_limit(f"tutor:{current['id']}", max_requests=60, window_seconds=3600)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail="Tutor is taking a short break — try again in a minute")
     course = await _course(center_id, course_id)
     lesson_id = body.get("lesson_id") or ""
     message = (body.get("message") or "").strip()
