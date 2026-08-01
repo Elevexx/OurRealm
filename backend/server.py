@@ -64,6 +64,8 @@ from routers import founding_vip as founding_vip_router_mod
 from routers import responsibility_center as responsibility_center_router_mod
 from routers import rc_admin as rc_admin_router_mod
 from routers import rc_media as rc_media_router_mod
+from routers import orai_voice as orai_voice_router_mod
+from routers import rc_courses as rc_courses_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -141,6 +143,8 @@ app.include_router(rc_reports_router_mod.admin_router)
 app.include_router(responsibility_center_router_mod.router)
 app.include_router(rc_admin_router_mod.router)
 app.include_router(rc_media_router_mod.router)
+app.include_router(orai_voice_router_mod.router)
+app.include_router(rc_courses_router_mod.router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────

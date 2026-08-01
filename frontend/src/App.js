@@ -48,6 +48,9 @@ import ResponsibilityCenterHub from "@/pages/ResponsibilityCenterHub";
 import ResponsibilityCenterCreate from "@/pages/ResponsibilityCenterCreate";
 import ResponsibilityCenterDashboard from "@/pages/ResponsibilityCenterDashboard";
 import EducationCenterDashboard from "@/pages/EducationCenterDashboard";
+import CourseStudio from "@/pages/CourseStudio";
+import CourseEditor from "@/pages/CourseEditor";
+import CoursePlayer from "@/pages/CoursePlayer";
 import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
 import AdminFAQ from "@/pages/AdminFAQ";
@@ -224,6 +227,9 @@ function App() {
             <Route path="/responsibility-center/create" element={<ShellRoute><ResponsibilityCenterCreate /></ShellRoute>} />
             <Route path="/responsibility-center/:id" element={<ShellRoute><ResponsibilityCenterDashboard /></ShellRoute>} />
             <Route path="/responsibility-center/:id/education" element={<ShellRoute><EducationCenterDashboard /></ShellRoute>} />
+            <Route path="/responsibility-center/:id/courses" element={<ShellRoute><CourseStudio /></ShellRoute>} />
+            <Route path="/responsibility-center/:id/courses/:courseId/edit" element={<ShellRoute><CourseEditor /></ShellRoute>} />
+            <Route path="/responsibility-center/:id/courses/:courseId/learn" element={<ShellRoute><CoursePlayer /></ShellRoute>} />
             <Route path="/profile/support" element={<ShellRoute><Support /></ShellRoute>} />
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
             <Route path="/admin/faq" element={<ShellRoute><AdminFAQ /></ShellRoute>} />

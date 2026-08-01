@@ -189,14 +189,14 @@ export default function ResponsibilityCenterHub() {
   );
 
   return (
-    <div className="max-w-[1500px] mx-auto rcx-scope" data-testid="rc-hub-page">
+    <div className="max-w-[1500px] mx-auto rcx-scope rcx-page-enter" data-testid="rc-hub-page">
       <div className="flex gap-4 items-start">
         {/* ── Left sidebar ── */}
         <aside className="hidden lg:block w-60 shrink-0" data-testid="rc-hub-sidebar">
           <div className="sticky top-20 space-y-3 max-h-[calc(100vh-6rem)] overflow-y-auto no-scrollbar pb-4">
             <div className="or-surface p-4 text-center">
               <RcImg assetKey="responsibility_center.main_logo" eager
-                className="block mx-auto"
+                className="block mx-auto orrc-logo-cinematic"
                 style={{ width: "88%", height: "auto" }}
                 fallback={<ShieldCheck size={52} className="mx-auto" style={{ color: BLUE }} />} testid="rc-hub-logo" />
               <div className="leading-tight mt-2.5">
@@ -251,7 +251,7 @@ export default function ResponsibilityCenterHub() {
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 20px)" }}
             data-testid="rc-hub-mobile-hero">
             <RcImg assetKey="responsibility_center.main_logo" eager
-              className="block mx-auto"
+              className="block mx-auto orrc-logo-cinematic"
               style={{ width: "72%", maxWidth: 340, height: "auto" }}
               fallback={<ShieldCheck size={72} className="mx-auto" style={{ color: BLUE }} />} testid="rc-hub-mobile-logo" />
           </div>

@@ -1,0 +1,624 @@
+"""Responsibility Center — AI Course Studio + Course Player backend.
+
+Center owners generate complete, fully-editable courses from one prompt
+(structure, lessons, activities, quizzes with answer keys, worksheets,
+homework, projects, review material, checkpoints). Members learn through
+the Course Player with progress, approvals, achievements, and a
+non-accredited completion certificate.
+
+Collections: rc_courses, rc_course_lessons, rc_course_progress,
+rc_course_state, rc_course_tutor_messages.
+"""
+import json
+import logging
+import re
+import uuid
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException
+
+from core.db import db
+from core.deps import CurrentUser
+from services.chat_conversations import call_openai_chat
+from services.rc_units import _ctx
+from services import responsibility_center as rc
+
+log = logging.getLogger("ourrealm.rc.courses")
+router = APIRouter(prefix="/api/responsibility-center", tags=["rc-courses"])
+
+BLOCK_TYPES = {"text", "activity", "worksheet", "homework", "project", "review"}
+LESSON_TYPES = {"lesson", "quiz", "checkpoint"}
+COURSE_COLORS = ["#2EA0FF", "#10E670", "#C26BFF", "#F4A73B", "#4DD6C1", "#FF8A5A"]
+
+
+def _iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _can_manage(perms: set) -> bool:
+    return "edit_center" in perms or "assign_items" in perms
+
+
+GEN_SYSTEM = """You are ORAi Course Studio, an expert curriculum designer for OurRealm Education Centers.
+Design a complete course from the owner's prompt. Reply with ONLY valid JSON — no markdown fences, no commentary.
+
+JSON shape:
+{
+  "title": "course title",
+  "subject": "subject area",
+  "description": "2-3 sentence course description",
+  "grade_level": "target level, e.g. 'Grade 5' or 'Beginner'",
+  "modules": [
+    {
+      "title": "module title",
+      "lessons": [
+        {
+          "title": "lesson title",
+          "lesson_type": "lesson" | "quiz" | "checkpoint",
+          "duration_min": 20,
+          "blocks": [
+            {"type": "text", "title": "section heading", "body": "teaching content, 2-4 paragraphs"},
+            {"type": "activity", "title": "...", "body": "step-by-step interactive activity"},
+            {"type": "worksheet", "title": "...", "body": "printable practice problems / exercises"},
+            {"type": "homework", "title": "...", "body": "take-home assignment"},
+            {"type": "project", "title": "...", "body": "hands-on project brief"},
+            {"type": "review", "title": "...", "body": "key points recap"}
+          ],
+          "quiz": {
+            "questions": [
+              {"q": "question text", "options": ["A", "B", "C", "D"], "answer_index": 0,
+               "explanation": "why this answer is correct"}
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+
+Rules:
+- 2-4 modules. Respect the requested lesson count if given, otherwise 6-10 lessons total.
+- Every "lesson" needs 3-6 blocks mixing types (always at least one text block; include worksheets,
+  homework, activities, projects and review material across the course).
+- Every "quiz" lesson needs 4-8 questions with exactly 4 options each and correct answer_index + explanation (the answer key).
+- End each module with a "checkpoint" lesson: 1 review block + 3-5 quiz questions. Checkpoints are progress gates.
+- Content must be age-appropriate for the grade level, accurate, and engaging.
+- This is an informal learning tool — never claim accreditation."""
+
+
+def _parse_course_json(raw: str) -> dict:
+    txt = (raw or "").strip()
+    txt = re.sub(r"^```(?:json)?\s*|\s*```$", "", txt)
+    start, end = txt.find("{"), txt.rfind("}")
+    if start == -1 or end == -1:
+        raise ValueError("no JSON object found")
+    return json.loads(txt[start:end + 1])
+
+
+def _clean_quiz(quiz) -> dict:
+    qs = []
+    for q in (quiz or {}).get("questions", [])[:12]:
+        opts = [str(o)[:300] for o in (q.get("options") or [])[:6]]
+        if len(opts) < 2 or not q.get("q"):
+            continue
+        idx = q.get("answer_index")
+        idx = idx if isinstance(idx, int) and 0 <= idx < len(opts) else 0
+        qs.append({"id": uuid.uuid4().hex[:8], "q": str(q["q"])[:600], "options": opts,
+                   "answer_index": idx, "explanation": str(q.get("explanation") or "")[:600]})
+    return {"questions": qs}
+
+
+def _clean_blocks(blocks) -> list:
+    out = []
+    for b in (blocks or [])[:10]:
+        btype = b.get("type") if b.get("type") in BLOCK_TYPES else "text"
+        body = str(b.get("body") or "").strip()
+        if not body:
+            continue
+        out.append({"id": uuid.uuid4().hex[:8], "type": btype,
+                    "title": str(b.get("title") or "")[:200], "body": body[:8000],
+                    "image_url": b.get("image_url") or None})
+    return out
+
+
+async def _course(center_id: str, course_id: str) -> dict:
+    c = await db.rc_courses.find_one({"id": course_id, "center_id": center_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return c
+
+
+async def _lessons(course_id: str) -> list:
+    return await db.rc_course_lessons.find(
+        {"course_id": course_id}, {"_id": 0}).sort("order", 1).to_list(200)
+
+
+async def _progress_map(course_id: str, user_id: str) -> dict:
+    rows = await db.rc_course_progress.find(
+        {"course_id": course_id, "user_id": user_id}, {"_id": 0}).to_list(500)
+    return {r["lesson_id"]: r for r in rows}
+
+
+def _achievements(done: int, total: int, avg_score) -> list:
+    if not total:
+        return []
+    pct = done / total
+    out = []
+    if done >= 1:
+        out.append({"id": "first_lesson", "label": "First Lesson Complete", "icon": "flag"})
+    if pct >= 0.25:
+        out.append({"id": "quarter", "label": "25% Through the Course", "icon": "trending-up"})
+    if pct >= 0.5:
+        out.append({"id": "half", "label": "Halfway Hero", "icon": "medal"})
+    if pct >= 0.75:
+        out.append({"id": "three_quarters", "label": "Almost There — 75%", "icon": "rocket"})
+    if pct >= 1:
+        out.append({"id": "complete", "label": "Course Complete", "icon": "trophy"})
+    if avg_score is not None and avg_score >= 90:
+        out.append({"id": "ace", "label": "Quiz Ace (90%+ average)", "icon": "star"})
+    return out
+
+
+# ── Generation ──────────────────────────────────────────────────────────
+@router.post("/{center_id}/courses/generate")
+async def generate_course(center_id: str, body: dict, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "edit_center")
+    prompt = (body.get("prompt") or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Describe the course you want first")
+    if len(prompt) > 2000:
+        raise HTTPException(status_code=400, detail="Prompt is too long")
+    extras = []
+    if body.get("grade_level"):
+        extras.append(f"Target grade level: {str(body['grade_level'])[:60]}")
+    if body.get("lesson_count"):
+        extras.append(f"Requested lesson count: {int(body['lesson_count'])}")
+    user_msg = prompt + ("\n\n" + "\n".join(extras) if extras else "")
+
+    result = await call_openai_chat(
+        [{"role": "system", "content": GEN_SYSTEM}, {"role": "user", "content": user_msg}],
+        temperature=0.7, max_tokens=8000)
+    try:
+        data = _parse_course_json(result.get("content") or "")
+    except Exception as e:
+        log.warning("course generation JSON parse failed: %s", e)
+        raise HTTPException(status_code=502, detail="ORAi could not build that course — try rephrasing your prompt")
+
+    course_id = uuid.uuid4().hex
+    now = _iso()
+    modules, lesson_docs, order = [], [], 0
+    for m in (data.get("modules") or [])[:6]:
+        mod_id = uuid.uuid4().hex[:8]
+        mod_lessons = []
+        for les in (m.get("lessons") or [])[:15]:
+            ltype = les.get("lesson_type") if les.get("lesson_type") in LESSON_TYPES else "lesson"
+            lid = uuid.uuid4().hex
+            lesson_docs.append({
+                "id": lid, "course_id": course_id, "center_id": center_id,
+                "module_id": mod_id, "order": order,
+                "title": str(les.get("title") or f"Lesson {order + 1}")[:200],
+                "lesson_type": ltype,
+                "duration_min": int(les.get("duration_min") or 15),
+                "blocks": _clean_blocks(les.get("blocks")),
+                "quiz": _clean_quiz(les.get("quiz")) if ltype in ("quiz", "checkpoint") else {"questions": []},
+                "created_at": now, "updated_at": now,
+            })
+            mod_lessons.append(lid)
+            order += 1
+        modules.append({"id": mod_id, "title": str(m.get("title") or "Module")[:200],
+                        "lesson_ids": mod_lessons})
+    if not lesson_docs:
+        raise HTTPException(status_code=502, detail="ORAi returned an empty course — try again")
+
+    course = {
+        "id": course_id, "center_id": center_id,
+        "title": str(data.get("title") or prompt[:60])[:200],
+        "subject": str(data.get("subject") or "")[:120],
+        "description": str(data.get("description") or "")[:1000],
+        "grade_level": str(data.get("grade_level") or body.get("grade_level") or "")[:60],
+        "status": "draft",
+        "color": COURSE_COLORS[len(course_id) % len(COURSE_COLORS)],
+        "source_prompt": prompt,
+        "settings": {"requires_approval": bool(body.get("requires_approval", True))},
+        "created_by": current["id"], "created_at": now, "updated_at": now,
+        "published_at": None, "modules": modules, "lesson_count": len(lesson_docs),
+    }
+    await db.rc_courses.insert_one({**course})
+    await db.rc_course_lessons.insert_many([{**d} for d in lesson_docs])
+    await rc.log_activity(center_id, current, "course_generated",
+                          f"@{current.get('username')} generated the course \"{course['title']}\" with ORAi")
+    return {"course": course}
+
+
+# ── Course CRUD ─────────────────────────────────────────────────────────
+@router.get("/{center_id}/courses")
+async def list_courses(center_id: str, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
+    manage = _can_manage(perms)
+    q = {"center_id": center_id}
+    if not manage:
+        q["status"] = "published"
+    rows = await db.rc_courses.find(q, {"_id": 0, "source_prompt": 0}).sort("created_at", -1).to_list(100)
+    out = []
+    for c in rows:
+        prog = await _progress_map(c["id"], current["id"])
+        done = sum(1 for p in prog.values() if p["status"] == "completed")
+        out.append({**c, "my_completed": done,
+                    "my_pct": round(done / c["lesson_count"] * 100) if c.get("lesson_count") else 0})
+    return {"courses": out, "can_manage": manage}
+
+
+@router.get("/{center_id}/courses/{course_id}")
+async def course_detail(center_id: str, course_id: str, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
+    manage = _can_manage(perms)
+    course = await _course(center_id, course_id)
+    if course["status"] != "published" and not manage:
+        raise HTTPException(status_code=403, detail="This course isn't published yet")
+    lessons = await _lessons(course_id)
+    if not manage:  # hide answer keys from learners
+        for les in lessons:
+            for q in les.get("quiz", {}).get("questions", []):
+                q.pop("answer_index", None)
+                q.pop("explanation", None)
+    prog = await _progress_map(course_id, current["id"])
+    state = await db.rc_course_state.find_one(
+        {"course_id": course_id, "user_id": current["id"]}, {"_id": 0})
+    scores = [p["score"] / p["total"] * 100 for p in prog.values()
+              if p.get("total") and p.get("score") is not None]
+    avg = round(sum(scores) / len(scores)) if scores else None
+    done = sum(1 for p in prog.values() if p["status"] == "completed")
+    return {"course": course, "lessons": lessons, "progress": prog,
+            "resume_lesson_id": (state or {}).get("last_lesson_id"),
+            "my_completed": done, "avg_score": avg,
+            "achievements": _achievements(done, course.get("lesson_count") or len(lessons), avg),
+            "can_manage": manage}
+
+
+@router.patch("/{center_id}/courses/{course_id}")
+async def update_course(center_id: str, course_id: str, body: dict, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "edit_center")
+    course = await _course(center_id, course_id)
+    patch = {}
+    for k in ("title", "subject", "description", "grade_level"):
+        if k in body:
+            patch[k] = str(body[k] or "")[:1000 if k == "description" else 200]
+    if "modules" in body and isinstance(body["modules"], list):
+        patch["modules"] = [{"id": m.get("id") or uuid.uuid4().hex[:8],
+                             "title": str(m.get("title") or "Module")[:200],
+                             "lesson_ids": [str(x) for x in (m.get("lesson_ids") or [])]}
+                            for m in body["modules"][:10]]
+    if "requires_approval" in body:
+        patch["settings.requires_approval"] = bool(body["requires_approval"])
+    if body.get("status") in ("draft", "published"):
+        patch["status"] = body["status"]
+        if body["status"] == "published" and not course.get("published_at"):
+            patch["published_at"] = _iso()
+            await rc.log_activity(center_id, current, "course_published",
+                                  f"@{current.get('username')} published the course \"{course['title']}\"")
+    if patch:
+        patch["updated_at"] = _iso()
+        await db.rc_courses.update_one({"id": course_id}, {"$set": patch})
+    return {"course": await _course(center_id, course_id)}
+
+
+@router.delete("/{center_id}/courses/{course_id}")
+async def delete_course(center_id: str, course_id: str, current: CurrentUser):
+    await _ctx(center_id, current, "edit_center")
+    course = await _course(center_id, course_id)
+    await db.rc_courses.delete_one({"id": course_id})
+    await db.rc_course_lessons.delete_many({"course_id": course_id})
+    await db.rc_course_progress.delete_many({"course_id": course_id})
+    await db.rc_course_state.delete_many({"course_id": course_id})
+    await db.rc_course_tutor_messages.delete_many({"course_id": course_id})
+    await rc.log_activity(center_id, current, "course_deleted",
+                          f"@{current.get('username')} deleted the course \"{course['title']}\"")
+    return {"ok": True}
+
+
+# ── Lesson editing ──────────────────────────────────────────────────────
+@router.post("/{center_id}/courses/{course_id}/lessons")
+async def add_lesson(center_id: str, course_id: str, body: dict, current: CurrentUser):
+    await _ctx(center_id, current, "edit_center")
+    course = await _course(center_id, course_id)
+    lessons = await _lessons(course_id)
+    ltype = body.get("lesson_type") if body.get("lesson_type") in LESSON_TYPES else "lesson"
+    lesson = {"id": uuid.uuid4().hex, "course_id": course_id, "center_id": center_id,
+              "module_id": body.get("module_id") or (course["modules"][-1]["id"] if course["modules"] else "m1"),
+              "order": len(lessons),
+              "title": str(body.get("title") or "New lesson")[:200], "lesson_type": ltype,
+              "duration_min": int(body.get("duration_min") or 15),
+              "blocks": _clean_blocks(body.get("blocks")) or
+                        [{"id": uuid.uuid4().hex[:8], "type": "text", "title": "", "body": "Write your lesson content here.", "image_url": None}],
+              "quiz": _clean_quiz(body.get("quiz")),
+              "created_at": _iso(), "updated_at": _iso()}
+    await db.rc_course_lessons.insert_one({**lesson})
+    await db.rc_courses.update_one(
+        {"id": course_id, "modules.id": lesson["module_id"]},
+        {"$push": {"modules.$.lesson_ids": lesson["id"]}, "$inc": {"lesson_count": 1}})
+    return {"lesson": lesson}
+
+
+@router.patch("/{center_id}/courses/{course_id}/lessons/{lesson_id}")
+async def update_lesson(center_id: str, course_id: str, lesson_id: str, body: dict, current: CurrentUser):
+    await _ctx(center_id, current, "edit_center")
+    lesson = await db.rc_course_lessons.find_one(
+        {"id": lesson_id, "course_id": course_id}, {"_id": 0})
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    patch = {}
+    if "title" in body:
+        patch["title"] = str(body["title"] or "")[:200]
+    if "duration_min" in body:
+        patch["duration_min"] = max(1, min(600, int(body["duration_min"] or 15)))
+    if body.get("lesson_type") in LESSON_TYPES:
+        patch["lesson_type"] = body["lesson_type"]
+    if "order" in body:
+        patch["order"] = int(body["order"])
+    if "blocks" in body:
+        blocks = []
+        for b in (body["blocks"] or [])[:10]:
+            btype = b.get("type") if b.get("type") in BLOCK_TYPES else "text"
+            blocks.append({"id": b.get("id") or uuid.uuid4().hex[:8], "type": btype,
+                           "title": str(b.get("title") or "")[:200],
+                           "body": str(b.get("body") or "")[:8000],
+                           "image_url": b.get("image_url") or None})
+        patch["blocks"] = blocks
+    if "quiz" in body:
+        qs = []
+        for q in (body["quiz"] or {}).get("questions", [])[:12]:
+            opts = [str(o)[:300] for o in (q.get("options") or [])[:6]]
+            if len(opts) < 2 or not q.get("q"):
+                continue
+            idx = q.get("answer_index")
+            qs.append({"id": q.get("id") or uuid.uuid4().hex[:8], "q": str(q["q"])[:600],
+                       "options": opts,
+                       "answer_index": idx if isinstance(idx, int) and 0 <= idx < len(opts) else 0,
+                       "explanation": str(q.get("explanation") or "")[:600]})
+        patch["quiz"] = {"questions": qs}
+    if patch:
+        patch["updated_at"] = _iso()
+        await db.rc_course_lessons.update_one({"id": lesson_id}, {"$set": patch})
+    updated = await db.rc_course_lessons.find_one({"id": lesson_id}, {"_id": 0})
+    return {"lesson": updated}
+
+
+@router.delete("/{center_id}/courses/{course_id}/lessons/{lesson_id}")
+async def delete_lesson(center_id: str, course_id: str, lesson_id: str, current: CurrentUser):
+    await _ctx(center_id, current, "edit_center")
+    r = await db.rc_course_lessons.delete_one({"id": lesson_id, "course_id": course_id})
+    if r.deleted_count != 1:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    await db.rc_courses.update_one(
+        {"id": course_id},
+        {"$pull": {"modules.$[].lesson_ids": lesson_id}, "$inc": {"lesson_count": -1}})
+    await db.rc_course_progress.delete_many({"lesson_id": lesson_id})
+    return {"ok": True}
+
+
+@router.post("/{center_id}/courses/{course_id}/lessons/{lesson_id}/image")
+async def lesson_image(center_id: str, course_id: str, lesson_id: str, body: dict, current: CurrentUser):
+    """Generate an illustration for a lesson block with ORAi."""
+    await _ctx(center_id, current, "edit_center")
+    lesson = await db.rc_course_lessons.find_one(
+        {"id": lesson_id, "course_id": course_id}, {"_id": 0})
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    from services.orai_images import generate_orai_image
+    from services import image_store
+    prompt = (body.get("prompt") or f"Friendly, colorful educational illustration for a lesson titled \"{lesson['title']}\". Clean, kid-safe, no text.")[:800]
+    try:
+        img_bytes, _model = await generate_orai_image(prompt)
+        record = await image_store.save_bytes(img_bytes, current["id"], "image/png")
+    except Exception as e:
+        log.warning("lesson image generation failed: %s", e)
+        raise HTTPException(status_code=502, detail="Image generation is unavailable right now")
+    block_id = body.get("block_id")
+    if block_id:
+        await db.rc_course_lessons.update_one(
+            {"id": lesson_id, "blocks.id": block_id},
+            {"$set": {"blocks.$.image_url": record.original_url, "updated_at": _iso()}})
+    return {"image_url": record.original_url}
+
+
+# ── Player ──────────────────────────────────────────────────────────────
+@router.post("/{center_id}/courses/{course_id}/position")
+async def save_position(center_id: str, course_id: str, body: dict, current: CurrentUser):
+    await _ctx(center_id, current, "view_items", write=False)
+    await db.rc_course_state.update_one(
+        {"course_id": course_id, "user_id": current["id"]},
+        {"$set": {"last_lesson_id": body.get("lesson_id"), "updated_at": _iso()},
+         "$setOnInsert": {"center_id": center_id}}, upsert=True)
+    return {"ok": True}
+
+
+@router.post("/{center_id}/courses/{course_id}/lessons/{lesson_id}/complete")
+async def complete_lesson(center_id: str, course_id: str, lesson_id: str, body: dict, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
+    course = await _course(center_id, course_id)
+    lesson = await db.rc_course_lessons.find_one(
+        {"id": lesson_id, "course_id": course_id}, {"_id": 0})
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    existing = await db.rc_course_progress.find_one(
+        {"course_id": course_id, "lesson_id": lesson_id, "user_id": current["id"]}, {"_id": 0})
+    if existing and existing["status"] == "completed":
+        return {"progress": existing, "already": True}
+    needs_approval = (lesson["lesson_type"] == "checkpoint"
+                      and course.get("settings", {}).get("requires_approval")
+                      and not _can_manage(perms))
+    doc = {"id": (existing or {}).get("id") or uuid.uuid4().hex,
+           "course_id": course_id, "center_id": center_id, "lesson_id": lesson_id,
+           "user_id": current["id"], "username": current.get("username"),
+           "lesson_title": lesson["title"],
+           "status": "pending_approval" if needs_approval else "completed",
+           "score": body.get("score"), "total": body.get("total"),
+           "answers": body.get("answers"), "completed_at": _iso(), "approved_by": None}
+    await db.rc_course_progress.update_one(
+        {"course_id": course_id, "lesson_id": lesson_id, "user_id": current["id"]},
+        {"$set": doc}, upsert=True)
+    return {"progress": doc, "needs_approval": needs_approval}
+
+
+@router.post("/{center_id}/courses/{course_id}/lessons/{lesson_id}/quiz")
+async def submit_quiz(center_id: str, course_id: str, lesson_id: str, body: dict, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
+    lesson = await db.rc_course_lessons.find_one(
+        {"id": lesson_id, "course_id": course_id}, {"_id": 0})
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    questions = lesson.get("quiz", {}).get("questions", [])
+    if not questions:
+        raise HTTPException(status_code=400, detail="This lesson has no quiz")
+    answers = body.get("answers") or {}
+    results, score = [], 0
+    for q in questions:
+        picked = answers.get(q["id"])
+        correct = picked == q["answer_index"]
+        score += 1 if correct else 0
+        results.append({"id": q["id"], "correct": correct, "picked": picked,
+                        "answer_index": q["answer_index"],
+                        "explanation": q.get("explanation") or ""})
+    # record completion (checkpoints may still need approval)
+    completion = await complete_lesson(center_id, course_id, lesson_id,
+                                       {"score": score, "total": len(questions),
+                                        "answers": answers}, current)
+    return {"score": score, "total": len(questions),
+            "pct": round(score / len(questions) * 100), "results": results,
+            "needs_approval": completion.get("needs_approval", False)}
+
+
+# ── Approvals (parent / teacher) ────────────────────────────────────────
+@router.get("/{center_id}/courses/{course_id}/approvals")
+async def list_approvals(center_id: str, course_id: str, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
+    if not _can_manage(perms):
+        raise HTTPException(status_code=403, detail="Managers only")
+    rows = await db.rc_course_progress.find(
+        {"course_id": course_id, "status": "pending_approval"}, {"_id": 0}).to_list(200)
+    return {"approvals": rows}
+
+
+@router.post("/{center_id}/courses/{course_id}/approvals/{progress_id}")
+async def decide_approval(center_id: str, course_id: str, progress_id: str, body: dict, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "edit_center")
+    p = await db.rc_course_progress.find_one(
+        {"id": progress_id, "course_id": course_id, "status": "pending_approval"}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Approval not found")
+    approve = bool(body.get("approve"))
+    if approve:
+        await db.rc_course_progress.update_one(
+            {"id": progress_id},
+            {"$set": {"status": "completed", "approved_by": current["id"], "approved_at": _iso()}})
+    else:
+        await db.rc_course_progress.delete_one({"id": progress_id})
+    await rc.log_activity(center_id, current, "course_checkpoint_review",
+                          f"@{current.get('username')} {'approved' if approve else 'sent back'} "
+                          f"@{p.get('username')}'s checkpoint \"{p.get('lesson_title')}\"")
+    return {"ok": True}
+
+
+# ── Reports & certificate ───────────────────────────────────────────────
+@router.get("/{center_id}/courses/{course_id}/report")
+async def course_report(center_id: str, course_id: str, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
+    if not _can_manage(perms):
+        raise HTTPException(status_code=403, detail="Managers only")
+    course = await _course(center_id, course_id)
+    total = course.get("lesson_count") or 1
+    rows = await db.rc_course_progress.find({"course_id": course_id}, {"_id": 0}).to_list(2000)
+    students = {}
+    for r in rows:
+        s = students.setdefault(r["user_id"], {"user_id": r["user_id"], "username": r.get("username"),
+                                               "completed": 0, "pending": 0, "scores": []})
+        if r["status"] == "completed":
+            s["completed"] += 1
+        elif r["status"] == "pending_approval":
+            s["pending"] += 1
+        if r.get("total") and r.get("score") is not None:
+            s["scores"].append(r["score"] / r["total"] * 100)
+    out = []
+    for s in students.values():
+        out.append({"user_id": s["user_id"], "username": s["username"],
+                    "completed": s["completed"], "pending": s["pending"],
+                    "pct": round(s["completed"] / total * 100),
+                    "avg_score": round(sum(s["scores"]) / len(s["scores"])) if s["scores"] else None})
+    out.sort(key=lambda x: -x["pct"])
+    return {"course": {"id": course_id, "title": course["title"], "lesson_count": total},
+            "students": out}
+
+
+@router.get("/{center_id}/courses/{course_id}/certificate")
+async def certificate(center_id: str, course_id: str, current: CurrentUser):
+    center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
+    course = await _course(center_id, course_id)
+    total = course.get("lesson_count") or 0
+    prog = await _progress_map(course_id, current["id"])
+    done = [p for p in prog.values() if p["status"] == "completed"]
+    if not total or len(done) < total:
+        raise HTTPException(status_code=409, detail="Finish every lesson to earn the certificate")
+    scores = [p["score"] / p["total"] * 100 for p in done if p.get("total") and p.get("score") is not None]
+    user = await db.users.find_one({"id": current["id"]}, {"_id": 0, "name": 1, "username": 1})
+    return {"certificate_id": f"ORC-{course_id[:6].upper()}-{current['id'][:6].upper()}",
+            "course_title": course["title"], "center_name": center["name"],
+            "student_name": user.get("name") or user.get("username"),
+            "completed_at": max(p["completed_at"] for p in done),
+            "lessons_completed": len(done), "avg_score": round(sum(scores) / len(scores)) if scores else None,
+            "disclaimer": "Certificate of completion issued by this OurRealm Center. "
+                          "Informal recognition only — not an accredited credential."}
+
+
+# ── AI Tutor (per lesson) ───────────────────────────────────────────────
+TUTOR_SYSTEM = """You are ORAi Tutor inside the OurRealm Course Player. Help the learner understand THIS lesson.
+- Explain simply, step by step, matching the course's grade level.
+- NEVER just give quiz answers — guide the learner to work them out.
+- Be encouraging and concise. Use short paragraphs or tight lists.
+- No medical/legal/financial advice. This is an informal learning tool, not accredited.
+
+LESSON CONTEXT:
+{context}"""
+
+
+@router.get("/{center_id}/courses/{course_id}/tutor/{lesson_id}")
+async def tutor_history(center_id: str, course_id: str, lesson_id: str, current: CurrentUser):
+    await _ctx(center_id, current, "view_items", write=False)
+    rows = await db.rc_course_tutor_messages.find(
+        {"course_id": course_id, "lesson_id": lesson_id, "user_id": current["id"]},
+        {"_id": 0}).sort("created_at", 1).to_list(100)
+    return {"messages": rows}
+
+
+@router.post("/{center_id}/courses/{course_id}/tutor")
+async def tutor_chat(center_id: str, course_id: str, body: dict, current: CurrentUser):
+    await _ctx(center_id, current, "view_items", write=False)
+    course = await _course(center_id, course_id)
+    lesson_id = body.get("lesson_id") or ""
+    message = (body.get("message") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Ask something first")
+    lesson = await db.rc_course_lessons.find_one(
+        {"id": lesson_id, "course_id": course_id}, {"_id": 0})
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    ctx_lines = [f"Course: {course['title']} ({course.get('grade_level') or 'all levels'})",
+                 f"Lesson: {lesson['title']} ({lesson['lesson_type']})"]
+    for b in lesson.get("blocks", [])[:6]:
+        ctx_lines.append(f"[{b['type']}] {b.get('title') or ''}: {b['body'][:700]}")
+    history = await db.rc_course_tutor_messages.find(
+        {"course_id": course_id, "lesson_id": lesson_id, "user_id": current["id"]},
+        {"_id": 0, "role": 1, "content": 1}).sort("created_at", 1).to_list(50)
+    messages = ([{"role": "system", "content": TUTOR_SYSTEM.format(context="\n".join(ctx_lines)[:5000])}]
+                + history[-12:] + [{"role": "user", "content": message}])
+    result = await call_openai_chat(messages, temperature=0.6, max_tokens=700)
+    reply = (result.get("content") or "").strip() or "Let's try that again — ask me once more."
+    now = _iso()
+    await db.rc_course_tutor_messages.insert_many([
+        {"id": uuid.uuid4().hex, "course_id": course_id, "lesson_id": lesson_id,
+         "center_id": center_id, "user_id": current["id"], "role": "user",
+         "content": message, "created_at": now},
+        {"id": uuid.uuid4().hex, "course_id": course_id, "lesson_id": lesson_id,
+         "center_id": center_id, "user_id": current["id"], "role": "assistant",
+         "content": reply, "created_at": _iso()},
+    ])
+    return {"reply": reply}

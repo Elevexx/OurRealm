@@ -111,6 +111,7 @@ export default function EducationCenterDashboard() {
       { label: "Overview", Icon: LayoutDashboard, act: () => window.scrollTo({ top: 0, behavior: "smooth" }), active: true },
       { label: "Students", Icon: Users, act: () => scrollTo("students") },
       { label: "AI Teaching", Icon: Bot, act: () => { setOraiOpen(true); setNavOpen(false); } },
+      { label: "Courses", Icon: GraduationCap, act: () => navigate(`/responsibility-center/${id}/courses`) },
       { label: "Lessons & Tasks", Icon: BookOpen, act: () => scrollTo("lessons") },
       canManage && { label: "Grades & Approvals", Icon: ClipboardCheck, act: () => goTab("work") },
       perms.has("view_reports") && { label: "Reports", Icon: BarChart3, act: () => goTab("reports") },

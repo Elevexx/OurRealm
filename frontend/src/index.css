@@ -971,3 +971,47 @@ html[data-mode="business"] .rcx-scope .or-surface {
 @media (prefers-reduced-motion: reduce) {
   .rcx-side-item { transition: none; }
 }
+
+/* ── RC Polish: cinematic logo, page transitions, loaders, hovers ────── */
+@keyframes orrc-logo-cinematic {
+  0%   { opacity: 0; transform: scale(0.92) translateY(8px); filter: drop-shadow(0 0 0 rgba(46,160,255,0)); }
+  55%  { opacity: 1; transform: scale(1.015) translateY(0); filter: drop-shadow(0 0 26px rgba(46,160,255,0.55)); }
+  100% { opacity: 1; transform: scale(1) translateY(0); filter: drop-shadow(0 0 12px rgba(46,160,255,0.28)); }
+}
+.orrc-logo-cinematic { animation: orrc-logo-cinematic 1.15s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes rcx-page-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.rcx-page-enter { animation: rcx-page-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.rcx-stagger > * { animation: rcx-page-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.rcx-stagger > *:nth-child(2) { animation-delay: 60ms; }
+.rcx-stagger > *:nth-child(3) { animation-delay: 120ms; }
+.rcx-stagger > *:nth-child(4) { animation-delay: 180ms; }
+.rcx-stagger > *:nth-child(5) { animation-delay: 240ms; }
+.rcx-stagger > *:nth-child(6) { animation-delay: 300ms; }
+
+@keyframes rcx-loader-orbit { to { transform: rotate(360deg); } }
+.rcx-loader {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 2px solid rgba(46,160,255,0.15); border-top-color: #2EA0FF;
+  animation: rcx-loader-orbit 0.8s linear infinite; margin: 0 auto;
+}
+@keyframes rcx-loader-dots { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+.rcx-loader-dots span {
+  display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+  background: #C26BFF; margin: 0 2px; animation: rcx-loader-dots 1.2s infinite;
+}
+.rcx-loader-dots span:nth-child(2) { animation-delay: 0.2s; }
+.rcx-loader-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+.rcx-scope .or-surface { transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease; }
+.rcx-hover-lift:hover { transform: translateY(-3px); box-shadow: 0 10px 32px rgba(46,160,255,0.14), 0 0 0 1px rgba(46,160,255,0.25); }
+.rcx-scope .or-btn { transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease; }
+.rcx-scope .or-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(46,160,255,0.22); }
+.rcx-scope .or-btn:active:not(:disabled) { transform: translateY(0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .orrc-logo-cinematic, .rcx-page-enter, .rcx-stagger > * { animation: none; }
+}

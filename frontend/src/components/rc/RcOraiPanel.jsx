@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Sparkles, X, Plus, Send, Trash2, Bot } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
+import { OraiVoiceBar } from "@/components/orai/OraiVoiceBar";
 
 const PROMPTS = [
   "What needs my attention today?",
@@ -47,7 +48,7 @@ export const RcOraiPanel = ({ centerId, centerName, open, onClose }) => {
 
   const send = async (text) => {
     const msg = (text || input).trim();
-    if (!msg || busy) return;
+    if (!msg || busy) return null;
     setInput("");
     setMessages((m) => [...m, { id: `tmp-${Date.now()}`, role: "user", content: msg }]);
     setBusy(true);
@@ -57,10 +58,12 @@ export const RcOraiPanel = ({ centerId, centerName, open, onClose }) => {
       setSessionId(r.data.session_id);
       setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: r.data.reply }]);
       loadSessions();
+      return r.data.reply;
     } catch (e) {
       toast.error(e?.response?.data?.detail || "ORAi is unavailable right now");
       setMessages((m) => m.slice(0, -1));
       setInput(msg);
+      return null;
     } finally { setBusy(false); }
   };
 
@@ -152,6 +155,7 @@ export const RcOraiPanel = ({ centerId, centerName, open, onClose }) => {
 
         {/* Input */}
         <div className="p-3" style={{ borderTop: "1px solid rgba(46,160,255,0.25)" }}>
+          <OraiVoiceBar onSubmit={(t) => send(t)} accent="#C26BFF" testidPrefix="rc-orai" />
           <div className="flex gap-2">
             <input className="or-input flex-1 text-sm" value={input} maxLength={4000}
               placeholder="Ask ORAi…" disabled={busy}

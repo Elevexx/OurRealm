@@ -34,6 +34,7 @@ import {
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import OraiDashboard, { ORAI_LOGO_URL } from "@/components/admin/OraiDashboard";
+import { OraiVoiceBar } from "@/components/orai/OraiVoiceBar";
 
 // ─────────────────────────────────────────────────────────────────────
 // Constants — sidebar sections + quick-action tiles + suggested chips.
@@ -471,6 +472,8 @@ async function streamReveal(text, onChunk) {
   onChunk(text);
 }
 
+const IMG_INTENT = /\b(create|generate|make|design|draw|render|regenerate)\b.{0,60}\b(image|picture|photo|logo|banner|poster|icon|avatar|pfp|wallpaper|illustration|artwork|art|mockup|thumbnail|graphic)\b|\b(remove (the )?background|photorealistic|variation|upscale|enhance|restyle)\b/i;
+
 function OrionChat({ onDraft }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -480,8 +483,6 @@ function OrionChat({ onDraft }) {
   const [imgState, setImgState] = useState(""); // "", "Uploading", "Generating image", "Editing image"
   const fileRef = useRef(null);
   const scrollRef = useRef(null);
-
-  const IMG_INTENT = /\b(create|generate|make|design|draw|render|regenerate)\b.{0,60}\b(image|picture|photo|logo|banner|poster|icon|avatar|pfp|wallpaper|illustration|artwork|art|mockup|thumbnail|graphic)\b|\b(remove (the )?background|photorealistic|variation|upscale|enhance|restyle)\b/i;
 
   const pickFile = (e) => {
     const f = e.target.files?.[0];
@@ -529,7 +530,7 @@ function OrionChat({ onDraft }) {
 
   const send = useCallback(async (text) => {
     const body = (text || input || "").trim();
-    if ((!body && !attach) || busy) return;
+    if ((!body && !attach) || busy) return null;
     const message = body || "Edit this image.";
     const upload = attach;
     setBusy(true); setErr("");
@@ -553,7 +554,7 @@ function OrionChat({ onDraft }) {
         }]);
         setImgState("");
         setBusy(false);
-        return;
+        return reply;
       }
       // Phase 3.7.2 — simulated token streaming. The ORAi analytics
       // interceptor returns deterministic replies (no upstream OpenAI
@@ -582,8 +583,10 @@ function OrionChat({ onDraft }) {
       // Detect drafts → bubble up to context panel.
       const draftHit = DRAFT_HEADERS.find((d) => d.match.test(reply));
       if (draftHit) onDraft({ type: draftHit.type, content: reply, ts: Date.now() });
+      return reply;
     } catch (e) {
       setErr(e?.response?.data?.detail || "ORAi is unavailable right now.");
+      return null;
     } finally {
       setBusy(false);
       setImgState("");
@@ -663,6 +666,8 @@ function OrionChat({ onDraft }) {
       <div className="orion-suggested" data-testid="orion-cc-suggested">
         <PromptLibrary onPick={(p) => send(p)} disabled={busy} />
       </div>
+
+      <OraiVoiceBar onSubmit={(t) => send(t)} accent="#4DD6C1" testidPrefix="orion-cc" />
 
       <form
         className="orion-composer"

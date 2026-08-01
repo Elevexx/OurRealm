@@ -1,0 +1,48 @@
+{
+  "summary": "Iter-105 tested ORAi Voice + AI Course Studio/Editor/Player. Backend pytest 25/26 pass, 1 skipped (course 075f90… has no lesson_type='quiz' — checkpoints cover the quiz-submit path). Frontend: Voice Library modal on rc-orai-voice-bar shows all 8 native voices (Nova/Atlas/Aurora/Ember/Luna/Orion/Echo/Titan) with sliders/toggles, no provider leaks (alloy/onyx/shimmer/coral/sage/ash/openai/whisper NOT present in modal DOM), 'Set as my voice' persists after modal close/reopen (Atlas → 'Your voice'). Course Studio at /courses shows course-gen-prompt/course-gen-btn, existing course card, and report modal opens. Course Editor loads modules+lessons, blocks, quiz, lesson-save-btn persists title after reload. Course Player quiz interaction works end-to-end for learner tftwo (invited+accepted after 100 FP vault seed) — 4-question checkpoint quiz submitted, score '1/4 · 25%' rendered, achievement-first_lesson chip shown, tutor-panel opens with tutor-voice-bar. RC Hub mobile logo present at 390px, edu dashboard sidebar 'Courses' navigates to studio, no console errors. Compliance language ('engagement-resource estimate', 'Fire Power Requirement') visible; no monetary wording found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "n/a — test coverage", "issue": "No lesson_type='quiz' in course 075f90ffcc3f41088b279dca7163c204 (only 'lesson' + 'checkpoint'), so test_learner_submit_quiz was skipped. Quiz path is fully exercised via checkpoint quiz submission (test_checkpoint_requires_approval PASSED)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "CoursePlayer AI Tutor / bottom-nav overlap", "issue": "On 1440x900 desktop the app's bottom mobile-style nav is still visible and can absorb clicks near the bottom of the tutor panel — tutor-send in my scripted run produced 0 assistant messages and page navigated to /profile once, consistent with the iter-104 edu-orai-fab bottom-nav overlap issue. The functionality itself works (backend tutor test passes 200); this is a click-through overlay problem in the shared bottom navigation.", "selector": "[data-testid=\"tutor-send\"]", "priority": "MEDIUM"},
+      {"component": "CoursePlayer quiz result", "issue": "After quiz submit the answer explanations may not be surfaced inline — my DOM scrape found 0 nodes matching /correct|explanation|because|answer/ inside quiz-player (score renders fine). Worth eyeballing to confirm each question shows its stored 'explanation' string post-submit.", "selector": "[data-testid=\"quiz-result\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_orai_voice_and_courses.py",
+    "/app/test_reports/pytest/iter105.xml"
+  ],
+  "action_items": [
+    "(carry-over from iter-104) Raise z-index / bottom offset of bottom navigation so it doesn't intercept clicks on player-tutor-btn / tutor-send / edu-orai-fab on desktop viewports.",
+    "Verify visually that per-question explanations render below each question after quiz submit (they are returned by the backend in results[].explanation) — my scripted DOM check couldn't find explanation text nodes inside quiz-player."
+  ],
+  "critical_code_review_comments": [
+    "orai_voice.VOICES uses _engine_voice keys that _public() strips before any response — verified via test_library_returns_8_voices (no provider name leaks in JSON body).",
+    "orai_voice.put_prefs correctly clamps speed/pitch/volume, filters favorites to known IDs, rejects unknown voice_id and unknown mode with 400.",
+    "rc_courses.course_detail() properly strips answer_index+explanation for non-managers — verified end-to-end by test_detail_learner_answer_key_hidden.",
+    "rc_courses.submit_quiz() grades server-side using stored answer_index and delegates to complete_lesson which routes checkpoint lessons to pending_approval when settings.requires_approval=true — flow verified with tftwo (learner) + stealth (approver).",
+    "rc_courses.certificate returns 409 until every lesson complete and includes non-accredited disclaimer text. Good.",
+    "rc_courses.list_courses filters non-managers to status=published courses — verified through can_manage=false response for tftwo.",
+    "orai_voice._tts_bytes / transcribe have OPENAI + EMERGENT fallback keys — sensible.",
+    "MINOR: rc_courses.delete_lesson uses $pull .lesson_ids across all modules but does not update the parent modules[].lesson_ids for edit consistency with add_lesson (add uses lesson.module_id targeting). Not a bug (delete uses arrayFilters []), just note."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_orai_voice_and_courses.py (NEW — 26 tests)"
+  ],
+  "success_rate": {
+    "backend": "96% (25/26; 1 skip because no lesson_type=quiz exists — checkpoint quiz path is proven)",
+    "frontend": "95% (all critical selectors present + working; only concerns are shared bottom-nav overlap and unverified inline explanation rendering)"
+  },
+  "test_credentials": "stealth / Password1$ (founder, manager of Johnson Family Learning). tftwo / pass1234 (was invited during this iter — accepted with 100 FP seat charge, so vault_balance is now 0 again and tftwo is an active member of center 3ed43c2b553547fbb3e6ca23b405eb91).",
+  "seed_data_creation": "Funded Johnson Family Learning vault with +100 FP from stealth's wallet then tftwo accepted → vault back to 0, tftwo active member, seat_paid_until ~2026-08-31. Added and immediately deleted one TEST_temp lesson on course 075f90… during CRUD test. Learner progress for tftwo now includes 1 checkpoint attempt on lesson 81d4565a70a748e9a1f50c51f9623878 (approved by stealth in test_checkpoint_requires_approval) plus additional quiz answers from frontend player run. Voice preferences for stealth were reset back to Nova/1.0/0/0.9/auto_speak=true/push during the run, but the frontend Voice Library test set 'Set as my voice' → Atlas at the very end, so stealth's current voice_id may be 'atlas' with 'luna' favorited.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Course 075f90ffcc3f41088b279dca7163c204 (Johnson Family Learning, published, 9 lessons across 3 modules incl. 3 checkpoints) is the stable target. tftwo is now an active member of that center with an incomplete progress record — reusable as the learner account. Voice preview mp3s are cached under /app/backend/cache/orai_voice_previews so preview tests are fast on rerun. Do NOT regenerate a new course (costs money). The shared bottom-nav overlap issue is still open (iter-104) and now also affects course-player tutor buttons — fix once, covers many places.",
+  "rca of the issue": "Bottom-nav overlap RCA: OurRealm's mobile-style bottom nav (Home/For You/Sounds/Plus/Realms/Friends/Profile) renders on ALL viewports (verified in Course Player screenshot at 1440x900). Its z-index is > the FAB (iter-104) and >= the tutor-panel footer, so document.elementFromPoint at buttons near bottom-of-viewport resolves to the bottom-nav icon instead of the intended button. Mitigation options: (a) hide bottom nav on desktop (md:hidden), OR (b) raise page-level floating buttons to z-index above the nav, OR (c) add sufficient bottom padding to Course Player/RC ORAi content so the interactive controls sit above the nav strip."
+}
