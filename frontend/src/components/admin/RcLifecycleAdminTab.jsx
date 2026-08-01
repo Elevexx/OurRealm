@@ -50,7 +50,8 @@ export const RcLifecycleAdminTab = ({ centerId }) => {
           <div>Closure: <b data-testid="rc-admin-lc-closure">{closure.status || "none"}</b></div>
           <div>Vault frozen: <b>{c.vault_frozen ? "yes" : "no"}</b></div>
           <div>Retention hold: <b style={{ color: closure.retention_hold ? "#FF6B6B" : undefined }}>{closure.retention_hold ? "ACTIVE" : "no"}</b></div>
-          {closure.cancellation_deadline && <div>Cancel window ends: {fmt(closure.cancellation_deadline)}</div>}
+          {closure.cancellation_deadline && ["requested", "review", "approved"].includes(closure.status)
+            && <div>Cancel window ends: {fmt(closure.cancellation_deadline)}</div>}
           {closure.final_vault_balance != null && <div>Final Vault balance: {closure.final_vault_balance}</div>}
         </div>
         <div className="flex flex-wrap gap-2 mt-3">
