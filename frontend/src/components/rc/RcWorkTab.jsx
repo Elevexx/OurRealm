@@ -20,7 +20,7 @@ const SCOPES = [
 ];
 
 // Work tab — summary cards, filterable list, create + detail drawer.
-export const RcWorkTab = ({ centerId, data, initialItemId, onItemConsumed }) => {
+export const RcWorkTab = ({ centerId, data, initialItemId, onItemOpenChange }) => {
   const [summary, setSummary] = useState(null);
   const [list, setList] = useState(null);
   const [scope, setScope] = useState("");
@@ -29,8 +29,10 @@ export const RcWorkTab = ({ centerId, data, initialItemId, onItemConsumed }) => 
   const [showCreate, setShowCreate] = useState(false);
   const [openItem, setOpenItem] = useState(initialItemId || null);
 
+  const openDrawer = (iid) => { setOpenItem(iid); onItemOpenChange?.(iid); };
+
   useEffect(() => {
-    if (initialItemId) { setOpenItem(initialItemId); onItemConsumed?.(); }
+    if (initialItemId && initialItemId !== openItem) setOpenItem(initialItemId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialItemId]);
 
@@ -193,7 +195,7 @@ export const RcWorkTab = ({ centerId, data, initialItemId, onItemConsumed }) => 
               return (
                 <button key={it.id} className="w-full flex flex-wrap items-center gap-2 py-2 px-1 text-left hover:bg-white/5 rounded"
                   style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
-                  onClick={() => setOpenItem(it.id)} data-testid={`rc-item-row-${it.id}`}>
+                  onClick={() => openDrawer(it.id)} data-testid={`rc-item-row-${it.id}`}>
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: pc || "#9AA7BD" }} />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold truncate">
@@ -231,7 +233,7 @@ export const RcWorkTab = ({ centerId, data, initialItemId, onItemConsumed }) => 
       )}
       {openItem && (
         <RcItemDrawer centerId={centerId} itemId={openItem}
-          onClose={() => setOpenItem(null)} onChanged={reloadAll} />
+          onClose={() => openDrawer(null)} onChanged={reloadAll} />
       )}
     </div>
   );

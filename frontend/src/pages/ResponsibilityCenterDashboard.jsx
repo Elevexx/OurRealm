@@ -157,7 +157,10 @@ export default function ResponsibilityCenterDashboard() {
       {tab === "overview" && <OverviewTab data={data} reload={load} centerId={id} goVault={() => setTab("vault")} />}
       {tab === "work" && (
         <RcWorkTab centerId={id} data={data} initialItemId={deepItem}
-          onItemConsumed={() => { setDeepItem(null); setSearchParams({}, { replace: true }); }} />
+          onItemOpenChange={(iid) => {
+            setDeepItem(iid);
+            setSearchParams(iid ? { tab: "work", item: iid } : { tab: "work" }, { replace: true });
+          }} />
       )}
       {tab === "members" && <MembersTab data={data} me={me} perms={perms} reload={load} centerId={id} config={config} />}
       {tab === "vault" && <VaultTab data={data} canViewVault={canViewVault} reload={load} centerId={id} config={config} />}
@@ -562,7 +565,7 @@ function SettingsTab({ data, me, perms, reload, centerId, navigate }) {
               {["UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
                 "Europe/London", "Europe/Paris", "Asia/Tokyo", "Australia/Sydney"].map((z) => <option key={z} value={z} />)}
             </datalist>
-            <button className="or-btn text-xs" onClick={saveTimezone} data-testid="rc-settings-timezone-save">Save</button>
+            <button type="button" className="or-btn text-xs" onClick={saveTimezone} data-testid="rc-settings-timezone-save">Save</button>
           </div>
         </div>
       )}

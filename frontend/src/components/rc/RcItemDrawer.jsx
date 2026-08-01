@@ -40,6 +40,7 @@ export const RcItemDrawer = ({ centerId, itemId, onClose, onChanged }) => {
   const [progressDraft, setProgressDraft] = useState(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
+  const progressTimer = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -189,9 +190,16 @@ export const RcItemDrawer = ({ centerId, itemId, onClose, onChanged }) => {
           </div>
           {item.progress_method === "manual" && canTouch && !["completed", "approved", "canceled", "archived"].includes(item.status) && (
             <input type="range" min="0" max="100" className="w-full mt-1" value={progressValue}
-              onChange={(e) => setProgressDraft(parseInt(e.target.value, 10))}
-              onMouseUp={() => progressDraft != null && api(() => apiClient.post(`/responsibility-center/${centerId}/items/${itemId}/progress`, { percent: progressDraft }).then(() => setProgressDraft(null)))}
-              onTouchEnd={() => progressDraft != null && api(() => apiClient.post(`/responsibility-center/${centerId}/items/${itemId}/progress`, { percent: progressDraft }).then(() => setProgressDraft(null)))}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                setProgressDraft(v);
+                clearTimeout(progressTimer.current);
+                progressTimer.current = setTimeout(() => {
+                  apiClient.post(`/responsibility-center/${centerId}/items/${itemId}/progress`, { percent: v })
+                    .then(() => { setProgressDraft(null); refresh(); })
+                    .catch((err) => toast.error(err?.response?.data?.detail || "Could not update progress"));
+                }, 600);
+              }}
               data-testid="rc-drawer-progress-slider" />
           )}
         </div>
