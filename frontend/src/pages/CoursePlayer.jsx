@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, ArrowRight, CheckCircle2, Circle, Trophy, Award, GraduationCap,
@@ -26,7 +27,7 @@ function CertificateModal({ centerId, courseId, onClose }) {
       .then((r) => setCert(r.data))
       .catch((e) => setErr(e?.response?.data?.detail || "Certificate unavailable"));
   }, [centerId, courseId]);
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-3" style={{ background: "rgba(0,0,0,0.7)" }} onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl p-6 text-center rcx-scope" onClick={(e) => e.stopPropagation()}
         style={{ background: "color-mix(in srgb, var(--bgc) 85%, #060D18)", border: "2px solid #F4A73B" }}
@@ -47,7 +48,8 @@ function CertificateModal({ centerId, courseId, onClose }) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -79,7 +81,7 @@ function TutorPanel({ centerId, courseId, lesson, onClose }) {
     } finally { setBusy(false); }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[75] flex justify-end" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose}>
       <div className="h-full w-full sm:w-[400px] flex flex-col rcx-scope" onClick={(e) => e.stopPropagation()}
         style={{ background: "color-mix(in srgb, var(--bgc) 85%, #060D18)", borderLeft: "1px solid rgba(77,214,193,0.4)" }}
@@ -124,7 +126,8 @@ function TutorPanel({ centerId, courseId, lesson, onClose }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

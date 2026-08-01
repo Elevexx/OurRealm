@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Sparkles, BookOpen, Pencil, Play, Trash2, Loader2, BarChart3, GraduationCap, X } from "lucide-react";
 import { toast } from "sonner";
@@ -13,7 +14,7 @@ function ReportModal({ centerId, course, onClose }) {
     apiClient.get(`/responsibility-center/${centerId}/courses/${course.id}/report`)
       .then((r) => setData(r.data)).catch((e) => { toast.error(e?.response?.data?.detail || "Could not load report"); onClose(); });
   }, [centerId, course.id, onClose]);
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-3" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
       <div className="or-surface w-full max-w-lg max-h-[80vh] overflow-y-auto p-4 rcx-scope" onClick={(e) => e.stopPropagation()} data-testid="course-report-modal">
         <div className="flex items-center justify-between mb-3">
@@ -37,7 +38,8 @@ function ReportModal({ centerId, course, onClose }) {
             ))
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

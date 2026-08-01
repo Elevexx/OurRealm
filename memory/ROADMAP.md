@@ -84,3 +84,10 @@ Belongs to Sound Admin / Copyright Tool / moderation / support-ticket / audit ph
 - Frontend: GoogleSignInButton.jsx (SignIn + SignUp, redirect = window.location.origin + "/feed" — NEVER hardcode); GoogleAuthGate in App.js renders pages/AuthCallback.jsx synchronously when useLocation().hash contains session_id; AuthProvider skips /me when hash has session_id; AuthCallback uses useRef guard (StrictMode-safe), stores ourrealm.access, refreshMe, navigate /feed.
 - Tested: mocked-exchange backend test (backend/tests/test_google_auth_mock.py — new user, dedupe linking, JWT decode OK), bogus-session 401, empty 400, UI callback loading→error→back-to-signin, buttons render on both pages. Real Google consent flow can only be exercised manually by the user (external OAuth).
 - GOTCHA LEARNED: App.js/moderation.py suffered repeated edit reverts/corruption this session — always re-grep after edits to these files.
+
+## STATUS UPDATE (Aug 1, 2026) — Production Phases 2-4 DONE
+- Phase 2 ORAi Voice Mode: DONE (voice-to-voice, 8-voice native ORAi Voice Library, hands-free VAD loop, shared engine in FCC/RC/Education/Tutor).
+- Phase 3 AI Course Creation: DONE (one-prompt generation → editable modules/lessons/quizzes/answer keys/worksheets/homework/projects/checkpoints, lesson image gen).
+- Phase 4 Course Player: DONE (prev/next/resume, graded quizzes, checkpoint approvals, achievements, non-accredited certificate, manager reports, ORAi Tutor w/ voice).
+- Polish: DONE (cinematic ORRC logo, page transitions, loaders, hover lifts).
+- Remaining backlog: split AdminOrion.jsx (tech debt), Phase 2 moderation detection workflows (see Jul 27 entry), voice input for course search (idea).
