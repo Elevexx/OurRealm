@@ -95,3 +95,6 @@ Belongs to Sound Admin / Copyright Tool / moderation / support-ticket / audit ph
 ## STATUS UPDATE (Aug 2026) — Phase 5 ORAi Intelligence & Automation DONE (iter-106, 34/34)
 All 10 sections shipped: Center Memory (audited), Recommendations, Automation Builder (approval-gated awards), Universal Template Library, Course Sharing w/ credit, Intelligence Dashboard, Admin AI Command Center, Workflow Drafts, Health Score, Voice improvements (read lessons/suggestions aloud, dashboard voice guide).
 Remaining backlog: Public course sharing (marked 'future' in UI), invite-picker UI for invite-only sharing (backend supports center_ids), split AdminOrion.jsx (tech debt), birthday data entry UI for memberships (trigger engine ready).
+
+## STATUS UPDATE (Aug 2026) — Phase 6 Production Hardening DONE (iter-107)
+Readiness 100/100. Remaining backlog unchanged: public course sharing, invite-picker UI, AdminOrion.jsx split, membership birthday field UI. Optional: hide bottom nav on desktop (user has said don't redesign — ask first).
