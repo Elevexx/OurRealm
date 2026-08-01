@@ -128,6 +128,8 @@ app.include_router(progression_admin_router_mod.router)
 app.include_router(leaderboards_router_mod.router)
 app.include_router(fire_router_mod.router)
 app.include_router(founding_vip_router_mod.router)
+from routers import rc_items as rc_items_router_mod
+app.include_router(rc_items_router_mod.router)
 app.include_router(responsibility_center_router_mod.router)
 app.include_router(rc_admin_router_mod.router)
 app.include_router(rc_media_router_mod.router)

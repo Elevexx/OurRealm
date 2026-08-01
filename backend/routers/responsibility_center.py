@@ -81,11 +81,17 @@ async def rc_members(center_id: str, current: CurrentUser):
 class UpdateBody(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    allow_member_self_tasks: Optional[bool] = None
+    timezone: Optional[str] = None
 
 
 @router.patch("/{center_id}")
 async def rc_update(center_id: str, body: UpdateBody, current: CurrentUser):
-    return await rc.update_center(current, center_id, body.name, body.description)
+    fields = body.model_dump(exclude_unset=True)
+    return await rc.update_center(
+        current, center_id, body.name, body.description,
+        fields["allow_member_self_tasks"] if "allow_member_self_tasks" in fields else ...,
+        body.timezone)
 
 
 class FundBody(BaseModel):

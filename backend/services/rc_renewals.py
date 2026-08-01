@@ -443,8 +443,13 @@ async def _loop():
             w = await run_warning_pass()
             s = await run_renewal_pass()
             d = await run_digest_pass()
-            if s["processed"] or w["warnings"] or d["digests_sent"]:
-                log.info("[rc-renewals] pass complete: renewals=%s warnings=%s digest=%s", s, w, d)
+            from services import rc_recurrence
+            r = await rc_recurrence.run_recurrence_pass()
+            m = await rc_recurrence.run_due_reminder_pass()
+            if s["processed"] or w["warnings"] or d["digests_sent"] \
+                    or r["occurrences_generated"] or m["reminders_sent"]:
+                log.info("[rc-renewals] pass complete: renewals=%s warnings=%s digest=%s recurrence=%s reminders=%s",
+                         s, w, d, r, m)
             await asyncio.sleep(INTERVAL_SECONDS)
         except asyncio.CancelledError:
             log.info("[rc-renewals] worker cancelled")

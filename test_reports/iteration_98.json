@@ -1,0 +1,33 @@
+{
+  "summary": "Bundle C (Responsibilities & Tasks engine) frontend E2E tested. Nearly all flows PASS: Work tab, create modal (one-time + recurring), item drawer, assignee accept/start/submit, approver request_changes+approve with 2-cycle history, self-task (member restricted modal), owner self-task on/off, My Work hub, regression tabs, mobile viewport. Found 1 real bug: Save on timezone button navigates page to /friends unexpectedly. Also a minor UX gap: cross-center My Work item click opens drawer correctly but URL is not updated with ?tab=work&item= deep link; progress percent label doesn't visually refresh immediately after moving the manual progress slider.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SettingsTab timezone save (ResponsibilityCenterDashboard.jsx L565)", "issue": "Clicking rc-settings-timezone-save reproducibly navigates the whole page to /friends (both on valid tz like America/New_York and invalid like Mars/Base). Value does get persisted on valid input, but user is thrown out of Settings tab immediately. Button has no type attribute (defaults to submit) though no enclosing <form> was detected — root cause likely a stray global handler or router side-effect triggered by the button click / API response. Blocks any follow-up interaction with settings after save.", "selector": "[data-testid=\"rc-settings-timezone-save\"]", "priority": "HIGH"},
+      {"component": "RcItemDrawer progress slider", "issue": "Setting rc-drawer-progress-slider to 50 updates the input value (slider thumb moves) but the '0%' label in rc-drawer-progress does not refresh in-session; probably no optimistic update and no reload of item after change event.", "selector": "[data-testid=\"rc-drawer-progress-slider\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Cross-center My Work deep-link", "issue": "Clicking rc-my-work-item-{id} correctly opens the item drawer, but the URL only becomes /responsibility-center/{cid} (query string ?tab=work&item={id} is missing). Per spec the deep link should be reflected in the URL so it can be shared/reloaded.", "affected_selectors": ["[data-testid^=\"rc-my-work-item-\"]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix timezone save navigation-away bug: give the button an explicit type=\"button\" and investigate why saveTimezone triggers navigation to /friends (checked apiClient interceptors — no explicit /friends redirect found; also happens on the invalid tz path which does NOT call reload()/navigate). Repro: open /responsibility-center/{id}?tab=settings, type any value into rc-settings-timezone-input, click rc-settings-timezone-save -> page immediately navigates to /friends.",
+    "Update RcMyWork deep-link navigation to push ?tab=work&item={id} to URL so the link is copy-shareable.",
+    "Update progress percentage label reactively when rc-drawer-progress-slider is moved (either optimistic set or refetch item on input change)."
+  ],
+  "critical_code_review_comments": [
+    "ResponsibilityCenterDashboard.jsx SettingsTab: rc-settings-timezone-save <button> lacks type=\"button\". Even though no <form> was detected around it, this is best practice and rules out submit-triggered navigation in embedded contexts.",
+    "RcItemDrawer: onChange of the range slider likely fires a network PATCH but the local `item.progress_percent` state used to render the label is only updated after refetch — consider optimistic UI to feel responsive.",
+    "RcMyWork navigation should use `navigate(`/responsibility-center/${cid}?tab=work&item=${id}`)` (query params) so page reload/refresh preserves drawer state and the deep-link works from external shares."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per instructions)", "frontend": "~92% (12/13 major flows PASS; 1 real bug + 2 minor UX gaps)"},
+  "test_credentials": "stealth / Password1$ (owner), tftwo / pass1234 (member); center id cf5a475c04cd4860976920cda63fa6ff",
+  "seed_data_creation": "Created QA-onetime-013657 (one-time task, approval flow, ended COMPLETED with 2-cycle history), a weekly recurring series 'QA-weekly-013700' (Mon/Thu, still active with pause/end buttons and 4 rolling occurrences), and a personal task 'QA-personal-task' by tftwo. All prefixed with QA- for easy cleanup. Center's timezone was toggled but restored to America/New_York. Self-task toggle briefly set to 'off' and restored to 'default' (Template default).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Bundle C flows are largely green. Main fix required: rc-settings-timezone-save button causes navigation to /friends. Repro deterministic — happens on both valid and invalid timezone values. Please retest after fix. Also verify My Work deep-link URL now contains ?tab=work&item= and progress percent updates in real time. Recurring series and approval cycles work perfectly (2-cycle history verified).",
+  "rca of the issue": "Timezone save -> unexpected navigation to /friends. RCA hypothesis: button has no type attribute (implicit submit) AND some upstream React Router state or the PATCH response side-effect triggers a full navigation to /friends. Since the invalid-tz path (which never calls reload() or navigate()) ALSO navigates, the trigger is not in saveTimezone itself. Likely candidates: (a) a global keyboard/click handler in TopStarBar or Layout tied to focus loss, (b) a service-worker style route interception, (c) an axios response interceptor that maps a specific error/status to a redirect. Recommend logging navigation source with useNavigate wrapper to identify the caller."
+}

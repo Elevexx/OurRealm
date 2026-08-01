@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Users, Vault, Activity, Settings as SettingsIcon, UserPlus, Flame, LogOut, Clock } from "lucide-react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ChevronLeft, Users, Vault, Activity, Settings as SettingsIcon, UserPlus, Flame, LogOut, Clock, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { rcTypeMeta, ROLE_COLORS } from "@/lib/rcTypes";
 import { RcImg } from "@/lib/rcAssets";
+import { RcWorkTab } from "@/components/rc/RcWorkTab";
 
 const uuid = () =>
   (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -18,19 +19,30 @@ const fmtDate = (iso) => {
 
 const TABS = [
   { id: "overview", label: "Overview", Icon: Activity },
+  { id: "work",     label: "Work",     Icon: ClipboardList },
   { id: "members",  label: "Members",  Icon: Users },
   { id: "vault",    label: "Vault",    Icon: Vault },
   { id: "settings", label: "Settings", Icon: SettingsIcon },
 ];
 
-// Responsibility Center — member dashboard (Phase 1).
+// Responsibility Center — member dashboard.
 export default function ResponsibilityCenterDashboard() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [tab, setTab] = useState("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get("tab") && TABS.some((t) => t.id === searchParams.get("tab"))
+    ? searchParams.get("tab") : "overview");
+  const [deepItem, setDeepItem] = useState(searchParams.get("item") || null);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    const it = searchParams.get("item");
+    if (t && TABS.some((x) => x.id === t)) setTab(t);
+    if (it) setDeepItem(it);
+  }, [searchParams]);
 
   const load = useCallback(async () => {
     try {
@@ -143,6 +155,10 @@ export default function ResponsibilityCenterDashboard() {
       </div>
 
       {tab === "overview" && <OverviewTab data={data} reload={load} centerId={id} goVault={() => setTab("vault")} />}
+      {tab === "work" && (
+        <RcWorkTab centerId={id} data={data} initialItemId={deepItem}
+          onItemConsumed={() => { setDeepItem(null); setSearchParams({}, { replace: true }); }} />
+      )}
       {tab === "members" && <MembersTab data={data} me={me} perms={perms} reload={load} centerId={id} config={config} />}
       {tab === "vault" && <VaultTab data={data} canViewVault={canViewVault} reload={load} centerId={id} config={config} />}
       {tab === "settings" && <SettingsTab data={data} me={me} perms={perms} reload={load} centerId={id} navigate={navigate} userId={user?.id} />}
@@ -460,6 +476,10 @@ function SettingsTab({ data, me, perms, reload, centerId, navigate }) {
   const [busy, setBusy] = useState(false);
   const canEdit = perms.has("edit_center");
   const isOwner = me.role === "owner";
+  const SELF_TASK_DEFAULT_ON = ["family", "household"].includes(data.center.center_type);
+  const selfTaskValue = data.center.allow_member_self_tasks === null || data.center.allow_member_self_tasks === undefined
+    ? "default" : data.center.allow_member_self_tasks ? "on" : "off";
+  const [tz, setTz] = useState(data.center.timezone || "UTC");
 
   const save = async () => {
     setBusy(true);
@@ -470,6 +490,23 @@ function SettingsTab({ data, me, perms, reload, centerId, navigate }) {
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Update failed");
     } finally { setBusy(false); }
+  };
+
+  const saveSelfTasks = async (v) => {
+    try {
+      await apiClient.patch(`/responsibility-center/${centerId}`,
+        { allow_member_self_tasks: v === "default" ? null : v === "on" });
+      toast.success("Self-task setting updated");
+      reload();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Update failed"); }
+  };
+
+  const saveTimezone = async () => {
+    try {
+      await apiClient.patch(`/responsibility-center/${centerId}`, { timezone: tz.trim() });
+      toast.success("Center timezone updated");
+      reload();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Invalid timezone"); }
   };
 
   const leave = async () => {
@@ -497,6 +534,36 @@ function SettingsTab({ data, me, perms, reload, centerId, navigate }) {
           <button className="or-btn" disabled={busy || !name.trim()} onClick={save} data-testid="rc-settings-save-btn">
             {busy ? "Saving…" : "Save changes"}
           </button>
+        </div>
+      )}
+      {isOwner && (
+        <div className="or-surface p-5" data-testid="rc-settings-work-panel">
+          <div className="text-sm font-semibold mb-3">Work & tasks</div>
+          <label className="text-xs uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+            Allow Members to Create Self-Tasks
+          </label>
+          <select className="or-input w-full mt-1 mb-1" value={selfTaskValue}
+            onChange={(e) => saveSelfTasks(e.target.value)} data-testid="rc-settings-self-tasks">
+            <option value="default">Template default ({SELF_TASK_DEFAULT_ON ? "Enabled" : "Disabled"})</option>
+            <option value="on">Enabled</option>
+            <option value="off">Disabled</option>
+          </select>
+          <div className="text-[11px] mb-4" style={{ color: "var(--text-muted)" }}>
+            When enabled, plain members can create personal tasks assigned only to themselves.
+            They can never assign work to others or bypass Center permissions.
+          </div>
+          <label className="text-xs uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+            Center timezone (for recurring schedules)
+          </label>
+          <div className="flex gap-2 mt-1">
+            <input className="or-input flex-1" list="rc-tz-options" value={tz}
+              onChange={(e) => setTz(e.target.value)} data-testid="rc-settings-timezone-input" />
+            <datalist id="rc-tz-options">
+              {["UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+                "Europe/London", "Europe/Paris", "Asia/Tokyo", "Australia/Sydney"].map((z) => <option key={z} value={z} />)}
+            </datalist>
+            <button className="or-btn text-xs" onClick={saveTimezone} data-testid="rc-settings-timezone-save">Save</button>
+          </div>
         </div>
       )}
       <div className="or-surface p-5">

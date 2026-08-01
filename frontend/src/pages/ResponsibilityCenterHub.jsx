@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { RC_TYPES, rcTypeMeta, ROLE_COLORS } from "@/lib/rcTypes";
 import { RcImg, useRcBranding } from "@/lib/rcAssets";
+import { RcMyWork } from "@/components/rc/RcMyWork";
 
 // Responsibility Center — landing hub (Phase 1).
 // Explains the system, lists my Centers + pending invites, and links
@@ -121,6 +122,9 @@ export default function ResponsibilityCenterHub() {
           Loading your Centers…
         </div>
       )}
+
+      {/* Cross-Center My Work */}
+      {!loading && <RcMyWork />}
 
       {/* Pending invites */}
       {!loading && (data?.invites?.length || 0) > 0 && (

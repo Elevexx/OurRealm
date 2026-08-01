@@ -175,6 +175,8 @@ def _public_center(c: dict) -> dict:
         "vault_frozen": bool(c.get("vault_frozen")),
         "official": bool(c.get("official")),
         "branding": c.get("branding") or None,
+        "allow_member_self_tasks": c.get("allow_member_self_tasks"),
+        "timezone": c.get("timezone") or "UTC",
     }
 
 
@@ -591,7 +593,9 @@ async def leave_center(user: dict, center_id: str) -> dict:
 
 
 async def update_center(actor: dict, center_id: str,
-                        name: Optional[str], description: Optional[str]) -> dict:
+                        name: Optional[str], description: Optional[str],
+                        allow_member_self_tasks: Optional[bool] = ...,
+                        tz: Optional[str] = None) -> dict:
     center, membership = await _center_and_membership(center_id, actor["id"])
     if not has_permission(membership, "edit_center"):
         raise HTTPException(status_code=403, detail="You don't have permission to edit this Center")
@@ -606,6 +610,17 @@ async def update_center(actor: dict, center_id: str,
         if len(description) > MAX_DESC:
             raise HTTPException(status_code=400, detail=f"Description is too long (max {MAX_DESC} characters)")
         sets["description"] = description
+    if allow_member_self_tasks is not ...:
+        if (membership.get("role") or "member") != "owner":
+            raise HTTPException(status_code=403, detail="Only the Center owner can change the self-task setting")
+        sets["allow_member_self_tasks"] = None if allow_member_self_tasks is None else bool(allow_member_self_tasks)
+    if tz is not None:
+        from zoneinfo import ZoneInfo
+        try:
+            ZoneInfo(tz)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="Invalid timezone")
+        sets["timezone"] = tz
     if not sets:
         return {"center": _public_center(center)}
     sets["updated_at"] = _now_iso()
@@ -848,3 +863,4 @@ async def reactivate_eligible(actor: dict, center_id: str) -> dict:
             failed += 1
             break  # vault exhausted or frozen — stop cleanly
     return {"ok": True, "reactivated": reactivated, "remaining_paused": len(paused) - reactivated}
+
