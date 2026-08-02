@@ -205,6 +205,9 @@ export default function ActivityBlock({ b }) {
       return (
         <Shell title={b.title || "Video"} body={b.body} testid="block-video">
           <ResumableVideo b={b} />
+          {b.video_caption && (
+            <div className="text-[9px] mt-1" style={{ opacity: 0.6 }} data-testid="video-caption">{b.video_caption}</div>
+          )}
         </Shell>
       );
     }

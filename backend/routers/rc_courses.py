@@ -9,6 +9,7 @@ non-accredited completion certificate.
 Collections: rc_courses, rc_course_lessons, rc_course_progress,
 rc_course_state, rc_course_tutor_messages.
 """
+import asyncio
 import json
 import logging
 import re
@@ -19,6 +20,7 @@ from fastapi import APIRouter, HTTPException
 
 from core.db import db
 from core.deps import CurrentUser
+from core.permissions import get_admin_role
 from services.chat_conversations import call_openai_chat
 from services.rc_units import _ctx
 from services import responsibility_center as rc
@@ -148,42 +150,143 @@ async def _set_stage(job_id, stage: str):
             pass
 
 
-async def _auto_illustrate(course: dict, lesson_docs: list, current, cap: int = 4):
-    """Generate up to `cap` AI illustrations for text blocks (failure-tolerant)."""
+async def _media_progress(job_id, patch: dict, current_task: str = None):
+    if not job_id:
+        return
+    upd = {f"media.{k}": v for k, v in patch.items()}
+    if current_task is not None:
+        upd["media.current_task"] = current_task
+    try:
+        await db.rc_course_gen_jobs.update_one({"id": job_id}, {"$set": upd})
+    except Exception:
+        pass
+
+
+async def _gen_image(prompt: str, user_id: str, retries: int = 1):
+    """One illustration with automatic retry; returns url or raises."""
     from services.orai_images import generate_orai_image
     from services import image_store
-    sb = course.get("storyboard") or {}
-    style_suffix = ""
-    if sb:
-        style_suffix = " Art direction: " + "; ".join(
-            str(sb.get(k) or "") for k in ("visual_style", "characters", "palette") if sb.get(k))[:400]
-    if course.get("style_profile"):
-        from services.animation_styles import profile_to_prompt
-        style_suffix += " " + (await profile_to_prompt(course["style_profile"]))[:400]
-    made = 0
-    for les in lesson_docs:
-        if made >= cap:
-            break
-        if les["lesson_type"] != "lesson":
-            continue
-        blk = next((b for b in les["blocks"] if b["type"] == "text" and not b.get("image_url")), None)
-        if not blk:
-            continue
-        prompt = (f"Educational illustration for the lesson \"{les['title']}\" in the course "
-                  f"\"{course['title']}\" (level: {course.get('grade_level') or 'all ages'}). "
-                  f"Context: {blk['body'][:300]}. Clean, engaging, age-appropriate, no text in the image."
-                  + style_suffix)
+    last = None
+    for attempt in range(retries + 1):
         try:
-            img_bytes, _model = await generate_orai_image(prompt[:800])
-            record = await image_store.save_bytes(img_bytes, current["id"], "image/png")
+            img_bytes, _m = await generate_orai_image(prompt[:900])
+            rec = await image_store.save_bytes(img_bytes, user_id, "image/png")
+            return rec.original_url
+        except Exception as e:  # noqa: BLE001
+            last = e
+            log.warning("image generation attempt %s failed: %s", attempt + 1, e)
+    raise last
+
+
+async def _job_cancelled(job_id) -> bool:
+    if not job_id:
+        return False
+    j = await db.rc_course_gen_jobs.find_one({"id": job_id}, {"cancel_requested": 1})
+    return bool(j and j.get("cancel_requested"))
+
+
+async def _generate_media_pack(job_id, course: dict, lesson_docs: list, current, opts: dict):
+    """One-click media pack: cover + lesson illustrations + videos, with the
+    resolved course style enforced on EVERY asset. Auto-retries once per
+    asset; a single failure never stops the course."""
+    from services.animation_styles import style_directive
+    from services import video_generation as vg
+    directive = await style_directive(course)
+    vs = await vg.get_video_settings()
+    want_videos = bool(opts.get("auto_videos"))
+    if vs.get("ai_media_approval") == "founder" and get_admin_role(current) != "founder":
+        await _media_progress(job_id, {"skipped_reason": "Founder approval is required for AI media — ask the founder or change the policy"})
+        return
+    lessons = [l for l in lesson_docs if l["lesson_type"] == "lesson"]
+    img_targets = [l for l in lessons if any(
+        b["type"] == "text" and not b.get("image_url") for b in l["blocks"])][:int(vs.get("auto_image_cap") or 12)]
+    video_targets = []
+    if want_videos:
+        for l in lessons:
+            for b in l["blocks"]:
+                if b["type"] == "video_embed" and not b.get("video_url"):
+                    video_targets.append((l, b))
+        video_targets = video_targets[:int(vs.get("auto_video_cap") or 3)]
+    await _media_progress(job_id, {
+        "images": {"planned": len(img_targets) + 1, "done": 0, "failed": 0},
+        "videos": {"planned": len(video_targets), "done": 0, "failed": 0},
+        "failed_assets": []}, "Starting media pack")
+
+    imgs_done, imgs_failed, failed_assets = 0, 0, []
+    # Course cover — same resolved style
+    await _set_stage(job_id, "creating_cover")
+    await _media_progress(job_id, {}, "Creating course cover")
+    try:
+        cover = await _gen_image(
+            f"Cinematic course cover for \"{course['title']}\" — {course.get('description','')[:200]} "
+            f"(level: {course.get('grade_level') or 'all ages'}). No text in the image.\n{directive}",
+            current["id"])
+        await db.rc_courses.update_one({"id": course["id"]}, {"$set": {"cover_url": cover}})
+        imgs_done += 1
+    except Exception:  # noqa: BLE001
+        imgs_failed += 1
+        failed_assets.append("Course cover")
+    # Lesson illustrations
+    await _set_stage(job_id, "creating_images")
+    for les in img_targets:
+        if await _job_cancelled(job_id):
+            return
+        blk = next(b for b in les["blocks"] if b["type"] == "text" and not b.get("image_url"))
+        await _media_progress(job_id, {"images": {"planned": len(img_targets) + 1, "done": imgs_done, "failed": imgs_failed}},
+                              f"Illustrating: {les['title'][:40]}")
+        try:
+            url = await _gen_image(
+                f"Illustration for the lesson \"{les['title']}\" in the course \"{course['title']}\" "
+                f"(level: {course.get('grade_level') or 'all ages'}). Scene: {blk['body'][:250]}. "
+                f"No text in the image.\n{directive}", current["id"])
             await db.rc_course_lessons.update_one(
                 {"id": les["id"], "blocks.id": blk["id"]},
-                {"$set": {"blocks.$.image_url": record.original_url, "updated_at": _iso()}})
-            made += 1
-        except Exception as e:
-            log.warning("auto course illustration failed: %s", e)
-            break
-    return made
+                {"$set": {"blocks.$.image_url": url, "updated_at": _iso()}})
+            imgs_done += 1
+        except Exception:  # noqa: BLE001
+            imgs_failed += 1
+            failed_assets.append(f"Image: {les['title'][:40]}")
+    await _media_progress(job_id, {"images": {"planned": len(img_targets) + 1, "done": imgs_done, "failed": imgs_failed},
+                                   "failed_assets": failed_assets})
+
+    # Videos — parallel jobs through the existing budget-gated engine
+    vids_done, vids_failed, vid_jobs = 0, 0, {}
+    if video_targets:
+        await _set_stage(job_id, "creating_videos")
+        for les, b in video_targets:
+            if await _job_cancelled(job_id):
+                return
+            try:
+                vjob = await vg.start_video_job(
+                    center_id=course["center_id"], course_id=course["id"], lesson_id=les["id"],
+                    block_id=b["id"], prompt=f"{b.get('title') or les['title']} — {str(b.get('body') or '')[:300]}",
+                    seconds=int(vs.get("default_seconds") or 4), size=vs.get("default_size"),
+                    current=current, style_profile=course.get("style_profile"))
+                vid_jobs[vjob["id"]] = f"Video: {les['title'][:40]}"
+            except ValueError as e:
+                vids_failed += 1
+                failed_assets.append(f"Video blocked ({les['title'][:30]}): {e}")
+        # poll until all terminal (max 20 min)
+        import time as _t
+        deadline = _t.monotonic() + 1200
+        pending = set(vid_jobs)
+        while pending and _t.monotonic() < deadline:
+            await _media_progress(job_id, {"videos": {"planned": len(video_targets), "done": vids_done, "failed": vids_failed}},
+                                  f"Generating {len(pending)} video(s)…")
+            await asyncio.sleep(8)
+            for vid in list(pending):
+                j = await db.ai_video_jobs.find_one({"id": vid}, {"status": 1, "error": 1})
+                if not j or j["status"] in ("complete", "failed", "cancelled"):
+                    pending.discard(vid)
+                    if j and j["status"] == "complete":
+                        vids_done += 1
+                    else:
+                        vids_failed += 1
+                        failed_assets.append(f"{vid_jobs[vid]}: {(j or {}).get('error') or 'failed'}")
+    await _media_progress(job_id, {
+        "images": {"planned": len(img_targets) + 1, "done": imgs_done, "failed": imgs_failed},
+        "videos": {"planned": len(video_targets), "done": vids_done, "failed": vids_failed},
+        "failed_assets": failed_assets}, "Media pack complete")
 
 
 def _balance_json(txt: str) -> str:
@@ -517,9 +620,9 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
     }
     await db.rc_courses.insert_one({**course})
     await db.rc_course_lessons.insert_many([{**d} for d in lesson_docs])
-    if body.get("generate_images"):
-        await _set_stage(job_id, "creating_images")
-        await _auto_illustrate(course, lesson_docs, current)
+    if body.get("generate_images") or body.get("auto_videos"):
+        await _generate_media_pack(job_id, course, lesson_docs, current,
+                                   {"auto_videos": bool(body.get("auto_videos"))})
     await rc.log_activity(center_id, current, "course_generated",
                           f"@{current.get('username')} generated the course \"{course['title']}\" with ORAi")
     return {"course": course}
@@ -715,7 +818,13 @@ async def lesson_image(center_id: str, course_id: str, lesson_id: str, body: dic
         raise HTTPException(status_code=404, detail="Lesson not found")
     from services.orai_images import generate_orai_image
     from services import image_store
-    prompt = (body.get("prompt") or f"Friendly, colorful educational illustration for a lesson titled \"{lesson['title']}\". Clean, kid-safe, no text.")[:800]
+    from services.animation_styles import style_directive
+    course = await db.rc_courses.find_one({"id": course_id}, {"_id": 0}) or {}
+    directive = await style_directive(course)
+    base = (body.get("prompt") or
+            f"Illustration for a lesson titled \"{lesson['title']}\" in the course "
+            f"\"{course.get('title') or ''}\" (level: {course.get('grade_level') or 'all ages'}). No text in the image.")
+    prompt = f"{base[:600]}\n{directive}"[:1200]
     try:
         img_bytes, _model = await generate_orai_image(prompt)
         record = await image_store.save_bytes(img_bytes, current["id"], "image/png")
@@ -1357,6 +1466,26 @@ async def generate_course_async(center_id: str, body: dict, current: CurrentUser
                 "finished_at": _iso()}})
     asyncio.create_task(_run())
     return {"job_id": job_id}
+
+
+@router.get("/{center_id}/course-gen/active")
+async def active_generate_job(center_id: str, current: CurrentUser):
+    """Reconnect support: the latest running one-click job for this center."""
+    await _ctx(center_id, current, "edit_center")
+    job = await db.rc_course_gen_jobs.find_one(
+        {"center_id": center_id, "status": "running"}, {"_id": 0}, sort=[("created_at", -1)])
+    return {"job": job}
+
+
+@router.post("/{center_id}/courses/generate-jobs/{job_id}/cancel")
+async def cancel_generate_job(center_id: str, job_id: str, current: CurrentUser):
+    await _ctx(center_id, current, "edit_center")
+    r = await db.rc_course_gen_jobs.update_one(
+        {"id": job_id, "center_id": center_id, "status": "running"},
+        {"$set": {"cancel_requested": True}})
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="No running job with that id")
+    return {"ok": True}
 
 
 @router.get("/{center_id}/courses/generate-jobs/{job_id}")

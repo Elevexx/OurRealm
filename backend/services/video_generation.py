@@ -28,6 +28,10 @@ SETTINGS_DEFAULTS = {
     "emergency_disabled": False,
     "dry_run": True,  # safe default: full pipeline, zero provider spend
     "expose_provider_names": False,
+    "ai_media_approval": "none",  # none | founder — extensible to rule-based (Sprint 2)
+    "eligibility_rules": {},      # reserved: username/badge/level/fire-power rules (Sprint 2)
+    "auto_video_cap": 3,          # max auto-generated videos per one-click course
+    "auto_image_cap": 12,         # max auto illustrations per one-click course
     "default_provider": "openai",
     "default_model": "sora-2",
     "default_seconds": 4,
@@ -70,6 +74,8 @@ async def update_video_settings(patch: dict, admin: dict, reason: str) -> dict:
             clean[k] = max(0, type(SETTINGS_DEFAULTS[k])(v))
         elif isinstance(SETTINGS_DEFAULTS[k], list):
             clean[k] = [str(x)[:40] for x in v][:10] if isinstance(v, list) else before[k]
+        elif isinstance(SETTINGS_DEFAULTS[k], dict):
+            clean[k] = v if isinstance(v, dict) else before[k]
         else:
             clean[k] = str(v)[:60]
     if clean:
@@ -330,6 +336,8 @@ async def _run_pipeline(job_id: str):
                       "blocks.$.video_source": "generated",
                       "blocks.$.video_job_id": job_id,
                       "blocks.$.video_status": "ready",
+                      "blocks.$.video_caption": ("Free dry-run test clip — not real AI output"
+                                                 if job["dry_run"] else None),
                       "updated_at": _iso()}})
         actual = 0.0 if job["dry_run"] else job["estimated_cost"]
         await _set(job_id, {"status": "complete", "stage": "complete", "progress": 100,

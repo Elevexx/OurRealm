@@ -96,6 +96,7 @@ export default function LessonVideoPanel({ centerId, courseId, lessonId, block, 
   const [showEstimate, setShowEstimate] = useState(false);
   const [job, setJob] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [panelError, setPanelError] = useState(null);
   const fileRef = useRef(null);
   const pollRef = useRef(null);
 
@@ -115,7 +116,10 @@ export default function LessonVideoPanel({ centerId, courseId, lessonId, block, 
           setJob(null);
         } else if (r.data.status === "failed" || r.data.status === "cancelled") {
           clearInterval(pollRef.current);
-          if (r.data.status === "failed") toast.error(r.data.error || "Video generation failed");
+          if (r.data.status === "failed") {
+            toast.error(r.data.error || "Video generation failed");
+            setPanelError(r.data.error || "Generation failed — try again or adjust the prompt");
+          }
           setJob(null);
         }
       } catch { /* transient — keep polling */ }
@@ -123,14 +127,23 @@ export default function LessonVideoPanel({ centerId, courseId, lessonId, block, 
   };
 
   const startGenerate = async ({ prompt, seconds, estimate, styleProfile }) => {
-    const r = await apiClient.post(`${base}/generate`, {
-      block_id: block.id, prompt, seconds,
-      approve_cost: true, approved_cost: estimate.estimated_cost,
-      style_profile: styleProfile,
-    });
-    setJob({ id: r.data.job_id, status: "queued", stage: "queued", progress: 0 });
-    pollJob(r.data.job_id);
-    toast.success(r.data.dry_run ? "Dry-run video queued (free)" : "Video generation queued");
+    setPanelError(null);
+    setJob({ id: null, status: "queued", stage: "queued", progress: 0 }); // instant feedback
+    try {
+      const r = await apiClient.post(`${base}/generate`, {
+        block_id: block.id, prompt, seconds,
+        approve_cost: true, approved_cost: estimate.estimated_cost,
+        style_profile: styleProfile,
+      });
+      setJob({ id: r.data.job_id, status: "queued", stage: "queued", progress: 0 });
+      pollJob(r.data.job_id);
+      toast.success(r.data.dry_run ? "Dry-run video queued (free)" : "Video generation queued");
+    } catch (e) {
+      setJob(null);
+      const msg = e?.response?.data?.detail || "Could not start generation";
+      setPanelError(msg);
+      throw e;
+    }
   };
 
   const cancelJob = async () => {
@@ -206,6 +219,13 @@ export default function LessonVideoPanel({ centerId, courseId, lessonId, block, 
         </div>
       )}
 
+      {panelError && (
+        <div className="text-[10px] mb-2 px-2 py-1.5 rounded-lg" style={{ background: "rgba(255,107,107,0.1)", color: "#FF6B6B" }}
+          data-testid="video-panel-error">⚠ {panelError}</div>
+      )}
+      {block.video_caption && block.video_url && !job && (
+        <div className="text-[9px] mb-1.5" style={{ color: "#4DD6C1" }} data-testid="video-dryrun-caption">{block.video_caption}</div>
+      )}
       <div className="flex flex-wrap gap-1.5">
         <button className="or-btn text-[10px]" onClick={() => setShowEstimate(true)} disabled={!!job || uploading}
           data-testid="video-generate-btn">

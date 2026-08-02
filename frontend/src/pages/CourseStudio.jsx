@@ -160,6 +160,9 @@ export default function CourseStudio() {
           {courses.map((c) => (
             <div key={c.id} className="or-surface p-4 flex flex-col rcx-hover-lift"
               style={{ borderTop: `2px solid ${c.color || "#2EA0FF"}` }} data-testid={`course-card-${c.id}`}>
+              {c.cover_url && (
+                <img src={c.cover_url} alt="" className="w-full h-24 object-cover rounded-lg mb-2" data-testid={`course-cover-${c.id}`} />
+              )}
               <div className="flex items-start justify-between gap-2 mb-1">
                 <div className="text-sm font-bold leading-tight">{c.title}</div>
                 <span className="text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0"

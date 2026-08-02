@@ -9,7 +9,9 @@ const STAGE_LABELS = {
   starting: "Queued — ORAi is warming up…",
   designing_course: "Designing the course structure…",
   designing_storyboard: "Creating the course storyboard & style bible…",
+  creating_cover: "Designing the course cover…",
   creating_images: "Illustrating lessons with AI images…",
+  creating_videos: "Generating lesson videos…",
   complete: "Done!",
 };
 
@@ -24,7 +26,7 @@ const stageLabel = (stage) => {
 const stageIndex = (stage) => {
   if (!stage) return 0;
   if (stage.startsWith("building_lessons")) return 2;
-  return { starting: 0, designing_course: 1, designing_storyboard: 1, creating_images: 3, complete: 4 }[stage] ?? 0;
+  return { starting: 0, designing_course: 1, designing_storyboard: 1, creating_cover: 3, creating_images: 3, creating_videos: 3, complete: 4 }[stage] ?? 0;
 };
 
 const STYLES = ["", "Classic Guided Lessons", "Hands-On Workshop", "Gamified", "Interactive Story",
@@ -54,6 +56,13 @@ export default function CourseMaker() {
   const [bpBusy, setBpBusy] = useState(false);
   const [job, setJob] = useState(null);
   const pollRef = useRef(null);
+
+  // One-click jobs keep running server-side — reconnect after refresh/close.
+  useEffect(() => {
+    apiClient.get(`/responsibility-center/${id}/course-gen/active`)
+      .then((r) => { if (r.data.job) setJob(r.data.job); })
+      .catch(() => {});
+  }, [id]);
 
   const buildOptions = () => {
     const o = {};
@@ -98,6 +107,7 @@ export default function CourseMaker() {
         blueprint: blueprint || undefined,
         options: buildOptions(),
         generate_images: wantImages,
+        auto_videos: wantVideo,
       });
       setJob({ id: r.data.job_id, status: "running", stage: "starting" });
     } catch (e) {
@@ -179,7 +189,7 @@ export default function CourseMaker() {
             [wantImages, setWantImages, ImageIcon, "AI images", "maker-media-images"],
             [wantInteractive, setWantInteractive, MousePointerClick, "Interactive activities", "maker-media-interactive"],
             [wantAudio, setWantAudio, Volume2, "ORAi voice audio", "maker-media-audio"],
-            [wantVideo, setWantVideo, Film, "Video (placeholders)", "maker-media-video"],
+            [wantVideo, setWantVideo, Film, "AI videos (auto)", "maker-media-video"],
           ].map(([val, set, Icon, label, tid]) => (
             <button key={tid} type="button" disabled={busy} onClick={() => set(!val)} data-testid={tid}
               className="text-[11px] px-2.5 py-1.5 rounded-full flex items-center gap-1.5"
@@ -250,14 +260,50 @@ export default function CourseMaker() {
       )}
 
       {job && (
-        <div className="or-surface p-5 text-center" data-testid="course-gen-progress">
-          <Loader2 size={26} className="animate-spin mx-auto mb-3" style={{ color: "#C26BFF" }} />
-          <div className="text-sm font-bold mb-1" style={{ fontFamily: "var(--font-display)" }}>
-            {stageLabel(job.stage)}
+        <div className="or-surface p-5" data-testid="course-gen-progress">
+          <div className="flex items-center gap-2 mb-2">
+            <Loader2 size={20} className="animate-spin" style={{ color: "#C26BFF" }} />
+            <div className="text-sm font-bold flex-1" style={{ fontFamily: "var(--font-display)" }}>
+              {stageLabel(job.stage)}
+            </div>
+            <button className="or-btn or-btn-ghost text-[10px]" data-testid="course-gen-cancel"
+              onClick={async () => {
+                if (!window.confirm("Cancel the remaining generation? Completed assets are kept.")) return;
+                try { await apiClient.post(`/responsibility-center/${id}/courses/generate-jobs/${job.id}/cancel`); toast.success("Cancelling…"); }
+                catch (e) { toast.error(e?.response?.data?.detail || "Could not cancel"); }
+              }}>Cancel remaining</button>
           </div>
+          {job.media?.current_task && (
+            <div className="text-[11px] mb-2" style={{ color: "#2EE6FF" }} data-testid="course-gen-current-task">
+              ▸ {job.media.current_task}
+            </div>
+          )}
+          {(job.media?.images || job.media?.videos) && (
+            <div className="grid grid-cols-2 gap-2 mb-2" data-testid="course-gen-media-progress">
+              {[["Images", job.media.images], ["Videos", job.media.videos]].map(([label, m]) => m && m.planned > 0 && (
+                <div key={label} className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <div className="flex justify-between text-[10px] mb-1">
+                    <b>{label}</b>
+                    <span style={{ color: "var(--text-muted)" }}>{m.done}/{m.planned}{m.failed ? ` · ${m.failed} failed` : ""}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
+                    <div className="h-1.5 rounded-full" style={{ width: `${Math.min(100, (m.done / m.planned) * 100)}%`, background: "linear-gradient(90deg, #2EA0FF, #10E670)" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {(job.media?.failed_assets || []).length > 0 && (
+            <div className="text-[10px] mb-2" style={{ color: "#FF8A5A" }} data-testid="course-gen-failed-assets">
+              Skipped after retry: {job.media.failed_assets.slice(0, 4).join(" · ")}
+            </div>
+          )}
+          {job.media?.skipped_reason && (
+            <div className="text-[10px] mb-2" style={{ color: "#FF8A5A" }}>{job.media.skipped_reason}</div>
+          )}
           <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            ORAi is building your course in the background — safe from timeouts. You can keep this tab open;
-            the draft opens automatically when it's ready and everything stays editable before publishing.
+            ORAi is building the complete course in the background — you can refresh, close this page or lock
+            your phone; it keeps going and this dashboard reconnects automatically. One failed asset never stops the course.
           </div>
           <div className="flex justify-center gap-1.5 mt-3">
             {[1, 2, 3].map((s) => (

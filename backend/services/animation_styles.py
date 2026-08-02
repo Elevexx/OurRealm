@@ -134,3 +134,39 @@ async def save_preset(user_id: str, name: str, profile: dict) -> dict:
 async def list_presets(user_id: str) -> list:
     return await db.animation_style_presets.find(
         {"user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+
+ANTI_FALLBACK = ("STRICT STYLE ENFORCEMENT: render ONLY in the style specified above. "
+                 "Absolutely NO children's-book, cartoon, chibi, or cute-illustration "
+                 "rendering unless that style was explicitly selected. Match the realism "
+                 "level, palette and rendering technique exactly.")
+
+
+async def resolve_style(course: dict, lesson_override: dict = None) -> dict:
+    """One canonical resolved style object: lesson override > course profile,
+    merged with the storyboard style bible + grade/subject context."""
+    course = course or {}
+    profile = dict(lesson_override or course.get("style_profile") or {})
+    sb = course.get("storyboard") or {}
+    return {"profile": profile, "storyboard": sb,
+            "grade_level": course.get("grade_level"), "subject": course.get("subject"),
+            "primary": profile.get("primary"), "secondary": profile.get("secondary"),
+            "mix": profile.get("mix"), "camera": profile.get("camera")}
+
+
+async def style_directive(course: dict, lesson_override: dict = None) -> str:
+    """Authoritative art-direction text injected into EVERY media prompt."""
+    resolved = await resolve_style(course, lesson_override)
+    parts = []
+    art = await profile_to_prompt(resolved["profile"])
+    if art:
+        parts.append(art)
+    sb = resolved["storyboard"]
+    if sb:
+        parts.append("Course style bible (keep consistent): " + "; ".join(
+            str(sb.get(k) or "") for k in ("visual_style", "characters", "environment", "palette", "branding")
+            if sb.get(k))[:600])
+    has_style = resolved["primary"] and resolved["primary"] != "auto"
+    if has_style or resolved["profile"].get("custom_prompt"):
+        parts.append(ANTI_FALLBACK)
+    return "\n".join(parts)

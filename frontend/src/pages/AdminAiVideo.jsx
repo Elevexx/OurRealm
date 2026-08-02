@@ -109,6 +109,16 @@ function SettingsTab() {
           </select>
         </label>
         {num("max_concurrent_jobs", "Max concurrent jobs", 1)}
+        {num("auto_video_cap", "Auto videos per course (one-click)", 1)}
+        {num("auto_image_cap", "Auto images per course (one-click)", 1)}
+        <label className="flex items-center justify-between gap-2 py-1">
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>AI Media approval</span>
+          <select className="or-input text-xs" value={draft.ai_media_approval}
+            onChange={(e) => setDraft({ ...draft, ai_media_approval: e.target.value })} data-testid="aiv-set-approval">
+            <option value="none">No approval required (default)</option>
+            <option value="founder">Founder approval required</option>
+          </select>
+        </label>
       </div>
 
       <div className="or-surface p-4" data-testid="aiv-budget-card">
