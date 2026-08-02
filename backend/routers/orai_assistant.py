@@ -116,6 +116,8 @@ async def log_shortcut(body: dict, user: CurrentUser):
 @router.post("/chat")
 async def assistant_chat(body: ChatBody, user: CurrentUser):
     access = await require_orai_access(user, "chat")
+    from services.access_policy import require_access
+    await require_access("orai_assistant", user, consume=True)
     rl = await rate_limit(f"orai-assist:{user['id']}", max_requests=60, window_seconds=3600)
     if not rl["allowed"]:
         raise HTTPException(status_code=429, detail="ORAi is taking a short break — try again in a minute")

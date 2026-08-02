@@ -266,16 +266,28 @@ async def _generate_media_pack(job_id, course: dict, lesson_docs: list, current,
         for les, b in video_targets:
             if await _job_cancelled(job_id):
                 return
+            vprompt = f"{b.get('title') or les['title']} — {str(b.get('body') or '')[:300]}"
+            from services.access_policy import check_access
+            pol = await check_access("ai_video", current, center_id=course["center_id"], consume=True)
+            if not pol["allowed"]:
+                vids_failed += 1
+                failed_assets.append(f"Video: {les['title'][:30]} — {pol['reason']}")
+                continue
             try:
                 vjob = await vg.start_video_job(
                     center_id=course["center_id"], course_id=course["id"], lesson_id=les["id"],
-                    block_id=b["id"], prompt=f"{b.get('title') or les['title']} — {str(b.get('body') or '')[:300]}",
+                    block_id=b["id"], prompt=vprompt,
                     seconds=int(vs.get("default_seconds") or 4), size=vs.get("default_size"),
                     current=current, style_profile=course.get("style_profile"))
-                vid_jobs[vjob["id"]] = f"Video: {les['title'][:40]}"
+                vid_jobs[vjob["id"]] = {"label": f"Video: {les['title'][:40]}",
+                                        "lesson_id": les["id"], "block_id": b["id"],
+                                        "prompt": vprompt}
             except ValueError as e:
                 vids_failed += 1
-                failed_assets.append(f"Video blocked ({les['title'][:30]}): {e}")
+                failed_assets.append(f"Video: {les['title'][:30]} — {e} (auto-retry scheduled)")
+                await media_retry.enqueue(**retry_ctx, asset_type="video",
+                                          label=f"Video: {les['title'][:60]}", prompt=vprompt,
+                                          lesson_id=les["id"], block_id=b["id"], error=e)
         # poll until all terminal (max 20 min)
         import time as _t
         deadline = _t.monotonic() + 1200
@@ -291,8 +303,14 @@ async def _generate_media_pack(job_id, course: dict, lesson_docs: list, current,
                     if j and j["status"] == "complete":
                         vids_done += 1
                     else:
+                        meta = vid_jobs[vid]
+                        err = (j or {}).get("error") or "failed"
                         vids_failed += 1
-                        failed_assets.append(f"{vid_jobs[vid]}: {(j or {}).get('error') or 'failed'}")
+                        failed_assets.append(f"{meta['label']}: {err} (auto-retry scheduled)")
+                        await media_retry.enqueue(**retry_ctx, asset_type="video",
+                                                  label=meta["label"], prompt=meta["prompt"],
+                                                  lesson_id=meta["lesson_id"],
+                                                  block_id=meta["block_id"], error=err)
     await _media_progress(job_id, {
         "images": {"planned": len(img_targets) + 1, "done": imgs_done, "failed": imgs_failed},
         "videos": {"planned": len(video_targets), "done": vids_done, "failed": vids_failed},
@@ -824,6 +842,8 @@ async def delete_lesson(center_id: str, course_id: str, lesson_id: str, current:
 async def lesson_image(center_id: str, course_id: str, lesson_id: str, body: dict, current: CurrentUser):
     """Generate an illustration for a lesson block with ORAi."""
     await _ctx(center_id, current, "edit_center")
+    from services.access_policy import require_access
+    await require_access("ai_images", current, center_id=center_id, consume=True)
     lesson = await db.rc_course_lessons.find_one(
         {"id": lesson_id, "course_id": course_id}, {"_id": 0})
     if not lesson:
@@ -1453,6 +1473,8 @@ async def course_blueprint(center_id: str, body: dict, current: CurrentUser):
 @router.post("/{center_id}/courses/generate-async")
 async def generate_course_async(center_id: str, body: dict, current: CurrentUser):
     await _ctx(center_id, current, "edit_center")
+    from services.access_policy import require_access
+    await require_access("course_maker", current, center_id=center_id, consume=True)
     import asyncio
     job_id = uuid.uuid4().hex
     await db.rc_course_gen_jobs.insert_one({
@@ -1584,8 +1606,8 @@ async def course_media_status(center_id: str, course_id: str, current: CurrentUs
         "images": {"planned": img_total, "done": img_done, "failed": img_attn},
         "videos": {"planned": vid_total, "done": vid_done, "failed": vid_attn,
                    "generating": vid_generating},
-        "audio": {"planned": audio_done, "done": audio_done},
-        "activities": {"planned": act_done, "done": act_done},
+        "audio": {"planned": audio_done, "done": audio_done, "failed": 0},
+        "activities": {"planned": act_done, "done": act_done, "failed": 0},
         "remaining_assets": max(0, total_all - done_all - img_attn - vid_attn),
         "failed_assets": [
             {"id": t["id"], "label": t["label"], "asset_type": t["asset_type"],

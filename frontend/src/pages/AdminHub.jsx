@@ -231,6 +231,18 @@ const CARDS = [
     footer: "◈ Open AI Video Settings",
   },
   {
+    id: "ai-policies",
+    to: "/admin/ai-policies",
+    title: "AI Access Policies",
+    description: "Reusable per-feature eligibility rules — roles, usernames, invite grants, badges, progression levels, Fire Power costs and usage limits for every AI capability.",
+    Icon: ShieldCheck,
+    accent: "#C26BFF",
+    badge: "Founder Only",
+    roles: ["founder"],
+    statKey: null,
+    footer: "◈ Open AI Access Policies",
+  },
+  {
     id: "responsibility-center",
     to: "/admin/responsibility-center",
     title: "Responsibility Center",

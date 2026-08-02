@@ -56,12 +56,16 @@ export default function CourseMaker() {
   const [blueprint, setBlueprint] = useState(null);
   const [bpBusy, setBpBusy] = useState(false);
   const [job, setJob] = useState(null);
+  const [policy, setPolicy] = useState(null);
   const pollRef = useRef(null);
 
   // One-click jobs keep running server-side — reconnect after refresh/close.
   useEffect(() => {
     apiClient.get(`/responsibility-center/${id}/course-gen/active`)
       .then((r) => { if (r.data.job) setJob(r.data.job); })
+      .catch(() => {});
+    apiClient.get(`/ai-policies/me?center_id=${id}`)
+      .then((r) => setPolicy(r.data.features?.course_maker || null))
       .catch(() => {});
   }, [id]);
 
@@ -99,7 +103,7 @@ export default function CourseMaker() {
   };
 
   const generate = async () => {
-    if (!prompt.trim() || job) return;
+    if (!prompt.trim() || job || locked) return;
     try {
       const r = await apiClient.post(`/responsibility-center/${id}/courses/generate-async`, {
         prompt: prompt.trim(),
@@ -225,7 +229,7 @@ export default function CourseMaker() {
             onChange={(e) => setAccessibility(e.target.value)} disabled={busy} data-testid="maker-accessibility" />
         </div>
 
-        <button className="or-btn text-xs" onClick={draftBlueprint} disabled={busy || !prompt.trim()} data-testid="maker-draft-blueprint">
+        <button className="or-btn text-xs" onClick={draftBlueprint} disabled={busy || locked || !prompt.trim()} data-testid="maker-draft-blueprint">
           {bpBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
           {bpBusy ? "Drafting blueprint…" : blueprint ? "Redraft Blueprint" : "Draft Blueprint"}
         </button>

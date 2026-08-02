@@ -218,6 +218,8 @@ async def video_estimate(center_id: str, course_id: str, lesson_id: str,
 async def video_generate(center_id: str, course_id: str, lesson_id: str,
                          body: dict, current: CurrentUser):
     await _ctx(center_id, current, "edit_center")
+    from services.access_policy import require_access
+    await require_access("ai_video", current, center_id=center_id, consume=True)
     rl = await rate_limit(f"ai-video:{current['id']}", max_requests=10, window_seconds=3600)
     if not rl["allowed"]:
         raise HTTPException(status_code=429, detail=f"Video limit reached — try again in {rl['retry_after']}s")

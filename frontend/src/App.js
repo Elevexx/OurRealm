@@ -47,6 +47,7 @@ import AdminRcTemplates from "@/pages/AdminRcTemplates";
 import AdminResponsibilityCenterDetail from "@/pages/AdminResponsibilityCenterDetail";
 import AdminRcMedia from "@/pages/AdminRcMedia";
 const AdminAiVideo = React.lazy(() => import("@/pages/AdminAiVideo"));
+const AdminAiPolicies = React.lazy(() => import("@/pages/AdminAiPolicies"));
 import ResponsibilityCenterHub from "@/pages/ResponsibilityCenterHub";
 import ResponsibilityCenterCreate from "@/pages/ResponsibilityCenterCreate";
 import ResponsibilityCenterDashboard from "@/pages/ResponsibilityCenterDashboard";
@@ -238,6 +239,7 @@ function App() {
             <Route path="/admin/responsibility-center" element={<ShellRoute><AdminResponsibilityCenter /></ShellRoute>} />
             <Route path="/admin/media/responsibility-center" element={<ShellRoute><AdminRcMedia /></ShellRoute>} />
             <Route path="/admin/ai-video" element={<ShellRoute><Lazy><AdminAiVideo /></Lazy></ShellRoute>} />
+            <Route path="/admin/ai-policies" element={<ShellRoute><Lazy><AdminAiPolicies /></Lazy></ShellRoute>} />
             <Route path="/admin/responsibility-center/templates" element={<ShellRoute><AdminRcTemplates mode="list" /></ShellRoute>} />
             <Route path="/admin/responsibility-center/templates/create" element={<ShellRoute><AdminRcTemplates mode="create" /></ShellRoute>} />
             <Route path="/admin/responsibility-center/templates/:templateId" element={<ShellRoute><AdminRcTemplates mode="detail" /></ShellRoute>} />
