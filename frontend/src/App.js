@@ -61,6 +61,8 @@ const ParentDashboard = React.lazy(() => import("@/pages/ParentDashboard"));
 const ParentTeenManage = React.lazy(() => import("@/pages/ParentTeenManage"));
 const MyLimits = React.lazy(() => import("@/pages/MyLimits"));
 import TeenGuard from "@/components/guardian/TeenGuard";
+import SiteModeGate from "@/components/SiteModeGate";
+import OraiAssistantPanel from "@/components/orai/OraiAssistantPanel";
 const Lazy = ({ children }) => <React.Suspense fallback={null}>{children}</React.Suspense>;
 import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
@@ -183,6 +185,8 @@ function App() {
           <RestoreGate>
           <UsernameOnboardingGate>
           <TeenGuard />
+          <SiteModeGate />
+          <OraiAssistantPanel />
           <Routes>
             <Route path="/" element={<RootRedirect />} />
             <Route path="/signup" element={<SignUp />} />

@@ -3320,3 +3320,10 @@ User approved 4-phase plan: P1 ORAi text chat (DONE) → P2 Voice Mode (record�
 - Weekly screen-time limit UI (field exists), preset cloning, audit search, scheduled routine activation UI (backend `active_when` supported)
 - Frontend E2E testing of /parent, /my-limits, courses preview (user will self-test)
 - Deployment failure root cause (SignUp.jsx corruption) FIXED — safe to redeploy
+
+### ORAi Operating Assistant + Site Access Modes (June 2026, curl-smoke tested)
+- `services/orai_platform.py` (admin-gated live platform snapshot, ACTION_CATALOG w/ [[action:id]] markers, page awareness) + `routers/orai_assistant.py` (/api/orai/assistant/chat|history, sessions in orai_assistant_messages)
+- Frontend: `components/orai/OraiAssistantPanel.jsx` — global floating ✦ FAB, page context auto-sent, smart action buttons (navigate/api/client kinds; pause/resume signups founder-only, confirmed)
+- Course Blueprint flow: POST /{cid}/courses/blueprint → editable approval card in CourseStudio (Approve & Generate / Regenerate / Discard); generate accepts `blueprint`; GEN_SYSTEM expanded to any topic (music production, business, trades, hobbies…)
+- Site Access Modes: `services/site_access.py` + middleware (server-side 423), endpoints in admin_access.py (/api/admin/access-control/site-mode*, public /api/access-control/site-status), founder card in Settings→Admin (mode selector, per-mode title/message, Always-Allow search/bulk add/remove, per-mode Preview button), `components/SiteModeGate.jsx` full-screen gate (signin/signup stay reachable). Mode left on LIVE.
+- Guardian: /api/orai/assistant mapped to orai_chat permission for teens

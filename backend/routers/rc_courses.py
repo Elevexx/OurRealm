@@ -193,6 +193,17 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
                           "amount of text to this level.")
     if body.get("lesson_count"):
         extras.append(f"Requested lesson count: {int(body['lesson_count'])}")
+    # Approved Course Blueprint (ORAi blueprint-first flow)
+    if isinstance(body.get("blueprint"), dict):
+        bp = body["blueprint"]
+        bp_lines = [f"APPROVED BLUEPRINT — follow it exactly:",
+                    f"Title: {str(bp.get('title') or '')[:200]}",
+                    f"Description: {str(bp.get('description') or '')[:500]}",
+                    f"Difficulty: {bp.get('difficulty')} · Learning style: {bp.get('learning_style')}"]
+        for m in (bp.get("modules") or [])[:12]:
+            bp_lines.append(f"Module: {str(m.get('title'))[:150]} — lessons: "
+                            + "; ".join(str(t)[:100] for t in (m.get("lessons") or [])[:15]))
+        extras.append("\n".join(bp_lines))
     user_msg = prompt + ("\n\n" + "\n".join(extras) if extras else "")
 
     try:
@@ -969,3 +980,66 @@ async def tutor_history_for_member(center_id: str, course_id: str, current: Curr
     rows = await db.rc_course_tutor_messages.find(q, {"_id": 0}) \
         .sort("created_at", 1).to_list(120)
     return {"messages": rows, "member_id": target}
+
+
+# ═══ Course Blueprint (approve-before-generate) — June 2026 ══════════════
+BLUEPRINT_SYSTEM = """You are ORAi Course Studio planning a course BLUEPRINT (an outline only —
+no lesson content yet). Any topic is supported: academics, music production, influencer academy,
+streaming, podcasting, photography, video editing, game development, programming, business,
+marketing, finance, cooking, fitness, languages, trades, life skills, hobbies, DIY and more.
+Reply with ONLY valid JSON, no markdown fences:
+{
+  "title": "...", "description": "2-3 sentences", "subject": "...",
+  "difficulty": "beginner|intermediate|advanced",
+  "grade_level": "target level text",
+  "learning_style": "visual|hands-on|reading|mixed",
+  "estimated_minutes": 240,
+  "media_types": ["images","activities","quizzes"],
+  "quiz_count": 4,
+  "projects": ["optional project titles"],
+  "modules": [{"title": "...", "lessons": ["lesson title", "..."]}]
+}
+Keep 2-5 modules, 3-6 lessons each. Match difficulty, tone and visuals to the grade level."""
+
+
+@router.post("/{center_id}/courses/blueprint")
+async def course_blueprint(center_id: str, body: dict, current: CurrentUser):
+    """Generate an editable Course Blueprint for approval BEFORE full generation."""
+    center, membership, perms = await _ctx(center_id, current, "edit_center")
+    rl = await rate_limit(f"course-bp:{current['id']}", max_requests=15, window_seconds=3600)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail="Blueprint limit reached — try again soon")
+    prompt = (body.get("prompt") or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Describe the course you want first")
+    grade_text = str(body.get("grade_level") or "")[:60]
+    member_id = str(body.get("member_id") or current["id"])
+    if not grade_text:
+        edu = await db.rc_member_education.find_one(
+            {"center_id": center_id, "user_id": member_id}, {"_id": 0})
+        grade_text = (edu or {}).get("grade_text") or ""
+    user_msg = prompt[:2000]
+    if grade_text:
+        style = VISUAL_STYLE.get(normalize_grade(grade_text), "")
+        user_msg += f"\n\nTarget grade level: {grade_text}. {style}"
+    result = await call_openai_chat(
+        [{"role": "system", "content": BLUEPRINT_SYSTEM}, {"role": "user", "content": user_msg}],
+        temperature=0.7, max_tokens=1800)
+    try:
+        bp = _parse_course_json(result.get("content") or "")
+    except Exception:
+        raise HTTPException(status_code=502, detail="ORAi could not draft that blueprint — try rephrasing")
+    bp = {"title": str(bp.get("title") or "Untitled course")[:200],
+          "description": str(bp.get("description") or "")[:600],
+          "subject": str(bp.get("subject") or "")[:100],
+          "difficulty": str(bp.get("difficulty") or "beginner")[:20],
+          "grade_level": grade_text or str(bp.get("grade_level") or "")[:60],
+          "learning_style": str(bp.get("learning_style") or "mixed")[:30],
+          "estimated_minutes": int(bp.get("estimated_minutes") or 0) or None,
+          "media_types": [str(m)[:30] for m in (bp.get("media_types") or [])[:8]],
+          "quiz_count": int(bp.get("quiz_count") or 0),
+          "projects": [str(p)[:150] for p in (bp.get("projects") or [])[:6]],
+          "modules": [{"title": str(m.get("title") or "")[:150],
+                       "lessons": [str(t)[:150] for t in (m.get("lessons") or [])[:10]]}
+                      for m in (bp.get("modules") or [])[:8]]}
+    return {"blueprint": bp}

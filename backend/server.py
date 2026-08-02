@@ -158,6 +158,8 @@ app.include_router(rc_routines_router_mod.router)
 app.include_router(admin_access_router_mod.router)
 app.include_router(admin_access_router_mod.public_router)
 app.include_router(guardian_router_mod.router)
+from routers import orai_assistant as orai_assistant_router_mod
+app.include_router(orai_assistant_router_mod.router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
@@ -214,7 +216,22 @@ PUBLIC_API_PATHS = {
     "/api/access-control/preview-demo",
     "/api/auth/signup-status",
     "/api/auth/signup-reservation",
+    "/api/access-control/site-status",
 }
+
+
+# ─── Site Access Modes (Live/Beta/Preview/Maintenance) — server-side.
+@app.middleware("http")
+async def site_access_guard(request, call_next):
+    if request.method != "OPTIONS":
+        try:
+            from services import site_access as _sa
+            blocked = await _sa.enforce_request(request)
+            if blocked is not None:
+                return blocked
+        except Exception as e:
+            logger.warning(f"[site-access] guard error (fail-open): {e}")
+    return await call_next(request)
 
 
 # ─── Guardian Controls (Teen/Adult) — innermost guard, runs after auth

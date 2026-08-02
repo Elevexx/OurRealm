@@ -340,3 +340,103 @@ async def set_signup_access(body: SignupAccessBody, user: CurrentUser):
     await ac.audit(user, "signup_access_changed", "signup", None,
                    {"allow_new_signups": body.allow_new_signups}, "")
     return {"ok": True, "allow_new_signups": body.allow_new_signups}
+
+
+# ── Site Access Modes (Live / Beta / Preview / Maintenance) ──────────────
+from services import site_access as sa
+
+
+@public_router.get("/site-status")
+async def site_status(request: Request):
+    settings = await sa.get_settings()
+    user = await ac._resolve_user(request)
+    mode = settings.get("mode", "live")
+    allowed = sa.is_allowed(settings, user)
+    page = settings["pages"].get(mode, {}) if mode != "live" else {}
+    return {"mode": mode, "allowed": allowed,
+            "title": page.get("title"), "message": page.get("message")}
+
+
+@router.get("/site-mode")
+async def get_site_mode(user: CurrentUser):
+    require_founder(user)
+    settings = await sa.get_settings(fresh=True)
+    return {"settings": settings, "modes": sa.MODES}
+
+
+class SiteModeBody(BaseModel):
+    mode: Optional[str] = None
+    pages: Optional[dict] = None
+
+
+@router.patch("/site-mode")
+async def set_site_mode(body: SiteModeBody, user: CurrentUser):
+    require_founder(user)
+    settings = await sa.get_settings(fresh=True)
+    update = {"updated_at": _now_iso()}
+    if body.mode is not None:
+        if body.mode not in sa.MODES:
+            raise HTTPException(status_code=400, detail="Unknown site mode")
+        update["mode"] = body.mode
+    if body.pages is not None:
+        pages = dict(settings.get("pages", {}))
+        for k, v in body.pages.items():
+            if k in sa.DEFAULT_PAGES and isinstance(v, dict):
+                pages[k] = {"title": str(v.get("title") or "")[:150],
+                            "message": str(v.get("message") or "")[:600]}
+        update["pages"] = pages
+    await db.platform_settings.update_one(
+        {"id": "site_access"},
+        {"$set": update, "$setOnInsert": {"allowlist": []}}, upsert=True)
+    sa.invalidate()
+    await ac.audit(user, "site_mode_changed", "site_access",
+                   {"mode": settings.get("mode")}, {"mode": update.get("mode", settings.get("mode"))}, "")
+    return {"ok": True}
+
+
+class SiteAllowBody(BaseModel):
+    usernames: list[str]
+    remove: bool = False
+
+
+@router.post("/site-mode/allowlist")
+async def site_allowlist(body: SiteAllowBody, user: CurrentUser):
+    """Bulk add/remove Always-Allow users (search by username or email)."""
+    require_founder(user)
+    settings = await sa.get_settings(fresh=True)
+    lst = list(settings.get("allowlist", []))
+    changed = []
+    for ident in body.usernames[:50]:
+        ident = ident.lower().strip()
+        if not ident:
+            continue
+        target = await db.users.find_one(
+            {"$or": [{"username": ident}, {"email": ident}]},
+            {"_id": 0, "id": 1, "username": 1, "email": 1})
+        if not target:
+            continue
+        if body.remove:
+            lst = [e for e in lst if e.get("user_id") != target["id"]]
+        elif not any(e.get("user_id") == target["id"] for e in lst):
+            lst.append({"user_id": target["id"], "username": target["username"],
+                        "email": target.get("email"), "added_at": _now_iso()})
+        changed.append(target["username"])
+    await db.platform_settings.update_one(
+        {"id": "site_access"}, {"$set": {"allowlist": lst}}, upsert=True)
+    sa.invalidate()
+    await ac.audit(user, "site_allowlist_removed" if body.remove else "site_allowlist_added",
+                   "site_access", None, {"users": changed}, "")
+    return {"ok": True, "allowlist": lst, "changed": changed}
+
+
+@router.get("/site-mode/search-users")
+async def site_search_users(q: str, user: CurrentUser):
+    require_founder(user)
+    q = q.lower().strip()
+    if len(q) < 2:
+        return {"users": []}
+    rows = await db.users.find(
+        {"$or": [{"username": {"$regex": q, "$options": "i"}},
+                 {"email": {"$regex": q, "$options": "i"}}]},
+        {"_id": 0, "id": 1, "username": 1, "email": 1, "name": 1}).limit(10).to_list(10)
+    return {"users": rows}

@@ -22,6 +22,104 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isAdmin } from "@/lib/isAdmin";
 import AdminUserControlWidget from "@/components/AdminUserControlWidget";
 import AdminPasswordResetWidget from "@/components/AdminPasswordResetWidget";
+import { ModeScreen } from "@/components/SiteModeGate";
+
+// Founder-only "Site Access Mode" — Live / Beta / Preview / Maintenance.
+function SiteAccessCard() {
+  const [data, setData] = React.useState(null);
+  const [q, setQ] = React.useState("");
+  const [results, setResults] = React.useState([]);
+  const [bulk, setBulk] = React.useState("");
+  const [preview, setPreview] = React.useState(null);
+  const load = React.useCallback(() => {
+    apiClient.get("/admin/access-control/site-mode").then((r) => setData(r.data)).catch(() => {});
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    if (q.length < 2) { setResults([]); return; }
+    const t = setTimeout(() => {
+      apiClient.get(`/admin/access-control/site-mode/search-users?q=${encodeURIComponent(q)}`)
+        .then((r) => setResults(r.data.users || [])).catch(() => {});
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q]);
+  if (!data) return null;
+  const { settings, modes } = data;
+  const setMode = async (mode) => {
+    if (mode !== "live" && !window.confirm(`Switch the ENTIRE site to ${mode.toUpperCase()} mode? Only admins and Always-Allow users keep access.`)) return;
+    await apiClient.patch("/admin/access-control/site-mode", { mode });
+    toast.success(`Site mode: ${mode}`); load();
+  };
+  const savePage = async (m, field, value) => {
+    await apiClient.patch("/admin/access-control/site-mode", { pages: { [m]: { ...settings.pages[m], [field]: value } } });
+    load();
+  };
+  const allow = async (usernames, remove = false) => {
+    const { data: r } = await apiClient.post("/admin/access-control/site-mode/allowlist", { usernames, remove });
+    toast.success(`${remove ? "Removed" : "Added"}: ${r.changed.join(", ") || "none found"}`);
+    setQ(""); setBulk(""); load();
+  };
+  const ModePreview = preview && (
+    <ModeScreen mode={preview} title={settings.pages[preview]?.title}
+      message={settings.pages[preview]?.message} isPreview
+      onClose={() => setPreview(null)} />
+  );
+  return (
+    <div className="or-surface p-4" data-testid="site-access-card">
+      {ModePreview}
+      <div className="text-sm font-bold mb-1">Site Access Mode</div>
+      <div className="text-[10px] mb-2" style={{ color: "var(--text-muted)" }}>
+        Enforced server-side on every API. Admins always bypass. Current: <b className="uppercase" style={{ color: settings.mode === "live" ? "var(--brand-green, #10E670)" : "#F4A73B" }}>{settings.mode}</b>
+      </div>
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {modes.map((m) => (
+          <button key={m} className="or-chip text-xs capitalize" data-active={settings.mode === m}
+            onClick={() => setMode(m)} data-testid={`site-mode-${m}`}>
+            {m === "live" ? "Live (Normal)" : m}
+          </button>
+        ))}
+      </div>
+      {["beta", "preview", "maintenance"].map((m) => (
+        <div key={m} className="mb-2 p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.03)" }}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold uppercase" style={{ color: "var(--text-muted)" }}>{m} screen</span>
+            <button className="or-btn or-btn-ghost text-[10px]" onClick={() => setPreview(m)} data-testid={`site-preview-${m}`}>Preview</button>
+          </div>
+          <input className="or-input text-xs w-full mb-1" defaultValue={settings.pages[m]?.title || ""}
+            placeholder="Title" onBlur={(e) => e.target.value !== settings.pages[m]?.title && savePage(m, "title", e.target.value)}
+            data-testid={`site-title-${m}`} />
+          <input className="or-input text-xs w-full" defaultValue={settings.pages[m]?.message || ""}
+            placeholder="Message" onBlur={(e) => e.target.value !== settings.pages[m]?.message && savePage(m, "message", e.target.value)}
+            data-testid={`site-message-${m}`} />
+        </div>
+      ))}
+      <div className="text-xs font-bold mt-3 mb-1">Always Allow Access ({(settings.allowlist || []).length})</div>
+      <input className="or-input text-xs w-full mb-1" placeholder="Search username or email…" value={q}
+        onChange={(e) => setQ(e.target.value)} data-testid="site-allow-search" />
+      {results.map((u) => (
+        <div key={u.id} className="flex items-center justify-between text-xs py-1">
+          <span>@{u.username} <span style={{ color: "var(--text-muted)" }}>{u.email}</span></span>
+          <button className="or-btn or-btn-ghost text-[10px]" onClick={() => allow([u.username])} data-testid={`site-allow-add-${u.username}`}>Add</button>
+        </div>
+      ))}
+      <div className="flex gap-1.5 mt-1">
+        <input className="or-input text-xs flex-1" placeholder="Bulk: user1, user2, email3…" value={bulk}
+          onChange={(e) => setBulk(e.target.value)} data-testid="site-allow-bulk-input" />
+        <button className="or-btn or-btn-ghost text-[10px]" onClick={() => allow(bulk.split(","))} data-testid="site-allow-bulk-add">Add all</button>
+        <button className="or-btn or-btn-ghost text-[10px]" onClick={() => allow(bulk.split(","), true)} data-testid="site-allow-bulk-remove">Remove all</button>
+      </div>
+      <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+        {(settings.allowlist || []).map((e) => (
+          <div key={e.user_id} className="flex items-center justify-between text-xs">
+            <span>@{e.username} <span style={{ color: "var(--text-muted)" }}>{e.email}</span></span>
+            <button className="or-btn or-btn-ghost text-[10px]" style={{ color: "#FF6B6B" }}
+              onClick={() => allow([e.username], true)} data-testid={`site-allow-remove-${e.username}`}>Remove</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // Founder-only "New Signup Access" card — one toggle, enforced server-side.
 function SignupAccessCard() {
@@ -90,6 +188,7 @@ export default function AdminSettingsTab() {
           widget because it's the most sensitive tool and is strictly
           founder-only on the backend. */}
       {isFounder && <SignupAccessCard />}
+      {isFounder && <SiteAccessCard />}
       {isFounder && <AdminPasswordResetWidget />}
 
       {/* Search + suspend / mute / delete / username + email change.

@@ -388,6 +388,8 @@ def required_permission(path: str, method: str, eff: dict):
         return ("features", "edit_profile") if write else None
     if path.startswith("/api/orai/voice"):
         return ("features", "ai_voice")
+    if path.startswith("/api/orai/assistant"):
+        return ("features", "orai_chat")
     if path.startswith("/api/responsibility-center"):
         rest = path[len("/api/responsibility-center"):].strip("/")
         seg = rest.split("/") if rest else []

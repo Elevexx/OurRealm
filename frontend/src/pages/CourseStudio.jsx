@@ -108,16 +108,35 @@ export default function CourseStudio() {
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
+  const [blueprint, setBlueprint] = useState(null);
+  const [bpBusy, setBpBusy] = useState(false);
+
+  // Blueprint-first flow: draft an outline for approval BEFORE generating.
+  const draftBlueprint = async () => {
+    if (!prompt.trim() || bpBusy || genStep >= 0) return;
+    setBpBusy(true);
+    try {
+      const r = await apiClient.post(`/responsibility-center/${id}/courses/blueprint`,
+        { prompt: prompt.trim(), grade_level: grade || undefined }, { timeout: 120000 });
+      setBlueprint(r.data.blueprint);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "ORAi could not draft a blueprint");
+    } finally { setBpBusy(false); }
+  };
+
   const generate = async () => {
     if (!prompt.trim() || genStep >= 0) return;
     setGenStep(0);
     const stepTimer = setInterval(() => setGenStep((s) => Math.min(s + 1, GEN_STEPS.length - 1)), 9000);
     try {
       const r = await apiClient.post(`/responsibility-center/${id}/courses/generate`,
-        { prompt: prompt.trim(), grade_level: grade || undefined, lesson_count: count ? Number(count) : undefined },
+        { prompt: prompt.trim(), grade_level: grade || blueprint?.grade_level || undefined,
+          lesson_count: count ? Number(count) : undefined,
+          blueprint: blueprint || undefined },
         { timeout: 300000 });
       toast.success("Course drafted! Review and edit before publishing.");
       setPrompt("");
+      setBlueprint(null);
       navigate(`/responsibility-center/${id}/courses/${r.data.course.id}/edit`);
     } catch (e) {
       toast.error(e?.response?.data?.detail || "ORAi could not build that course");
@@ -157,11 +176,46 @@ export default function CourseStudio() {
               onChange={(e) => setGrade(e.target.value)} disabled={genStep >= 0} data-testid="course-gen-grade" />
             <input className="or-input text-xs w-36" placeholder="Lessons (optional)" type="number" min={3} max={20}
               value={count} onChange={(e) => setCount(e.target.value)} disabled={genStep >= 0} data-testid="course-gen-count" />
-            <button className="or-btn text-xs" onClick={generate} disabled={genStep >= 0 || !prompt.trim()} data-testid="course-gen-btn">
-              {genStep >= 0 ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-              {genStep >= 0 ? "Generating…" : "Generate Course"}
+            <button className="or-btn text-xs" onClick={draftBlueprint} disabled={bpBusy || genStep >= 0 || !prompt.trim()} data-testid="course-gen-btn">
+              {(bpBusy || genStep >= 0) ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+              {genStep >= 0 ? "Generating…" : bpBusy ? "Drafting blueprint…" : "Draft Blueprint"}
             </button>
           </div>
+          {blueprint && genStep < 0 && (
+            <div className="mt-3 p-3 rounded-xl" style={{ background: "rgba(194,107,255,0.06)", border: "1px solid rgba(194,107,255,0.3)" }} data-testid="course-blueprint-card">
+              <div className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "#C26BFF" }}>Course Blueprint — approve before generating</div>
+              <input className="or-input text-sm font-bold w-full mb-1" value={blueprint.title}
+                onChange={(e) => setBlueprint({ ...blueprint, title: e.target.value })} data-testid="blueprint-title" />
+              <textarea className="or-input text-xs w-full mb-2" rows={2} value={blueprint.description}
+                onChange={(e) => setBlueprint({ ...blueprint, description: e.target.value })} data-testid="blueprint-description" />
+              <div className="flex flex-wrap gap-1.5 mb-2 text-[10px]">
+                {[["Difficulty", blueprint.difficulty], ["Level", blueprint.grade_level || "all"],
+                  ["Style", blueprint.learning_style], ["~Time", blueprint.estimated_minutes ? `${blueprint.estimated_minutes} min` : "—"],
+                  ["Quizzes", blueprint.quiz_count], ["Media", (blueprint.media_types || []).join(", ") || "—"]].map(([k, v]) => (
+                  <span key={k} className="px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-muted)" }}>{k}: <b style={{ color: "var(--text-main)" }}>{v}</b></span>
+                ))}
+              </div>
+              {(blueprint.modules || []).map((m, mi) => (
+                <div key={mi} className="mb-1.5">
+                  <input className="or-input text-xs font-bold w-full mb-0.5" value={m.title}
+                    onChange={(e) => { const mods = [...blueprint.modules]; mods[mi] = { ...m, title: e.target.value }; setBlueprint({ ...blueprint, modules: mods }); }}
+                    data-testid={`blueprint-module-${mi}`} />
+                  <div className="text-[10px] pl-2" style={{ color: "var(--text-muted)" }}>{(m.lessons || []).join(" · ")}</div>
+                </div>
+              ))}
+              {(blueprint.projects || []).length > 0 && (
+                <div className="text-[10px] mb-2" style={{ color: "var(--text-muted)" }}>Projects: {blueprint.projects.join(" · ")}</div>
+              )}
+              <div className="flex flex-wrap gap-2 mt-2">
+                <button className="or-btn text-xs font-bold" style={{ background: "var(--brand-green, #10E670)", color: "#0a0a0a" }}
+                  onClick={generate} data-testid="blueprint-approve">✓ Approve & Generate</button>
+                <button className="or-btn or-btn-ghost text-xs" onClick={draftBlueprint} disabled={bpBusy} data-testid="blueprint-regenerate">
+                  {bpBusy ? <Loader2 size={12} className="animate-spin" /> : "Regenerate"}
+                </button>
+                <button className="or-btn or-btn-ghost text-xs" onClick={() => setBlueprint(null)} data-testid="blueprint-discard">Discard</button>
+              </div>
+            </div>
+          )}
           {genStep >= 0 && (
             <div className="mt-3 text-[11px] flex items-center gap-2" style={{ color: "#C26BFF" }} data-testid="course-gen-progress">
               <Loader2 size={12} className="animate-spin" /> {GEN_STEPS[genStep]}
