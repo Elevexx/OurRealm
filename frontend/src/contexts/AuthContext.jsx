@@ -80,6 +80,7 @@ export function AuthProvider({ children }) {
         accepted_conditions: !!compliance.accepted_conditions,
         age_confirmed_13: !!compliance.age_confirmed_13,
         policy_version: compliance.policy_version || "2026-02-1",
+        birth_date: compliance.birth_date || undefined,
       });
       persistToken(data.access_token);
       setUser(data.user);

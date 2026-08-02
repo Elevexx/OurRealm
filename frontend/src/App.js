@@ -57,6 +57,10 @@ const RcIntelligence = React.lazy(() => import("@/pages/RcIntelligence"));
 const AdminOraiControl = React.lazy(() => import("@/pages/AdminOraiControl"));
 const RcRoutines = React.lazy(() => import("@/pages/RcRoutines"));
 const AdminAccessControl = React.lazy(() => import("@/pages/AdminAccessControl"));
+const ParentDashboard = React.lazy(() => import("@/pages/ParentDashboard"));
+const ParentTeenManage = React.lazy(() => import("@/pages/ParentTeenManage"));
+const MyLimits = React.lazy(() => import("@/pages/MyLimits"));
+import TeenGuard from "@/components/guardian/TeenGuard";
 const Lazy = ({ children }) => <React.Suspense fallback={null}>{children}</React.Suspense>;
 import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
@@ -178,6 +182,7 @@ function App() {
           <GoogleAuthGate>
           <RestoreGate>
           <UsernameOnboardingGate>
+          <TeenGuard />
           <Routes>
             <Route path="/" element={<RootRedirect />} />
             <Route path="/signup" element={<SignUp />} />
@@ -242,6 +247,9 @@ function App() {
             <Route path="/responsibility-center/:id/routines" element={<ShellRoute><AccessGate feature="responsibility_center"><Lazy><RcRoutines /></Lazy></AccessGate></ShellRoute>} />
             <Route path="/admin/orai-control" element={<ShellRoute><Lazy><AdminOraiControl /></Lazy></ShellRoute>} />
             <Route path="/admin/access-control" element={<ShellRoute><Lazy><AdminAccessControl /></Lazy></ShellRoute>} />
+            <Route path="/parent" element={<ShellRoute><Lazy><ParentDashboard /></Lazy></ShellRoute>} />
+            <Route path="/parent/teens/:teenId" element={<ShellRoute><Lazy><ParentTeenManage /></Lazy></ShellRoute>} />
+            <Route path="/my-limits" element={<ShellRoute><Lazy><MyLimits /></Lazy></ShellRoute>} />
             <Route path="/profile/support" element={<ShellRoute><Support /></ShellRoute>} />
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
             <Route path="/admin/faq" element={<ShellRoute><AdminFAQ /></ShellRoute>} />

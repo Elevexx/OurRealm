@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Sparkles, BookOpen, Pencil, Play, Trash2, Loader2, BarChart3, GraduationCap, X, Share2, Library, Download } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
+import RcCoursesPreview from "@/components/rc/RcCoursesPreview";
 
 const GEN_STEPS = ["Designing course structure…", "Writing lessons & activities…",
   "Building quizzes & answer keys…", "Adding worksheets, homework & projects…", "Placing checkpoints…"];
@@ -139,6 +140,8 @@ export default function CourseStudio() {
           <GraduationCap size={22} style={{ color: "#C26BFF" }} /> Course Studio
         </h1>
       </div>
+
+      <RcCoursesPreview centerId={id} />
 
       {canManage && (
         <div className="or-surface p-4 mb-5" data-testid="course-generate-card">

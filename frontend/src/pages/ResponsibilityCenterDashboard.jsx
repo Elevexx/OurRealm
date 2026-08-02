@@ -130,7 +130,7 @@ export default function ResponsibilityCenterDashboard() {
       </button>
 
       <div className="or-surface p-5 mb-4">
-        <div className="flex items-center gap-4">
+        <div className="rc-dash-head flex items-center gap-4">
           <div className="rounded-full flex items-center justify-center shrink-0 overflow-hidden"
             style={{ width: 52, height: 52, background: `${meta.color}22`, color: meta.color }}>
             {center.branding?.icon_url || center.branding?.logo_url ? (
@@ -148,6 +148,7 @@ export default function ResponsibilityCenterDashboard() {
               <b className="uppercase tracking-wide" style={{ color: ROLE_COLORS[me.role] }} data-testid="rc-dash-my-role">{me.role}</b>
             </div>
           </div>
+          <div className="rc-dash-actions flex items-center gap-2 shrink-0">
           <button className="or-btn or-btn-ghost text-xs shrink-0" onClick={() => setOraiOpen(true)}
             title="Ask ORAi about this Center" data-testid="rc-dash-orai-btn">
             ✦ ORAi
@@ -172,6 +173,7 @@ export default function ResponsibilityCenterDashboard() {
               <Flag size={14} />
             </button>
           )}
+          </div>
         </div>
         <ReportModal open={reportOpen} targetType="rc_center" targetId={id}
           onClose={() => setReportOpen(false)} testid="rc-center-report-modal" />

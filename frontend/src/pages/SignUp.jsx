@@ -13,6 +13,11 @@ export default function SignUp() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [signupsOpen, setSignupsOpen] = useState(true);
+  const [resEmail, setResEmail] = useState("");
+  const [resUsername, setResUsername] = useState("");
+  const [reserved, setReserved] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [unCheck, setUnCheck] = useState({ status: "idle", suggestions: [] }); // idle | checking | ok | taken
@@ -68,6 +73,7 @@ export default function SignUp() {
       accepted_privacy: acceptedPrivacy,
       age_confirmed_13: ageConfirmed,
       policy_version: "2026-02-1",
+      birth_date: birthDate || undefined,
     });
     setLoading(false);
     if (res.ok) navigate(nextPath || "/interests");
@@ -113,6 +119,28 @@ export default function SignUp() {
             Live. Connect. Experience. — claim your handle in seconds.
           </p>
           <GoogleSignInButton label="Sign up with Google" divider="below" />
+          {!signupsOpen ? (
+            <div className="space-y-3" data-testid="signup-paused-screen">
+              <div className="text-sm px-3 py-2" style={{ background: "rgba(46,160,255,0.08)", border: "1px solid rgba(46,160,255,0.3)", borderRadius: "var(--radius)" }}>
+                New signups are temporarily paused. Reserve your spot and we'll hold your place.
+              </div>
+              {reserved ? (
+                <div className="text-sm px-3 py-2" data-testid="signup-reserved-ok"
+                  style={{ background: "rgba(16,230,112,0.08)", border: "1px solid rgba(16,230,112,0.3)", borderRadius: "var(--radius)" }}>
+                  You're on the list! We'll welcome you as soon as signups reopen.
+                </div>
+              ) : (
+                <form onSubmit={reserve} className="space-y-3">
+                  <input type="email" placeholder="Email" required value={resEmail}
+                    onChange={(e) => setResEmail(e.target.value)} className="or-input" data-testid="signup-reserve-email" />
+                  <input type="text" placeholder="Preferred username (optional)" value={resUsername}
+                    onChange={(e) => setResUsername(e.target.value)} className="or-input" data-testid="signup-reserve-username" />
+                  {error && <div className="text-sm" style={{ color: "#ff8080" }}>{String(error)}</div>}
+                  <button type="submit" className="or-btn or-btn-primary w-full" data-testid="signup-reserve-btn">Reserve my spot</button>
+                </form>
+              )}
+            </div>
+          ) : (
           <form onSubmit={onSubmit} className="space-y-3">
             <input
               type="text" placeholder="Display name" required minLength={1}
@@ -163,6 +191,15 @@ export default function SignUp() {
               value={password} onChange={(e) => setPassword(e.target.value)}
               className="or-input" data-testid="signup-password" autoComplete="new-password"
             />
+            <label className="block text-xs" style={{ color: "var(--text-muted)" }}>
+              Date of birth (13+ required — never shown publicly)
+              <input
+                type="date" required value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
+                className="or-input w-full mt-1" data-testid="signup-birthdate"
+                max={new Date().toISOString().slice(0, 10)}
+              />
+            </label>
             {error && (
               <div className="text-sm px-3 py-2" data-testid="signup-error"
                 style={{ background: "rgba(255,80,80,0.1)", border: "1px solid rgba(255,80,80,0.4)", color: "#ff8080", borderRadius: "var(--radius)" }}>
@@ -178,6 +215,7 @@ export default function SignUp() {
               {loading ? "Creating account…" : "Join OurRealm"}
             </button>
           </form>
+          )}
           <p className="text-[11px] mt-4" style={{ color: "var(--text-muted)" }}>
             By signing up you agree to OurRealm's Terms and Privacy Policy. Social sign-in
             (Google, Apple, X, Discord, Facebook) coming soon.

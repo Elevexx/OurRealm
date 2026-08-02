@@ -40,6 +40,9 @@ class RegisterPayload(BaseModel):
     # new account; we honour whatever the client sends (validated below
     # to the four supported modes), otherwise default to 'neon'.
     mode: Optional[str] = None
+    # Teen/Adult account system — optional date of birth (YYYY-MM-DD).
+    # <13 rejected; 13-17 → teen; 18+ → adult; absent → adult (back-compat).
+    birth_date: Optional[str] = None
 
 
 class LoginPayload(BaseModel):

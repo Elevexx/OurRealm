@@ -314,3 +314,29 @@ async def audit_log(user: CurrentUser, limit: int = 50, skip: int = 0):
         .sort("at", -1).skip(max(0, skip)).limit(limit).to_list(limit)
     total = await db.access_control_audit.count_documents({})
     return {"rows": rows, "total": total}
+
+
+# ── New Signup Access (founder-only, minimal) ────────────────────────────
+class SignupAccessBody(BaseModel):
+    allow_new_signups: bool
+
+
+@router.get("/signup")
+async def get_signup_access(user: CurrentUser):
+    require_founder(user)
+    doc = await db.platform_settings.find_one({"id": "signup"}, {"_id": 0})
+    reservations = await db.signup_reservations.count_documents({})
+    return {"allow_new_signups": not (doc and doc.get("allow_new_signups") is False),
+            "reservations": reservations}
+
+
+@router.patch("/signup")
+async def set_signup_access(body: SignupAccessBody, user: CurrentUser):
+    require_founder(user)
+    await db.platform_settings.update_one(
+        {"id": "signup"},
+        {"$set": {"allow_new_signups": body.allow_new_signups, "updated_at": _now_iso()}},
+        upsert=True)
+    await ac.audit(user, "signup_access_changed", "signup", None,
+                   {"allow_new_signups": body.allow_new_signups}, "")
+    return {"ok": True, "allow_new_signups": body.allow_new_signups}

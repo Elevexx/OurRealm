@@ -54,7 +54,7 @@ function CertificateModal({ centerId, courseId, onClose }) {
   );
 }
 
-function TutorPanel({ centerId, courseId, lesson, onClose }) {
+export function TutorPanel({ centerId, courseId, lesson, onClose }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -132,7 +132,7 @@ function TutorPanel({ centerId, courseId, lesson, onClose }) {
   );
 }
 
-function Quiz({ centerId, courseId, lesson, onDone }) {
+export function Quiz({ centerId, courseId, lesson, onDone }) {
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);

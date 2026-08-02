@@ -3292,3 +3292,31 @@ User approved 4-phase plan: P1 ORAi text chat (DONE) → P2 Voice Mode (record�
 - AdminRcMedia upgrades: clickable thumbnails → Lightbox; "Preview in App" per asset + "Preview Changes Across App" in upload modal (device toggle mobile/tablet/desktop, 6 context mocks); "Built-in default" boxes replaced with icon+label; existing before/after, apply/cancel/reset/rollback, version history w/ thumbnails, usage list all retained.
 - NOTE: /api/media/* images require auth cookie (access_token) — works in browser, 401 via bare curl (expected).
 - Self-tested via browser automation (lightbox=1, preview modal=1, version thumbs=20, nav+hub logo loaded). Phase 2 Voice Mode still awaiting start approval.
+
+---
+## June 2026 — Session additions (fork)
+
+### OurRealm Global Access Control (DONE, tested 27/27 iteration_108)
+- `services/access_control.py` + `routers/admin_access.py` + HTTP middleware in server.py
+- 11 features (2 masters + 9 sub), 10 modes, emergency lock w/ snapshot restore, allowlist, one-time+recurring schedules (60s worker), impact preview, preview-as personas, audit. Founder-only. Public: /api/access-control/status, /preview-demo.
+- Production state preserved: all full_access, rc_public_preview=hidden.
+
+### Teen/Adult Guardian Controls (DONE, curl-smoke tested; no full E2E per user credit limit)
+- users.age_class ("teen"/"adult"; NOTE: legacy users.account_type='human' is a DIFFERENT field — do not reuse)
+- birth_date at signup (under-13 blocked; 13-17 teen; auto age-out to adult at 18)
+- `services/guardian_control.py` (registry ~40 features, media types/sources, centers, presets strict/balanced/open, schedule/bedtime/screen-time gates, heartbeat dedupe, middleware) + `routers/guardian.py` (/api/guardian/*)
+- Collections: guardian_links, guardian_permissions, guardian_routines, guardian_audit, guardian_screen_time, rc_member_education, signup_reservations, platform_settings
+- Frontend: /parent (ParentDashboard), /parent/teens/:id (ParentTeenManage), /my-limits (MyLimits), TeenGuard lock overlay + 60s heartbeat, Settings→Family tab, SignUp dob + paused reservation screen
+- Founder "New Signup Access" card in Settings→Admin (API: /api/admin/access-control/signup; register enforces pause)
+
+### AI Courses Preview (DONE, backend smoke tested)
+- rc_courses.py: GET /{cid}/courses-preview (+/course detail), PATCH /{cid}/members/{mid}/education (grade_text + normalized grade_level + ai_power), tutor-history (owner read-only), grade-aware generation (VISUAL_STYLE by level), tutor auto-context (learner level + progress)
+- Frontend: components/rc/RcCoursesPreview.jsx embedded top of CourseStudio — member selector (single/multi, select all/clear/count, glow+check), interactive lesson content, inline quiz, back/next, mark complete, TutorPanel (self) / TutorHistoryPanel (owner), grade input + AI power slider, summary cards, mobile single-column
+- RC Dashboard mobile fix: .rc-dash-head/.rc-dash-actions + index.css ≤430px swipeable action row
+
+### Backlog / follow-ups (not built, per credit limit)
+- Feed-level media-type filtering for teens (uploads ARE blocked server-side; feed render filtering pending)
+- external_links/camera/mic/screen_recording stored but client-capability level only
+- Weekly screen-time limit UI (field exists), preset cloning, audit search, scheduled routine activation UI (backend `active_when` supported)
+- Frontend E2E testing of /parent, /my-limits, courses preview (user will self-test)
+- Deployment failure root cause (SignUp.jsx corruption) FIXED — safe to redeploy

@@ -30,6 +30,7 @@ const TABS_BASE = [
   { id: "account",  label: "Account",     Icon: UserCog },
   { id: "playlists", label: "Sound Playlists", Icon: ListMusic },
   { id: "centers",  label: "Centers",     Icon: Landmark },
+  { id: "family",   label: "Family",      Icon: ShieldCheck },
   { id: "privacy",  label: "Privacy",     Icon: ShieldCheck },
 ];
 
@@ -375,6 +376,28 @@ export default function AccountSettings() {
 
       {/* ADMIN — founder + support only */}
       {tab === "admin" && <AdminSettingsTab />}
+
+      {tab === "family" && (
+        <div className="or-surface p-4" data-testid="tab-family">
+          {(user?.age_class || "adult") === "teen" ? (
+            <>
+              <div className="text-sm font-bold mb-1">My Limits</div>
+              <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+                See your current routine, screen time, allowed hours and features — fully transparent.
+              </p>
+              <button className="or-btn text-xs" onClick={() => navigate("/my-limits")} data-testid="family-mylimits-link">Open My Limits</button>
+            </>
+          ) : (
+            <>
+              <div className="text-sm font-bold mb-1">Parent Controls</div>
+              <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
+                Link teen accounts, set permissions, screen time, schedules, bedtime and routines. Everything is enforced server-side.
+              </p>
+              <button className="or-btn text-xs" onClick={() => navigate("/parent")} data-testid="family-parent-link">Open Parent Dashboard</button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* RESPONSIBILITY CENTERS */}
       {tab === "centers" && <ResponsibilityCentersTab navigate={navigate} />}

@@ -173,8 +173,24 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
     if len(prompt) > 2000:
         raise HTTPException(status_code=400, detail="Prompt is too long")
     extras = []
-    if body.get("grade_level"):
-        extras.append(f"Target grade level: {str(body['grade_level'])[:60]}")
+    grade_text = str(body.get("grade_level") or "")[:60]
+    # Grade-aware generation: use the target member's saved learning level.
+    target_member = str(body.get("member_id") or current["id"])
+    try:
+        edu = await db.rc_member_education.find_one(
+            {"center_id": center_id, "user_id": target_member}, {"_id": 0})
+    except Exception:
+        edu = None
+    if not grade_text and edu and edu.get("grade_text"):
+        grade_text = edu["grade_text"][:60]
+    if grade_text:
+        extras.append(f"Target grade level: {grade_text}")
+        style = VISUAL_STYLE.get(normalize_grade(grade_text))
+        if style:
+            extras.append(f"Visual & tone guidance (MUST follow): {style} "
+                          "Adapt vocabulary, reading difficulty, lesson length, "
+                          "instructions, examples, activities, quiz difficulty and "
+                          "amount of text to this level.")
     if body.get("lesson_count"):
         extras.append(f"Requested lesson count: {int(body['lesson_count'])}")
     user_msg = prompt + ("\n\n" + "\n".join(extras) if extras else "")
@@ -643,6 +659,20 @@ async def tutor_chat(center_id: str, course_id: str, body: dict, current: Curren
         raise HTTPException(status_code=404, detail="Lesson not found")
     ctx_lines = [f"Course: {course['title']} ({course.get('grade_level') or 'all levels'})",
                  f"Lesson: {lesson['title']} ({lesson['lesson_type']})"]
+    # Auto-context: learner grade profile + progress (no need to re-explain)
+    try:
+        _edu = await db.rc_member_education.find_one(
+            {"center_id": center_id, "user_id": current["id"]}, {"_id": 0})
+        if _edu and (_edu.get("grade_text") or _edu.get("grade_level")):
+            lvl = _edu.get("grade_text") or _edu.get("grade_level")
+            ctx_lines.append(f"Learner level: {lvl}. {VISUAL_STYLE.get(_edu.get('grade_level') or normalize_grade(lvl), '')} "
+                             "Match vocabulary and tone to this level. Encourage, teach, "
+                             "and give hints — never just hand over answers.")
+        _done = await db.rc_course_progress.count_documents(
+            {"course_id": course_id, "user_id": current["id"], "status": "completed"})
+        ctx_lines.append(f"Learner has completed {_done} lesson(s) in this course so far.")
+    except Exception:
+        pass
     for b in lesson.get("blocks", [])[:6]:
         ctx_lines.append(f"[{b['type']}] {b.get('title') or ''}: {b['body'][:700]}")
     history = await db.rc_course_tutor_messages.find(
@@ -758,3 +788,184 @@ async def import_shared_course(center_id: str, course_id: str, current: CurrentU
                           f"@{current.get('username')} imported \"{src['title']}\" "
                           f"(credit: @{(creator or {}).get('username')} · {share['from_center_name']})")
     return {"course_id": new_id, "credit": course["credit"]}
+
+
+# ═══ AI Courses Preview — member selector, grade profiles (June 2026) ════
+# Natural-language grade input → normalized learning level used by ORAi.
+GRADE_ORDER = ["toddler", "pre_k", "kindergarten", "elementary", "middle_school",
+               "high_school", "adult_beginner", "adult_advanced"]
+
+VISUAL_STYLE = {
+    "toddler": "Highly visual, simple, colorful and voice-friendly. Very little text, huge friendly shapes, playful cartoon illustrations.",
+    "pre_k": "Bright, playful, colorful illustrated scenes with very simple words and short sentences.",
+    "kindergarten": "Friendly illustrated educational graphics, simple clear words, cheerful colors.",
+    "elementary": "Friendly illustrated educational graphics with clear explanations and labeled diagrams.",
+    "middle_school": "More mature and detailed educational visuals — infographics and realistic diagrams, never childish.",
+    "high_school": "Polished, realistic, cinematic, technical modern educational visuals appropriate for teenagers. NO preschool-style graphics.",
+    "adult_beginner": "Clean professional modern visuals with approachable step-by-step explanations.",
+    "adult_advanced": "Technical, dense, professional visuals — charts, schematics and real-world imagery.",
+}
+
+
+def normalize_grade(text: str) -> str:
+    t = (text or "").lower().strip()
+    if not t:
+        return "elementary"
+    if "toddler" in t or "baby" in t:
+        return "toddler"
+    if "pre-k" in t or "prek" in t or "pre k" in t or "preschool" in t:
+        return "pre_k"
+    if "kinder" in t:
+        return "kindergarten"
+    import re as _re
+    m = _re.search(r"(\d{1,2})", t)
+    if m and ("grade" in t or "th" in t or "st" in t or "nd" in t or "rd" in t):
+        n = int(m.group(1))
+        if n <= 5:
+            return "elementary"
+        if n <= 8:
+            return "middle_school"
+        return "high_school"
+    if "high school" in t or "senior" in t or "freshman" in t or "sophomore" in t or "junior" in t or "teen" in t:
+        return "high_school"
+    if "middle" in t:
+        return "middle_school"
+    if "advanced" in t or "expert" in t or "pro" in t:
+        return "adult_advanced"
+    if "adult" in t or "beginner" in t or "college" in t:
+        return "adult_beginner"
+    if "elementary" in t or "primary" in t:
+        return "elementary"
+    return "elementary"
+
+
+async def _member_education(center_id: str, user_id: str) -> dict:
+    doc = await db.rc_member_education.find_one(
+        {"center_id": center_id, "user_id": user_id}, {"_id": 0})
+    return doc or {"center_id": center_id, "user_id": user_id,
+                   "grade_text": "", "grade_level": "elementary", "ai_power": 60}
+
+
+@router.patch("/{center_id}/members/{member_id}/education")
+async def set_member_education(center_id: str, member_id: str, body: dict, current: CurrentUser):
+    """Owner/authorized co-owner set a member's grade level + AI power."""
+    center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
+    if not _can_manage(perms) and member_id != current["id"]:
+        raise HTTPException(status_code=403, detail="You can only update your own learning profile")
+    if not _can_manage(perms):
+        raise HTTPException(status_code=403, detail="Education settings are managed by the Center owner")
+    target = await db.responsibility_center_memberships.find_one(
+        {"center_id": center_id, "user_id": member_id, "status": "active"})
+    if not target:
+        raise HTTPException(status_code=404, detail="Member not found")
+    grade_text = str(body.get("grade_text") or "").strip()[:60]
+    update = {"center_id": center_id, "user_id": member_id,
+              "updated_by": current["id"], "updated_at": _iso()}
+    if "grade_text" in body:
+        update["grade_text"] = grade_text
+        update["grade_level"] = normalize_grade(grade_text)
+    if "ai_power" in body:
+        try:
+            update["ai_power"] = max(0, min(100, int(body["ai_power"])))
+        except Exception:
+            pass
+    await db.rc_member_education.update_one(
+        {"center_id": center_id, "user_id": member_id}, {"$set": update}, upsert=True)
+    return {"ok": True, "education": await _member_education(center_id, member_id)}
+
+
+async def _preview_member_ids(center_id: str, current: dict, manage: bool, member_ids: str) -> list:
+    requested = [m for m in (member_ids or "").split(",") if m.strip()]
+    if not manage:
+        # Regular member: ONLY their own data — enforced server-side.
+        if any(m != current["id"] for m in requested):
+            raise HTTPException(status_code=403, detail="You can only view your own learning data")
+        return [current["id"]]
+    if requested:
+        return requested[:20]
+    return [current["id"]]
+
+
+@router.get("/{center_id}/courses-preview")
+async def courses_preview(center_id: str, current: CurrentUser, member_ids: str = ""):
+    """Member profile selector + per-member course summaries.
+    Backend-authorized: non-managers are always scoped to themselves."""
+    center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
+    manage = _can_manage(perms)
+    mships = await db.responsibility_center_memberships.find(
+        {"center_id": center_id, "status": "active"},
+        {"_id": 0, "user_id": 1, "role": 1, "relationship": 1}).to_list(200)
+    users = {u["id"]: u for u in await db.users.find(
+        {"id": {"$in": [m["user_id"] for m in mships]}},
+        {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1}).to_list(200)}
+    selected = await _preview_member_ids(center_id, current, manage, member_ids)
+    selected = [s for s in selected if s in users]
+    members_out = []
+    for m in mships:
+        u = users.get(m["user_id"]) or {}
+        edu = await _member_education(center_id, m["user_id"])
+        members_out.append({
+            "user_id": m["user_id"], "username": u.get("username"),
+            "name": u.get("name"), "avatar_url": u.get("avatar_url"),
+            "role": m.get("role"), "relationship": m.get("relationship"),
+            "grade_text": edu.get("grade_text") or "",
+            "grade_level": edu.get("grade_level") or "elementary",
+            "ai_power": edu.get("ai_power", 60),
+            "selectable": manage or m["user_id"] == current["id"],
+        })
+    courses = await db.rc_courses.find(
+        {"center_id": center_id}, {"_id": 0, "id": 1, "title": 1, "subject": 1,
+                                   "grade_level": 1, "lesson_count": 1, "color": 1}).to_list(100)
+    data = {}
+    for mid in selected:
+        agg = await db.rc_course_progress.aggregate([
+            {"$match": {"center_id": center_id, "user_id": mid, "status": "completed"}},
+            {"$group": {"_id": "$course_id", "done": {"$sum": 1},
+                        "avg": {"$avg": "$score"}}}]).to_list(100)
+        by_course = {a["_id"]: a for a in agg}
+        data[mid] = {"courses": [{**c,
+                                  "done": by_course.get(c["id"], {}).get("done", 0),
+                                  "avg_score": by_course.get(c["id"], {}).get("avg")}
+                                 for c in courses]}
+    return {"members": members_out, "selected": selected, "can_manage": manage,
+            "member_data": data, "grade_levels": GRADE_ORDER}
+
+
+@router.get("/{center_id}/courses-preview/course")
+async def courses_preview_detail(center_id: str, course_id: str, current: CurrentUser,
+                                 member_id: str = ""):
+    """Lessons + a SPECIFIC member's progress. Non-managers: self only."""
+    center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
+    manage = _can_manage(perms)
+    target = member_id or current["id"]
+    if target != current["id"] and not manage:
+        raise HTTPException(status_code=403, detail="You can only view your own learning data")
+    course = await _course(center_id, course_id)
+    lessons = await _lessons(course_id)
+    prog = await _progress_map(course_id, target)
+    done = sum(1 for p in prog.values() if p.get("status") == "completed")
+    scores = [p["score"] for p in prog.values() if p.get("score") is not None]
+    edu = await _member_education(center_id, target)
+    return {"course": course, "lessons": lessons, "progress": prog,
+            "member_id": target, "education": edu,
+            "summary": {"done": done, "total": len(lessons),
+                        "avg_score": (sum(scores) / len(scores)) if scores else None,
+                        "achievements": _achievements(done, len(lessons),
+                                                      (sum(scores) / len(scores)) if scores else None)},
+            "read_only": target != current["id"]}
+
+
+@router.get("/{center_id}/courses/{course_id}/tutor-history")
+async def tutor_history_for_member(center_id: str, course_id: str, current: CurrentUser,
+                                   member_id: str = "", lesson_id: str = ""):
+    """Owner can review a member's tutor conversation (read-only)."""
+    center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
+    target = member_id or current["id"]
+    if target != current["id"] and not _can_manage(perms):
+        raise HTTPException(status_code=403, detail="You can only view your own tutor history")
+    q = {"course_id": course_id, "user_id": target}
+    if lesson_id:
+        q["lesson_id"] = lesson_id
+    rows = await db.rc_course_tutor_messages.find(q, {"_id": 0}) \
+        .sort("created_at", 1).to_list(120)
+    return {"messages": rows, "member_id": target}

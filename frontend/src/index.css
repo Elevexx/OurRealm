@@ -1015,3 +1015,32 @@ html[data-mode="business"] .rcx-scope .or-surface {
 @media (prefers-reduced-motion: reduce) {
   .orrc-logo-cinematic, .rcx-page-enter, .rcx-stagger > * { animation: none; }
 }
+
+/* ── RC Dashboard mobile-only layout fix (≤430px) — June 2026 ─────────── */
+@media (max-width: 430px) {
+  [data-testid="rc-dash-page"] {
+    max-width: 100vw;
+    overflow-x: hidden;
+    box-sizing: border-box;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+  [data-testid="rc-dash-page"] .or-surface { max-width: 100%; box-sizing: border-box; }
+  .rc-dash-head { flex-wrap: wrap; }
+  .rc-dash-head > * { min-width: 0; }
+  .rc-dash-actions {
+    flex: 1 0 100%;
+    width: 100%;
+    max-width: 100%;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    gap: 8px;
+    padding: 8px 4px 2px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .rc-dash-actions::-webkit-scrollbar { display: none; }
+  .rc-dash-actions > * { flex: 0 0 auto; white-space: nowrap; }
+}

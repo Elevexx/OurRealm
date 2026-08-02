@@ -67,6 +67,28 @@ async def register(payload: RegisterPayload, response: Response):
             detail="You must accept the Terms of Service, Terms & Conditions, "
                    "Privacy Policy, and confirm you are at least 13 years old.",
         )
+    # ── Founder signup pause gate (server-side, immediate) ──
+    _sg = await db.platform_settings.find_one({"id": "signup"}, {"_id": 0})
+    if _sg and _sg.get("allow_new_signups") is False:
+        await record_signup_event(False, "signups_paused", 403, email)
+        raise HTTPException(status_code=403, detail={
+            "code": "signups_paused",
+            "message": "New signups are temporarily paused. You can reserve your spot below."})
+    # ── Teen/Adult age gate (optional birth_date, YYYY-MM-DD) ──
+    account_type = "adult"
+    birth_date = (payload.birth_date or "").strip()[:10] or None
+    if birth_date:
+        from services.guardian_control import compute_age
+        _age = compute_age(birth_date)
+        if _age is None:
+            await record_signup_event(False, "invalid_birth_date", 400, email)
+            raise HTTPException(status_code=400, detail="Please enter a valid date of birth.")
+        if _age < 13:
+            await record_signup_event(False, "under_13", 400, email)
+            raise HTTPException(status_code=400,
+                                detail="OurRealm accounts currently require users to be at least 13.")
+        if _age < 18:
+            account_type = "teen"
     if await db.users.find_one({"email": email}):
         await record_signup_event(False, "duplicate_email", 400, email)
         raise HTTPException(status_code=400, detail="This email is already registered. Try logging in instead.")
@@ -100,6 +122,8 @@ async def register(payload: RegisterPayload, response: Response):
         "password_hash": hash_password(payload.password),
         "name": payload.name.strip(),
         "role": "user",
+        "age_class": account_type,
+        "birth_date": birth_date,
         "avatar_url": None,
         "bio": "",
         "interests": [],
@@ -748,4 +772,33 @@ async def dismiss_username_onboarding(current: CurrentUser):
     """'Keep this username for now' — one-time; the prompt never reshows."""
     await db.users.update_one({"id": current["id"]},
                               {"$set": {"needs_username_onboarding": False}})
+    return {"ok": True}
+
+
+# ── Founder signup pause — public status + reservation (June 2026) ──────
+@router.get("/signup-status")
+async def signup_status():
+    _sg = await db.platform_settings.find_one({"id": "signup"}, {"_id": 0})
+    return {"open": not (_sg and _sg.get("allow_new_signups") is False)}
+
+
+class SignupReservationPayload(_BaseModel):
+    email: str
+    username: str | None = None
+    name: str | None = None
+
+
+@router.post("/signup-reservation")
+async def signup_reservation(payload: SignupReservationPayload):
+    email = payload.email.lower().strip()
+    if "@" not in email or "." not in email or len(email) > 120:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+    existing = await db.signup_reservations.find_one({"email": email})
+    if existing:
+        return {"ok": True, "already_reserved": True}
+    await db.signup_reservations.insert_one({
+        "id": uuid.uuid4().hex, "email": email,
+        "username": (payload.username or "").lower().strip()[:24] or None,
+        "name": (payload.name or "").strip()[:80] or None,
+        "at": datetime.now(timezone.utc).isoformat()})
     return {"ok": True}

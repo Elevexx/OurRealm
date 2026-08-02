@@ -71,6 +71,7 @@ from routers import rc_automations as rc_automations_router_mod
 from routers import admin_orai as admin_orai_router_mod
 from routers import rc_routines as rc_routines_router_mod
 from routers import admin_access as admin_access_router_mod
+from routers import guardian as guardian_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -156,6 +157,7 @@ app.include_router(admin_orai_router_mod.router)
 app.include_router(rc_routines_router_mod.router)
 app.include_router(admin_access_router_mod.router)
 app.include_router(admin_access_router_mod.public_router)
+app.include_router(guardian_router_mod.router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
@@ -210,7 +212,24 @@ PUBLIC_API_PATHS = {
     "/api/auth/google/session",
     "/api/access-control/status",
     "/api/access-control/preview-demo",
+    "/api/auth/signup-status",
+    "/api/auth/signup-reservation",
 }
+
+
+# ─── Guardian Controls (Teen/Adult) — innermost guard, runs after auth
+# and Global Access Control. Server-side enforcement of parent settings.
+@app.middleware("http")
+async def guardian_control_guard(request, call_next):
+    if request.method != "OPTIONS":
+        try:
+            from services import guardian_control as _gc
+            blocked = await _gc.enforce_request(request)
+            if blocked is not None:
+                return blocked
+        except Exception as e:
+            logger.warning(f"[guardian] guard error (fail-open): {e}")
+    return await call_next(request)
 
 
 # ─── OurRealm Global Access Control (innermost — runs after auth guard
