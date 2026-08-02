@@ -43,6 +43,7 @@ export default function AdminGames() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [data, setData] = useState(null);
+  const [deniedMsg, setDeniedMsg] = useState(null);
   const [request, setRequest] = useState("");
   const [complexity, setComplexity] = useState(2);
   const [power, setPower] = useState(5);
@@ -54,8 +55,11 @@ export default function AdminGames() {
   const selGame = params.get("game");
 
   const load = useCallback(() => {
-    apiClient.get("/admin/games").then((r) => setData(r.data))
-      .catch((e) => toast.error(e?.response?.data?.detail || "Could not load Game Studio"));
+    apiClient.get("/admin/games").then((r) => { setData(r.data); setDeniedMsg(null); })
+      .catch((e) => {
+        if (e?.response?.status === 403) setDeniedMsg(e?.response?.data?.detail || "Founder access only");
+        else toast.error(e?.response?.data?.detail || "Could not load Game Studio");
+      });
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -114,7 +118,14 @@ export default function AdminGames() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto pb-12" data-testid="admin-games-page">
+    <div className="max-w-4xl mx-auto pb-12" data-testid={deniedMsg ? "admin-games-denied" : "admin-games-page"}>
+      {deniedMsg ? (
+        <div className="or-surface p-8 text-center mt-8">
+          <Gamepad2 size={36} className="mx-auto mb-3" style={{ color: "#C26BFF" }} />
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{deniedMsg}</p>
+        </div>
+      ) : (
+      <>
       <div className="flex items-center gap-2 mb-1 flex-wrap">
         <button className="or-btn or-btn-ghost text-xs" onClick={() => navigate("/admin")} data-testid="games-back">
           <ArrowLeft size={13} /> Admin Hub</button>
@@ -280,6 +291,8 @@ export default function AdminGames() {
             </div>
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   );
