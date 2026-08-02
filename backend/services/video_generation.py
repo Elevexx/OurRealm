@@ -202,9 +202,20 @@ async def _cancelled(job_id: str) -> bool:
     return bool(j and j.get("cancel_requested"))
 
 
+async def recover_orphaned_jobs():
+    """Resume jobs interrupted by a restart. Provider jobs re-enter the poll
+    loop (create_job is skipped when provider_job_id exists); dry runs rerun."""
+    rows = await db.ai_video_jobs.find(
+        {"status": {"$in": list(ACTIVE_STATUSES)}}, {"id": 1}).to_list(50)
+    for j in rows:
+        log.info("resuming interrupted video job %s", j["id"])
+        asyncio.create_task(_run_pipeline(j["id"]))
+
+
 async def start_video_job(*, center_id: str, course_id: str, lesson_id: str,
                           block_id: str, prompt: str, seconds: int, size: str,
-                          current: dict, negative_prompt: str = "") -> dict:
+                          current: dict, negative_prompt: str = "",
+                          style_profile: dict = None) -> dict:
     """All gates re-checked server-side; returns the created job doc."""
     est = await build_estimate(course_id, seconds, size)
     if est["blockers"]:
@@ -217,6 +228,8 @@ async def start_video_job(*, center_id: str, course_id: str, lesson_id: str,
         "prompt": prompt[:2000], "negative_prompt": (negative_prompt or "")[:1000],
         "seconds": est["seconds"], "size": est["size"], "quality": est["quality"],
         "dry_run": est["dry_run"],
+        "style_profile": style_profile if isinstance(style_profile, dict) else None,
+        "production_prompt": None,
         "estimated_cost": est["estimated_cost"], "actual_cost": None, "seed": None,
         "provider_job_id": None, "video_url": None, "thumbnail_url": None,
         "version": prev + 1, "archived": False,
@@ -242,16 +255,35 @@ async def _run_pipeline(job_id: str):
 
     job = await db.ai_video_jobs.find_one({"id": job_id})
     p = get_provider(job["provider"])
-    provider_job_id = None
+    provider_job_id = job.get("provider_job_id")  # set = resuming after restart
     try:
+        # ── Smart Video Prompt Engine — never send raw lesson text ───
+        prod = job.get("production_prompt")
+        if not prod:
+            await _set(job_id, {"status": "generating", "stage": "designing_prompt"})
+            from services.video_prompt_engine import build_production_prompt
+            course = await db.rc_courses.find_one(
+                {"id": job["course_id"]}, {"_id": 0, "title": 1, "grade_level": 1,
+                                           "storyboard": 1, "style_profile": 1})
+            lesson = await db.rc_course_lessons.find_one(
+                {"id": job["lesson_id"]}, {"_id": 0, "title": 1, "blocks": 1})
+            block = next((b for b in (lesson or {}).get("blocks", [])
+                          if b.get("id") == job["block_id"]), None)
+            profile = job.get("style_profile") or (course or {}).get("style_profile")
+            prod = await build_production_prompt(
+                user_prompt=job["prompt"], course=course, lesson=lesson,
+                block=block, style_profile=profile, seconds=job["seconds"])
+            await _set(job_id, {"production_prompt": prod})
+
         # ── Generating ────────────────────────────────────────────
         await _set(job_id, {"status": "generating", "stage": "generating"})
         if job["dry_run"]:
             raw = await asyncio.to_thread(_dry_run_clip, job["seconds"], job["size"])
         else:
-            provider_job_id = await p.create_job(job["prompt"], job["model"],
-                                                 job["seconds"], job["size"])
-            await _set(job_id, {"provider_job_id": provider_job_id})
+            if not provider_job_id:
+                provider_job_id = await p.create_job(prod, job["model"],
+                                                     job["seconds"], job["size"])
+                await _set(job_id, {"provider_job_id": provider_job_id})
             deadline = time.monotonic() + 1200
             while True:
                 if await _cancelled(job_id):

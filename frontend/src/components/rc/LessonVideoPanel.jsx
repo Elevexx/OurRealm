@@ -10,7 +10,8 @@ const STATUS_COLORS = {
   ready: "#10E670", complete: "#10E670", failed: "#FF6B6B", cancelled: "#FF8A5A",
 };
 const STAGE_TEXT = {
-  queued: "Queued…", generating: "Generating video…", downloading: "Downloading…",
+  queued: "Queued…", designing_prompt: "ORAi is writing the cinematic production prompt…",
+  generating: "Generating video…", downloading: "Downloading…",
   uploading_r2: "Uploading to storage…", optimizing: "Optimizing & thumbnail…",
   attaching: "Attaching to lesson…",
 };
@@ -18,6 +19,7 @@ const STAGE_TEXT = {
 function EstimateModal({ base, blockBody, onApprove, onClose }) {
   const [seconds, setSeconds] = useState(4);
   const [prompt, setPrompt] = useState(blockBody || "");
+  const [styleProfile, setStyleProfile] = useState({ primary: "auto", camera: "Auto" });
   const [est, setEst] = useState(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -29,13 +31,13 @@ function EstimateModal({ base, blockBody, onApprove, onClose }) {
   const approve = async () => {
     if (!prompt.trim() || !est) return;
     setBusy(true);
-    try { await onApprove({ prompt: prompt.trim(), seconds, estimate: est }); onClose(); }
+    try { await onApprove({ prompt: prompt.trim(), seconds, estimate: est, styleProfile }); onClose(); }
     catch (e) { toast.error(e?.response?.data?.detail || "Could not start generation"); }
     finally { setBusy(false); }
   };
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-3" style={{ background: "rgba(0,0,0,0.65)" }} onClick={onClose}>
-      <div className="or-surface w-full max-w-md p-4 rcx-scope" onClick={(e) => e.stopPropagation()} data-testid="video-estimate-modal">
+      <div className="or-surface w-full max-w-md p-4 rcx-scope overflow-y-auto" style={{ maxHeight: "88dvh" }} onClick={(e) => e.stopPropagation()} data-testid="video-estimate-modal">
         <div className="flex items-center justify-between mb-2">
           <div className="text-sm font-bold flex items-center gap-1.5" style={{ fontFamily: "var(--font-display)" }}>
             <Clapperboard size={15} style={{ color: "#C26BFF" }} /> Generate lesson video
@@ -52,6 +54,9 @@ function EstimateModal({ base, blockBody, onApprove, onClose }) {
                        border: seconds === s ? "1px solid #C26BFF" : "1px solid rgba(255,255,255,0.1)" }}
               onClick={() => setSeconds(s)} data-testid={`video-seconds-${s}`}>{s}s</button>
           ))}
+        </div>
+        <div className="rounded-xl p-2 mb-3" style={{ background: "rgba(46,230,255,0.03)", border: "1px solid rgba(46,230,255,0.15)" }}>
+          <StyleSelector compact value={styleProfile} onChange={setStyleProfile} subjectHint={blockBody || ""} />
         </div>
         {!est ? <div className="text-xs py-3 text-center" style={{ color: "var(--text-muted)" }}><Loader2 size={13} className="animate-spin inline mr-1" /> Estimating…</div> : (
           <div className="rounded-xl p-3 mb-3 text-[11px] space-y-1" style={{ background: "rgba(255,255,255,0.04)" }} data-testid="video-estimate-details">
@@ -117,10 +122,11 @@ export default function LessonVideoPanel({ centerId, courseId, lessonId, block, 
     }, 4000);
   };
 
-  const startGenerate = async ({ prompt, seconds, estimate }) => {
+  const startGenerate = async ({ prompt, seconds, estimate, styleProfile }) => {
     const r = await apiClient.post(`${base}/generate`, {
       block_id: block.id, prompt, seconds,
       approve_cost: true, approved_cost: estimate.estimated_cost,
+      style_profile: styleProfile,
     });
     setJob({ id: r.data.job_id, status: "queued", stage: "queued", progress: 0 });
     pollJob(r.data.job_id);

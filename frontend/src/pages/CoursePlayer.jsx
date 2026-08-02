@@ -233,6 +233,7 @@ export default function CoursePlayer() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [selId, setSelId] = useState(null);
+  const [celebrate, setCelebrate] = useState(null); // "lesson" | "course"
   const [tutorOpen, setTutorOpen] = useState(false);
   const [certOpen, setCertOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -266,7 +267,12 @@ export default function CoursePlayer() {
     try {
       const r = await apiClient.post(`/responsibility-center/${id}/courses/${courseId}/lessons/${lesson.id}/complete`, {});
       if (r.data.needs_approval) toast.info("Checkpoint sent for parent/teacher approval");
-      else toast.success("Lesson complete! 🎉");
+      else {
+        const willBeDone = doneCount + 1 >= (course.lesson_count || orderIds.length);
+        setCelebrate(willBeDone ? "course" : "lesson");
+        setTimeout(() => setCelebrate(null), willBeDone ? 3800 : 1800);
+        if (!willBeDone && idx < orderIds.length - 1) setTimeout(() => setSelId(orderIds[idx + 1]), 1600);
+      }
       await load(true);
     } catch (e) { toast.error(e?.response?.data?.detail || "Could not save progress"); }
     finally { setBusy(false); }
@@ -279,6 +285,34 @@ export default function CoursePlayer() {
 
   return (
     <div className="max-w-6xl mx-auto rcx-scope rcx-page-enter pb-10" data-testid="course-player-page">
+      {celebrate && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center pointer-events-none" data-testid={`celebration-${celebrate}`}>
+          <style>{`
+            @keyframes orCeleb { 0% { opacity: 0; transform: scale(0.6); } 20% { opacity: 1; transform: scale(1.08); } 30% { transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; transform: scale(1.05); } }
+            @keyframes orSpark { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(0.2); opacity: 0; } }
+          `}</style>
+          <div className="relative text-center px-8 py-6 rounded-3xl" style={{
+            background: "rgba(10,14,20,0.92)", border: "1px solid rgba(46,230,255,0.4)",
+            boxShadow: "0 0 60px rgba(46,160,255,0.35)", animation: `orCeleb ${celebrate === "course" ? 3.8 : 1.8}s ease forwards` }}>
+            {[...Array(14)].map((_, i) => (
+              <span key={i} className="absolute w-2 h-2 rounded-full" style={{
+                left: "50%", top: "50%",
+                background: ["#2EA0FF", "#10E670", "#FF8A5A", "#C26BFF"][i % 4],
+                "--dx": `${Math.cos((i / 14) * Math.PI * 2) * 130}px`,
+                "--dy": `${Math.sin((i / 14) * Math.PI * 2) * 130}px`,
+                animation: "orSpark 1.4s ease-out forwards" }} />
+            ))}
+            <div className="text-4xl mb-1">{celebrate === "course" ? "🏆" : "⭐"}</div>
+            <div className="text-lg font-bold" style={{ fontFamily: "var(--font-display)",
+              background: "linear-gradient(90deg, #2EA0FF, #10E670, #FF8A5A)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+              {celebrate === "course" ? "Course Complete!" : "Lesson Complete!"}
+            </div>
+            <div className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+              {celebrate === "course" ? `You finished "${course.title}" — amazing work!` : "Moving to the next lesson…"}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <button className="or-btn or-btn-ghost text-xs" onClick={() => navigate(`/responsibility-center/${id}/courses`)} data-testid="player-back">
           <ArrowLeft size={13} /> Courses

@@ -20,6 +20,41 @@ from utils.sliding_window_rate_limit import rate_limit
 log = logging.getLogger("ourrealm.ai_video")
 admin_router = APIRouter(prefix="/api/admin/ai-video", tags=["ai-video-admin"])
 course_router = APIRouter(prefix="/api/responsibility-center", tags=["ai-video-course"])
+styles_router = APIRouter(prefix="/api/ai-styles", tags=["ai-styles"])
+
+
+@admin_router.on_event("startup")
+async def _recover_on_startup():
+    import asyncio as _aio
+    _aio.get_event_loop().call_later(3, lambda: _aio.create_task(vg.recover_orphaned_jobs()))
+
+
+# ── Universal Animation Style registry + user presets ───────────────────
+@styles_router.get("")
+async def list_styles(current: CurrentUser):
+    from services import animation_styles as ast
+    return {"styles": await ast.get_styles(), "cameras": ast.CAMERA_STYLES}
+
+
+@styles_router.get("/presets")
+async def list_style_presets(current: CurrentUser):
+    from services import animation_styles as ast
+    return {"presets": await ast.list_presets(current["id"])}
+
+
+@styles_router.post("/presets")
+async def save_style_preset(body: dict, current: CurrentUser):
+    from services import animation_styles as ast
+    name = (body.get("name") or "").strip()
+    if not name or not isinstance(body.get("profile"), dict):
+        raise HTTPException(status_code=400, detail="A name and style profile are required")
+    return {"preset": await ast.save_preset(current["id"], name, body["profile"])}
+
+
+@styles_router.delete("/presets/{preset_id}")
+async def delete_style_preset(preset_id: str, current: CurrentUser):
+    await db.animation_style_presets.delete_one({"id": preset_id, "user_id": current["id"]})
+    return {"ok": True}
 
 
 # ── Founder Command Center ──────────────────────────────────────────────
@@ -200,7 +235,8 @@ async def video_generate(center_id: str, course_id: str, lesson_id: str,
             center_id=center_id, course_id=course_id, lesson_id=lesson_id,
             block_id=block_id, prompt=prompt, seconds=est["seconds"],
             size=est["size"], current=current,
-            negative_prompt=body.get("negative_prompt") or "")
+            negative_prompt=body.get("negative_prompt") or "",
+            style_profile=body.get("style_profile") if isinstance(body.get("style_profile"), dict) else None)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     await db.rc_course_lessons.update_one(

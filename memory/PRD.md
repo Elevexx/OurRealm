@@ -1,5 +1,35 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Universal AI Education Studio Upgrade (Aug 2, 2026) ✅ COMPLETE — PREVIEW, dry-run still ON
+**Verified: Intro to Robotics course generated E2E with style profile (storyboard w/ "Bolt" mascot carried into images — character consistency proven in screenshot), prompt-engine dry-run video attached & playing, 46-style selector rendering in Course Maker, presets API working.**
+
+### Universal Animation Style System
+- `services/animation_styles.py`: DB-backed registry (`animation_style_registry`, seeded w/ 46 styles: Auto, Photorealistic, Cinematic, Pixar/DreamWorks-inspired, Anime, Manga, Comic, Cartoon, Children's Book, Watercolor, Oil, Pencil, Chalk, Claymation, Stop Motion, Paper Craft, LEGO, Low Poly, Voxel, Minecraft/Roblox/Fortnite-inspired, Stylized/Realistic 3D, Cyberpunk, Sci-Fi, Fantasy, Medieval, Steampunk, Retro 80s, Vaporwave, Neon, Motion Graphics, Whiteboard, Infographic, Blueprint, ArchViz, Nature Doc, Digital Painting, Pixel Art, Isometric, Chibi, Kawaii, Comic Noir) — each with prompt_fragment, gradient preview, subjects/ages/difficulty metadata. New styles = DB insert, ZERO code changes. 19 camera styles. `profile_to_prompt()` renders style_profile {primary, secondary, mix%, custom_prompt, camera, quality sliders (13), negative/lighting/motion/palette/environment prompts} → art-direction text.
+- Routes `/api/ai-styles` (GET registry+cameras) + `/presets` GET/POST/DELETE (per-user unlimited presets, e.g. "OurRealm Neon" saved).
+- `components/rc/StyleSelector.jsx` (full + compact modes): premium gradient thumbnail cards, ORAi style recommendations by grade+subject (recommendStyles heuristics), blend slider, custom style prompt, camera select, 13 quality sliders, advanced prompt fields, preset save/apply/delete. Mounted in **Course Maker** (course-level style) and **video EstimateModal** (lesson-level override).
+
+### Smart Video Prompt Engine
+- `services/video_prompt_engine.py`: LLM director converts user request + course storyboard + lesson block + style profile into a 60-130 word cinematic production prompt (family-friendly, no brands/text). Pipeline stage `designing_prompt`; stored as `production_prompt` on the job (visible for audit); raw lesson text is NEVER sent to the video model. Template fallback if LLM fails. VERIFIED: robotics test produced full cinematic prompt featuring Bolt + makerspace + style blend.
+
+### Course Storyboard (style bible)
+- `rc_courses.py`: new generation stage `designing_storyboard` — STORYBOARD_SYSTEM JSON {visual_style, characters, environment, palette, narrator, pacing, camera_language, branding} stored on course; injected into every module-generation prompt AND `_auto_illustrate` image prompts AND video prompt engine → cross-lesson character/style consistency. Course also stores `style_profile`.
+- GEN_SYSTEM upgraded with WRITING QUALITY rules (conversational educator voice, no AI phrasing, no walls of text, varied structure, frequent interaction).
+
+### Reliability
+- `recover_orphaned_jobs()` on startup (admin_router startup event, 3s delay): interrupted video jobs resume — provider jobs re-enter the poll loop (create_job skipped when provider_job_id exists), dry runs re-run.
+
+### Player polish
+- `CoursePlayer.jsx`: lesson-complete celebration burst (star + color sparks) with auto-advance to next lesson; course-complete 🏆 celebration overlay. (Fixed a rules-of-hooks violation: celebrate state must live at top.) Resume playback + posters already shipped earlier.
+
+### QA courses generated so far
+- Intro to Robotics Workshop (6th grade, stylized_3d 70/30 motion_graphics, Bolt mascot) id=df890c1fb03d44c9ba26e10761d89a27 ✓ storyboard ✓ style-consistent images ✓ prompt-engine video (dry run) attached.
+- Music Production + Fractions (earlier, pre-styles). REMAINING on demand: Personal Finance, Beginner Coding, World History (avoid burning credits without user request).
+
+### Honest gaps (not yet built)
+- Sound effects + background music generation: NOT implemented (no provider wired). Narration = ORAi voice TTS (audio_note/read-aloud) — real.
+- Per-asset regeneration exists for image (lesson_image endpoint) and video (Regenerate button); activity/worksheet/quiz single-block regeneration NOT built yet.
+- Module-level style overrides: course-level + lesson-video-level exist; per-module UI not built.
+
 ## Private ORAi Access Control (Aug 2, 2026) ✅ COMPLETE — PREVIEW
 **Verified: full backend lifecycle via curl (grant→use→toggle→revoke→instant 403, founder unremovable, export, audit) + screenshots (normal user sees NOTHING, founder fab+panel+shortcuts, mobile 390×844 no overflow, landscape, admin sections).**
 

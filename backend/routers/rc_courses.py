@@ -106,7 +106,28 @@ Rules:
 - Content must be age-appropriate for the grade level, accurate, and engaging.
 - NEVER invent media URLs. audio_note bodies are read aloud by ORAi's voice; video_embed
   blocks render as honest labeled placeholders until video generation is connected.
+WRITING QUALITY — write like an experienced, passionate educator, never like an AI:
+- Conversational and warm ("Let's try this…", "Here's the cool part…"), direct address ("you").
+- NO walls of text: max 3 short paragraphs per text block; use concrete real-world examples,
+  analogies, surprising facts, and mini-challenges that spark curiosity.
+- Vary lesson structure — never open two lessons the same way. Ban generic AI phrasing
+  ("In this lesson we will…", "It is important to note…", "delve", "furthermore").
+- Weave an interactive block every few minutes of content; celebrate progress playfully.
 - This is an informal learning tool — never claim accreditation."""
+
+
+STORYBOARD_SYSTEM = """You are ORAi's creative director building a COURSE STORYBOARD (a style bible)
+so every lesson, image and video in the course feels like one cohesive production.
+Reply with ONLY valid JSON:
+{"visual_style": "1-2 sentence overall art direction",
+ "characters": "recurring characters w/ names, faces, hair, clothing (keep consistent)",
+ "environment": "recurring settings and props",
+ "palette": "the course color palette",
+ "narrator": "narrator persona and tone",
+ "pacing": "pacing and energy notes",
+ "camera_language": "how the camera behaves across the course",
+ "branding": "recurring visual motifs (no real brands/logos)"}
+Keep each field under 40 words. Family-friendly always."""
 
 
 SKELETON_SYSTEM = """You are ORAi Course Studio planning a course SKELETON (structure only — no lesson content).
@@ -131,6 +152,14 @@ async def _auto_illustrate(course: dict, lesson_docs: list, current, cap: int = 
     """Generate up to `cap` AI illustrations for text blocks (failure-tolerant)."""
     from services.orai_images import generate_orai_image
     from services import image_store
+    sb = course.get("storyboard") or {}
+    style_suffix = ""
+    if sb:
+        style_suffix = " Art direction: " + "; ".join(
+            str(sb.get(k) or "") for k in ("visual_style", "characters", "palette") if sb.get(k))[:400]
+    if course.get("style_profile"):
+        from services.animation_styles import profile_to_prompt
+        style_suffix += " " + (await profile_to_prompt(course["style_profile"]))[:400]
     made = 0
     for les in lesson_docs:
         if made >= cap:
@@ -142,7 +171,8 @@ async def _auto_illustrate(course: dict, lesson_docs: list, current, cap: int = 
             continue
         prompt = (f"Educational illustration for the lesson \"{les['title']}\" in the course "
                   f"\"{course['title']}\" (level: {course.get('grade_level') or 'all ages'}). "
-                  f"Context: {blk['body'][:300]}. Clean, engaging, age-appropriate, no text in the image.")
+                  f"Context: {blk['body'][:300]}. Clean, engaging, age-appropriate, no text in the image."
+                  + style_suffix)
         try:
             img_bytes, _model = await generate_orai_image(prompt[:800])
             record = await image_store.save_bytes(img_bytes, current["id"], "image/png")
@@ -396,6 +426,27 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
     if not modules_meta:
         raise HTTPException(status_code=502, detail="ORAi returned an empty course — try again")
 
+    # Step 1.5 — course storyboard (style bible for cross-lesson consistency)
+    style_prof = gen_opts.get("style_profile") if isinstance(gen_opts.get("style_profile"), dict) else None
+    art = ""
+    if style_prof:
+        from services.animation_styles import profile_to_prompt
+        art = await profile_to_prompt(style_prof)
+    await _set_stage(job_id, "designing_storyboard")
+    storyboard = {}
+    try:
+        sres = await call_openai_chat(
+            [{"role": "system", "content": STORYBOARD_SYSTEM},
+             {"role": "user", "content":
+              f"Course: {skeleton.get('title')} — {skeleton.get('description')}\n"
+              f"Level: {skeleton.get('grade_level') or body.get('grade_level') or 'all ages'}\n"
+              f"{user_msg[:1200]}" + (f"\nRequired art direction: {art[:600]}" if art else "")}],
+            temperature=0.8, max_tokens=700, json_mode=True)
+        storyboard = _parse_course_json(sres.get("content") or "")
+    except Exception as e:
+        log.warning("storyboard generation failed (non-fatal): %s", e)
+    sb_text = "; ".join(f"{k}: {v}" for k, v in storyboard.items() if isinstance(v, str))[:900]
+
     # Step 2 — one focused LLM call PER MODULE (reliable, never truncated)
     course_id = uuid.uuid4().hex
     now = _iso()
@@ -410,7 +461,8 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
         mod_prompt = (
             f"Course: \"{str(skeleton.get('title') or '')[:200]}\" — {str(skeleton.get('description') or '')[:400]}\n\n"
             f"{user_msg}\n\n"
-            f"Write ONLY module {mi + 1} of {total_mods}: \"{str(m.get('title') or '')[:150]}\".\n"
+            + (f"COURSE STORYBOARD (every lesson must stay consistent with this): {sb_text}\n\n" if sb_text else "")
+            + f"Write ONLY module {mi + 1} of {total_mods}: \"{str(m.get('title') or '')[:150]}\".\n"
             f"Planned lessons (keep these titles, flesh each out fully with 3-6 varied blocks):\n{plan}\n"
             "The LAST lesson of this module must be lesson_type \"checkpoint\".\n"
             "Reply with JSON: {\"lessons\": [ ...full lesson objects exactly as specified in the schema... ]}")
@@ -454,6 +506,8 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
         "subject": str(skeleton.get("subject") or "")[:120],
         "description": str(skeleton.get("description") or "")[:1000],
         "grade_level": str(skeleton.get("grade_level") or body.get("grade_level") or "")[:60],
+        "storyboard": storyboard or None,
+        "style_profile": style_prof,
         "status": "draft",
         "color": COURSE_COLORS[len(course_id) % len(COURSE_COLORS)],
         "source_prompt": prompt,

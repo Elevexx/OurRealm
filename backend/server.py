@@ -154,6 +154,7 @@ app.include_router(rc_courses_router_mod.router)
 from routers import ai_video as ai_video_router_mod  # noqa: E402
 app.include_router(ai_video_router_mod.admin_router)
 app.include_router(ai_video_router_mod.course_router)
+app.include_router(ai_video_router_mod.styles_router)
 app.include_router(rc_intelligence_router_mod.router)
 app.include_router(rc_automations_router_mod.router)
 app.include_router(admin_orai_router_mod.router)

@@ -3,10 +3,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Sparkles, Loader2, GraduationCap, Image as ImageIcon, Film, Volume2, MousePointerClick } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
+import StyleSelector from "@/components/rc/StyleSelector";
 
 const STAGE_LABELS = {
   starting: "Queued — ORAi is warming up…",
   designing_course: "Designing the course structure…",
+  designing_storyboard: "Creating the course storyboard & style bible…",
   creating_images: "Illustrating lessons with AI images…",
   complete: "Done!",
 };
@@ -22,7 +24,7 @@ const stageLabel = (stage) => {
 const stageIndex = (stage) => {
   if (!stage) return 0;
   if (stage.startsWith("building_lessons")) return 2;
-  return { starting: 0, designing_course: 1, creating_images: 3, complete: 4 }[stage] ?? 0;
+  return { starting: 0, designing_course: 1, designing_storyboard: 1, creating_images: 3, complete: 4 }[stage] ?? 0;
 };
 
 const STYLES = ["", "Classic Guided Lessons", "Hands-On Workshop", "Gamified", "Interactive Story",
@@ -47,6 +49,7 @@ export default function CourseMaker() {
   const [wantVideo, setWantVideo] = useState(false);
   const [wantAudio, setWantAudio] = useState(false);
   const [wantInteractive, setWantInteractive] = useState(true);
+  const [styleProfile, setStyleProfile] = useState({ primary: "auto", camera: "Auto" });
   const [blueprint, setBlueprint] = useState(null);
   const [bpBusy, setBpBusy] = useState(false);
   const [job, setJob] = useState(null);
@@ -66,6 +69,9 @@ export default function CourseMaker() {
     if (goals.trim()) o.goals = goals.trim();
     if (finalProject.trim()) o.final_project = finalProject.trim();
     if (accessibility.trim()) o.accessibility = accessibility.trim();
+    if (styleProfile && (styleProfile.primary !== "auto" || styleProfile.custom_prompt || styleProfile.secondary)) {
+      o.style_profile = styleProfile;
+    }
     return o;
   };
 
@@ -129,7 +135,10 @@ export default function CourseMaker() {
           <ArrowLeft size={13} /> Back to Courses
         </button>
         <h1 className="text-xl sm:text-2xl flex items-center gap-2" style={{ fontFamily: "var(--font-display)" }}>
-          <Sparkles size={22} style={{ color: "#C26BFF" }} /> AI Course Maker
+          <Sparkles size={22} style={{ color: "#C26BFF" }} />
+          <span style={{ background: "linear-gradient(90deg, #2EA0FF, #10E670, #FF8A5A)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+            AI Course Maker
+          </span>
         </h1>
       </div>
 
@@ -180,6 +189,10 @@ export default function CourseMaker() {
               <Icon size={12} /> {label}{val ? " ✓" : ""}
             </button>
           ))}
+        </div>
+
+        <div className="rounded-xl p-2.5 mb-3" style={{ background: "rgba(46,230,255,0.03)", border: "1px solid rgba(46,230,255,0.15)" }}>
+          <StyleSelector value={styleProfile} onChange={setStyleProfile} gradeHint={grade} subjectHint={prompt} />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
