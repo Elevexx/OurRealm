@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Sparkles, X, Send, Loader2, Volume2, Crown, ShieldAlert } from "lucide-react";
+import { Sparkles, X, Send, Loader2, Volume2, Crown, ShieldAlert, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -123,7 +124,7 @@ export default function OraiAssistantPanel() {
         },
       });
       sessionRef.current = data.session_id;
-      setMessages((m) => [...m, { role: "assistant", content: data.reply, actions: data.actions || [] }]);
+      setMessages((m) => [...m, { role: "assistant", content: data.reply, actions: data.actions || [], card: data.card || null }]);
     } catch (e) {
       if (e?.response?.status === 403) { revoke(); return; }
       const d = e?.response?.data?.detail;
@@ -165,7 +166,9 @@ export default function OraiAssistantPanel() {
   // Unauthorized users get absolutely nothing — no button, no placeholder.
   if (!user || !access?.allowed) return null;
 
-  return (
+  // Portaled to <body>: fixed positioning can never be hijacked by a
+  // transformed/filtered ancestor (the desktop top-left clipping bug).
+  return createPortal(
     <>
       <style>{`
         @keyframes oraiPanelIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
@@ -180,8 +183,9 @@ export default function OraiAssistantPanel() {
       </button>
 
       {open && (
-        <div className="orai-panel-anim fixed z-[71] inset-x-0 bottom-0 w-full rounded-t-2xl sm:inset-x-auto sm:bottom-20 sm:right-6 sm:w-[380px] sm:rounded-2xl flex flex-col or-surface overflow-hidden"
-          style={{ height: "min(560px, 72dvh)", maxWidth: "100vw",
+        <div className="orai-panel-anim fixed z-[71] inset-x-0 bottom-0 w-full rounded-t-2xl sm:inset-x-auto sm:right-4 sm:bottom-20 sm:w-[420px] lg:right-6 lg:w-[460px] sm:rounded-2xl flex flex-col or-surface overflow-hidden"
+          style={{ height: "min(560px, 72dvh)", maxWidth: "100vw", maxHeight: "calc(100dvh - 96px)",
+                   ...(window.innerWidth >= 640 ? { height: "min(78vh, 820px)" } : {}),
                    border: "1px solid rgba(46,160,255,0.35)", boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
                    paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
           data-testid="orai-assistant-panel">
@@ -216,6 +220,28 @@ export default function OraiAssistantPanel() {
                     </button>
                   )}
                 </div>
+                {m.card && (
+                  <div className="mt-1.5 mr-6 rounded-xl p-3"
+                    style={{ background: "linear-gradient(135deg, rgba(16,230,112,0.08), rgba(46,160,255,0.08))",
+                             border: "1px solid rgba(16,230,112,0.35)" }}
+                    data-testid={`orai-card-${i}`}>
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-1.5"
+                      style={{ color: "#10E670" }}>
+                      <GraduationCap size={12} /> {m.card.title}
+                    </div>
+                    {(m.card.lines || []).map((ln, j) => (
+                      <div key={j} className="text-[11px] py-0.5" style={{ color: "var(--text-main)" }}>• {ln}</div>
+                    ))}
+                    {m.card.button && (
+                      <button className="or-btn w-full justify-center text-xs font-bold mt-2 py-2"
+                        style={{ background: "#10E670", color: "#0a0a0a" }}
+                        onClick={() => { navigate(m.card.button.to); setOpen(false); }}
+                        data-testid={`orai-card-button-${i}`}>
+                        {m.card.button.label}
+                      </button>
+                    )}
+                  </div>
+                )}
                 {(m.actions || []).length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-1.5" data-testid={`orai-actions-${i}`}>
                     {m.actions.map((a) => (
@@ -245,6 +271,7 @@ export default function OraiAssistantPanel() {
           </div>
         </div>
       )}
-    </>
+    </>,
+    document.body
   );
 }

@@ -1,0 +1,34 @@
+{
+  "summary": "Iter 111 Education Automation + ORAi floating panel testing. Backend 5/5 pytest PASS (list plans as stealth, detail with 5+ done runs & can_approve, 403 for ash on both list & detail, PATCH caps persists). Frontend: edu-plans list & detail render correctly (status=active, stats grid all 4 keys, active actions all visible, 4 students ash/pixelprincess/dragonx/neo with real grades+subjects, upcoming panel, 5 runs). Deep-link ?plan=... opens detail directly. Student editor saves ash subjects (toast 'Student details saved'). ORAi chat SINGLE-call flow works: message returned orai-card-1 titled 'LEARNING PLAN READY' with 4 spec lines and PREVIEW & APPROVE button, click navigated to /edu-plans?plan=... with new pending-approval plan and all 4 approval actions visible, decline transitioned status to 'declined', delete removed plan from list; original active plan untouched. Regression /admin/ai-policies 4 feature cards OK. HOWEVER two CRITICAL P0/P1 bugs found: (P0) ORAi panel layout NOT fixed — computed position:relative (from .or-surface CSS rule) overrides Tailwind .fixed class; panel renders offscreen at all 4 viewports (1920x800 x=-24 y=2239, 1366x768 same, tablet x=-16 y=2269, mobile x=0 y=3221) so panel is functionally hidden. Only functional access is via DOM queries with force. (P1) /course-maker page throws Uncaught ReferenceError: 'locked is not defined' at CourseMaker.jsx line 106 — page fully broken, blank body. The variable is used lines 106 & 232 but never defined/destructured in the component.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "OraiAssistantPanel", "issue": "Panel has computed position:relative (should be fixed) at all viewport sizes. Root cause: .or-surface { position: relative } in /app/frontend/src/index.css line 405 overrides Tailwind .fixed utility due to same specificity + later source order. Result: panel top:-80px left:-24px pushes it offscreen; bounding rect (-24, 2239, 460x624) at 1920x800; invisible to user. The 'portaled to body' comment/refactor did NOT fix the actual bug.", "selector": "[data-testid=\"orai-assistant-panel\"]", "priority": "CRITICAL"},
+      {"component": "CourseMaker", "issue": "Uncaught ReferenceError: locked is not defined at CourseMaker.jsx:106 and :232. Variable used but never declared/destructured. Page renders as blank with red error overlay. Regression from Sprint-2 AI policies work.", "selector": "/responsibility-center/:id/course-maker", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_edu_plans_iter111.py",
+    "/app/test_reports/pytest/iter111_edu_plans.xml"
+  ],
+  "action_items": [
+    "FIX ORAi panel position: add inline style={{position:'fixed'}} or use Tailwind !fixed / !important on OraiAssistantPanel.jsx line 186 to beat .or-surface rule. Alternative: scope .or-surface { position: relative } behind :not(.fixed) or move it inside the mode-specific selectors.",
+    "FIX CourseMaker: declare `locked` (likely via useAiAccess or similar hook that returns {locked}); the previous AI-policy sprint added its usage but forgot the definition. Confirm feature access hook is destructured in the component.",
+    "After both fixes, re-verify panel geometry at 1920x800/1366x768/768x1024/390x844 (bottom-right, x>1300 for desktop, fully within viewport, w in 400-480 for desktop, w=viewport for mobile bottom-sheet)."
+  ],
+  "critical_code_review_comments": [
+    ".or-surface globally sets position:relative — dangerous rule that will keep breaking any Tailwind fixed/absolute usage that also happens to have or-surface. Should be removed and applied only where truly needed, or use utility class order tricks (@layer utilities in Tailwind).",
+    "OraiAssistantPanel's fix comment ('createPortal / fixed positioning can never be hijacked by transformed/filtered ancestor') is misleading — portal to body was done but the class conflict was never actually resolved.",
+    "CourseMaker uses `locked` without defining it — indicates the component was edited without running the app or lint. Recommend running eslint no-undef in CI."
+  ],
+  "updated_files": ["/app/backend/tests/test_edu_plans_iter111.py"],
+  "success_rate": {"backend": "100%", "frontend": "70% (edu-plans + chat flow work; ORAi panel visually broken; course-maker broken)"},
+  "test_credentials": "stealth/Password1$, ash/Student1$ — from /app/memory/test_credentials.md",
+  "seed_data_creation": "One temporary edu plan created via ORAi chat (id d9918482485e4940af9071f86c7f3402), declined + deleted within same run. Active plan eba3173816ef4e5c833af20793807444 left untouched. Caps PATCH set total_lessons=84 (was likely 84 already; safe no-op-ish change).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend edu-plans endpoints are stable and covered by /app/backend/tests/test_edu_plans_iter111.py (5 tests, all pass). The main-agent claim of a P0 desktop panel fix is FALSE — computed position is still `relative` due to .or-surface rule. If main agent fixes with `!fixed` or inline style, re-run only the geometry portion. CourseMaker regression is separate and must also be fixed. The ORAi chat/card/preview/decline/delete flow itself works end-to-end and was verified with the single allowed chat call — don't repeat that message (costs credits).",
+  "rca_of_the_issue": "1) ORAi panel offscreen: CSS specificity conflict — `.or-surface { position: relative }` (index.css:405) and Tailwind's `.fixed { position: fixed }` are both single-class selectors, so source order wins. Since the compiled bundle serves index.css after tailwind utilities, .or-surface wins. All Tailwind bottom/right/inset utilities then act as offsets on a relative element, moving it below the page content flow. 2) CourseMaker `locked` undefined: variable was introduced by AI-access hook consumer in an earlier sprint but the useAiAccess()/destructuring statement is missing at the top of the component (only setters like setBpBusy exist). Runtime crash on component mount."
+}

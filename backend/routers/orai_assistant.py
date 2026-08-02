@@ -163,6 +163,50 @@ async def assistant_chat(body: ChatBody, user: CurrentUser):
     if limits:
         extra.append("THIS USER CANNOT USE (never offer or suggest these):\n- " + "\n- ".join(limits))
 
+    # ── ORAi Education Engine: natural-language learning-plan commands ────
+    edu_card = None
+    low = message.lower()
+    if (access.get("generation_enabled")
+            and any(k in low for k in ("lesson", "curriculum", "learning plan"))
+            and any(k in low for k in ("create", "generate", "plan", "schedule", "make", "build", "set up"))):
+        center_id = ctx.center_id
+        if not center_id:
+            c = await db.responsibility_centers.find_one(
+                {"created_by": user["id"], "center_type": {"$in": ["education", "family"]}},
+                {"_id": 0, "id": 1}, sort=[("created_at", -1)])
+            center_id = (c or {}).get("id")
+        if center_id:
+            try:
+                from services.rc_units import _ctx as rc_ctx2
+                await rc_ctx2(center_id, user, "edit_center")
+                from services import education_plans as ep
+                plan = await ep.draft_plan(center_id, message, user)
+                est = plan["estimates"]
+                lines = [
+                    f"{len(plan['students'])} student(s): " + (", ".join("@" + s["username"] for s in plan["students"]) or "none found"),
+                    f"{est['learning_days']} learning days · ~{est['lessons_total']} lessons ({plan['mode']})",
+                    f"Daily generation at {plan['schedule']['generation_time']} ({plan['schedule']['timezone']})",
+                    f"Estimated usage: ~${est['est_daily_cost']}/day · ~${est['est_total_cost']} total",
+                ]
+                if plan["missing_info"]:
+                    lines.append("⚠ Missing: " + "; ".join(plan["missing_info"][:3]))
+                edu_card = {
+                    "type": "education_plan", "plan_id": plan["id"],
+                    "title": "LEARNING PLAN READY" if not plan["missing_info"] else "LEARNING PLAN NEEDS DETAILS",
+                    "lines": lines,
+                    "button": {"label": "PREVIEW & APPROVE",
+                               "to": f"/responsibility-center/{center_id}/edu-plans?plan={plan['id']}"}}
+                extra.append(
+                    f"YOU (ORAi) JUST DRAFTED LEARNING PLAN \"{plan['title']}\" (id {plan['id']}) from this request. "
+                    f"It is now PENDING APPROVAL — a result card with a PREVIEW & APPROVE button is attached to your reply. "
+                    f"Briefly summarize the plan (students, days, schedule, estimated usage"
+                    + (", and clearly list the missing info they must complete" if plan["missing_info"] else "")
+                    + "). Nothing generates until they approve. Do NOT include action markers for this.")
+                await orai_audit(user, "education_plan_drafted", detail=plan["id"])
+            except Exception as e:  # noqa: BLE001
+                extra.append(f"NOTE: You tried to draft a learning plan but it failed: {str(e)[:200]}. "
+                             "Apologize briefly and suggest they try again or open the Education Automation page.")
+
     allowed = op.allowed_actions(user, ctx.center_id)
     actions_list = "\n".join(f"- {aid} — {a['label']}" for aid, a in allowed.items())
     system = SYSTEM_TMPL.format(
@@ -188,9 +232,9 @@ async def assistant_chat(body: ChatBody, user: CurrentUser):
         {"id": uuid.uuid4().hex, "session_id": session_id, "user_id": user["id"],
          "role": "user", "content": message, "created_at": now},
         {"id": uuid.uuid4().hex, "session_id": session_id, "user_id": user["id"],
-         "role": "assistant", "content": reply, "actions": actions, "created_at": now},
+         "role": "assistant", "content": reply, "actions": actions, "card": edu_card, "created_at": now},
     ])
-    return {"session_id": session_id, "reply": reply, "actions": actions}
+    return {"session_id": session_id, "reply": reply, "actions": actions, "card": edu_card}
 
 
 @router.get("/history")

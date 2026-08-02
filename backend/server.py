@@ -168,6 +168,8 @@ app.include_router(orai_assistant_router_mod.access_admin)
 from routers import access_policy as access_policy_router_mod  # noqa: E402
 app.include_router(access_policy_router_mod.router)
 app.include_router(access_policy_router_mod.public_router)
+from routers import education_plans as education_plans_router_mod  # noqa: E402
+app.include_router(education_plans_router_mod.router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────

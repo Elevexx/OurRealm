@@ -48,6 +48,7 @@ import AdminResponsibilityCenterDetail from "@/pages/AdminResponsibilityCenterDe
 import AdminRcMedia from "@/pages/AdminRcMedia";
 const AdminAiVideo = React.lazy(() => import("@/pages/AdminAiVideo"));
 const AdminAiPolicies = React.lazy(() => import("@/pages/AdminAiPolicies"));
+const EduPlans = React.lazy(() => import("@/pages/EduPlans"));
 import ResponsibilityCenterHub from "@/pages/ResponsibilityCenterHub";
 import ResponsibilityCenterCreate from "@/pages/ResponsibilityCenterCreate";
 import ResponsibilityCenterDashboard from "@/pages/ResponsibilityCenterDashboard";
@@ -249,6 +250,7 @@ function App() {
             <Route path="/responsibility-center/create" element={<ShellRoute><AccessGate feature="center_creation"><ResponsibilityCenterCreate /></AccessGate></ShellRoute>} />
             <Route path="/responsibility-center/:id" element={<ShellRoute><AccessGate feature="responsibility_center"><ResponsibilityCenterDashboard /></AccessGate></ShellRoute>} />
             <Route path="/responsibility-center/:id/education" element={<ShellRoute><AccessGate feature="responsibility_center"><EducationCenterDashboard /></AccessGate></ShellRoute>} />
+            <Route path="/responsibility-center/:id/edu-plans" element={<ShellRoute><AccessGate feature="responsibility_center"><Lazy><EduPlans /></Lazy></AccessGate></ShellRoute>} />
             <Route path="/responsibility-center/:id/courses" element={<ShellRoute><AccessGate feature="course_player"><Lazy><CourseStudio /></Lazy></AccessGate></ShellRoute>} />
             <Route path="/responsibility-center/:id/course-maker" element={<ShellRoute><AccessGate feature="course_player"><Lazy><CourseMaker /></Lazy></AccessGate></ShellRoute>} />
             <Route path="/responsibility-center/:id/courses/:courseId/edit" element={<ShellRoute><AccessGate feature="course_player"><Lazy><CourseEditor /></Lazy></AccessGate></ShellRoute>} />

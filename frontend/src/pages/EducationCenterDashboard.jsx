@@ -112,6 +112,7 @@ export default function EducationCenterDashboard() {
       { label: "Students", Icon: Users, act: () => scrollTo("students") },
       { label: "AI Teaching", Icon: Bot, act: () => { setOraiOpen(true); setNavOpen(false); } },
       { label: "Courses", Icon: GraduationCap, act: () => navigate(`/responsibility-center/${id}/courses`) },
+      canManage && { label: "Education Automation", Icon: CalendarDays, act: () => navigate(`/responsibility-center/${id}/edu-plans`) },
       { label: "Intelligence", Icon: Sparkles, act: () => navigate(`/responsibility-center/${id}/intelligence`) },
       { label: "Learning Schedule", Icon: CalendarDays, act: () => navigate(`/responsibility-center/${id}/routines`) },
       { label: "Lessons & Tasks", Icon: BookOpen, act: () => scrollTo("lessons") },
