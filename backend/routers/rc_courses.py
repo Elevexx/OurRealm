@@ -271,6 +271,9 @@ async def list_courses(center_id: str, current: CurrentUser):
 async def course_detail(center_id: str, course_id: str, current: CurrentUser):
     center, membership, perms = await _ctx(center_id, current, "view_items", write=False)
     manage = _can_manage(perms)
+    if not manage:
+        from routers.rc_routines import check_feature_access
+        await check_feature_access(center_id, current["id"], "courses")
     course = await _course(center_id, course_id)
     if course["status"] != "published" and not manage:
         raise HTTPException(status_code=403, detail="This course isn't published yet")

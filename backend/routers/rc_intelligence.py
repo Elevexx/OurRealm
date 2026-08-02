@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/responsibility-center", tags=["rc-intelligence"]
 MEMORY_CATEGORIES = {"preference", "organization", "roles", "learning_style", "teaching",
                      "ai_settings", "tasks", "calendar", "prompts", "courses", "reports",
                      "goals", "routines", "workflows", "general"}
-DRAFT_KINDS = {"task", "lesson", "course_outline", "report", "event", "announcement", "reminder"}
+DRAFT_KINDS = {"task", "lesson", "course_outline", "report", "event", "announcement", "reminder", "routine"}
 
 
 def _safe_int(v, default, lo, hi):
@@ -350,6 +350,7 @@ course_outline: {{"title": "...", "description": "...", "grade_level": "...", "m
 report: {{"title": "...", "body": "markdown-lite report text"}}
 event: {{"title": "...", "description": "...", "start_in_days": 2, "duration_min": 60}}
 announcement: {{"title": "...", "body": "..."}}
+routine: {{"title": "...", "windows": [{{"name": "...", "kind": "learning|homework|creative|family|social|entertainment|quiet|sleep|custom", "start": "HH:MM", "end": "HH:MM", "days": ["mon","tue","wed","thu","fri","sat","sun"], "features_available": [], "features_unavailable": [], "member_note": "friendly age-appropriate explanation"}}]}} — balanced, gradual, no shame language, OurRealm features only (courses, orai, sounds, realms, messenger, creation, feed, entertainment)
 Fire Power is an engagement resource — never money. Keep it practical and concise."""
 
 
@@ -489,6 +490,27 @@ async def approve_draft(center_id: str, draft_id: str, body: dict, current: Curr
         if lesson_docs:
             await db.rc_course_lessons.insert_many([{**d} for d in lesson_docs])
         created = {"type": "course", "id": course_id}
+    elif kind == "routine":
+        from routers.rc_routines import GOVERNABLE, WINDOW_KINDS, DAYS as RDAYS, _hhmm_ok
+        created_ids = []
+        for w in (c.get("windows") or [])[:8]:
+            if not (_hhmm_ok(w.get("start")) and _hhmm_ok(w.get("end"))):
+                continue
+            doc2 = {"id": uuid.uuid4().hex, "center_id": center_id,
+                    "name": str(w.get("name") or "Suggested window")[:120],
+                    "kind": w.get("kind") if w.get("kind") in WINDOW_KINDS else "custom",
+                    "start": w["start"], "end": w["end"],
+                    "days": [d for d in (w.get("days") or []) if d in RDAYS] or RDAYS,
+                    "member_ids": [], "features_available": [f for f in (w.get("features_available") or []) if f in GOVERNABLE],
+                    "features_unavailable": [f for f in (w.get("features_unavailable") or []) if f in GOVERNABLE],
+                    "require_responsibilities": False, "approval_required": False,
+                    "grace_minutes": 5, "member_note": str(w.get("member_note") or "")[:500],
+                    "status": "active", "version": 1, "timezone": center.get("timezone") or "UTC",
+                    "created_by": current["id"], "created_by_username": current.get("username"),
+                    "created_at": _iso(), "updated_at": _iso(), "updated_by": current["id"]}
+            await db.rc_activity_windows.insert_one({**doc2})
+            created_ids.append(doc2["id"])
+        created = {"type": "routine", "window_ids": created_ids}
     elif kind == "lesson" and body.get("course_id"):
         course = await db.rc_courses.find_one({"id": body["course_id"], "center_id": center_id}, {"_id": 0})
         if not course:
@@ -594,3 +616,8 @@ async def ensure_indexes():
     await db.orai_voice_usage.create_index([("user_id", 1), ("created_at", -1)])
     await db.orai_voice_usage.create_index([("created_at", -1)])
     await db.orai_prompt_library.create_index([("updated_at", -1)])
+    await db.rc_routine_plans.create_index([("center_id", 1), ("member_id", 1)], unique=True)
+    await db.rc_activity_windows.create_index([("center_id", 1), ("status", 1)])
+    await db.rc_access_requests.create_index([("center_id", 1), ("status", 1), ("created_at", -1)])
+    await db.rc_access_requests.create_index([("center_id", 1), ("member_id", 1), ("exception_expires_at", -1)])
+    await db.rc_external_activity_entries.create_index([("center_id", 1), ("member_id", 1), ("created_at", -1)])

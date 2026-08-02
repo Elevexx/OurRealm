@@ -156,6 +156,10 @@ export default function ResponsibilityCenterDashboard() {
             title="ORAi Intelligence dashboard" data-testid="rc-dash-intelligence-btn">
             ⚡ Intelligence
           </button>
+          <button className="or-btn or-btn-ghost text-xs shrink-0" onClick={() => navigate(`/responsibility-center/${id}/routines`)}
+            title="Digital Routines & Access" data-testid="rc-dash-routines-btn">
+            ⏰ Routines
+          </button>
           {center.center_type === "education" && (
             <button className="or-btn text-xs shrink-0" onClick={() => navigate(`/responsibility-center/${id}/education`)}
               data-testid="rc-dash-education-link">

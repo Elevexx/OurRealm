@@ -69,6 +69,7 @@ from routers import rc_courses as rc_courses_router_mod
 from routers import rc_intelligence as rc_intelligence_router_mod
 from routers import rc_automations as rc_automations_router_mod
 from routers import admin_orai as admin_orai_router_mod
+from routers import rc_routines as rc_routines_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -151,6 +152,7 @@ app.include_router(rc_courses_router_mod.router)
 app.include_router(rc_intelligence_router_mod.router)
 app.include_router(rc_automations_router_mod.router)
 app.include_router(admin_orai_router_mod.router)
+app.include_router(rc_routines_router_mod.router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────

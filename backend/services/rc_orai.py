@@ -128,6 +128,8 @@ async def _safety_rules() -> str:
 
 
 async def chat(user: dict, center_id: str, body: dict) -> dict:
+    from routers.rc_routines import check_feature_access
+    await check_feature_access(center_id, user["id"], "orai")
     center, membership, perms = await _ctx(center_id, user, "view_items", write=False)
     message = (body.get("message") or "").strip()
     if not message:

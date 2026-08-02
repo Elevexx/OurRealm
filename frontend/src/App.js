@@ -53,6 +53,7 @@ const CourseEditor = React.lazy(() => import("@/pages/CourseEditor"));
 const CoursePlayer = React.lazy(() => import("@/pages/CoursePlayer"));
 const RcIntelligence = React.lazy(() => import("@/pages/RcIntelligence"));
 const AdminOraiControl = React.lazy(() => import("@/pages/AdminOraiControl"));
+const RcRoutines = React.lazy(() => import("@/pages/RcRoutines"));
 const Lazy = ({ children }) => <React.Suspense fallback={null}>{children}</React.Suspense>;
 import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
@@ -234,6 +235,7 @@ function App() {
             <Route path="/responsibility-center/:id/courses/:courseId/edit" element={<ShellRoute><Lazy><CourseEditor /></Lazy></ShellRoute>} />
             <Route path="/responsibility-center/:id/courses/:courseId/learn" element={<ShellRoute><Lazy><CoursePlayer /></Lazy></ShellRoute>} />
             <Route path="/responsibility-center/:id/intelligence" element={<ShellRoute><Lazy><RcIntelligence /></Lazy></ShellRoute>} />
+            <Route path="/responsibility-center/:id/routines" element={<ShellRoute><Lazy><RcRoutines /></Lazy></ShellRoute>} />
             <Route path="/admin/orai-control" element={<ShellRoute><Lazy><AdminOraiControl /></Lazy></ShellRoute>} />
             <Route path="/profile/support" element={<ShellRoute><Support /></ShellRoute>} />
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
