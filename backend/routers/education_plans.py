@@ -51,6 +51,8 @@ async def plan_detail(center_id: str, plan_id: str, current: CurrentUser):
     plan = await _plan(center_id, plan_id)
     runs = await db.edu_plan_runs.find(
         {"plan_id": plan_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    digests = await db.edu_plan_digests.find(
+        {"plan_id": plan_id}, {"_id": 0}).sort("date", -1).to_list(10)
     upcoming = []
     d = ep._local_today(plan)
     for i in range(21):
@@ -59,7 +61,7 @@ async def plan_detail(center_id: str, plan_id: str, current: CurrentUser):
             upcoming.append(day.isoformat())
         if len(upcoming) >= 7:
             break
-    return {"plan": plan, "runs": runs, "upcoming_dates": upcoming,
+    return {"plan": plan, "runs": runs, "upcoming_dates": upcoming, "digests": digests,
             "can_approve": _can_approve(center, current, perms)}
 
 

@@ -38,6 +38,12 @@ AI_FEATURES = {
     "orai_assistant": {
         "label": "ORAi Assistant", "unit": "chat message",
         "description": "Floating ORAi assistant chat (layered on top of Private ORAi Access)."},
+    "game_creator": {
+        "label": "ORAi Game Creator", "unit": "game build",
+        "description": "Creating games with ORAi in the Game Studio (estimates are free; builds consume)."},
+    "games_play": {
+        "label": "OurRealm Games", "unit": "game session",
+        "description": "Playing published games in the /games hub."},
 }
 
 ROLE_OPTIONS = ["platform_admin", "center_owner", "center_admin", "center_manager"]

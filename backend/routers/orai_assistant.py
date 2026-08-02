@@ -207,6 +207,41 @@ async def assistant_chat(body: ChatBody, user: CurrentUser):
                 extra.append(f"NOTE: You tried to draft a learning plan but it failed: {str(e)[:200]}. "
                              "Apologize briefly and suggest they try again or open the Education Automation page.")
 
+    # ── ORAi Game Creator: "create a game..." (founder-gated by policy) ───
+    if (edu_card is None and access.get("generation_enabled")
+            and "game" in low
+            and any(k in low for k in ("create", "build", "make", "turn", "design"))):
+        try:
+            require_founder(user)
+            from services.access_policy import require_access as _ra
+            await _ra("game_creator", user, consume=False)
+            from services import game_studio as gsvc
+            course_ctx = None
+            if ctx.lesson_id or ctx.course_id:
+                course_ctx = {"course_id": ctx.course_id, "lesson_id": ctx.lesson_id, "center_id": ctx.center_id}
+            est = await gsvc.create_estimate(
+                {"request": message, "complexity": 2, "ai_power": 5, "course_context": course_ctx}, user)
+            plan_g = est["plan"]
+            edu_card = {
+                "type": "game_estimate", "estimate_id": est["id"],
+                "title": "GAME PLAN READY — APPROVAL REQUIRED",
+                "lines": [
+                    f"{plan_g.get('title')} — {plan_g.get('concept', '')[:120]}",
+                    f"Runtime: {plan_g.get('runtime')} · Complexity {est['complexity']} · AI Power {est['ai_power']} ({est['tier']['label']})",
+                    f"Estimated cost: ~${est['estimates']['provider_cost']} · ~{est['estimates']['generation_time_min']} min build",
+                    "Nothing builds until you approve it in Game Studio.",
+                ],
+                "button": {"label": "PREVIEW BUILD", "to": f"/admin/games?estimate={est['id']}"}}
+            extra.append(
+                f"YOU (ORAi) JUST CREATED A GAME BUILD ESTIMATE \"{plan_g.get('title')}\" — it requires approval "
+                "in the Game Studio before anything is built (a PREVIEW BUILD card is attached). Summarize the "
+                "concept and estimated cost briefly. Do NOT include action markers for this.")
+            await orai_audit(user, "game_estimate_from_chat", detail=est["id"])
+        except HTTPException:
+            pass
+        except Exception as e:  # noqa: BLE001
+            extra.append(f"NOTE: Game estimate failed: {str(e)[:150]}. Apologize briefly.")
+
     allowed = op.allowed_actions(user, ctx.center_id)
     actions_list = "\n".join(f"- {aid} — {a['label']}" for aid, a in allowed.items())
     system = SYSTEM_TMPL.format(

@@ -1,0 +1,200 @@
+"""OurRealm Games routes — founder Game Studio + public games hub."""
+import logging
+import uuid
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException
+
+from core.db import db
+from core.deps import CurrentUser
+from core.permissions import require_founder
+from services import game_studio as gs
+
+log = logging.getLogger("ourrealm.games.routes")
+admin = APIRouter(prefix="/api/admin/games", tags=["games-admin"])
+public = APIRouter(prefix="/api/games", tags=["games"])
+
+
+def _iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ─── Founder Game Studio ─────────────────────────────────────────────────
+@admin.get("")
+async def studio_overview(current: CurrentUser):
+    require_founder(current)
+    games = await db.games.find({}, {"_id": 0, "spec": 0, "build_log": 0}).sort("created_at", -1).to_list(100)
+    estimates = await db.game_estimates.find(
+        {"status": "awaiting_approval"}, {"_id": 0}).sort("created_at", -1).to_list(20)
+    return {"games": games, "pending_estimates": estimates,
+            "complexity_levels": gs.COMPLEXITY_LEVELS, "max_complexity": gs.MAX_COMPLEXITY,
+            "runtimes": gs.RUNTIMES}
+
+
+@admin.post("/estimate")
+async def create_estimate(body: dict, current: CurrentUser):
+    require_founder(current)
+    from services.access_policy import require_access
+    await require_access("game_creator", current, consume=False)
+    if int(body.get("complexity") or 1) > gs.MAX_COMPLEXITY:
+        raise HTTPException(status_code=400,
+                            detail=f"Complexity levels {gs.MAX_COMPLEXITY + 1}-10 are coming in a future phase")
+    if not str(body.get("request") or "").strip():
+        raise HTTPException(status_code=400, detail="Describe the game first")
+    est = await gs.create_estimate(body, current)
+    return {"estimate": est}
+
+
+@admin.post("/estimate/{est_id}/build")
+async def approve_and_build(est_id: str, current: CurrentUser):
+    require_founder(current)
+    from services.access_policy import require_access
+    await require_access("game_creator", current, consume=True)
+    est = await db.game_estimates.find_one({"id": est_id}, {"_id": 0})
+    if not est or est["status"] != "awaiting_approval":
+        raise HTTPException(status_code=404, detail="Estimate not found or already used")
+    await gs.audit(current, "game_build_approved", detail=est["plan"].get("title"))
+    game = await gs.start_build(est, current)
+    return {"game": {k: v for k, v in game.items() if k != "spec"}}
+
+
+@admin.post("/estimate/{est_id}/cancel")
+async def cancel_estimate(est_id: str, current: CurrentUser):
+    require_founder(current)
+    await db.game_estimates.update_one({"id": est_id, "status": "awaiting_approval"},
+                                       {"$set": {"status": "cancelled"}})
+    return {"ok": True}
+
+
+@admin.get("/audit")
+async def games_audit(current: CurrentUser):
+    require_founder(current)
+    rows = await db.game_audit.find({}, {"_id": 0}).sort("at", -1).to_list(100)
+    return {"audit": rows}
+
+
+@admin.get("/{game_id}")
+async def game_detail(game_id: str, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    return {"game": g}
+
+
+@admin.post("/{game_id}/action")
+async def game_action(game_id: str, body: dict, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    action = body.get("action")
+    feedback = str(body.get("feedback") or "")[:600]
+    if action == "approve":
+        if g["status"] != "pending_approval":
+            raise HTTPException(status_code=400, detail="Game is not awaiting approval")
+        await db.games.update_one({"id": game_id}, {"$set": {
+            "status": "approved", "review": {"decided_by": current.get("username"), "at": _iso()},
+            "updated_at": _iso()}})
+    elif action == "decline":
+        await db.games.update_one({"id": game_id}, {"$set": {
+            "status": "declined", "review": {"decided_by": current.get("username"), "at": _iso(), "feedback": feedback},
+            "updated_at": _iso()}})
+    elif action == "publish":
+        if g["status"] not in ("approved", "pending_approval"):
+            raise HTTPException(status_code=400, detail="Approve the game before publishing")
+        await db.games.update_one({"id": game_id}, {"$set": {
+            "status": "published", "published_at": _iso(),
+            "review": {"decided_by": current.get("username"), "at": _iso()}, "updated_at": _iso()}})
+    elif action == "unpublish":
+        await db.games.update_one({"id": game_id}, {"$set": {"status": "approved", "updated_at": _iso()}})
+    elif action == "archive":
+        await db.games.update_one({"id": game_id}, {"$set": {"status": "archived", "updated_at": _iso()}})
+    elif action == "regenerate":
+        if g["status"] not in ("failed", "declined", "pending_approval"):
+            raise HTTPException(status_code=400, detail="Nothing to regenerate")
+        from services.access_policy import require_access
+        await require_access("game_creator", current, consume=True)
+        import asyncio
+        await db.games.update_one({"id": game_id}, {"$set": {
+            "status": "building", "stage": "designing", "error": None,
+            "request": g["request"] + (f"\nFounder feedback: {feedback}" if feedback else ""),
+            "updated_at": _iso()}})
+        asyncio.create_task(gs._run_build(game_id))
+    elif action == "delete":
+        if g["status"] == "published":
+            raise HTTPException(status_code=400, detail="Unpublish before deleting")
+        await db.games.delete_one({"id": game_id})
+        await db.game_progress.delete_many({"game_id": game_id})
+    else:
+        raise HTTPException(status_code=400, detail="Unknown action")
+    await gs.audit(current, f"game_{action}", game_id, detail=feedback[:120] or g["title"])
+    return {"game": await db.games.find_one({"id": game_id}, {"_id": 0, "spec": 0, "build_log": 0}), "ok": True}
+
+
+# ─── Public games hub ────────────────────────────────────────────────────
+@public.get("")
+async def games_hub(current: CurrentUser, q: str = "", subject: str = ""):
+    from services.access_policy import check_access
+    pol = await check_access("games_play", current, consume=False)
+    if not pol["allowed"]:
+        raise HTTPException(status_code=403, detail=pol["reason"])
+    query = {"status": "published"}
+    if q:
+        query["title"] = {"$regex": q[:60], "$options": "i"}
+    if subject:
+        query["spec.subject"] = {"$regex": subject[:60], "$options": "i"}
+    rows = await db.games.find(query, {"_id": 0, "id": 1, "title": 1, "runtime": 1, "complexity": 1,
+                                       "plays": 1, "published_at": 1, "spec.description": 1,
+                                       "spec.subject": 1, "spec.grade_level": 1,
+                                       "spec.learning_objective": 1}).sort("published_at", -1).to_list(60)
+    mine = await db.game_progress.find({"user_id": current["id"]}, {"_id": 0}).sort("last_played", -1).to_list(30)
+    return {"games": rows, "my_progress": mine}
+
+
+@public.get("/{game_id}")
+async def play_game(game_id: str, current: CurrentUser):
+    from services.access_policy import check_access
+    pol = await check_access("games_play", current, consume=False)
+    if not pol["allowed"]:
+        raise HTTPException(status_code=403, detail=pol["reason"])
+    g = await db.games.find_one({"id": game_id, "status": "published"},
+                                {"_id": 0, "build_log": 0, "request": 0})
+    if not g:
+        # course mini-games: playable if not published but user can access the course lesson
+        g = await db.games.find_one({"id": game_id, "status": {"$in": ["approved", "published"]},
+                                     "course_context.center_id": {"$exists": True}},
+                                    {"_id": 0, "build_log": 0, "request": 0})
+        if not g:
+            raise HTTPException(status_code=404, detail="Game not found")
+    prog = await db.game_progress.find_one({"game_id": game_id, "user_id": current["id"]}, {"_id": 0})
+    return {"game": g, "progress": prog}
+
+
+@public.post("/{game_id}/progress")
+async def save_progress(game_id: str, body: dict, current: CurrentUser):
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "status": 1})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    score = max(0, int(body.get("score") or 0))
+    completed = bool(body.get("completed"))
+    prev = await db.game_progress.find_one({"game_id": game_id, "user_id": current["id"]}, {"_id": 0})
+    await db.game_progress.update_one(
+        {"game_id": game_id, "user_id": current["id"]},
+        {"$set": {"username": current.get("username"), "last_score": score,
+                  "best_score": max(score, (prev or {}).get("best_score") or 0),
+                  "saved_state": (body.get("state") or None), "last_played": _iso(),
+                  "game_title": str(body.get("title") or "")[:150]},
+         "$inc": {"completions": 1 if completed else 0, "attempts": 1}}, upsert=True)
+    await db.games.update_one({"id": game_id}, {"$inc": {"plays": 1}})
+    return {"ok": True, "best_score": max(score, (prev or {}).get("best_score") or 0)}
+
+
+@public.post("/{game_id}/report")
+async def report_game(game_id: str, body: dict, current: CurrentUser):
+    await db.game_reports.insert_one({
+        "id": uuid.uuid4().hex, "game_id": game_id, "user_id": current["id"],
+        "username": current.get("username"), "reason": str(body.get("reason") or "")[:400],
+        "at": _iso(), "status": "open"})
+    await gs.audit(current, "game_reported", game_id, detail=str(body.get("reason") or "")[:100])
+    return {"ok": True}

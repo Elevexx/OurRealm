@@ -294,6 +294,26 @@ export default function EduPlans() {
               </div>
             </div>
           </div>
+          {(detail.digests || []).length > 0 && (
+            <div className="or-surface p-4" data-testid="edu-plan-digests">
+              <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "#C26BFF" }}>
+                Parent digest — daily summary
+              </div>
+              {detail.digests.slice(0, 3).map((d) => (
+                <div key={d.id} className="rounded-lg p-2.5 mb-2" style={{ background: "rgba(255,255,255,0.03)" }}
+                  data-testid={`edu-digest-${d.date}`}>
+                  <b className="text-[11px]">{d.date}</b>
+                  {d.entries.map((e, i) => (
+                    <div key={i} className="text-[10px] py-0.5" style={{ color: "var(--text-muted)" }}>
+                      <b style={{ color: "var(--text-main)" }}>@{e.username}</b> — {e.subject || "—"}: {e.today || e.status}
+                      {e.prev_quiz && <> · prev quiz <b style={{ color: "#F4A73B" }}>{e.prev_quiz}</b></>}
+                      {e.adapts && <span className="block pl-2">↳ tomorrow adapts: {e.adapts}</span>}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

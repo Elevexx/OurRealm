@@ -16,7 +16,7 @@ import { Link } from "react-router-dom";
 import {
   BarChart3, Zap, Hash, Headphones, HelpCircle, LifeBuoy,
   Crown, ShieldCheck, ShieldAlert, ChevronRight, Loader2, Sparkles, LayoutGrid, Database,
-  Image as ImageIcon, Trophy, Flame, Landmark, Clapperboard,
+  Image as ImageIcon, Trophy, Flame, Landmark, Clapperboard, Gamepad2,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -241,6 +241,18 @@ const CARDS = [
     roles: ["founder"],
     statKey: null,
     footer: "◈ Open AI Access Policies",
+  },
+  {
+    id: "game-studio",
+    to: "/admin/games",
+    title: "Game Studio",
+    description: "Create playable learning games with ORAi — complexity & AI Power sliders, cost estimates, approval workflow, sandboxed builds, publish to /games.",
+    Icon: Gamepad2,
+    accent: "#10E670",
+    badge: "Founder Only",
+    roles: ["founder"],
+    statKey: null,
+    footer: "◈ Open Game Studio",
   },
   {
     id: "responsibility-center",

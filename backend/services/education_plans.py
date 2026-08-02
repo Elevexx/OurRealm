@@ -160,7 +160,8 @@ async def draft_plan(center_id: str, request_text: str, current: dict) -> dict:
         "schedule": {"start_date": start.isoformat(), "end_date": end.isoformat(),
                      "days": days, "skip_dates": [],
                      "generation_time": str(spec.get("generation_time") or "19:00")[:5],
-                     "timezone": tz},
+                     "timezone": tz,
+                     "review_day": spec.get("review_day") if spec.get("review_day") in DAYS else None},
         "media": {"images": True, "narration": True, "activities": True, "quizzes": True,
                   "worksheets": True, "video": False},
         "caps": {"daily_lessons": max(len(students), 1), "weekly_lessons": 0,
@@ -265,6 +266,15 @@ Rules:
 - Warm educator voice, no AI phrasing, no accreditation claims. Write ONLY in English unless the subject is a foreign language."""
 
 
+REVIEW_SYSTEM = """You are ORAi, generating ONE weekly REVIEW lesson that recaps what a student
+learned and practiced this week. Same JSON shape as a normal lesson:
+{"title":"...","subject":"Weekly Review","duration_min":20,"blocks":[...],"quiz":{"questions":[...]},
+ "adaptation_note":"...","parent_note":"..."}
+Rules: recap each covered topic briefly (text block), then mixed practice across ALL of this week's
+subjects (interactive blocks + quiz pulling from every subject). Celebrate wins, gently re-teach
+anything the quiz scores showed as weak. 4-6 blocks, 4-6 quiz questions. English only."""
+
+
 async def _generate_student_lesson(plan: dict, student: dict, day_iso: str) -> dict:
     """One adaptive lesson for one student. Returns the run record."""
     from routers.rc_courses import _clean_blocks, _clean_quiz, _gen_image
@@ -279,28 +289,49 @@ async def _generate_student_lesson(plan: dict, student: dict, day_iso: str) -> d
         subjects = student.get("subjects") or snap["subjects"] or ["General Studies"]
         done_runs = [r for r in await db.edu_plan_runs.find(
             {"plan_id": plan["id"], "student_id": student["user_id"], "status": "done"},
-            {"_id": 0, "subject": 1, "lesson_title": 1, "lesson_id": 1}).sort("created_at", 1).to_list(200)]
-        subject = subjects[len(done_runs) % len(subjects)]
-        prev = next((r for r in reversed(done_runs) if r["subject"] == subject), None)
-        prev_ctx = ""
-        if prev:
-            pl = await db.rc_course_lessons.find_one({"id": prev["lesson_id"]}, {"_id": 0, "title": 1, "blocks": 1})
-            pp = await db.rc_course_progress.find_one(
-                {"lesson_id": prev["lesson_id"], "user_id": student["user_id"]}, {"_id": 0, "status": 1, "score": 1, "total": 1})
-            body = next((b.get("body", "") for b in (pl or {}).get("blocks", []) if b.get("type") == "text"), "")
-            prev_ctx = (f"PREVIOUS LESSON: \"{prev['lesson_title']}\" — {body[:350]}\n"
-                        f"PREVIOUS RESULT: {(pp or {}).get('status') or 'not started yet (treat as missed — include a short catch-up recap)'}"
-                        + (f", quiz {pp['score']}/{pp['total']}" if pp and pp.get("total") else ""))
-        user_msg = (
-            f"Student: @{student['username']} · Grade: {student.get('grade_text') or snap['grade_text'] or 'unknown'}\n"
-            f"Subject today: {subject} (lesson #{len([r for r in done_runs if r['subject'] == subject]) + 1} in this subject)\n"
-            f"Completed lessons: {snap['completed_lessons']} · Average quiz score: {snap['avg_score'] if snap['avg_score'] is not None else 'n/a'}%\n"
-            + (f"Accessibility: {snap['accessibility']}\n" if snap.get("accessibility") else "")
-            + (f"Adjustments from parent/teacher: {student.get('adjustments')}\n" if student.get("adjustments") else "")
-            + (f"Plan notes: {plan.get('notes')}\n" if plan.get("notes") else "")
-            + (prev_ctx or "This is the FIRST lesson in this subject — start at the right level and set the journey up."))
+            {"_id": 0, "subject": 1, "lesson_title": 1, "lesson_id": 1, "date": 1}).sort("created_at", 1).to_list(200)]
+        is_review = (DAYS[date_cls.fromisoformat(day_iso).weekday()]
+                     == (plan["schedule"].get("review_day") or "")) and len(done_runs) >= 2
+        if is_review:
+            subject = "Weekly Review"
+            week_cut = (date_cls.fromisoformat(day_iso) - timedelta(days=6)).isoformat()
+            week_runs = [r for r in done_runs if r["date"] >= week_cut and r["subject"] != "Weekly Review"]
+            recap = []
+            for r in week_runs[-8:]:
+                pp = await db.rc_course_progress.find_one(
+                    {"lesson_id": r["lesson_id"], "user_id": student["user_id"]},
+                    {"_id": 0, "status": 1, "score": 1, "total": 1})
+                recap.append(f"- {r['subject']}: \"{r['lesson_title']}\" — "
+                             + ((f"quiz {pp['score']}/{pp['total']}" if pp.get("total") else pp.get("status", ""))
+                                if pp else "not completed yet"))
+            system_prompt = REVIEW_SYSTEM
+            user_msg = (f"Student: @{student['username']} · Grade: {student.get('grade_text') or snap['grade_text'] or 'unknown'}\n"
+                        + (f"Accessibility: {snap['accessibility']}\n" if snap.get("accessibility") else "")
+                        + "THIS WEEK'S LESSONS AND RESULTS:\n" + ("\n".join(recap) or "- (first week)"))
+        else:
+            non_review = [r for r in done_runs if r["subject"] != "Weekly Review"]
+            subject = subjects[len(non_review) % len(subjects)]
+            prev = next((r for r in reversed(non_review) if r["subject"] == subject), None)
+            prev_ctx = ""
+            if prev:
+                pl = await db.rc_course_lessons.find_one({"id": prev["lesson_id"]}, {"_id": 0, "title": 1, "blocks": 1})
+                pp = await db.rc_course_progress.find_one(
+                    {"lesson_id": prev["lesson_id"], "user_id": student["user_id"]}, {"_id": 0, "status": 1, "score": 1, "total": 1})
+                body = next((b.get("body", "") for b in (pl or {}).get("blocks", []) if b.get("type") == "text"), "")
+                prev_ctx = (f"PREVIOUS LESSON: \"{prev['lesson_title']}\" — {body[:350]}\n"
+                            f"PREVIOUS RESULT: {(pp or {}).get('status') or 'not started yet (treat as missed — include a short catch-up recap)'}"
+                            + (f", quiz {pp['score']}/{pp['total']}" if pp and pp.get("total") else ""))
+            system_prompt = LESSON_SYSTEM
+            user_msg = (
+                f"Student: @{student['username']} · Grade: {student.get('grade_text') or snap['grade_text'] or 'unknown'}\n"
+                f"Subject today: {subject} (lesson #{len([r for r in non_review if r['subject'] == subject]) + 1} in this subject)\n"
+                f"Completed lessons: {snap['completed_lessons']} · Average quiz score: {snap['avg_score'] if snap['avg_score'] is not None else 'n/a'}%\n"
+                + (f"Accessibility: {snap['accessibility']}\n" if snap.get("accessibility") else "")
+                + (f"Adjustments from parent/teacher: {student.get('adjustments')}\n" if student.get("adjustments") else "")
+                + (f"Plan notes: {plan.get('notes')}\n" if plan.get("notes") else "")
+                + (prev_ctx or "This is the FIRST lesson in this subject — start at the right level and set the journey up."))
         res = await call_openai_chat(
-            [{"role": "system", "content": LESSON_SYSTEM}, {"role": "user", "content": user_msg}],
+            [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_msg}],
             temperature=0.7, max_tokens=4500, json_mode=True)
         import json as _json
         data = _json.loads(res.get("content") or "{}")
@@ -401,6 +432,49 @@ async def _generate_day(plan_id: str, day_iso: str, first: bool = False):
     await audit({"id": plan["created_by"], "username": "ORAi"},
                 "daily_lessons_generated" if not first else "first_lessons_generated",
                 plan_id, plan["center_id"], detail=day_iso)
+    await _send_parent_digest(plan, day_iso)
+
+
+async def _send_parent_digest(plan, day_iso):
+    """Daily summary card for the owner: each student's lesson, quiz score,
+    and what tomorrow adapts to."""
+    try:
+        entries = []
+        for s in plan["students"]:
+            run = await db.edu_plan_runs.find_one(
+                {"plan_id": plan["id"], "student_id": s["user_id"], "date": day_iso},
+                {"_id": 0, "lesson_title": 1, "subject": 1, "adaptation": 1, "status": 1, "error": 1, "lesson_id": 1})
+            prev_run = await db.edu_plan_runs.find_one(
+                {"plan_id": plan["id"], "student_id": s["user_id"], "status": "done",
+                 "date": {"$lt": day_iso}}, {"_id": 0, "lesson_id": 1, "lesson_title": 1}, sort=[("date", -1)])
+            quiz = None
+            if prev_run:
+                pp = await db.rc_course_progress.find_one(
+                    {"lesson_id": prev_run["lesson_id"], "user_id": s["user_id"]},
+                    {"_id": 0, "score": 1, "total": 1, "status": 1})
+                if pp:
+                    quiz = f"{pp.get('score')}/{pp.get('total')}" if pp.get("total") else pp.get("status")
+            entries.append({"username": s["username"],
+                            "today": (run or {}).get("lesson_title"),
+                            "subject": (run or {}).get("subject"),
+                            "status": (run or {}).get("status") or "skipped",
+                            "prev_quiz": quiz,
+                            "adapts": (run or {}).get("adaptation"),
+                            "error": (run or {}).get("error")})
+        await db.edu_plan_digests.insert_one({
+            "id": uuid.uuid4().hex, "plan_id": plan["id"], "center_id": plan["center_id"],
+            "date": day_iso, "entries": entries, "created_at": _iso()})
+        from services import responsibility_center as rc
+        ok = sum(1 for e in entries if e["status"] == "done")
+        await rc.notify_user(plan["created_by"], "edu_parent_digest",
+                             f"Parent digest — {day_iso}: {ok}/{len(entries)} lessons ready. "
+                             + "; ".join(f"@{e['username']}: {e['subject'] or '—'}"
+                                         + (f" (prev quiz {e['prev_quiz']})" if e["prev_quiz"] else "")
+                                         for e in entries[:4]),
+                             f"/responsibility-center/{plan['center_id']}/edu-plans?plan={plan['id']}",
+                             center_id=plan["center_id"])
+    except Exception as e:  # noqa: BLE001
+        log.warning("parent digest failed: %s", e)
 
 
 async def _pause_for_cap(plan, cap_name):

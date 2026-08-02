@@ -1,0 +1,33 @@
+{
+  "summary": "Phase 3 Game Creator + edu additions frontend verification. Verified: Game Studio card in /admin → /admin/games (admin-games-page). Complexity slider @5 shows locked note 'Levels 4–10 are coming in a future phase.' + Get Cost Estimate button disabled; @2 the button becomes visually enabled (still disabled while request text is empty, which is expected). AI Power slider 1-10 selectable, tier labels update (e.g. '5 — Strong reasoning', '10 — Maximum depth'). Bake the Fraction Feast opens game-detail with status pill 'published', playable sandboxed iframe (question/options render, click advances to next question with new content), and open-hub / unpublish / archive buttons (NOT clicked). /games hub shows search + 1 card + 'Continue playing' section with 'Bake the Fraction Feast · Best 40'. Play view has game-best-score 'Best: 40', report button, playable iframe. Progress persists: GET /api/games shows Bake plays 4→7 after 3 answer clicks. ORAi chat: single scripted message produced green 'GAME PLAN READY — APPROVAL REQUIRED' card (orai-card-1) with PREVIEW BUILD button; clicking navigated to /admin/games?estimate=ea6a039132e340e29cc76117cffaadc3 showing game-estimate-card with Approve & Build + Cancel; Cancel removed the card (no build). Edu plan digest panel edu-plan-digests shows 2026-08-02 with @neo/@dragonx/@ash entries and 'Weekly Review: Number Sense and Programs' run. ash user is correctly denied on /games with 'OurRealm Games are in founder testing — access opens soon!' banner (games-hub-denied). REGRESSION: /admin/ai-policies lists 6 feature cards (course_maker, ai_video, ai_images, orai_assistant, game_creator, games_play) with 'Invite-only' pills on ORAi Game Creator + OurRealm Games.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/games/{id}/progress", "issue": "Returns 405 Method Not Allowed (only POST/PUT wired). Progress data is exposed via GET /api/games ('plays' field) and admin listing, so functionally OK, but a GET-progress endpoint may be expected by front-end code paths."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminGames (ash access)", "issue": "/admin/games as non-founder still renders the admin-games-page shell (studio input + sliders) — only shows a small 'Founder only' pill; task spec expected redirect or explicit error / no admin-games-page testid. Access gating is effective (games list hidden, Get Cost Estimate would 403) but shell leaks.", "selector": "[data-testid=admin-games-page]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_113.json"],
+  "action_items": [
+    "Non-founder access to /admin/games should either redirect to /admin (or /) or render an access-denied component without the admin-games-page testid, matching /games hub-denied pattern.",
+    "Optional: add GET /api/games/{id}/progress for symmetry (currently 405)."
+  ],
+  "critical_code_review_comments": [
+    "AI Access Policy gating on ORAi Game Creator + OurRealm Games looks correctly wired (invite-only pills, ash denial).",
+    "Sandboxed iframe (allow-scripts) correctly isolates game runtime; questions advance and postMessage-based scoring updates 'plays' counter.",
+    "ORAi assistant deep-link handoff to /admin/games?estimate=<id> is smooth; Cancel properly clears the estimate card."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "95%"},
+  "test_credentials": "stealth/Password1$ (founder), ash/Student1$ (student). Both work.",
+  "seed_data_creation": "One estimate created via ORAi chat (id ea6a039132e340e29cc76117cffaadc3) and immediately cancelled — no build triggered, no builds consumed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Bake game id 4ac780017dc7472eac2e2a59d7475988. Plays count now 7 (was 4). Iframe sandbox needs frame content_frame() + at least 2s settle. ORAi FAB input testid = orai-assistant-input, send = orai-assistant-send, card = orai-card-1 with orai-card-button-1 = PREVIEW BUILD. AdminGames shell renders for non-founder too — treat 'Founder only' pill or absence of games list as denial signal instead of relying on route redirect."
+}
