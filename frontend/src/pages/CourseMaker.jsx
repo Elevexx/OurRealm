@@ -151,9 +151,18 @@ export default function CourseMaker() {
   }, [job?.id, job?.status, id, navigate]);
 
   const busy = bpBusy || !!job;
+  const locked = policy && policy.allowed === false;
 
   return (
     <div className="max-w-3xl mx-auto rcx-scope rcx-page-enter pb-12" data-testid="course-maker-page">
+      {locked && (
+        <div className="rounded-xl p-3 mb-3 text-[11px] flex items-center gap-2"
+          style={{ background: "rgba(255,107,107,0.07)", border: "1px solid rgba(255,107,107,0.3)", color: "#FF8A8A" }}
+          data-testid="course-maker-locked-banner">
+          <Sparkles size={13} style={{ color: "#FF6B6B" }} />
+          {policy.reason || "You don't have access to the AI Course Maker yet."}
+        </div>
+      )}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <button className="or-btn or-btn-ghost text-xs" onClick={() => navigate(`/responsibility-center/${id}/courses`)}
           data-testid="course-maker-back">

@@ -184,8 +184,11 @@ export default function OraiAssistantPanel() {
 
       {open && (
         <div className="orai-panel-anim fixed z-[71] inset-x-0 bottom-0 w-full rounded-t-2xl sm:inset-x-auto sm:right-4 sm:bottom-20 sm:w-[420px] lg:right-6 lg:w-[460px] sm:rounded-2xl flex flex-col or-surface overflow-hidden"
-          style={{ height: "min(560px, 72dvh)", maxWidth: "100vw", maxHeight: "calc(100dvh - 96px)",
-                   ...(window.innerWidth >= 640 ? { height: "min(78vh, 820px)" } : {}),
+          style={{ position: "fixed", height: "min(560px, 72dvh)", maxWidth: "100vw", maxHeight: "calc(100dvh - 96px)",
+                   ...(window.innerWidth >= 640
+                     ? { height: "min(78vh, 820px)", left: "auto", top: "auto",
+                         right: window.innerWidth >= 1024 ? 24 : 16, bottom: 80 }
+                     : { left: 0, right: 0, bottom: 0, top: "auto" }),
                    border: "1px solid rgba(46,160,255,0.35)", boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
                    paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
           data-testid="orai-assistant-panel">

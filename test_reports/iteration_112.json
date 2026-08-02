@@ -1,0 +1,19 @@
+{
+  "summary": "Retest iter_112: verified the TWO fixes from iter_111. (1) CourseMaker /responsibility-center/3ed43c2b553547fbb3e6ca23b405eb91/course-maker now renders fully — [data-testid=course-maker-page] present, form fields (Grade level, Difficulty, Course style, Lesson length, AI images, Interactive activities, Animation Style presets, etc.) render, NO red error overlay, and no 'locked is not defined' pageerror. const locked at line 154 + policy banner (line 158) confirmed in source. (2) OraiAssistantPanel geometry now correct at ALL 4 viewports — computed position is 'fixed' in every case (previous .or-surface relative override no longer wins because inline style position:'fixed' plus explicit right/bottom/left offsets is applied). Bounding boxes: 1920x800 -> x=1436 y=96 w=460 h=624 (x>1300 ✓, w in 400–480 ✓, fully inside, header+input+send visible, scrollWidth=1920 no h-scroll). 1366x768 -> x=882 y=89 w=460 h=599 (right-anchored 882+460=1342 <=1366, inside). 768x1024 -> x=332 y=145 w=420 h=799 (right drawer ~420 wide, inside). 390x844 -> x=0 y=284 w=390 h=560 (full-width bottom sheet, y+h=844 <=844). Header 'ORAi Assistant', [data-testid=orai-assistant-input], [data-testid=orai-assistant-send] visible at all four sizes. Zero ORAi chat messages were sent. Active edu plan untouched. Backend not retested per instructions.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "OraiAssistantPanel now relies on inline style with `window.innerWidth` read at render time; the panel is opened via state so it recomputes on open, but a pure viewport resize while the panel stays open will not re-run the branch. Adding a resize listener (or using CSS media queries only) would make this fully resilient. Current retest closed/reopened the panel after each resize as required.",
+    ".or-surface { position: relative } global rule still exists in index.css and can still bite any future Tailwind .fixed usage that inherits or-surface — recommend refactoring to scope it."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (both P0/P1 fixes verified)"},
+  "test_credentials": "stealth / Password1$ (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter_111 P0 (ORAi panel offscreen due to .or-surface relative override) and P1 (CourseMaker locked ReferenceError) are both fixed and verified at 4 viewports. No further action needed on these two items. Global .or-surface{position:relative} rule remains a latent risk — flag if similar breakage surfaces elsewhere.",
+  "rca_of_the_issue": "Fixes applied by main agent: OraiAssistantPanel.jsx line 187–191 now sets inline style position:'fixed' plus explicit right/bottom (desktop) or left/right/bottom (mobile bottom sheet), which beats the class-level .or-surface{position:relative} because inline styles have higher specificity than any class rule. CourseMaker.jsx line 154 now declares `const locked = policy && policy.allowed === false;` matching the usages at lines 158 and 232+, resolving the ReferenceError."
+}
