@@ -440,6 +440,13 @@ async def _loop():
     await asyncio.sleep(45)
     while True:
         try:
+            # Global Access Control — Emergency Lock stops all scheduled
+            # RC/AI jobs. Skipped jobs are NEVER replayed after restore.
+            from services import access_control as _ac
+            if await _ac.scheduler_blocked("responsibility_center"):
+                log.info("[rc-renewals] skipped — Responsibility Center emergency-locked")
+                await asyncio.sleep(INTERVAL_SECONDS)
+                continue
             w = await run_warning_pass()
             s = await run_renewal_pass()
             d = await run_digest_pass()
@@ -458,7 +465,7 @@ async def _loop():
             sr = await rc_exports.run_scheduled_reports_pass()
             await db.rc_scheduler_heartbeat.update_one(
                 {"id": "main"},
-                {"$set": {"last_run_at": _now_iso(), "event_recurrence": ev,
+                {"$set": {"last_run_at": _now().isoformat(), "event_recurrence": ev,
                           "event_reminders": er, "work_digest": dg,
                           "exports": ex, "birthdays": bd, "scheduled_reports": sr}},
                 upsert=True)

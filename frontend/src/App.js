@@ -2,6 +2,8 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { AccessControlProvider } from "@/contexts/AccessControlContext";
+import AccessGate from "@/components/access/AccessGate";
 import FoundingVipPopup from "@/components/fire/FoundingVipPopup";
 import MessagingPopupProvider from "@/contexts/MessagingPopupContext";
 import { PresenceProvider } from "@/contexts/PresenceContext";
@@ -54,6 +56,7 @@ const CoursePlayer = React.lazy(() => import("@/pages/CoursePlayer"));
 const RcIntelligence = React.lazy(() => import("@/pages/RcIntelligence"));
 const AdminOraiControl = React.lazy(() => import("@/pages/AdminOraiControl"));
 const RcRoutines = React.lazy(() => import("@/pages/RcRoutines"));
+const AdminAccessControl = React.lazy(() => import("@/pages/AdminAccessControl"));
 const Lazy = ({ children }) => <React.Suspense fallback={null}>{children}</React.Suspense>;
 import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
@@ -167,6 +170,7 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <AccessControlProvider>
         <MessagingPopupProvider>
         <PresenceProvider>
           <BrowserRouter>
@@ -219,7 +223,7 @@ function App() {
             <Route path="/profile" element={<ShellRoute><Profile /></ShellRoute>} />
             <Route path="/settings" element={<ShellRoute><Settings /></ShellRoute>} />
             <Route path="/settings/account" element={<ShellRoute><AccountSettings /></ShellRoute>} />
-            <Route path="/responsibility-center" element={<ShellRoute><ResponsibilityCenterHub /></ShellRoute>} />
+            <Route path="/responsibility-center" element={<ShellRoute><AccessGate feature="responsibility_center"><ResponsibilityCenterHub /></AccessGate></ShellRoute>} />
             <Route path="/admin/responsibility-center" element={<ShellRoute><AdminResponsibilityCenter /></ShellRoute>} />
             <Route path="/admin/media/responsibility-center" element={<ShellRoute><AdminRcMedia /></ShellRoute>} />
             <Route path="/admin/responsibility-center/templates" element={<ShellRoute><AdminRcTemplates mode="list" /></ShellRoute>} />
@@ -228,15 +232,16 @@ function App() {
             <Route path="/admin/responsibility-center/templates/:templateId/edit" element={<ShellRoute><AdminRcTemplates mode="edit" /></ShellRoute>} />
             <Route path="/admin/responsibility-center/templates/:templateId/preview" element={<ShellRoute><AdminRcTemplates mode="preview" /></ShellRoute>} />
             <Route path="/admin/responsibility-center/:centerId" element={<ShellRoute><AdminResponsibilityCenterDetail /></ShellRoute>} />
-            <Route path="/responsibility-center/create" element={<ShellRoute><ResponsibilityCenterCreate /></ShellRoute>} />
-            <Route path="/responsibility-center/:id" element={<ShellRoute><ResponsibilityCenterDashboard /></ShellRoute>} />
-            <Route path="/responsibility-center/:id/education" element={<ShellRoute><EducationCenterDashboard /></ShellRoute>} />
-            <Route path="/responsibility-center/:id/courses" element={<ShellRoute><Lazy><CourseStudio /></Lazy></ShellRoute>} />
-            <Route path="/responsibility-center/:id/courses/:courseId/edit" element={<ShellRoute><Lazy><CourseEditor /></Lazy></ShellRoute>} />
-            <Route path="/responsibility-center/:id/courses/:courseId/learn" element={<ShellRoute><Lazy><CoursePlayer /></Lazy></ShellRoute>} />
-            <Route path="/responsibility-center/:id/intelligence" element={<ShellRoute><Lazy><RcIntelligence /></Lazy></ShellRoute>} />
-            <Route path="/responsibility-center/:id/routines" element={<ShellRoute><Lazy><RcRoutines /></Lazy></ShellRoute>} />
+            <Route path="/responsibility-center/create" element={<ShellRoute><AccessGate feature="center_creation"><ResponsibilityCenterCreate /></AccessGate></ShellRoute>} />
+            <Route path="/responsibility-center/:id" element={<ShellRoute><AccessGate feature="responsibility_center"><ResponsibilityCenterDashboard /></AccessGate></ShellRoute>} />
+            <Route path="/responsibility-center/:id/education" element={<ShellRoute><AccessGate feature="responsibility_center"><EducationCenterDashboard /></AccessGate></ShellRoute>} />
+            <Route path="/responsibility-center/:id/courses" element={<ShellRoute><AccessGate feature="course_player"><Lazy><CourseStudio /></Lazy></AccessGate></ShellRoute>} />
+            <Route path="/responsibility-center/:id/courses/:courseId/edit" element={<ShellRoute><AccessGate feature="course_player"><Lazy><CourseEditor /></Lazy></AccessGate></ShellRoute>} />
+            <Route path="/responsibility-center/:id/courses/:courseId/learn" element={<ShellRoute><AccessGate feature="course_player"><Lazy><CoursePlayer /></Lazy></AccessGate></ShellRoute>} />
+            <Route path="/responsibility-center/:id/intelligence" element={<ShellRoute><AccessGate feature="orai"><Lazy><RcIntelligence /></Lazy></AccessGate></ShellRoute>} />
+            <Route path="/responsibility-center/:id/routines" element={<ShellRoute><AccessGate feature="responsibility_center"><Lazy><RcRoutines /></Lazy></AccessGate></ShellRoute>} />
             <Route path="/admin/orai-control" element={<ShellRoute><Lazy><AdminOraiControl /></Lazy></ShellRoute>} />
+            <Route path="/admin/access-control" element={<ShellRoute><Lazy><AdminAccessControl /></Lazy></ShellRoute>} />
             <Route path="/profile/support" element={<ShellRoute><Support /></ShellRoute>} />
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
             <Route path="/admin/faq" element={<ShellRoute><AdminFAQ /></ShellRoute>} />
@@ -285,6 +290,7 @@ function App() {
         </BrowserRouter>
         </PresenceProvider>
         </MessagingPopupProvider>
+        </AccessControlProvider>
       </AuthProvider>
     </ThemeProvider>
   );

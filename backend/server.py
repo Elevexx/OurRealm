@@ -70,6 +70,7 @@ from routers import rc_intelligence as rc_intelligence_router_mod
 from routers import rc_automations as rc_automations_router_mod
 from routers import admin_orai as admin_orai_router_mod
 from routers import rc_routines as rc_routines_router_mod
+from routers import admin_access as admin_access_router_mod
 
 # ─── Logging ─────────────────────────────────────────────
 logging.basicConfig(
@@ -153,6 +154,8 @@ app.include_router(rc_intelligence_router_mod.router)
 app.include_router(rc_automations_router_mod.router)
 app.include_router(admin_orai_router_mod.router)
 app.include_router(rc_routines_router_mod.router)
+app.include_router(admin_access_router_mod.router)
+app.include_router(admin_access_router_mod.public_router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
@@ -205,7 +208,25 @@ PUBLIC_API_PATHS = {
     "/api/auth/forgot-password",
     "/api/auth/reset-password",
     "/api/auth/google/session",
+    "/api/access-control/status",
+    "/api/access-control/preview-demo",
 }
+
+
+# ─── OurRealm Global Access Control (innermost — runs after auth guard
+# and /api/v1 alias rewrite). Centralized SERVER-SIDE enforcement of the
+# founder's feature modes for every current and future RC / ORAi route.
+@app.middleware("http")
+async def global_access_control_guard(request, call_next):
+    if request.method != "OPTIONS":
+        try:
+            from services import access_control as _ac
+            blocked = await _ac.enforce_request(request)
+            if blocked is not None:
+                return blocked
+        except Exception as e:
+            logger.warning(f"[access-control] guard error (fail-open): {e}")
+    return await call_next(request)
 
 
 @app.middleware("http")

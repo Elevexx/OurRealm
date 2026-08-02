@@ -4,6 +4,7 @@ import { Star, Globe, Bell, MessageSquare, ShieldCheck } from "lucide-react";
 import Logo from "@/components/Logo";
 import { RcImg } from "@/lib/rcAssets";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAccessControl } from "@/contexts/AccessControlContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import apiClient from "@/api/client";
 
@@ -34,6 +35,7 @@ export default function TopStarBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { getState } = useAccessControl();
   const { mode } = useTheme();
 
   // ── Notifications badge: ONLY unread count, refreshed on route change.
@@ -108,7 +110,8 @@ export default function TopStarBar() {
           data-testid="star-bar"
           style={{ scrollSnapType: "x mandatory" }}
         >
-          {ITEMS.map(({ to, label, Icon, testid, color, isNotif, matchPrefix, tooltip, rcLogo }) => {
+          {ITEMS.filter(({ to }) => to !== "/responsibility-center" || getState("responsibility_center").visible)
+            .map(({ to, label, Icon, testid, color, isNotif, matchPrefix, tooltip, rcLogo }) => {
             const pathOnly = to.split("?")[0];
             const active = matchPrefix ? location.pathname.startsWith(pathOnly) : location.pathname === pathOnly;
             const badgeText = isNotif && unread > 0 ? (unread > 99 ? "99+" : String(unread)) : null;

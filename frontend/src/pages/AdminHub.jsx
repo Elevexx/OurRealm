@@ -230,6 +230,18 @@ const CARDS = [
     statKey: null,
     footer: "◈ Open Responsibility Center Admin",
   },
+  {
+    id: "access-control",
+    to: "/admin/access-control",
+    title: "Global Access Control",
+    description: "Founder-only visibility & interaction control — access modes, Emergency Lock, scheduled transitions, bypass allowlist, audit history.",
+    Icon: ShieldAlert,
+    accent: "#FF3F5A",
+    badge: "Founder Only",
+    roles: ["founder"],
+    statKey: null,
+    footer: "◈ Open Access Control",
+  },
 ];
 
 export default function AdminHub() {
