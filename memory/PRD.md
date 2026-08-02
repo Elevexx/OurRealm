@@ -1,5 +1,34 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## AI Course Maker + Interactive Lesson Capability (Aug 2, 2026) ✅ COMPLETE — PREVIEW ONLY, awaiting founder review before production deploy
+**Verified: self-test pass — async jobs via curl (2 real courses generated E2E), desktop+mobile screenshots of Course Maker page, player interactive/placeholder blocks confirmed via DOM assertions.**
+
+### Cloudflare-timeout fix — background generation (rc_courses.py)
+- Frontend now NEVER holds a long HTTP request: POST `/{cid}/courses/generate-async` returns `job_id` instantly; UI polls GET `/{cid}/courses/generate-jobs/{job_id}` every 3.5s. Job doc in `rc_course_gen_jobs` (status running/done/failed + stage).
+- Honest stages: starting → designing_course → building_lessons:{i}/{n} (per module) → creating_images → complete/failed.
+- **Chunked generation** (fixes LLM JSON truncation that broke single-shot 8-lesson courses): Step 1 skeleton (approved blueprint if provided, else small SKELETON_SYSTEM call), Step 2 ONE LLM call PER MODULE (GEN_SYSTEM, max_tokens 10000, json_mode). `call_openai_chat` gained `json_mode` kwarg → OpenAI `response_format: json_object`. `_parse_course_json` now salvages truncated JSON via `_balance_json` (bracket/string balancer) as a safety net.
+- `options` dict honored in generation prompt: style, difficulty, lesson_length, media_types, accessibility, goals, final_project (blueprint endpoint already accepted these).
+- `generate_images: true` → `_auto_illustrate()` during the job: up to 4 AI images per course (first text block of lessons) via existing `generate_orai_image` + `image_store.save_bytes`, failure-tolerant.
+- GEN_SYSTEM updated: audio_note (script read aloud by ORAi voice) + video_embed (NEVER invent URLs — omit video_url; renders as labeled placeholder).
+
+### Dedicated Course Maker page
+- NEW `/responsibility-center/:id/course-maker` (`pages/CourseMaker.jsx`, AccessGate feature course_player). Full workspace: prompt, grade, lesson count, difficulty, course style, lesson length, media/activity toggles (AI images, interactive, ORAi voice audio, video placeholders), goals, final project, accessibility → Draft Blueprint (editable title/description/modules) → Approve & Generate → polled progress card with stage label + step bar → auto-opens the draft in the Course Editor.
+- `CourseStudio.jsx` (`/courses`): inline generation card REMOVED; now a CTA card — "Open Course Maker" (`open-course-maker-btn`) + Open-in-new-tab (`open-course-maker-newtab`). Courses page stays focused on viewing/managing; generated courses appear in the normal list (verified).
+
+### Player interactive wiring
+- `CoursePlayer.jsx` now renders interactive blocks through `components/rc/ActivityBlock.jsx` (tap_select, matching, ordering, short_answer, reflection, scenario, checklist, video_embed) — previously they fell through to plain text. NEW `AudioNoteBlock` in CoursePlayer: audio_note blocks get a "Play with ORAi voice" button (oraiVoice.speak). `ActivityBlock` video_embed without URL renders an HONEST labeled "Video placeholder" card (real video generation NOT connected — placeholder by design).
+
+### Capability test results (preview center 3ed43c2b553547fbb3e6ca23b405eb91, drafts by stealth)
+- "Intro to Music Production" id=9c34100d05b5426291af0bf1fe23eb4a — 10th Grade, 4 modules / 20 lessons, 42 quiz Qs, blocks: video_embed×10 (placeholders), audio_note×4, ordering×4, scenario×5, checklist×4, tap_select×3, matching×2, worksheets/homework/project, 4 AI images (incl. DAW visual). Teen tone.
+- "Fractions Through Baking" id=3b9fff0787bd4129a7407db92011ee82 — 3rd Grade, 3 modules / 11 lessons, 15 quiz Qs, blocks: tap_select×5, matching×3, ordering×4, short_answer×3, checklist×3, baking project, 4 AI images. Kid-friendly tone. Clearly different language/structure/difficulty vs music course.
+- Known nit: without a blueprint, the skeleton may plan MORE lessons than the requested count (20 vs 8 requested) — richer, not broken; blueprint flow gives exact user control. Rate limit: 6 generations/hour/user.
+
+### Media capability map (honest)
+- AI images: REAL (gpt-image via orai_images, capped 4/course auto + per-lesson editor button). Audio: REAL via ORAi voice TTS (audio_note play button + lesson read-aloud). Video: PLACEHOLDER ONLY (labeled card; generation not connected). Interactive activities: REAL client-side (feedback, matching, reordering, scenarios).
+
+### DO NOT DEPLOY TO PRODUCTION until founder confirms (user instruction Aug 2, 2026).
+
+
 ## Responsibility Center — Bundle F (Aug 1, 2026) ✅ COMPLETE — awaiting founder review (STOPPED before Bundle G)
 **Verified: 21/21 new pytest (`tests/test_bundle_f_reports.py`) + Bundle E (29) & D (16) re-passed after changes + testing_agent iteration_101 frontend E2E (100% of in-scope flows, zero action items).**
 

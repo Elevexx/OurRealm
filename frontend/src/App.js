@@ -51,6 +51,7 @@ import ResponsibilityCenterCreate from "@/pages/ResponsibilityCenterCreate";
 import ResponsibilityCenterDashboard from "@/pages/ResponsibilityCenterDashboard";
 import EducationCenterDashboard from "@/pages/EducationCenterDashboard";
 const CourseStudio = React.lazy(() => import("@/pages/CourseStudio"));
+const CourseMaker = React.lazy(() => import("@/pages/CourseMaker"));
 const CourseEditor = React.lazy(() => import("@/pages/CourseEditor"));
 const CoursePlayer = React.lazy(() => import("@/pages/CoursePlayer"));
 const RcIntelligence = React.lazy(() => import("@/pages/RcIntelligence"));
@@ -245,6 +246,7 @@ function App() {
             <Route path="/responsibility-center/:id" element={<ShellRoute><AccessGate feature="responsibility_center"><ResponsibilityCenterDashboard /></AccessGate></ShellRoute>} />
             <Route path="/responsibility-center/:id/education" element={<ShellRoute><AccessGate feature="responsibility_center"><EducationCenterDashboard /></AccessGate></ShellRoute>} />
             <Route path="/responsibility-center/:id/courses" element={<ShellRoute><AccessGate feature="course_player"><Lazy><CourseStudio /></Lazy></AccessGate></ShellRoute>} />
+            <Route path="/responsibility-center/:id/course-maker" element={<ShellRoute><AccessGate feature="course_player"><Lazy><CourseMaker /></Lazy></AccessGate></ShellRoute>} />
             <Route path="/responsibility-center/:id/courses/:courseId/edit" element={<ShellRoute><AccessGate feature="course_player"><Lazy><CourseEditor /></Lazy></AccessGate></ShellRoute>} />
             <Route path="/responsibility-center/:id/courses/:courseId/learn" element={<ShellRoute><AccessGate feature="course_player"><Lazy><CoursePlayer /></Lazy></AccessGate></ShellRoute>} />
             <Route path="/responsibility-center/:id/intelligence" element={<ShellRoute><AccessGate feature="orai"><Lazy><RcIntelligence /></Lazy></AccessGate></ShellRoute>} />

@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { OraiVoiceBar } from "@/components/orai/OraiVoiceBar";
 import { oraiVoice } from "@/lib/oraiVoiceEngine";
+import ActivityBlock, { isInteractiveBlock } from "@/components/rc/ActivityBlock";
 
 const BLOCK_META = {
   text: { Icon: BookOpen, color: "#2EA0FF", label: "Lesson" },
@@ -19,6 +20,29 @@ const BLOCK_META = {
   project: { Icon: Hammer, color: "#C26BFF", label: "Project" },
   review: { Icon: RefreshCcw, color: "#FF8A5A", label: "Review" },
 };
+
+function AudioNoteBlock({ b }) {
+  const [playing, setPlaying] = useState(false);
+  const play = async () => {
+    if (playing || oraiVoice.state === "speaking") { oraiVoice.stopSpeaking(); setPlaying(false); return; }
+    setPlaying(true);
+    try { await oraiVoice.speak(`${b.title ? b.title + ". " : ""}${b.body}`); }
+    catch { toast.error("ORAi voice is unavailable right now"); }
+    finally { setPlaying(false); }
+  };
+  return (
+    <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", borderLeft: "3px solid #FF8A5A" }}
+      data-testid="player-block-audio_note">
+      <div className="flex items-center gap-1.5 mb-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#FF8A5A" }}>
+        <Volume2 size={12} /> Audio Example{b.title ? ` — ${b.title}` : ""}
+      </div>
+      <div className="text-[12.5px] leading-relaxed whitespace-pre-wrap mb-2">{b.body}</div>
+      <button className="or-btn text-xs" onClick={play} data-testid="audio-note-play">
+        <Volume2 size={12} /> {playing ? "Stop" : "Play with ORAi voice"}
+      </button>
+    </div>
+  );
+}
 
 function CertificateModal({ centerId, courseId, onClose }) {
   const [cert, setCert] = useState(null);
@@ -341,6 +365,15 @@ export default function CoursePlayer() {
 
               <div className="space-y-4 mb-5">
                 {(lesson.blocks || []).map((b) => {
+                  if (b.type === "audio_note") return <AudioNoteBlock key={b.id} b={b} />;
+                  if (isInteractiveBlock(b)) {
+                    return (
+                      <div key={b.id} data-testid={`player-block-${b.type}`}>
+                        {b.image_url && <img src={b.image_url} alt={b.title || "illustration"} className="rounded-xl mb-2 w-full max-h-72 object-cover" />}
+                        <ActivityBlock b={b} />
+                      </div>
+                    );
+                  }
                   const meta = BLOCK_META[b.type] || BLOCK_META.text;
                   return (
                     <div key={b.id} className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${meta.color}` }}

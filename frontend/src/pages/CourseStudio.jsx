@@ -1,13 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Sparkles, BookOpen, Pencil, Play, Trash2, Loader2, BarChart3, GraduationCap, X, Share2, Library, Download } from "lucide-react";
+import { ArrowLeft, Sparkles, BookOpen, Pencil, Play, Trash2, Loader2, BarChart3, GraduationCap, X, Share2, Library, Download, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import RcCoursesPreview from "@/components/rc/RcCoursesPreview";
-
-const GEN_STEPS = ["Designing course structure…", "Writing lessons & activities…",
-  "Building quizzes & answer keys…", "Adding worksheets, homework & projects…", "Placing checkpoints…"];
 
 function ReportModal({ centerId, course, onClose }) {
   const [data, setData] = useState(null);
@@ -91,10 +88,6 @@ export default function CourseStudio() {
   const navigate = useNavigate();
   const [courses, setCourses] = useState(null);
   const [canManage, setCanManage] = useState(false);
-  const [prompt, setPrompt] = useState("");
-  const [grade, setGrade] = useState("");
-  const [count, setCount] = useState("");
-  const [genStep, setGenStep] = useState(-1);
   const [report, setReport] = useState(null);
   const [sharing, setSharing] = useState(null);
   const [shared, setShared] = useState([]);
@@ -107,41 +100,6 @@ export default function CourseStudio() {
       .then((r) => setShared(r.data.shared || [])).catch(() => {});
   }, [id]);
   useEffect(() => { load(); }, [load]);
-
-  const [blueprint, setBlueprint] = useState(null);
-  const [bpBusy, setBpBusy] = useState(false);
-
-  // Blueprint-first flow: draft an outline for approval BEFORE generating.
-  const draftBlueprint = async () => {
-    if (!prompt.trim() || bpBusy || genStep >= 0) return;
-    setBpBusy(true);
-    try {
-      const r = await apiClient.post(`/responsibility-center/${id}/courses/blueprint`,
-        { prompt: prompt.trim(), grade_level: grade || undefined }, { timeout: 120000 });
-      setBlueprint(r.data.blueprint);
-    } catch (e) {
-      toast.error(e?.response?.data?.detail || "ORAi could not draft a blueprint");
-    } finally { setBpBusy(false); }
-  };
-
-  const generate = async () => {
-    if (!prompt.trim() || genStep >= 0) return;
-    setGenStep(0);
-    const stepTimer = setInterval(() => setGenStep((s) => Math.min(s + 1, GEN_STEPS.length - 1)), 9000);
-    try {
-      const r = await apiClient.post(`/responsibility-center/${id}/courses/generate`,
-        { prompt: prompt.trim(), grade_level: grade || blueprint?.grade_level || undefined,
-          lesson_count: count ? Number(count) : undefined,
-          blueprint: blueprint || undefined },
-        { timeout: 300000 });
-      toast.success("Course drafted! Review and edit before publishing.");
-      setPrompt("");
-      setBlueprint(null);
-      navigate(`/responsibility-center/${id}/courses/${r.data.course.id}/edit`);
-    } catch (e) {
-      toast.error(e?.response?.data?.detail || "ORAi could not build that course");
-    } finally { clearInterval(stepTimer); setGenStep(-1); }
-  };
 
   const remove = async (c) => {
     if (!window.confirm(`Delete "${c.title}" and all its progress?`)) return;
@@ -163,65 +121,27 @@ export default function CourseStudio() {
       <RcCoursesPreview centerId={id} />
 
       {canManage && (
-        <div className="or-surface p-4 mb-5" data-testid="course-generate-card">
-          <div className="text-[11px] font-bold uppercase tracking-[0.16em] mb-2 flex items-center gap-1.5" style={{ color: "#C26BFF" }}>
-            <Sparkles size={13} /> Create a course with ORAi
+        <div className="or-surface p-4 mb-5 flex flex-wrap items-center gap-3" data-testid="course-maker-cta-card">
+          <div className="flex-1 min-w-[200px]">
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] mb-1 flex items-center gap-1.5" style={{ color: "#C26BFF" }}>
+              <Sparkles size={13} /> Create a course with ORAi
+            </div>
+            <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+              Open the AI Course Maker — a full workspace for building interactive courses with lessons,
+              activities, quizzes, AI images and more.
+            </div>
           </div>
-          <textarea className="or-input w-full text-sm mb-2" rows={2} maxLength={2000}
-            placeholder='Describe your course — e.g. "A fun introduction to fractions with lots of baking examples"'
-            value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={genStep >= 0}
-            data-testid="course-gen-prompt" />
-          <div className="flex flex-wrap gap-2 items-center">
-            <input className="or-input text-xs w-36" placeholder="Grade level (optional)" value={grade}
-              onChange={(e) => setGrade(e.target.value)} disabled={genStep >= 0} data-testid="course-gen-grade" />
-            <input className="or-input text-xs w-36" placeholder="Lessons (optional)" type="number" min={3} max={20}
-              value={count} onChange={(e) => setCount(e.target.value)} disabled={genStep >= 0} data-testid="course-gen-count" />
-            <button className="or-btn text-xs" onClick={draftBlueprint} disabled={bpBusy || genStep >= 0 || !prompt.trim()} data-testid="course-gen-btn">
-              {(bpBusy || genStep >= 0) ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-              {genStep >= 0 ? "Generating…" : bpBusy ? "Drafting blueprint…" : "Draft Blueprint"}
+          <div className="flex gap-2">
+            <button className="or-btn text-xs font-bold" onClick={() => navigate(`/responsibility-center/${id}/course-maker`)}
+              data-testid="open-course-maker-btn">
+              <Sparkles size={13} /> Open Course Maker
+            </button>
+            <button className="or-btn or-btn-ghost text-xs" title="Open in new tab"
+              onClick={() => window.open(`/responsibility-center/${id}/course-maker`, "_blank", "noopener")}
+              data-testid="open-course-maker-newtab">
+              <ExternalLink size={13} />
             </button>
           </div>
-          {blueprint && genStep < 0 && (
-            <div className="mt-3 p-3 rounded-xl" style={{ background: "rgba(194,107,255,0.06)", border: "1px solid rgba(194,107,255,0.3)" }} data-testid="course-blueprint-card">
-              <div className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "#C26BFF" }}>Course Blueprint — approve before generating</div>
-              <input className="or-input text-sm font-bold w-full mb-1" value={blueprint.title}
-                onChange={(e) => setBlueprint({ ...blueprint, title: e.target.value })} data-testid="blueprint-title" />
-              <textarea className="or-input text-xs w-full mb-2" rows={2} value={blueprint.description}
-                onChange={(e) => setBlueprint({ ...blueprint, description: e.target.value })} data-testid="blueprint-description" />
-              <div className="flex flex-wrap gap-1.5 mb-2 text-[10px]">
-                {[["Difficulty", blueprint.difficulty], ["Level", blueprint.grade_level || "all"],
-                  ["Style", blueprint.learning_style], ["~Time", blueprint.estimated_minutes ? `${blueprint.estimated_minutes} min` : "—"],
-                  ["Quizzes", blueprint.quiz_count], ["Media", (blueprint.media_types || []).join(", ") || "—"]].map(([k, v]) => (
-                  <span key={k} className="px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-muted)" }}>{k}: <b style={{ color: "var(--text-main)" }}>{v}</b></span>
-                ))}
-              </div>
-              {(blueprint.modules || []).map((m, mi) => (
-                <div key={mi} className="mb-1.5">
-                  <input className="or-input text-xs font-bold w-full mb-0.5" value={m.title}
-                    onChange={(e) => { const mods = [...blueprint.modules]; mods[mi] = { ...m, title: e.target.value }; setBlueprint({ ...blueprint, modules: mods }); }}
-                    data-testid={`blueprint-module-${mi}`} />
-                  <div className="text-[10px] pl-2" style={{ color: "var(--text-muted)" }}>{(m.lessons || []).join(" · ")}</div>
-                </div>
-              ))}
-              {(blueprint.projects || []).length > 0 && (
-                <div className="text-[10px] mb-2" style={{ color: "var(--text-muted)" }}>Projects: {blueprint.projects.join(" · ")}</div>
-              )}
-              <div className="flex flex-wrap gap-2 mt-2">
-                <button className="or-btn text-xs font-bold" style={{ background: "var(--brand-green, #10E670)", color: "#0a0a0a" }}
-                  onClick={generate} data-testid="blueprint-approve">✓ Approve & Generate</button>
-                <button className="or-btn or-btn-ghost text-xs" onClick={draftBlueprint} disabled={bpBusy} data-testid="blueprint-regenerate">
-                  {bpBusy ? <Loader2 size={12} className="animate-spin" /> : "Regenerate"}
-                </button>
-                <button className="or-btn or-btn-ghost text-xs" onClick={() => setBlueprint(null)} data-testid="blueprint-discard">Discard</button>
-              </div>
-            </div>
-          )}
-          {genStep >= 0 && (
-            <div className="mt-3 text-[11px] flex items-center gap-2" style={{ color: "#C26BFF" }} data-testid="course-gen-progress">
-              <Loader2 size={12} className="animate-spin" /> {GEN_STEPS[genStep]}
-              <span style={{ color: "var(--text-muted)" }}>· Everything stays editable before publishing</span>
-            </div>
-          )}
         </div>
       )}
 
@@ -232,7 +152,7 @@ export default function CourseStudio() {
           <BookOpen size={36} className="mx-auto mb-3" style={{ color: "#C26BFF" }} />
           <div className="text-sm font-semibold mb-1">No courses yet</div>
           <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-            {canManage ? "Describe a course above and ORAi will draft the whole thing — lessons, quizzes, worksheets and checkpoints." : "Your Center hasn't published any courses yet."}
+            {canManage ? "Open the Course Maker above and ORAi will draft the whole thing — lessons, interactive activities, quizzes, worksheets and checkpoints." : "Your Center hasn't published any courses yet."}
           </div>
         </div>
       ) : (

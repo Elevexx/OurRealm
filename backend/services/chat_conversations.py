@@ -190,7 +190,8 @@ def _sanitize_msg(m: Dict[str, Any], default_ts: datetime) -> Dict[str, Any]:
 async def call_openai_chat(messages: List[Dict[str, str]], *,
                            model: Optional[str] = None,
                            temperature: Optional[float] = None,
-                           max_tokens: Optional[int] = None) -> Dict[str, Any]:
+                           max_tokens: Optional[int] = None,
+                           json_mode: bool = False) -> Dict[str, Any]:
     """Call OpenAI Chat Completions with the full messages array.
     Returns {content, model, usage, finish_reason}.
 
@@ -226,6 +227,8 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
     }
     if chosen_model == REASONING_MODEL:
         body.pop("temperature", None)  # terra only supports the default temperature
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
     url = "https://api.openai.com/v1/chat/completions"
 
     # ── Attempt 1: direct OpenAI with our own key ─────────────────────

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Check, X, ArrowUp, ArrowDown, Eye } from "lucide-react";
+import { Check, X, ArrowUp, ArrowDown, Eye, Film } from "lucide-react";
 
 // ActivityBlock — REAL interactive lesson blocks (tap_select, matching,
 // ordering, short_answer, reflection, scenario, checklist, video_embed).
@@ -185,10 +185,24 @@ export default function ActivityBlock({ b }) {
   if (b.type === "short_answer" || b.type === "reflection") return <ShortAnswer b={b} />;
   if (b.type === "scenario" && (b.options || []).length >= 2) return <Scenario b={b} />;
   if (b.type === "checklist" && (b.items || []).length) return <Checklist b={b} />;
-  if (b.type === "video_embed" && b.video_url) {
+  if (b.type === "video_embed") {
+    if (b.video_url) {
+      return (
+        <Shell title={b.title || "Video"} body={b.body} testid="block-video">
+          <video controls className="w-full rounded-xl" src={b.video_url} style={{ maxHeight: 300 }} />
+        </Shell>
+      );
+    }
     return (
-      <Shell title={b.title || "Video"} body={b.body} testid="block-video">
-        <video controls className="w-full rounded-xl" src={b.video_url} style={{ maxHeight: 300 }} />
+      <Shell title={b.title || "Video"} body={b.body} testid="block-video-placeholder">
+        <div className="rounded-xl flex flex-col items-center justify-center py-8 px-3 text-center"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px dashed rgba(255,255,255,0.22)" }}>
+          <Film size={22} style={{ opacity: 0.5 }} />
+          <div className="text-[11px] mt-2 font-semibold" style={{ opacity: 0.75 }}>Video placeholder</div>
+          <div className="text-[10px] mt-0.5" style={{ opacity: 0.55 }}>
+            Real video generation isn't connected yet — this space is reserved for the video described above.
+          </div>
+        </div>
       </Shell>
     );
   }

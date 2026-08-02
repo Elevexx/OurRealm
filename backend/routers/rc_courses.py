@@ -70,6 +70,8 @@ JSON shape:
             {"type": "reflection", "title": "...", "body": "reflection prompt for the learner"},
             {"type": "scenario", "title": "...", "body": "the situation", "options": [{"text": "choice", "outcome": "what happens"}]},
             {"type": "checklist", "title": "...", "body": "reference/checklist intro", "items": ["item 1", "item 2"]},
+            {"type": "audio_note", "title": "...", "body": "a short spoken script that ORAi's voice reads aloud as an audio example"},
+            {"type": "video_embed", "title": "...", "body": "describe what the video demonstrates — do NOT invent a URL; leave video_url out (a clearly-labeled placeholder is shown)"},
             {"type": "worksheet", "title": "...", "body": "printable practice problems / exercises"},
             {"type": "homework", "title": "...", "body": "take-home assignment"},
             {"type": "project", "title": "...", "body": "hands-on project brief"},
@@ -102,16 +104,103 @@ Rules:
 - Every "quiz" lesson needs 4-8 questions with exactly 4 options each and correct answer_index + explanation (the answer key).
 - End each module with a "checkpoint" lesson: 1 review block + 3-5 quiz questions. Checkpoints are progress gates.
 - Content must be age-appropriate for the grade level, accurate, and engaging.
+- NEVER invent media URLs. audio_note bodies are read aloud by ORAi's voice; video_embed
+  blocks render as honest labeled placeholders until video generation is connected.
 - This is an informal learning tool — never claim accreditation."""
+
+
+SKELETON_SYSTEM = """You are ORAi Course Studio planning a course SKELETON (structure only — no lesson content).
+Reply with ONLY valid JSON:
+{"title": "...", "subject": "...", "description": "2-3 sentence course description", "grade_level": "...",
+ "modules": [{"title": "...", "lessons": [{"title": "...", "lesson_type": "lesson", "duration_min": 15}]}]}
+Rules:
+- lesson_type is "lesson", "quiz" or "checkpoint". End each module with a checkpoint lesson.
+- 2-4 modules. Respect the requested lesson count exactly if given, otherwise 6-10 lessons total.
+- Titles must fit the topic, requested course style and grade level."""
+
+
+async def _set_stage(job_id, stage: str):
+    if job_id:
+        try:
+            await db.rc_course_gen_jobs.update_one({"id": job_id}, {"$set": {"stage": stage}})
+        except Exception:
+            pass
+
+
+async def _auto_illustrate(course: dict, lesson_docs: list, current, cap: int = 4):
+    """Generate up to `cap` AI illustrations for text blocks (failure-tolerant)."""
+    from services.orai_images import generate_orai_image
+    from services import image_store
+    made = 0
+    for les in lesson_docs:
+        if made >= cap:
+            break
+        if les["lesson_type"] != "lesson":
+            continue
+        blk = next((b for b in les["blocks"] if b["type"] == "text" and not b.get("image_url")), None)
+        if not blk:
+            continue
+        prompt = (f"Educational illustration for the lesson \"{les['title']}\" in the course "
+                  f"\"{course['title']}\" (level: {course.get('grade_level') or 'all ages'}). "
+                  f"Context: {blk['body'][:300]}. Clean, engaging, age-appropriate, no text in the image.")
+        try:
+            img_bytes, _model = await generate_orai_image(prompt[:800])
+            record = await image_store.save_bytes(img_bytes, current["id"], "image/png")
+            await db.rc_course_lessons.update_one(
+                {"id": les["id"], "blocks.id": blk["id"]},
+                {"$set": {"blocks.$.image_url": record.original_url, "updated_at": _iso()}})
+            made += 1
+        except Exception as e:
+            log.warning("auto course illustration failed: %s", e)
+            break
+    return made
+
+
+def _balance_json(txt: str) -> str:
+    """Close any unterminated strings/brackets in a truncated JSON fragment."""
+    stack, in_str, esc = [], False, False
+    for ch in txt:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]" and stack:
+            stack.pop()
+    out = txt + ('"' if in_str else "")
+    out = re.sub(r",\s*$", "", out)
+    return out + "".join(reversed(stack))
 
 
 def _parse_course_json(raw: str) -> dict:
     txt = (raw or "").strip()
     txt = re.sub(r"^```(?:json)?\s*|\s*```$", "", txt)
-    start, end = txt.find("{"), txt.rfind("}")
-    if start == -1 or end == -1:
+    start = txt.find("{")
+    if start == -1:
         raise ValueError("no JSON object found")
-    return json.loads(txt[start:end + 1])
+    end = txt.rfind("}")
+    if end > start:
+        try:
+            return json.loads(txt[start:end + 1])
+        except Exception:
+            pass
+    # Salvage a truncated/malformed payload: balance brackets, then retry
+    frag = txt[start:]
+    try:
+        return json.loads(_balance_json(frag))
+    except Exception:
+        pass
+    cut = frag.rfind("},")
+    if cut != -1:
+        return json.loads(_balance_json(frag[:cut + 1]))
+    raise ValueError("unrecoverable JSON")
 
 
 def _clean_quiz(quiz) -> dict:
@@ -242,6 +331,14 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
                           "amount of text to this level.")
     if body.get("lesson_count"):
         extras.append(f"Requested lesson count: {int(body['lesson_count'])}")
+    gen_opts = body.get("options") or {}
+    for key, label in (("style", "Course style"), ("difficulty", "Difficulty"),
+                       ("lesson_length", "Estimated lesson length"),
+                       ("media_types", "Preferred media"), ("accessibility", "Accessibility needs"),
+                       ("goals", "Learning goals"), ("final_project", "Final project preference")):
+        v = gen_opts.get(key)
+        if v:
+            extras.append(f"{label}: {str(v)[:300]}")
     # Approved Course Blueprint (ORAi blueprint-first flow)
     if isinstance(body.get("blueprint"), dict):
         bp = body["blueprint"]
@@ -271,22 +368,66 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
     if body.get("lesson_count") and int(body["lesson_count"]) > max_lessons:
         user_msg += f"\nHard cap: at most {max_lessons} lessons."
 
-    result = await call_openai_chat(
-        [{"role": "system", "content": GEN_SYSTEM}, {"role": "user", "content": user_msg}],
-        temperature=temperature, max_tokens=8000)
-    try:
-        data = _parse_course_json(result.get("content") or "")
-    except Exception as e:
-        log.warning("course generation JSON parse failed: %s", e)
-        raise HTTPException(status_code=502, detail="ORAi could not build that course — try rephrasing your prompt")
+    job_id = body.get("_job_id")
+    await _set_stage(job_id, "designing_course")
 
+    # Step 1 — skeleton (approved blueprint, or one small structure call)
+    bp = body.get("blueprint") if isinstance(body.get("blueprint"), dict) else None
+    if bp and bp.get("modules"):
+        skeleton = {
+            "title": bp.get("title"), "subject": bp.get("subject"),
+            "description": bp.get("description"),
+            "grade_level": bp.get("grade_level") or body.get("grade_level"),
+            "modules": [{"title": m.get("title"),
+                         "lessons": [(l if isinstance(l, dict) else {"title": str(l)})
+                                     for l in (m.get("lessons") or [])[:15]]}
+                        for m in bp["modules"][:6]],
+        }
+    else:
+        res = await call_openai_chat(
+            [{"role": "system", "content": SKELETON_SYSTEM}, {"role": "user", "content": user_msg}],
+            temperature=temperature, max_tokens=2500, json_mode=True)
+        try:
+            skeleton = _parse_course_json(res.get("content") or "")
+        except Exception as e:
+            log.warning("course skeleton parse failed: %s", e)
+            raise HTTPException(status_code=502, detail="ORAi could not build that course — try rephrasing your prompt")
+    modules_meta = [m for m in (skeleton.get("modules") or [])[:6] if m.get("lessons")]
+    if not modules_meta:
+        raise HTTPException(status_code=502, detail="ORAi returned an empty course — try again")
+
+    # Step 2 — one focused LLM call PER MODULE (reliable, never truncated)
     course_id = uuid.uuid4().hex
     now = _iso()
     modules, lesson_docs, order = [], [], 0
-    for m in (data.get("modules") or [])[:6]:
+    total_mods = len(modules_meta)
+    for mi, m in enumerate(modules_meta):
+        await _set_stage(job_id, f"building_lessons:{mi + 1}/{total_mods}")
+        plan = "\n".join(
+            f"- {str((l.get('title') if isinstance(l, dict) else l))[:120]}"
+            f" [{(l.get('lesson_type') if isinstance(l, dict) else None) or 'lesson'}]"
+            for l in m["lessons"][:15])
+        mod_prompt = (
+            f"Course: \"{str(skeleton.get('title') or '')[:200]}\" — {str(skeleton.get('description') or '')[:400]}\n\n"
+            f"{user_msg}\n\n"
+            f"Write ONLY module {mi + 1} of {total_mods}: \"{str(m.get('title') or '')[:150]}\".\n"
+            f"Planned lessons (keep these titles, flesh each out fully with 3-6 varied blocks):\n{plan}\n"
+            "The LAST lesson of this module must be lesson_type \"checkpoint\".\n"
+            "Reply with JSON: {\"lessons\": [ ...full lesson objects exactly as specified in the schema... ]}")
+        res = await call_openai_chat(
+            [{"role": "system", "content": GEN_SYSTEM}, {"role": "user", "content": mod_prompt}],
+            temperature=temperature, max_tokens=10000, json_mode=True)
+        try:
+            mdata = _parse_course_json(res.get("content") or "")
+        except Exception as e:
+            log.warning("module %s generation parse failed: %s", mi + 1, e)
+            continue
+        raw_lessons = mdata.get("lessons") or []
+        if not raw_lessons and mdata.get("modules"):
+            raw_lessons = (mdata["modules"][0] or {}).get("lessons") or []
         mod_id = uuid.uuid4().hex[:8]
         mod_lessons = []
-        for les in (m.get("lessons") or [])[:15]:
+        for les in raw_lessons[:15]:
             ltype = les.get("lesson_type") if les.get("lesson_type") in LESSON_TYPES else "lesson"
             lid = uuid.uuid4().hex
             lesson_docs.append({
@@ -301,17 +442,18 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
             })
             mod_lessons.append(lid)
             order += 1
-        modules.append({"id": mod_id, "title": str(m.get("title") or "Module")[:200],
-                        "lesson_ids": mod_lessons})
+        if mod_lessons:
+            modules.append({"id": mod_id, "title": str(m.get("title") or "Module")[:200],
+                            "lesson_ids": mod_lessons})
     if not lesson_docs:
         raise HTTPException(status_code=502, detail="ORAi returned an empty course — try again")
 
     course = {
         "id": course_id, "center_id": center_id,
-        "title": str(data.get("title") or prompt[:60])[:200],
-        "subject": str(data.get("subject") or "")[:120],
-        "description": str(data.get("description") or "")[:1000],
-        "grade_level": str(data.get("grade_level") or body.get("grade_level") or "")[:60],
+        "title": str(skeleton.get("title") or prompt[:60])[:200],
+        "subject": str(skeleton.get("subject") or "")[:120],
+        "description": str(skeleton.get("description") or "")[:1000],
+        "grade_level": str(skeleton.get("grade_level") or body.get("grade_level") or "")[:60],
         "status": "draft",
         "color": COURSE_COLORS[len(course_id) % len(COURSE_COLORS)],
         "source_prompt": prompt,
@@ -321,6 +463,9 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
     }
     await db.rc_courses.insert_one({**course})
     await db.rc_course_lessons.insert_many([{**d} for d in lesson_docs])
+    if body.get("generate_images"):
+        await _set_stage(job_id, "creating_images")
+        await _auto_illustrate(course, lesson_docs, current)
     await rc.log_activity(center_id, current, "course_generated",
                           f"@{current.get('username')} generated the course \"{course['title']}\" with ORAi")
     return {"course": course}
@@ -1094,7 +1239,7 @@ async def course_blueprint(center_id: str, body: dict, current: CurrentUser):
         user_msg += f"\n\nTarget grade level: {grade_text}. {style}"
     result = await call_openai_chat(
         [{"role": "system", "content": BLUEPRINT_SYSTEM}, {"role": "user", "content": user_msg}],
-        temperature=0.7, max_tokens=1800)
+        temperature=0.7, max_tokens=1800, json_mode=True)
     try:
         bp = _parse_course_json(result.get("content") or "")
     except Exception:
@@ -1130,12 +1275,12 @@ async def generate_course_async(center_id: str, body: dict, current: CurrentUser
     job_id = uuid.uuid4().hex
     await db.rc_course_gen_jobs.insert_one({
         "id": job_id, "center_id": center_id, "user_id": current["id"],
-        "status": "running", "stage": "generating_lessons",
+        "status": "running", "stage": "starting",
         "course_id": None, "error": None, "created_at": _iso()})
 
     async def _run():
         try:
-            r = await generate_course(center_id, body, current)
+            r = await generate_course(center_id, {**body, "_job_id": job_id}, current)
             await db.rc_course_gen_jobs.update_one({"id": job_id}, {"$set": {
                 "status": "done", "stage": "complete",
                 "course_id": r["course"]["id"], "finished_at": _iso()}})
