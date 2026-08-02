@@ -27,7 +27,10 @@ from utils.sliding_window_rate_limit import rate_limit
 log = logging.getLogger("ourrealm.rc.courses")
 router = APIRouter(prefix="/api/responsibility-center", tags=["rc-courses"])
 
-BLOCK_TYPES = {"text", "activity", "worksheet", "homework", "project", "review"}
+BLOCK_TYPES = {"text", "activity", "worksheet", "homework", "project", "review",
+               # Interactive block types (rendered as real interactions):
+               "tap_select", "matching", "ordering", "short_answer",
+               "reflection", "scenario", "audio_note", "video_embed", "checklist"}
 LESSON_TYPES = {"lesson", "quiz", "checkpoint"}
 COURSE_COLORS = ["#2EA0FF", "#10E670", "#C26BFF", "#F4A73B", "#4DD6C1", "#FF8A5A"]
 
@@ -60,6 +63,13 @@ JSON shape:
           "blocks": [
             {"type": "text", "title": "section heading", "body": "teaching content, 2-4 paragraphs"},
             {"type": "activity", "title": "...", "body": "step-by-step interactive activity"},
+            {"type": "tap_select", "title": "...", "body": "the question to answer", "options": ["A","B","C"], "answer_index": 0, "explanation": "why"},
+            {"type": "matching", "title": "...", "body": "match these", "pairs": [{"left": "term", "right": "definition"}]},
+            {"type": "ordering", "title": "...", "body": "put the steps in order", "items": ["first step", "second step", "third step"]},
+            {"type": "short_answer", "title": "...", "body": "the written-response prompt", "sample_answer": "an example good answer"},
+            {"type": "reflection", "title": "...", "body": "reflection prompt for the learner"},
+            {"type": "scenario", "title": "...", "body": "the situation", "options": [{"text": "choice", "outcome": "what happens"}]},
+            {"type": "checklist", "title": "...", "body": "reference/checklist intro", "items": ["item 1", "item 2"]},
             {"type": "worksheet", "title": "...", "body": "printable practice problems / exercises"},
             {"type": "homework", "title": "...", "body": "take-home assignment"},
             {"type": "project", "title": "...", "body": "hands-on project brief"},
@@ -79,6 +89,14 @@ JSON shape:
 
 Rules:
 - 2-4 modules. Respect the requested lesson count if given, otherwise 6-10 lessons total.
+- VARY lesson structures — do NOT repeat one text+quiz template. Mix written lessons,
+  image-led lessons, tap_select checks, matching, ordering, short_answer, reflection,
+  scenario decisions, step-by-step workshops (activity), mini projects, and a checklist
+  reference where useful. Choose combinations that genuinely fit the topic, the course
+  style and the learner level. Only use interactive types when interaction makes sense.
+- If a course style is given (e.g. Hands-On Workshop, Gamified, Interactive Story,
+  Creator Academy, Business Masterclass, Fast Crash Course), let it shape pacing,
+  activity mix and tone.
 - Every "lesson" needs 3-6 blocks mixing types (always at least one text block; include worksheets,
   homework, activities, projects and review material across the course).
 - Every "quiz" lesson needs 4-8 questions with exactly 4 options each and correct answer_index + explanation (the answer key).
@@ -111,14 +129,45 @@ def _clean_quiz(quiz) -> dict:
 
 def _clean_blocks(blocks) -> list:
     out = []
-    for b in (blocks or [])[:10]:
+    for b in (blocks or [])[:12]:
         btype = b.get("type") if b.get("type") in BLOCK_TYPES else "text"
-        body = str(b.get("body") or "").strip()
-        if not body:
+        body = str(b.get("body") or b.get("prompt") or "").strip()
+        doc = {"id": uuid.uuid4().hex[:8], "type": btype,
+               "title": str(b.get("title") or "")[:200], "body": body[:8000],
+               "image_url": b.get("image_url") or None}
+        # Interactive payloads (validated shapes; kept only when present)
+        if btype in ("tap_select",):
+            opts = [str(o)[:200] for o in (b.get("options") or [])[:6]]
+            if len(opts) >= 2:
+                doc["options"] = opts
+                doc["answer_index"] = min(max(int(b.get("answer_index") or 0), 0), len(opts) - 1)
+                doc["explanation"] = str(b.get("explanation") or "")[:500]
+        if btype == "matching":
+            pairs = [{"left": str(p.get("left"))[:150], "right": str(p.get("right"))[:150]}
+                     for p in (b.get("pairs") or [])[:8] if p.get("left") and p.get("right")]
+            if len(pairs) >= 2:
+                doc["pairs"] = pairs
+        if btype == "ordering":
+            items = [str(i)[:200] for i in (b.get("items") or [])[:8]]
+            if len(items) >= 3:
+                doc["items"] = items
+        if btype == "short_answer":
+            doc["sample_answer"] = str(b.get("sample_answer") or "")[:1000]
+        if btype == "scenario":
+            opts = [{"text": str(o.get("text"))[:250], "outcome": str(o.get("outcome"))[:600]}
+                    for o in (b.get("options") or [])[:5] if isinstance(o, dict) and o.get("text")]
+            if len(opts) >= 2:
+                doc["options"] = opts
+        if btype == "video_embed":
+            url = str(b.get("video_url") or "")[:500]
+            doc["video_url"] = url if url.startswith("http") else None
+        if btype == "checklist":
+            items = [str(i)[:250] for i in (b.get("items") or [])[:12]]
+            if items:
+                doc["items"] = items
+        if not body and btype in ("text", "activity", "worksheet", "homework", "project", "review"):
             continue
-        out.append({"id": uuid.uuid4().hex[:8], "type": btype,
-                    "title": str(b.get("title") or "")[:200], "body": body[:8000],
-                    "image_url": b.get("image_url") or None})
+        out.append(doc)
     return out
 
 
@@ -201,8 +250,13 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
                     f"Description: {str(bp.get('description') or '')[:500]}",
                     f"Difficulty: {bp.get('difficulty')} · Learning style: {bp.get('learning_style')}"]
         for m in (bp.get("modules") or [])[:12]:
-            bp_lines.append(f"Module: {str(m.get('title'))[:150]} — lessons: "
-                            + "; ".join(str(t)[:100] for t in (m.get("lessons") or [])[:15]))
+            les_txt = []
+            for t in (m.get("lessons") or [])[:15]:
+                if isinstance(t, dict):
+                    les_txt.append(f"{str(t.get('title'))[:100]} [{t.get('lesson_type', 'written')}, media: {t.get('media', 'none')}]")
+                else:
+                    les_txt.append(str(t)[:100])
+            bp_lines.append(f"Module: {str(m.get('title'))[:150]} — lessons: " + "; ".join(les_txt))
         extras.append("\n".join(bp_lines))
     user_msg = prompt + ("\n\n" + "\n".join(extras) if extras else "")
 
@@ -997,9 +1051,14 @@ Reply with ONLY valid JSON, no markdown fences:
   "media_types": ["images","activities","quizzes"],
   "quiz_count": 4,
   "projects": ["optional project titles"],
-  "modules": [{"title": "...", "lessons": ["lesson title", "..."]}]
+  "modules": [{"title": "...", "lessons": [
+      {"title": "lesson title", "lesson_type": "written|image|workshop|tap_select|matching|ordering|scenario|reflection|project|quiz|checkpoint",
+       "media": "images|diagram|audio example|video placeholder|none"}]}]
 }
-Keep 2-5 modules, 3-6 lessons each. Match difficulty, tone and visuals to the grade level."""
+Keep 2-5 modules, 3-6 lessons each. VARY lesson types — never one repeated template.
+Match difficulty, tone, media and visuals to the grade level and course style.
+Be honest about media: only plan media the platform can deliver (AI images, activities,
+quizzes, checklists, embedded video placeholders). Do not promise generated video."""
 
 
 @router.post("/{center_id}/courses/blueprint")
@@ -1019,6 +1078,17 @@ async def course_blueprint(center_id: str, body: dict, current: CurrentUser):
             {"center_id": center_id, "user_id": member_id}, {"_id": 0})
         grade_text = (edu or {}).get("grade_text") or ""
     user_msg = prompt[:2000]
+    opts = body.get("options") or {}
+    opt_lines = []
+    for key, label in (("style", "Course style"), ("difficulty", "Difficulty"),
+                       ("lesson_count", "Lesson count"), ("lesson_length", "Estimated lesson length"),
+                       ("media_types", "Preferred media"), ("accessibility", "Accessibility needs"),
+                       ("goals", "Learning goals"), ("final_project", "Final project preference")):
+        v = opts.get(key)
+        if v:
+            opt_lines.append(f"{label}: {str(v)[:300]}")
+    if opt_lines:
+        user_msg += "\n\n" + "\n".join(opt_lines)
     if grade_text:
         style = VISUAL_STYLE.get(normalize_grade(grade_text), "")
         user_msg += f"\n\nTarget grade level: {grade_text}. {style}"
@@ -1040,6 +1110,54 @@ async def course_blueprint(center_id: str, body: dict, current: CurrentUser):
           "quiz_count": int(bp.get("quiz_count") or 0),
           "projects": [str(p)[:150] for p in (bp.get("projects") or [])[:6]],
           "modules": [{"title": str(m.get("title") or "")[:150],
-                       "lessons": [str(t)[:150] for t in (m.get("lessons") or [])[:10]]}
+                       "lessons": [
+                           ({"title": str(t.get("title") or "")[:150],
+                             "lesson_type": str(t.get("lesson_type") or "written")[:20],
+                             "media": str(t.get("media") or "none")[:60]}
+                            if isinstance(t, dict) else
+                            {"title": str(t)[:150], "lesson_type": "written", "media": "none"})
+                           for t in (m.get("lessons") or [])[:10]]}
                       for m in (bp.get("modules") or [])[:8]]}
     return {"blueprint": bp}
+
+
+# ── Background generation jobs (prevents proxy/Cloudflare timeouts on the
+# single long HTTP request; honest polled progress states) ───────────────
+@router.post("/{center_id}/courses/generate-async")
+async def generate_course_async(center_id: str, body: dict, current: CurrentUser):
+    await _ctx(center_id, current, "edit_center")
+    import asyncio
+    job_id = uuid.uuid4().hex
+    await db.rc_course_gen_jobs.insert_one({
+        "id": job_id, "center_id": center_id, "user_id": current["id"],
+        "status": "running", "stage": "generating_lessons",
+        "course_id": None, "error": None, "created_at": _iso()})
+
+    async def _run():
+        try:
+            r = await generate_course(center_id, body, current)
+            await db.rc_course_gen_jobs.update_one({"id": job_id}, {"$set": {
+                "status": "done", "stage": "complete",
+                "course_id": r["course"]["id"], "finished_at": _iso()}})
+        except HTTPException as e:
+            await db.rc_course_gen_jobs.update_one({"id": job_id}, {"$set": {
+                "status": "failed", "stage": "failed",
+                "error": str(e.detail)[:300], "finished_at": _iso()}})
+        except Exception as e:
+            log.warning("async course generation failed: %s", e)
+            await db.rc_course_gen_jobs.update_one({"id": job_id}, {"$set": {
+                "status": "failed", "stage": "failed",
+                "error": "ORAi could not finish that course — please retry.",
+                "finished_at": _iso()}})
+    asyncio.create_task(_run())
+    return {"job_id": job_id}
+
+
+@router.get("/{center_id}/courses/generate-jobs/{job_id}")
+async def generate_job_status(center_id: str, job_id: str, current: CurrentUser):
+    await _ctx(center_id, current, "view_items", write=False)
+    job = await db.rc_course_gen_jobs.find_one(
+        {"id": job_id, "center_id": center_id, "user_id": current["id"]}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
