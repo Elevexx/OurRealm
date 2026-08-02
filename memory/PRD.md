@@ -28,6 +28,12 @@
 
 ### DO NOT DEPLOY TO PRODUCTION until founder confirms (user instruction Aug 2, 2026).
 
+### OpenAI Video Access Verification (Aug 2, 2026) — INSPECTION ONLY, nothing built
+- Existing backend `OPENAI_API_KEY` (backend/.env, project-scoped key) CAN access **sora-2 AND sora-2-pro** via the Videos API (`/v1/videos`). Proven with FREE 400-validation probes (invalid `seconds` param → model accepted, param rejected, no job created, $0 spent). Note: sora models never appear in `/v1/models` (expected), so model-list checks 404 — use Videos API probes.
+- Videos API: async jobs (POST /v1/videos → id+status), polling (GET /v1/videos/{id}), download (GET /{id}/content), DELETE. Durations 4/8/12s; sora-2 sizes 720x1280/1280x720; pro adds 1024x1792/1792x1024. Pricing: sora-2 $0.10/s; pro $0.30/s @720p ($0.50 @1024p, $0.70 @1080p). Smallest test = sora-2 4s 720p = **$0.40** (needs founder approval before running).
+- Installed `openai` SDK 1.99.9 does NOT include `client.videos` (added later) — but backend already calls OpenAI via raw httpx (chat_conversations.py pattern), so no SDK upgrade required.
+- Sora API reportedly sunsets Sep 24, 2026 (third-party reports) → any future integration MUST be provider-agnostic: a `video_providers` service with a common interface (create_job/poll/fetch_file) + providers: openai_sora, manual_upload, external_url, future providers; permanent storage in existing R2 pipeline (OpenAI-hosted files expire). Course blocks keep `video_url` + add `video_source` metadata. NOT implemented yet per founder instruction.
+
 
 ## Responsibility Center — Bundle F (Aug 1, 2026) ✅ COMPLETE — awaiting founder review (STOPPED before Bundle G)
 **Verified: 21/21 new pytest (`tests/test_bundle_f_reports.py`) + Bundle E (29) & D (16) re-passed after changes + testing_agent iteration_101 frontend E2E (100% of in-scope flows, zero action items).**
