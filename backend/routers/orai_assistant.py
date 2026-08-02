@@ -14,14 +14,16 @@ from pydantic import BaseModel
 
 from core.db import db
 from core.deps import CurrentUser
-from core.permissions import get_admin_role
+from core.permissions import get_admin_role, require_founder
 from services.chat_conversations import call_openai_chat
 from services import orai_platform as op
+from services.orai_access import get_orai_access, require_orai_access, orai_audit
 from utils.sliding_window_rate_limit import rate_limit
 
 log = logging.getLogger("ourrealm.orai.assistant")
 
 router = APIRouter(prefix="/api/orai/assistant", tags=["orai-assistant"])
+access_admin = APIRouter(prefix="/api/admin/orai", tags=["orai-access-admin"])
 
 
 def _iso():
@@ -70,8 +72,50 @@ AVAILABLE ACTIONS (id — label):
 """
 
 
+@router.get("/access")
+async def assistant_access(user: CurrentUser):
+    """UI gate for the floating button. Unauthorized users learn nothing."""
+    access = await get_orai_access(user)
+    if not access:
+        return {"allowed": False}
+    caps = await _capability_limits(user, access)
+    return {"allowed": True, "is_founder": bool(access.get("founder")),
+            "chat_enabled": bool(access.get("chat_enabled")),
+            "voice_enabled": bool(access.get("voice_enabled")),
+            "generation_enabled": bool(access.get("generation_enabled")),
+            "limits": caps}
+
+
+async def _capability_limits(user, access) -> list:
+    """Human-readable list of things ORAi must NOT offer this user."""
+    limits = []
+    if not access.get("generation_enabled"):
+        limits.append("AI generation features (courses, images, videos) are disabled for this user")
+    else:
+        try:
+            from services.video_generation import get_video_settings
+            vs = await get_video_settings()
+            if not vs["enabled"] or vs["emergency_disabled"]:
+                limits.append("AI video generation is currently turned off platform-wide")
+        except Exception:  # noqa: BLE001
+            pass
+    if not access.get("voice_enabled"):
+        limits.append("Voice Mode is disabled for this user")
+    if not access.get("founder"):
+        limits.append("No founder/admin tools — never offer admin pages, budgets or platform controls")
+    return limits
+
+
+@router.post("/log-shortcut")
+async def log_shortcut(body: dict, user: CurrentUser):
+    require_founder(user)
+    await orai_audit(user, "founder_shortcut_used", detail=str(body.get("id") or "")[:80])
+    return {"ok": True}
+
+
 @router.post("/chat")
 async def assistant_chat(body: ChatBody, user: CurrentUser):
+    access = await require_orai_access(user, "chat")
     rl = await rate_limit(f"orai-assist:{user['id']}", max_requests=60, window_seconds=3600)
     if not rl["allowed"]:
         raise HTTPException(status_code=429, detail="ORAi is taking a short break — try again in a minute")
@@ -113,6 +157,9 @@ async def assistant_chat(body: ChatBody, user: CurrentUser):
             pass
     if ctx.selected_member_ids:
         extra.append(f"SELECTED MEMBERS: {len(ctx.selected_member_ids)} member(s) selected")
+    limits = await _capability_limits(user, access)
+    if limits:
+        extra.append("THIS USER CANNOT USE (never offer or suggest these):\n- " + "\n- ".join(limits))
 
     allowed = op.allowed_actions(user, ctx.center_id)
     actions_list = "\n".join(f"- {aid} — {a['label']}" for aid, a in allowed.items())
@@ -126,6 +173,8 @@ async def assistant_chat(body: ChatBody, user: CurrentUser):
     history = await db.orai_assistant_messages.find(
         {"session_id": session_id, "user_id": user["id"]},
         {"_id": 0, "role": 1, "content": 1}).sort("created_at", 1).to_list(30)
+    if not history:
+        await orai_audit(user, "chat_session_started", detail=f"session={session_id[:12]}")
     messages = ([{"role": "system", "content": system}]
                 + history[-14:] + [{"role": "user", "content": message}])
     result = await call_openai_chat(messages, temperature=0.6, max_tokens=900)
@@ -144,7 +193,198 @@ async def assistant_chat(body: ChatBody, user: CurrentUser):
 
 @router.get("/history")
 async def assistant_history(session_id: str, user: CurrentUser):
+    await require_orai_access(user, "chat")
     rows = await db.orai_assistant_messages.find(
         {"session_id": session_id, "user_id": user["id"]},
         {"_id": 0}).sort("created_at", 1).to_list(60)
     return {"messages": rows}
+
+
+# ─── Founder admin: Private ORAi Access manager + AI Usage dashboard ────
+@access_admin.get("/private-access")
+async def access_list(current: CurrentUser, q: str = "", status: str = ""):
+    require_founder(current)
+    query = {}
+    if q:
+        query["username"] = {"$regex": q[:60], "$options": "i"}
+    rows = await db.orai_private_access.find(
+        query, {"_id": 0}).sort("granted_at", -1).to_list(500)
+    now = _iso()
+    for r in rows:
+        r["active"] = not (r.get("expires_at") and r["expires_at"] < now)
+    if status == "active":
+        rows = [r for r in rows if r["active"]]
+    elif status == "expired":
+        rows = [r for r in rows if not r["active"]]
+    await orai_audit(current, "private_access_viewed")
+    return {"users": rows}
+
+
+@access_admin.post("/private-access")
+async def access_add(body: dict, current: CurrentUser):
+    require_founder(current)
+    username = (body.get("username") or "").strip().lstrip("@")
+    if not username:
+        raise HTTPException(status_code=400, detail="Username required")
+    target = await db.users.find_one({"username": username}, {"_id": 0, "id": 1, "username": 1})
+    if not target:
+        raise HTTPException(status_code=404, detail="No user with that username")
+    expires_at = (body.get("expires_at") or "").strip() or None
+    doc = {
+        "id": uuid.uuid4().hex, "user_id": target["id"], "username": target["username"],
+        "granted_by": current["id"], "granted_by_username": current.get("username"),
+        "granted_at": _iso(), "note": str(body.get("note") or "")[:300],
+        "expires_at": expires_at, "last_used_at": None,
+        "chat_enabled": bool(body.get("chat_enabled", True)),
+        "voice_enabled": bool(body.get("voice_enabled", True)),
+        "generation_enabled": bool(body.get("generation_enabled", True)),
+    }
+    await db.orai_private_access.update_one(
+        {"user_id": target["id"]}, {"$set": doc}, upsert=True)
+    await orai_audit(current, "access_granted", target=target["username"],
+                     detail=f"expires={expires_at or 'never'}")
+    return {"ok": True, "user": doc}
+
+
+@access_admin.patch("/private-access/{user_id}")
+async def access_update(user_id: str, body: dict, current: CurrentUser):
+    require_founder(current)
+    patch = {}
+    for k in ("chat_enabled", "voice_enabled", "generation_enabled"):
+        if k in body:
+            patch[k] = bool(body[k])
+    if "note" in body:
+        patch["note"] = str(body.get("note") or "")[:300]
+    if "expires_at" in body:
+        patch["expires_at"] = (body.get("expires_at") or "").strip() or None
+    r = await db.orai_private_access.update_one({"user_id": user_id}, {"$set": patch})
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="Grant not found")
+    row = await db.orai_private_access.find_one({"user_id": user_id}, {"_id": 0})
+    await orai_audit(current, "access_updated", target=row.get("username"),
+                     detail=str(sorted(patch.keys())))
+    return {"ok": True, "user": row}
+
+
+@access_admin.delete("/private-access/{user_id}")
+async def access_remove(user_id: str, current: CurrentUser):
+    require_founder(current)
+    row = await db.orai_private_access.find_one({"user_id": user_id}, {"_id": 0})
+    if not row:
+        raise HTTPException(status_code=404, detail="Grant not found")
+    target_user = await db.users.find_one({"id": user_id}, {"_id": 0, "username": 1, "admin_role": 1})
+    if target_user and get_admin_role(target_user) == "founder":
+        raise HTTPException(status_code=400, detail="The founder always has access")
+    await db.orai_private_access.delete_one({"user_id": user_id})
+    await orai_audit(current, "access_revoked", target=row.get("username"))
+    return {"ok": True}
+
+
+@access_admin.post("/private-access/bulk-remove")
+async def access_bulk_remove(body: dict, current: CurrentUser):
+    require_founder(current)
+    ids = [str(x) for x in (body.get("user_ids") or [])][:100]
+    removed = 0
+    for uid in ids:
+        row = await db.orai_private_access.find_one({"user_id": uid}, {"_id": 0, "username": 1})
+        if not row:
+            continue
+        u = await db.users.find_one({"id": uid}, {"_id": 0, "admin_role": 1})
+        if u and get_admin_role(u) == "founder":
+            continue
+        await db.orai_private_access.delete_one({"user_id": uid})
+        await orai_audit(current, "access_revoked", target=row.get("username"), detail="bulk")
+        removed += 1
+    return {"ok": True, "removed": removed}
+
+
+@access_admin.get("/private-access/export")
+async def access_export(current: CurrentUser):
+    require_founder(current)
+    rows = await db.orai_private_access.find({}, {"_id": 0}).sort("granted_at", -1).to_list(1000)
+    now = _iso()
+    lines = ["username,granted_by,granted_at,expires_at,active,last_used_at,chat,voice,generation,note"]
+    for r in rows:
+        active = not (r.get("expires_at") and r["expires_at"] < now)
+        note = (r.get("note") or "").replace(",", ";").replace("\n", " ")
+        lines.append(",".join(str(x) for x in [
+            r.get("username"), r.get("granted_by_username"), r.get("granted_at"),
+            r.get("expires_at") or "never", active, r.get("last_used_at") or "-",
+            r.get("chat_enabled"), r.get("voice_enabled"), r.get("generation_enabled"), note]))
+    await orai_audit(current, "access_list_exported", detail=f"{len(rows)} rows")
+    return {"csv": "\n".join(lines), "count": len(rows)}
+
+
+@access_admin.get("/access-audit")
+async def access_audit_log(current: CurrentUser, limit: int = 80):
+    require_founder(current)
+    rows = await db.orai_access_audit.find({}, {"_id": 0}).sort(
+        "at", -1).limit(min(300, limit)).to_list(300)
+    return {"entries": rows}
+
+
+@access_admin.get("/usage")
+async def usage_dashboard(current: CurrentUser):
+    require_founder(current)
+    from services import video_generation as vg
+    now = datetime.now(timezone.utc)
+    day = now.strftime("%Y-%m-%d")
+    week_start = (now.timestamp() - 7 * 86400)
+    week_iso = datetime.fromtimestamp(week_start, tz=timezone.utc).isoformat()
+    month = now.strftime("%Y-%m")
+
+    async def count_msgs(since):
+        return await db.orai_assistant_messages.count_documents(
+            {"role": "user", "created_at": {"$gte": since}})
+
+    chat_today = await count_msgs(day)
+    chat_week = await count_msgs(week_iso)
+    chat_month = await count_msgs(f"{month}-01")
+
+    vid_active = await db.ai_video_jobs.count_documents({"status": {"$in": list(vg.ACTIVE_STATUSES)}})
+    vid_failed = await db.ai_video_jobs.count_documents({"status": "failed"})
+    vid_done = await db.ai_video_jobs.count_documents({"status": "complete"})
+    course_running = await db.rc_course_gen_jobs.count_documents({"status": "running"})
+    course_failed = await db.rc_course_gen_jobs.count_documents({"status": "failed"})
+    course_done = await db.rc_course_gen_jobs.count_documents({"status": "done"})
+    course_today = await db.rc_course_gen_jobs.count_documents(
+        {"status": "done", "created_at": {"$gte": day}})
+    images_today = await db.images.count_documents({"created_at": {"$gte": day}})
+
+    top_users = await db.orai_assistant_messages.aggregate([
+        {"$match": {"role": "user", "created_at": {"$gte": week_iso}}},
+        {"$group": {"_id": "$user_id", "n": {"$sum": 1}}},
+        {"$sort": {"n": -1}}, {"$limit": 5}]).to_list(5)
+    for t in top_users:
+        u = await db.users.find_one({"id": t["_id"]}, {"_id": 0, "username": 1})
+        t["username"] = (u or {}).get("username") or "?"
+    top_centers = await db.rc_course_gen_jobs.aggregate([
+        {"$group": {"_id": "$center_id", "n": {"$sum": 1}}},
+        {"$sort": {"n": -1}}, {"$limit": 5}]).to_list(5)
+    for t in top_centers:
+        c = await db.responsibility_centers.find_one({"id": t["_id"]}, {"_id": 0, "name": 1})
+        t["name"] = (c or {}).get("name") or t["_id"]
+
+    vs = await vg.get_video_settings()
+    spend = await vg.spend_summary()
+    return {
+        "chat": {"today": chat_today, "week": chat_week, "month": chat_month},
+        "videos": {"generated": vid_done, "active": vid_active, "failed": vid_failed},
+        "courses": {"generated": course_done, "today": course_today,
+                    "running": course_running, "failed": course_failed},
+        "images_today": images_today,
+        "voice_minutes": None,  # not tracked yet — honest null
+        "avg_response_time": None,  # not tracked yet
+        "queue_length": vid_active + course_running,
+        "pending_jobs": vid_active + course_running,
+        "failed_jobs": vid_failed + course_failed,
+        "top_users": top_users, "top_centers": top_centers,
+        "spend": spend,
+        "budget": {"daily": vs["daily_budget"], "monthly": vs["monthly_budget"],
+                   "daily_remaining": round(max(0, vs["daily_budget"] - spend["daily_spent"]), 2),
+                   "monthly_remaining": round(max(0, vs["monthly_budget"] - spend["monthly_spent"]), 2)},
+        "emergency_disabled": vs["emergency_disabled"], "dry_run": vs["dry_run"],
+        "video_enabled": vs["enabled"],
+        "rate_limits": ["ORAi chat: 60/hour per user", "Course generation: 6/hour per user",
+                        "Video generation: 10/hour per user"],
+    }

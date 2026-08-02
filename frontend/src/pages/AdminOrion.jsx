@@ -34,6 +34,8 @@ import {
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import OraiDashboard, { ORAI_LOGO_URL } from "@/components/admin/OraiDashboard";
+import OraiPrivateAccess from "@/components/admin/OraiPrivateAccess";
+import OraiUsageDashboard from "@/components/admin/OraiUsageDashboard";
 import { OraiVoiceBar } from "@/components/orai/OraiVoiceBar";
 
 // ─────────────────────────────────────────────────────────────────────
@@ -45,6 +47,8 @@ const NAV_SECTIONS = [
   { id: "dashboard", label: "Dashboard",       icon: Hexagon },
   { id: "chat",      label: "ORAi Chat",      icon: MessageSquare },
   { id: "ai-command", label: "AI Command",    icon: Cpu, href: "/admin/orai-control" },
+  { id: "private-access", label: "Private ORAi Access", icon: Shield },
+  { id: "ai-usage",  label: "AI Usage",        icon: Activity },
   { id: "briefing",  label: "Founder Briefing", icon: BarChart3 },
   { id: "actions",   label: "Quick Actions",   icon: Zap },
   { id: "reports",   label: "Reports",         icon: FileText },
@@ -134,7 +138,7 @@ const DRAFT_HEADERS = [
 export default function AdminOrion() {
   const { user } = useAuth();
   const isFounder = (user?.username || "").toLowerCase() === "stealth";
-  const [section, setSection] = useState("dashboard");
+  const [section, setSection] = useState(() => window.history.state?.usr?.section || "dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);   // mobile drawer
   const [latestDraft, setLatestDraft] = useState(null);    // for context panel
   const [summary, setSummary] = useState(null);
@@ -385,6 +389,8 @@ function SectionRouter({ section, summary, onDraft, sectionNav }) {
   if (section === "widgets")   return <SimplePromptList title="Widgets" intros={["All launched widgets", "Disabled widgets", "Most used widgets"]} onPrompt={(p) => sectionNav("chat") || window.dispatchEvent(new CustomEvent("orion-prefill", { detail: p }))} />;
   if (section === "badges")    return <SimplePromptList title="Badges" intros={["How many VIP holders?", "Show badge stats", "Beta holders"]} onPrompt={(p) => sectionNav("chat") || window.dispatchEvent(new CustomEvent("orion-prefill", { detail: p }))} />;
   if (section === "settings")  return <SettingsPanel summary={summary} />;
+  if (section === "private-access") return <OraiPrivateAccess />;
+  if (section === "ai-usage")  return <OraiUsageDashboard />;
   if (section === "classic")   return <Dashboard summary={summary} onSection={sectionNav} />;
   // Default: upgraded ORAi control-center dashboard (hero + live chat)
   return <OraiDashboard onSection={sectionNav} Chat={OrionChat} onDraft={onDraft} />;

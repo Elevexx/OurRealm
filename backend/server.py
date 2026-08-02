@@ -163,6 +163,7 @@ app.include_router(admin_access_router_mod.public_router)
 app.include_router(guardian_router_mod.router)
 from routers import orai_assistant as orai_assistant_router_mod
 app.include_router(orai_assistant_router_mod.router)
+app.include_router(orai_assistant_router_mod.access_admin)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────

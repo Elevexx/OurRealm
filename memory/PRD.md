@@ -1,5 +1,23 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Private ORAi Access Control (Aug 2, 2026) ✅ COMPLETE — PREVIEW
+**Verified: full backend lifecycle via curl (grant→use→toggle→revoke→instant 403, founder unremovable, export, audit) + screenshots (normal user sees NOTHING, founder fab+panel+shortcuts, mobile 390×844 no overflow, landscape, admin sections).**
+
+### Server-side enforcement (`services/orai_access.py`)
+- Floating ORAi assistant is founder-only (@stealth via `get_admin_role=="founder"`) + explicit grants in `orai_private_access` {user_id, username, granted_by(+username), granted_at, note, expires_at, last_used_at, chat/voice/generation_enabled}.
+- `require_orai_access(user, capability)` on EVERY `/api/orai/assistant/chat` + `/history` request → 403 Forbidden for unauthorized/expired/capability-off. No caching → revocation is INSTANT (open sessions die on next request; frontend closes+hides on 403 silently). Expiry auto-checked; audit `access_expired`/`access_denied`.
+- GET `/api/orai/assistant/access` → `{allowed:false}` ONLY for unauthorized (reveals nothing); else flags + capability `limits` list. Limits also injected into the chat system prompt ("THIS USER CANNOT USE…") so ORAi never offers video/voice/course/admin actions the user lacks (op.allowed_actions already filters action buttons).
+- Audit collection `orai_access_audit`: access_granted/updated/revoked (+bulk), access_denied, access_expired, chat_session_started, founder_shortcut_used, private_access_viewed, access_list_exported. POST `/api/orai/assistant/log-shortcut` (founder).
+
+### Founder admin (`access_admin` router → `/api/admin/orai/*`, require_founder)
+- `private-access` GET(list w/ q+active/expired filter+computed active)/POST(add by username, note, expiration, capability flags)/PATCH(toggle chat/voice/generation, note, expiry)/DELETE(revoke; founder returns 400 "The founder always has access")/`bulk-remove`/`export`(CSV)/`access-audit`.
+- `usage` — AI Usage Dashboard rollup: ORAi chats today/week/month, videos (done/active/failed), courses (done/today/running/failed), images stored today, queue length, pending/failed jobs, top users (7d) + top centers (course gen, names from `responsibility_centers`), spend + budget remaining (reuses video_generation settings), emergency/dry-run status, rate-limit list. voice_minutes/avg_response_time = null (honestly not tracked).
+
+### Frontend
+- `OraiAssistantPanel.jsx` REWRITTEN: renders null unless `/access` says allowed (no button/placeholder/hint for others); 403 mid-session silently hides everything; founder strip (7 shortcuts: ORAi Admin, AI Dashboard→/admin/orai state.section=ai-usage, AI Queue, Video Queue, Provider Health, Command Center + Emergency Disable w/ confirm → PATCH ai-video settings; logs each use) + live "AI spend today"; per-message "Listen" (oraiVoice.speak) only when voice_enabled; MOBILE FIX: full-width bottom sheet (inset-x-0, rounded-t-2xl, 72dvh, safe-area padding, no horizontal overflow, input/send always visible, internal scroll, entrance animation), sm+ keeps 380px floating card.
+- AdminOrion (`/admin/orai`): 2 new sidebar sections wired + REGISTERED_HANDLERS: **Private ORAi Access** (`components/admin/OraiPrivateAccess.jsx` — grant form w/ note+expiry, permanent @stealth row, per-user capability chips, revoke, bulk revoke, search/filter, CSV export) and **AI Usage** (`components/admin/OraiUsageDashboard.jsx` — 12 live stat cards, budgets, rate limits, top users/centers, provider health free probe, 10s auto-refresh, emergency/dry-run banners). AdminOrion reads router state `section` for deep links.
+- Currently no one but @stealth has access (test grant for tftwo was revoked during verification).
+
 ## Phase 7 — Provider-Agnostic AI Video Generation (Aug 2, 2026) ✅ COMPLETE — PREVIEW, dry-run ON, no paid generation has ever run
 **Verified via self-test: free health probes, full dry-run pipeline E2E (job → ffmpeg test clip → R2 upload → thumbnail → attach → plays in Course Player), budget enforcement proven ($0.05 cap blocked a $0.40 request), 403s for non-founders, screenshots of admin page + player.**
 
