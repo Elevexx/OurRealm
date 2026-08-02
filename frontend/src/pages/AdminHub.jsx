@@ -16,7 +16,7 @@ import { Link } from "react-router-dom";
 import {
   BarChart3, Zap, Hash, Headphones, HelpCircle, LifeBuoy,
   Crown, ShieldCheck, ShieldAlert, ChevronRight, Loader2, Sparkles, LayoutGrid, Database,
-  Image as ImageIcon, Trophy, Flame, Landmark,
+  Image as ImageIcon, Trophy, Flame, Landmark, Clapperboard,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -217,6 +217,18 @@ const CARDS = [
     roles: ["founder"],
     statKey: null,
     footer: "◈ Open Website Media",
+  },
+  {
+    id: "ai-video",
+    to: "/admin/ai-video",
+    title: "AI Video Settings",
+    description: "Provider-agnostic lesson video generation — budgets, dry-run mode, generation queue, video library, emergency disable.",
+    Icon: Clapperboard,
+    accent: "#2EE6FF",
+    badge: "Founder Only",
+    roles: ["founder"],
+    statKey: null,
+    footer: "◈ Open AI Video Settings",
   },
   {
     id: "responsibility-center",

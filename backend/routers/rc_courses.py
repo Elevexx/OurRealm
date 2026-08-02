@@ -605,12 +605,19 @@ async def update_lesson(center_id: str, course_id: str, lesson_id: str, body: di
         patch["order"] = int(body["order"])
     if "blocks" in body:
         blocks = []
-        for b in (body["blocks"] or [])[:10]:
+        for b in (body["blocks"] or [])[:12]:
             btype = b.get("type") if b.get("type") in BLOCK_TYPES else "text"
-            blocks.append({"id": b.get("id") or uuid.uuid4().hex[:8], "type": btype,
-                           "title": str(b.get("title") or "")[:200],
-                           "body": str(b.get("body") or "")[:8000],
-                           "image_url": b.get("image_url") or None})
+            doc = {"id": b.get("id") or uuid.uuid4().hex[:8], "type": btype,
+                   "title": str(b.get("title") or "")[:200],
+                   "body": str(b.get("body") or "")[:8000],
+                   "image_url": b.get("image_url") or None}
+            # Preserve interactive payloads + video metadata on editor saves
+            for k in ("options", "answer_index", "explanation", "pairs", "items",
+                      "sample_answer", "video_url", "video_source",
+                      "video_thumbnail", "video_job_id", "video_status"):
+                if b.get(k) is not None:
+                    doc[k] = b[k]
+            blocks.append(doc)
         patch["blocks"] = blocks
     if "quiz" in body:
         qs = []

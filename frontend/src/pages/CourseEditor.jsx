@@ -3,8 +3,11 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2, Save, Loader2, Rocket, ImagePlus, CheckCircle2, ListChecks } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
+import LessonVideoPanel from "@/components/rc/LessonVideoPanel";
 
-const BLOCK_TYPES = ["text", "activity", "worksheet", "homework", "project", "review"];
+const BLOCK_TYPES = ["text", "activity", "worksheet", "homework", "project", "review",
+  "tap_select", "matching", "ordering", "short_answer", "reflection", "scenario",
+  "checklist", "audio_note", "video_embed"];
 const BLOCK_COLORS = { text: "#2EA0FF", activity: "#10E670", worksheet: "#4DD6C1", homework: "#F4A73B", project: "#C26BFF", review: "#FF8A5A" };
 
 function QuizEditor({ quiz, onChange }) {
@@ -89,11 +92,11 @@ function LessonEditor({ centerId, courseId, lesson, onSaved, onDeleted }) {
 
       <div className="space-y-3 mb-4">
         {(draft.blocks || []).map((b, i) => (
-          <div key={b.id} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${BLOCK_COLORS[b.type]}44` }}
+          <div key={b.id} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${BLOCK_COLORS[b.type] || "#2EE6FF"}44` }}
             data-testid={`block-editor-${i}`}>
             <div className="flex gap-2 mb-2 items-center">
               <select className="or-input text-[10px]" value={b.type} onChange={(e) => setBlock(i, { type: e.target.value })}
-                style={{ color: BLOCK_COLORS[b.type] }} data-testid={`block-type-${i}`}>
+                style={{ color: BLOCK_COLORS[b.type] || "#2EE6FF" }} data-testid={`block-type-${i}`}>
                 {BLOCK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
               <input className="or-input flex-1 text-xs" value={b.title} placeholder="Section title"
@@ -106,6 +109,10 @@ function LessonEditor({ centerId, courseId, lesson, onSaved, onDeleted }) {
                 data-testid={`block-del-${i}`}><Trash2 size={12} /></button>
             </div>
             {b.image_url && <img src={b.image_url} alt="" className="rounded-lg mb-2 max-h-40 object-cover" />}
+            {b.type === "video_embed" && (
+              <LessonVideoPanel centerId={centerId} courseId={courseId} lessonId={lesson.id} block={b}
+                onBlockChange={(patch) => setBlock(i, patch)} />
+            )}
             <textarea className="or-input w-full text-xs" rows={4} value={b.body}
               onChange={(e) => setBlock(i, { body: e.target.value })} data-testid={`block-body-${i}`} />
           </div>

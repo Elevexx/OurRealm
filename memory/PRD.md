@@ -1,5 +1,29 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## Phase 7 — Provider-Agnostic AI Video Generation (Aug 2, 2026) ✅ COMPLETE — PREVIEW, dry-run ON, no paid generation has ever run
+**Verified via self-test: free health probes, full dry-run pipeline E2E (job → ffmpeg test clip → R2 upload → thumbnail → attach → plays in Course Player), budget enforcement proven ($0.05 cap blocked a $0.40 request), 403s for non-founders, screenshots of admin page + player.**
+
+### Provider layer (`services/video_providers/`)
+- `provider_base.py` (VideoProvider interface: estimate_cost/create_job/poll/fetch_file/cleanup/health), `openai_provider.py` (sora-2/sora-2-pro via raw httpx, PRICING per (model,size), free health probe = invalid-seconds validation trick), `manual_upload_provider.py`, `external_video_provider.py`, registry in `__init__.py`. Course Maker NEVER references a provider — swap-ready for Runway/Veo/Pika/Luma. Sora sunset (reported Sep 24, 2026) only affects one disposable file.
+
+### Orchestrator (`services/video_generation.py`)
+- Settings `ai_video_settings` (+`_history`, cached 10s): enabled, emergency_disabled, **dry_run (DEFAULT TRUE — ffmpeg testsrc2 clip, $0, full pipeline)**, expose_provider_names (default FALSE — users see "ORAi Video Engine"), default provider/model/size/seconds/quality, daily/monthly budgets ($5/$50), max_per_video ($2), max_per_course ($10), max_concurrent_jobs (2), provider_priority.
+- `build_estimate()` → cost/time/resolution/duration/masked provider/daily+monthly remaining/course total/blockers. `start_video_job()` re-checks every gate server-side. Pipeline stages: queued→generating(poll provider)→downloading→uploading_r2 (video_dir + `mirror_to_cloud("videos",…)` → `/api/media/videos/{hex32}.mp4`)→optimizing (ffmpeg thumbnail → image_store)→attaching (block video_url/thumbnail/source/status)→complete. Cancellation via cancel_requested flag; provider copy deleted after success; RC notifications rc_course_video_ready/_failed; audit rows in `ai_video_audit`. Jobs in `ai_video_jobs` with full metadata (prompt, negative_prompt, provider, model, seconds, size, costs, seed, version, center/course/lesson/block, creator).
+
+### Routes (`routers/ai_video.py`, wired in server.py)
+- Founder-only `/api/admin/ai-video/*`: settings GET/PATCH (reason≥5 audited), providers/health (FREE probe), queue, history (filters status/provider/center/course/creator/q/archived), analytics, jobs cancel/archive/DELETE, audit.
+- Course-manager `/api/responsibility-center/{cid}/courses/{course_id}/lessons/{lesson_id}/video/*`: estimate, generate (**requires approve_cost:true + approved_cost matching server figure — never auto-spends**; rate limit 10/hr), jobs/{id} (provider masked), jobs/{id}/cancel, attach (uploaded /api/ or https external), remove.
+- FIX: rc_courses `update_lesson` now PRESERVES interactive payloads + video metadata + block ids on editor saves (previously stripped them — pre-existing bug).
+
+### Frontend
+- NEW `components/rc/LessonVideoPanel.jsx` (in CourseEditor for video_embed blocks): preview player w/ poster, status chips (queued/generating/…/ready/failed/cancelled), Generate/Regenerate → EstimateModal (cost, time, resolution, duration, engine label, daily remaining, course total, dry-run notice, blockers, "Approve & Generate ($X)"), job polling w/ cancel, Upload (existing /api/videos/upload + audio-rights confirm), Paste URL, Remove.
+- NEW `pages/AdminAiVideo.jsx` (`/admin/ai-video`, AdminHub card "AI Video Settings", founder): Settings/Queue/Video Library (search+status filters, preview, archive, delete)/Analytics tabs + free provider health check.
+- MOD `CourseEditor.jsx` (all 15 block types in select, video panel), `ActivityBlock.jsx` (ResumableVideo: sessionStorage resume + poster; placeholder unchanged when no URL).
+- Player: generated video verified playing in "What a DAW Does" (Music Production course).
+
+### Ready for founder's paid test
+Flip dry_run OFF in /admin/ai-video → Generate on any video_embed block → 4s 720p sora-2 = $0.40, explicit approval modal. NOT done yet per instruction.
+
 ## AI Course Maker + Interactive Lesson Capability (Aug 2, 2026) ✅ COMPLETE — PREVIEW ONLY, awaiting founder review before production deploy
 **Verified: self-test pass — async jobs via curl (2 real courses generated E2E), desktop+mobile screenshots of Course Maker page, player interactive/placeholder blocks confirmed via DOM assertions.**
 

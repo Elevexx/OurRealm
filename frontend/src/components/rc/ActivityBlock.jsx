@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Check, X, ArrowUp, ArrowDown, Eye, Film } from "lucide-react";
 
 // ActivityBlock — REAL interactive lesson blocks (tap_select, matching,
@@ -178,6 +178,21 @@ export function isInteractiveBlock(b) {
   return INTERACTIVE_TYPES.includes(b?.type);
 }
 
+function ResumableVideo({ b }) {
+  const ref = useRef(null);
+  const key = `orv-pos-${b.id}`;
+  return (
+    <video controls playsInline ref={ref} className="w-full rounded-xl"
+      src={b.video_url} poster={b.video_thumbnail || undefined} style={{ maxHeight: 320 }}
+      onLoadedMetadata={() => {
+        const t = Number(sessionStorage.getItem(key) || 0);
+        if (t > 1 && ref.current && t < (ref.current.duration || 0) - 1) ref.current.currentTime = t;
+      }}
+      onTimeUpdate={() => { if (ref.current) sessionStorage.setItem(key, String(ref.current.currentTime)); }}
+      data-testid="lesson-video-player" />
+  );
+}
+
 export default function ActivityBlock({ b }) {
   if (b.type === "tap_select" && (b.options || []).length >= 2) return <TapSelect b={b} />;
   if (b.type === "matching" && (b.pairs || []).length >= 2) return <Matching b={b} />;
@@ -189,7 +204,7 @@ export default function ActivityBlock({ b }) {
     if (b.video_url) {
       return (
         <Shell title={b.title || "Video"} body={b.body} testid="block-video">
-          <video controls className="w-full rounded-xl" src={b.video_url} style={{ maxHeight: 300 }} />
+          <ResumableVideo b={b} />
         </Shell>
       );
     }
