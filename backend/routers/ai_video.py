@@ -26,7 +26,9 @@ styles_router = APIRouter(prefix="/api/ai-styles", tags=["ai-styles"])
 @admin_router.on_event("startup")
 async def _recover_on_startup():
     import asyncio as _aio
+    from services import media_retry
     _aio.get_event_loop().call_later(3, lambda: _aio.create_task(vg.recover_orphaned_jobs()))
+    _aio.get_event_loop().call_later(5, lambda: _aio.create_task(media_retry.start_retry_worker()))
 
 
 # ── Universal Animation Style registry + user presets ───────────────────

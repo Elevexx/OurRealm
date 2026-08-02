@@ -213,19 +213,25 @@ async def _generate_media_pack(job_id, course: dict, lesson_docs: list, current,
         "failed_assets": []}, "Starting media pack")
 
     imgs_done, imgs_failed, failed_assets = 0, 0, []
+    from services import media_retry
+    retry_ctx = {"gen_job_id": job_id, "center_id": course["center_id"],
+                 "course_id": course["id"], "created_by": current["id"],
+                 "created_by_username": current.get("username")}
     # Course cover — same resolved style
     await _set_stage(job_id, "creating_cover")
     await _media_progress(job_id, {}, "Creating course cover")
+    cover_prompt = (
+        f"Cinematic course cover for \"{course['title']}\" — {course.get('description','')[:200]} "
+        f"(level: {course.get('grade_level') or 'all ages'}). No text in the image.\n{directive}")
     try:
-        cover = await _gen_image(
-            f"Cinematic course cover for \"{course['title']}\" — {course.get('description','')[:200]} "
-            f"(level: {course.get('grade_level') or 'all ages'}). No text in the image.\n{directive}",
-            current["id"])
+        cover = await _gen_image(cover_prompt, current["id"])
         await db.rc_courses.update_one({"id": course["id"]}, {"$set": {"cover_url": cover}})
         imgs_done += 1
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         imgs_failed += 1
-        failed_assets.append("Course cover")
+        failed_assets.append("Course cover — auto-retry scheduled")
+        await media_retry.enqueue(**retry_ctx, asset_type="cover", label="Course cover",
+                                  prompt=cover_prompt, error=e)
     # Lesson illustrations
     await _set_stage(job_id, "creating_images")
     for les in img_targets:
@@ -234,18 +240,22 @@ async def _generate_media_pack(job_id, course: dict, lesson_docs: list, current,
         blk = next(b for b in les["blocks"] if b["type"] == "text" and not b.get("image_url"))
         await _media_progress(job_id, {"images": {"planned": len(img_targets) + 1, "done": imgs_done, "failed": imgs_failed}},
                               f"Illustrating: {les['title'][:40]}")
+        img_prompt = (
+            f"Illustration for the lesson \"{les['title']}\" in the course \"{course['title']}\" "
+            f"(level: {course.get('grade_level') or 'all ages'}). Scene: {blk['body'][:250]}. "
+            f"No text in the image.\n{directive}")
         try:
-            url = await _gen_image(
-                f"Illustration for the lesson \"{les['title']}\" in the course \"{course['title']}\" "
-                f"(level: {course.get('grade_level') or 'all ages'}). Scene: {blk['body'][:250]}. "
-                f"No text in the image.\n{directive}", current["id"])
+            url = await _gen_image(img_prompt, current["id"])
             await db.rc_course_lessons.update_one(
                 {"id": les["id"], "blocks.id": blk["id"]},
                 {"$set": {"blocks.$.image_url": url, "updated_at": _iso()}})
             imgs_done += 1
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             imgs_failed += 1
-            failed_assets.append(f"Image: {les['title'][:40]}")
+            failed_assets.append(f"Image: {les['title'][:40]} — auto-retry scheduled")
+            await media_retry.enqueue(**retry_ctx, asset_type="image",
+                                      label=f"Image: {les['title'][:60]}", prompt=img_prompt,
+                                      lesson_id=les["id"], block_id=blk["id"], error=e)
     await _media_progress(job_id, {"images": {"planned": len(img_targets) + 1, "done": imgs_done, "failed": imgs_failed},
                                    "failed_assets": failed_assets})
 
@@ -620,6 +630,8 @@ async def generate_course(center_id: str, body: dict, current: CurrentUser):
     }
     await db.rc_courses.insert_one({**course})
     await db.rc_course_lessons.insert_many([{**d} for d in lesson_docs])
+    if job_id:  # course exists now — media dashboard can attach immediately
+        await db.rc_course_gen_jobs.update_one({"id": job_id}, {"$set": {"course_id": course_id}})
     if body.get("generate_images") or body.get("auto_videos"):
         await _generate_media_pack(job_id, course, lesson_docs, current,
                                    {"auto_videos": bool(body.get("auto_videos"))})
@@ -1470,22 +1482,144 @@ async def generate_course_async(center_id: str, body: dict, current: CurrentUser
 
 @router.get("/{center_id}/course-gen/active")
 async def active_generate_job(center_id: str, current: CurrentUser):
-    """Reconnect support: the latest running one-click job for this center."""
-    await _ctx(center_id, current, "edit_center")
+    """Reconnect support: the latest running one-click job for this center —
+    or a finished one whose media pack is still retrying / needs attention."""
+    await _ctx(center_id, current, "edit_center", write=False)
     job = await db.rc_course_gen_jobs.find_one(
         {"center_id": center_id, "status": "running"}, {"_id": 0}, sort=[("created_at", -1)])
+    if not job:
+        recent = await db.rc_course_gen_jobs.find(
+            {"center_id": center_id, "status": "done", "user_id": current["id"],
+             "course_id": {"$ne": None}},
+            {"_id": 0}).sort("created_at", -1).to_list(3)
+        for j in recent:
+            n = await db.rc_media_retry_tasks.count_documents(
+                {"course_id": j["course_id"],
+                 "status": {"$in": ["waiting", "retrying", "needs_attention"]}})
+            if n:
+                return {"job": j}
     return {"job": job}
+
+
+ACTIVITY_BLOCK_TYPES = {"activity", "tap_select", "matching", "ordering",
+                        "short_answer", "reflection", "scenario", "checklist"}
+
+
+@router.get("/{center_id}/courses/{course_id}/media-status")
+async def course_media_status(center_id: str, course_id: str, current: CurrentUser):
+    """Unified generation dashboard: stage, queue position, provider, retry
+    counts, ETA, per-media completion, failed + remaining assets."""
+    await _ctx(center_id, current, "edit_center", write=False)
+    from services import video_generation as vg
+    from services import media_retry
+    from services.video_providers import get_provider
+    course = await _course(center_id, course_id)
+    lessons = await _lessons(course_id)
+    vs = await vg.get_video_settings()
+    tasks = await media_retry.course_tasks(course_id)
+    now = datetime.now(timezone.utc)
+
+    img_done = 1 if course.get("cover_url") else 0
+    vid_done = audio_done = act_done = 0
+    for les in lessons:
+        for b in les.get("blocks", []):
+            if b["type"] == "text" and b.get("image_url"):
+                img_done += 1
+            elif b["type"] == "video_embed" and b.get("video_url"):
+                vid_done += 1
+            elif b["type"] == "audio_note" and b.get("body"):
+                audio_done += 1
+            elif b["type"] in ACTIVITY_BLOCK_TYPES:
+                act_done += 1
+
+    pend = [t for t in tasks if t["status"] in ("waiting", "retrying")]
+    attention = [t for t in tasks if t["status"] == "needs_attention"]
+    img_pending = sum(1 for t in pend if t["asset_type"] in ("cover", "image"))
+    img_attn = sum(1 for t in attention if t["asset_type"] in ("cover", "image"))
+    vid_pending_tasks = sum(1 for t in pend if t["asset_type"] == "video")
+    vid_attn = sum(1 for t in attention if t["asset_type"] == "video")
+
+    # live video queue (global) + this course's position in it
+    active = await db.ai_video_jobs.find(
+        {"status": {"$in": list(vg.ACTIVE_STATUSES)}},
+        {"_id": 0, "course_id": 1}).sort("created_at", 1).to_list(100)
+    vid_generating = sum(1 for j in active if j.get("course_id") == course_id)
+    queue_position = next((i + 1 for i, j in enumerate(active)
+                           if j.get("course_id") == course_id), None)
+
+    gen_job = await db.rc_course_gen_jobs.find_one(
+        {"course_id": course_id}, {"_id": 0, "status": 1, "stage": 1, "media": 1},
+        sort=[("created_at", -1)])
+    stage = (gen_job or {}).get("stage") or "complete"
+    if (gen_job or {}).get("status") != "running":
+        stage = "needs_attention" if attention else ("retrying_media" if pend or vid_generating else "complete")
+
+    try:
+        vid_eta_each = get_provider(vs["default_provider"]).estimate_time_seconds(
+            int(vs.get("default_seconds") or 4)) or 120
+    except Exception:  # noqa: BLE001
+        vid_eta_each = 120
+    eta = img_pending * 30 + (vid_pending_tasks + vid_generating) * vid_eta_each
+    for t in pend:
+        if t["status"] == "waiting" and t.get("next_retry_at"):
+            try:
+                wait = (datetime.fromisoformat(t["next_retry_at"]) - now).total_seconds()
+                eta = max(eta, int(wait) + (30 if t["asset_type"] != "video" else vid_eta_each))
+            except Exception:  # noqa: BLE001
+                pass
+
+    img_total = img_done + img_pending + img_attn
+    vid_total = vid_done + vid_generating + vid_pending_tasks + vid_attn
+    done_all = img_done + vid_done + audio_done + act_done
+    total_all = img_total + vid_total + audio_done + act_done
+    return {
+        "stage": stage,
+        "current_task": ((gen_job or {}).get("media") or {}).get("current_task"),
+        "provider_label": (vs["default_provider"] if vs.get("expose_provider_names")
+                           else "ORAi Video Engine"),
+        "queue_length": len(active), "queue_position": queue_position,
+        "retry_count": sum(int(t.get("attempt") or 0) for t in tasks),
+        "pending_retries": len(pend), "eta_seconds": eta if (pend or vid_generating) else 0,
+        "overall_pct": round(done_all / total_all * 100) if total_all else 100,
+        "images": {"planned": img_total, "done": img_done, "failed": img_attn},
+        "videos": {"planned": vid_total, "done": vid_done, "failed": vid_attn,
+                   "generating": vid_generating},
+        "audio": {"planned": audio_done, "done": audio_done},
+        "activities": {"planned": act_done, "done": act_done},
+        "remaining_assets": max(0, total_all - done_all - img_attn - vid_attn),
+        "failed_assets": [
+            {"id": t["id"], "label": t["label"], "asset_type": t["asset_type"],
+             "status": t["status"], "attempt": t.get("attempt") or 0,
+             "max_attempts": t.get("max_attempts"), "error": t.get("last_error"),
+             "next_retry_at": t.get("next_retry_at") if t["status"] == "waiting" else None}
+            for t in tasks if t["status"] in ("waiting", "retrying", "needs_attention")],
+    }
+
+
+@router.post("/{center_id}/courses/{course_id}/media-retry")
+async def retry_course_media(center_id: str, course_id: str, body: dict, current: CurrentUser):
+    """Manual retry — selected assets (task_ids) or every failed asset."""
+    await _ctx(center_id, current, "edit_center")
+    await _course(center_id, course_id)
+    from services import media_retry
+    ids = body.get("task_ids") if isinstance(body.get("task_ids"), list) else None
+    n = await media_retry.requeue(course_id, ids)
+    if not n:
+        raise HTTPException(status_code=404, detail="No failed assets to retry")
+    return {"requeued": n}
 
 
 @router.post("/{center_id}/courses/generate-jobs/{job_id}/cancel")
 async def cancel_generate_job(center_id: str, job_id: str, current: CurrentUser):
     await _ctx(center_id, current, "edit_center")
+    from services import media_retry
     r = await db.rc_course_gen_jobs.update_one(
         {"id": job_id, "center_id": center_id, "status": "running"},
         {"$set": {"cancel_requested": True}})
-    if not r.matched_count:
+    cancelled_retries = await media_retry.cancel_for_job(job_id)
+    if not r.matched_count and not cancelled_retries:
         raise HTTPException(status_code=404, detail="No running job with that id")
-    return {"ok": True}
+    return {"ok": True, "cancelled_retries": cancelled_retries}
 
 
 @router.get("/{center_id}/courses/generate-jobs/{job_id}")

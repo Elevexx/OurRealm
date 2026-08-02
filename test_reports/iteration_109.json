@@ -1,0 +1,37 @@
+{
+  "summary": "Sprint 1 hardening (configurable retry engine + MediaPackDashboard) verified end-to-end. 7/7 backend pytest cases pass. Frontend flows verified: course-maker renders without dashboard when no job; Admin AI-Video Settings tab exposes 'Retry schedule (seconds, comma-sep)' input pre-populated with '20, 120, 300, 900, 1800'; MediaPackDashboard renders every required media-dash-* testid when a needs_attention task is present, shows exact provider error, 'Retry All Failed' toast appears and asset moves to retrying list with 'retry 1/5 scheduled'. Test task cleaned up from mongo (~30s window, no worker pickup).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET .../media-status", "issue": "audio/activities buckets omit 'failed' counter (only planned/done). Spec req listed 'failed' for all four; images/videos correctly include it. Cosmetic — retry engine only handles image/video, so 'failed' is meaningful only there. Consider adding failed:0 for shape consistency."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "CourseMaker", "issues": ["React hydration warning: '<span> cannot be a child of <option>' logged repeatedly. Non-blocking; likely from a preset/style dropdown option markup."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_media_retry_dashboard.py",
+    "/app/test_reports/pytest/media_retry_dashboard.xml"
+  ],
+  "action_items": [
+    "(Optional) Add failed:0 to audio/activities in media-status for shape consistency.",
+    "(Optional) Fix <span> inside <option> hydration warning in CourseMaker style dropdowns."
+  ],
+  "critical_code_review_comments": [
+    "media-status contract: audio/activities dicts drop 'failed' while images/videos include it — asymmetric shape.",
+    "PATCH /api/admin/ai-video/settings returns full envelope {settings:{...}} — consumers must read .settings.retry_schedule_seconds.",
+    "Retry engine correctly persists next_retry_at and preserves exact provider error string (verified in mongo + dashboard)."
+  ],
+  "updated_files": ["/app/backend/tests/test_media_retry_dashboard.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (all dashboard testids + retry flow verified)"},
+  "test_credentials": "stealth/Password1$ (founder), tftwo/pass1234 (non-manager). Both work as documented in /app/memory/test_credentials.md.",
+  "seed_data_creation": "Temporarily inserted 1 doc into rc_media_retry_tasks (id=21decd0a31f549a492322d3cbc949d3b) for dashboard UI verification; deleted immediately after (delete_one count=1, 0 lingering Test asset docs). No wasted image credits. Used pre-existing done gen job (id=2cc45978a5b04c6b836a76df3dc33d75) — no gen job seeded.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All Sprint 1 retry-engine + dashboard endpoints and UI confirmed healthy. Note asymmetric media-status shape (audio/activities lack 'failed'). Settings PATCH returns {settings:{...}} envelope. Dry-run stayed TRUE throughout; emergency_disabled FALSE.",
+  "rca of the issue": "N/A — no functional bugs found."
+}

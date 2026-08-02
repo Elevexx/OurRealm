@@ -43,6 +43,7 @@ SETTINGS_DEFAULTS = {
     "max_per_course": 10.0,
     "max_concurrent_jobs": 2,
     "provider_priority": ["openai"],
+    "retry_schedule_seconds": [20, 120, 300, 900, 1800],  # configurable retry engine
 }
 ACTIVE_STATUSES = ("queued", "generating", "downloading", "uploading_r2", "optimizing", "attaching")
 _cache = {"at": 0.0, "doc": None}
@@ -73,7 +74,12 @@ async def update_video_settings(patch: dict, admin: dict, reason: str) -> dict:
         elif isinstance(SETTINGS_DEFAULTS[k], (int, float)) and not isinstance(SETTINGS_DEFAULTS[k], bool):
             clean[k] = max(0, type(SETTINGS_DEFAULTS[k])(v))
         elif isinstance(SETTINGS_DEFAULTS[k], list):
-            clean[k] = [str(x)[:40] for x in v][:10] if isinstance(v, list) else before[k]
+            if not isinstance(v, list):
+                clean[k] = before[k]
+            elif SETTINGS_DEFAULTS[k] and isinstance(SETTINGS_DEFAULTS[k][0], int):
+                clean[k] = [max(5, int(x)) for x in v if str(x).strip()][:10] or before[k]
+            else:
+                clean[k] = [str(x)[:40] for x in v][:10]
         elif isinstance(SETTINGS_DEFAULTS[k], dict):
             clean[k] = v if isinstance(v, dict) else before[k]
         else:
@@ -221,9 +227,9 @@ async def recover_orphaned_jobs():
 async def start_video_job(*, center_id: str, course_id: str, lesson_id: str,
                           block_id: str, prompt: str, seconds: int, size: str,
                           current: dict, negative_prompt: str = "",
-                          style_profile: dict = None) -> dict:
+                          style_profile: dict = None, provider_name: str = None) -> dict:
     """All gates re-checked server-side; returns the created job doc."""
-    est = await build_estimate(course_id, seconds, size)
+    est = await build_estimate(course_id, seconds, size, provider_name)
     if est["blockers"]:
         raise ValueError(est["blockers"][0])
     prev = await db.ai_video_jobs.count_documents({"block_id": block_id})

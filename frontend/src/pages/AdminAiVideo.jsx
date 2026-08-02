@@ -112,6 +112,13 @@ function SettingsTab() {
         {num("auto_video_cap", "Auto videos per course (one-click)", 1)}
         {num("auto_image_cap", "Auto images per course (one-click)", 1)}
         <label className="flex items-center justify-between gap-2 py-1">
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>Retry schedule (seconds, comma-sep)</span>
+          <input className="or-input text-xs w-44 text-right" defaultValue={(draft.retry_schedule_seconds || []).join(", ")}
+            onChange={(e) => setDraft({ ...draft,
+              retry_schedule_seconds: e.target.value.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n) && n > 0) })}
+            data-testid="aiv-set-retry-schedule" />
+        </label>
+        <label className="flex items-center justify-between gap-2 py-1">
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>AI Media approval</span>
           <select className="or-input text-xs" value={draft.ai_media_approval}
             onChange={(e) => setDraft({ ...draft, ai_media_approval: e.target.value })} data-testid="aiv-set-approval">

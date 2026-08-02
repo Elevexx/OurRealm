@@ -4,6 +4,7 @@ import { ArrowLeft, Sparkles, Loader2, GraduationCap, Image as ImageIcon, Film, 
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import StyleSelector from "@/components/rc/StyleSelector";
+import MediaPackDashboard from "@/components/rc/MediaPackDashboard";
 
 const STAGE_LABELS = {
   starting: "Queued — ORAi is warming up…",
@@ -123,8 +124,18 @@ export default function CourseMaker() {
         setJob({ ...r.data });
         if (r.data.status === "done") {
           clearInterval(pollRef.current);
-          toast.success("Course drafted! Review and edit before publishing.");
-          navigate(`/responsibility-center/${id}/courses/${r.data.course_id}/edit`);
+          let pending = false;
+          try {
+            const ms = await apiClient.get(`/responsibility-center/${id}/courses/${r.data.course_id}/media-status`);
+            pending = (ms.data.failed_assets || []).length > 0 || ms.data.pending_retries > 0
+              || (ms.data.videos?.generating || 0) > 0;
+          } catch { /* status unavailable — proceed to editor */ }
+          if (pending) {
+            toast.warning("Course drafted — some media is still generating or retrying below.");
+          } else {
+            toast.success("Course drafted! Review and edit before publishing.");
+            navigate(`/responsibility-center/${id}/courses/${r.data.course_id}/edit`);
+          }
         } else if (r.data.status === "failed") {
           clearInterval(pollRef.current);
           toast.error(r.data.error || "ORAi could not build that course");
@@ -259,7 +270,7 @@ export default function CourseMaker() {
         </div>
       )}
 
-      {job && (
+      {job && job.status === "running" && (
         <div className="or-surface p-5" data-testid="course-gen-progress">
           <div className="flex items-center gap-2 mb-2">
             <Loader2 size={20} className="animate-spin" style={{ color: "#C26BFF" }} />
@@ -312,6 +323,10 @@ export default function CourseMaker() {
             ))}
           </div>
         </div>
+      )}
+
+      {job && job.course_id && (
+        <MediaPackDashboard centerId={id} courseId={job.course_id} compact={job.status === "running"} />
       )}
 
       {!blueprint && !job && (
