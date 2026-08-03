@@ -140,6 +140,11 @@ Reply ONLY valid JSON:
  "unsupported_mechanics": ["requested mechanics the chosen runtime cannot do, [] if none"],
  "substitutions": ["honest 'requested X -> using Y instead' notes, [] if none"],
  "gameplay_summary": "2 sentences describing moment-to-moment gameplay",
+ "presentation_mode": "for dodge_collect pick: road_3d|lane_runner|vertical|space_flight|arena_360|tunnel (action/racing/runner -> road_3d or lane_runner)",
+ "visual_style_summary": "1-2 sentences: art direction, palette, atmosphere",
+ "player_appearance": "e.g. neon hover vehicle",
+ "environment_themes": ["planned stage environments e.g. cyber_city, space, sunset, crystal"],
+ "hazard_types_planned": 3, "pickup_types_planned": 2, "stage_visual_groups": 4,
  "est_play_minutes": "e.g. 10-20",
  "subject": "...", "target_age": "...", "grade_level": "...",
  "learning_objective": "one sentence", "stages": 3,
@@ -199,6 +204,32 @@ async def create_estimate(body: dict, current: dict) -> dict:
         stages = 1
     plan["stages"] = 1 if complexity == 1 else max(3, min(5, stages)) if complexity == 2 else max(min_stages_for(complexity), stages)
     plan["est_play_minutes"] = str(plan.get("est_play_minutes") or {1: "3-5", 2: "8-15", 3: "15-25"}.get(complexity, "20-45"))
+    # honest presentation & visual plan
+    canvas_rt = {"dodge_collect", "top_down", "platformer"}
+    modes = ("road_3d", "lane_runner", "vertical", "space_flight", "arena_360", "tunnel")
+    pm = str(plan.get("presentation_mode") or "")
+    if rt == "dodge_collect" and pm not in modes:
+        pm = "road_3d"
+    elif rt != "dodge_collect":
+        pm = {"top_down": "top-down arena", "platformer": "side-view platformer"}.get(rt, "standard UI")
+    vp = {
+        "presentation_mode": pm,
+        "visual_style_summary": str(plan.get("visual_style_summary") or "")[:300],
+        "player_appearance": str(plan.get("player_appearance") or ("hover vehicle" if rt == "dodge_collect" else ""))[:120],
+        "environment_themes": [str(x)[:40] for x in (plan.get("environment_themes") or [])][:10],
+        "hazard_types_planned": int(plan.get("hazard_types_planned") or (3 if complexity >= 7 else 2 if complexity >= 4 else 1)),
+        "pickup_types_planned": int(plan.get("pickup_types_planned") or (2 if complexity >= 4 else 0)),
+        "stage_visual_groups": int(plan.get("stage_visual_groups") or (4 if complexity >= 7 else 2 if complexity >= 4 else 1)),
+        "fallback_shapes": bool(complexity <= 3 and rt in canvas_rt),
+    }
+    if rt not in canvas_rt and complexity >= 7:
+        vp["visual_warning"] = (f"{RUNTIME_LABELS[rt]} is a UI-based runtime — high complexity adds depth and stages, "
+                                "not arcade-style visuals. Pick an arcade runtime for cinematic presentation.")
+    elif complexity <= 3 and rt in canvas_rt:
+        vp["visual_warning"] = "Complexity 1-3 uses the basic themed presentation (simple procedural shapes)."
+    else:
+        vp["visual_warning"] = None
+    plan["visual_plan"] = vp
     build_cost = round(t["est_cost"] + 0.01 * complexity, 2)
     est = {
         "id": uuid.uuid4().hex, "status": "awaiting_approval",
@@ -230,8 +261,14 @@ matching: {"stages":[{"title":"...","pairs":[{"left":"...","right":"..."}] (5-8 
 sorting: {"stages":[{"title":"...","categories":["A","B"],"items":[{"label":"...","category":"A"}] (6-10 items)}]}
 memory: {"stages":[{"title":"...","cards":["term1","term2",...] (6-8 unique terms, runtime duplicates them)}]}
 rhythm: {"stages":[{"title":"...","bpm":90,"pattern":[1,0,1,1,0,1,0,1] (16 beats, 1=tap),"lesson_tip":"..."}]}
-dodge_collect: {"stages":[{"title":"...","target_cores":8,"fall_speed":140,"spawn_ms":700,"core_ratio":0.6}]}
-  (each later stage: higher fall_speed +15-25%, lower spawn_ms, more target_cores, lower core_ratio)
+dodge_collect: {"mode":"road_3d|lane_runner|vertical|space_flight|arena_360|tunnel",
+ "visual_theme": REQUIRED (see below),
+ "stages":[{"title":"...","mode":"road_3d","environment":"cyber_city|space|sunset|crystal|lava|tunnel|grid",
+  "lanes":3,"target_cores":8,"fall_speed":140,"spawn_ms":700,"core_ratio":0.6,
+  "hazard_types":["drone","barrier","seeker","mine"] (pick 1-4 per stage, VARY across stages),
+  "pickups":{"shield":0.05,"boost":0.05},"formation":"zigzag|line|arc|random"}]}
+  (each later stage: higher fall_speed +15-25%, lower spawn_ms, more target_cores; VARY environment,
+   hazard_types, formation and optionally mode across stages — do NOT make visually identical stages)
 top_down: {"stages":[{"title":"...","cores":6,"obstacles":3,"player_speed":180,"hazards":[{"type":"patrol","speed":120},{"type":"chaser","speed":80}]}]}
   (each later stage: more cores/hazards/obstacles, faster hazards; max 5 hazards)
 platformer: {"stages":[{"title":"...","platforms":[{"x":0,"y":92,"w":100},{"x":10,"y":72,"w":20},...],
@@ -246,6 +283,9 @@ puzzle_room: {"stages":[{"title":"Room name","intro":"scene description","puzzle
 
 Wrap it as: {"runtime":"<runtime>","title":"...","description":"1-2 sentences","subject":"...",
  "grade_level":"...","learning_objective":"...","controls":"...",
+ "visual_theme":{"environment":"cyber_city|space|sunset|crystal|lava|tunnel|grid",
+   "player":"hover_car","player_name":"e.g. neon hover vehicle",
+   "palette":{"bg":"#05060f","glow":"#2EE6FF","accent":"#F4A73B","hazard":"#FF3D5A","player":["#C26BFF","#2EE6FF"],"lane":"#2EE6FF"}},
  "theme":{"bg":"#0b1220","accent":"#2EE6FF","text":"#EAF2FF"},
  "scoring":{"points_per_correct":10,"pass_pct":70},
  "lives":3, "combo":true|false, "checkpoints":true|false,
@@ -255,7 +295,13 @@ Wrap it as: {"runtime":"<runtime>","title":"...","description":"1-2 sentences","
 Rules: stage count and depth must match the requested complexity contract in the user message.
 Difficulty must visibly ramp across stages (speed, hazards, puzzle difficulty). Educational content
 must be accurate and age-appropriate. combo/checkpoints/unlockables/achievements ONLY for
-complexity 3; lives 3 for complexity 2-3, lives 1 for complexity 1. English only."""
+complexity 3+; lives 3 for complexity 2+, lives 1 for complexity 1. English only.
+VISUAL SCALING (canvas runtimes: dodge_collect, top_down, platformer):
+- complexity 1-3: one environment is fine, basic hazard set.
+- complexity 4-6: visual_theme required; at least 2 different stage environments; 2+ hazard_types; include pickups.
+- complexity 7-10: visual_theme required; at least 4 DISTINCT stage environments across stages; 3+ hazard_types
+  overall; both shield AND boost pickups; varied formations; vary mode across stage groups when it fits.
+  Stages must be visually and mechanically distinct — never identical stages with only faster numbers."""
 
 
 def validate_spec(spec: dict, complexity: int = 1) -> list:
@@ -326,6 +372,22 @@ def validate_spec(spec: dict, complexity: int = 1) -> list:
                 errs.append("difficulty must increase across stages (fall_speed or target_cores)")
         except Exception:  # noqa: BLE001
             pass
+    # visual scaling contract (canvas runtimes)
+    canvas_rt = {"dodge_collect", "top_down", "platformer"}
+    if spec.get("runtime") in canvas_rt and complexity >= 4 and not spec.get("visual_theme"):
+        errs.append(f"complexity {complexity} requires a visual_theme")
+    if spec.get("runtime") == "dodge_collect" and complexity >= 7:
+        envs = {st.get("environment") for st in stages if st.get("environment")}
+        if len(envs) < 4:
+            errs.append(f"complexity {complexity} requires >=4 distinct stage environments (got {len(envs)})")
+        kinds = set()
+        for st in stages:
+            kinds.update(st.get("hazard_types") or [])
+        if len(kinds) < 3:
+            errs.append(f"complexity {complexity} requires >=3 hazard types overall (got {len(kinds)})")
+        if not (any((st.get("pickups") or {}).get("shield") for st in stages)
+                and any((st.get("pickups") or {}).get("boost") for st in stages)):
+            errs.append(f"complexity {complexity} requires both shield and boost pickups")
     return errs
 
 
@@ -399,6 +461,22 @@ async def _run_build(game_id: str):
             except Exception:  # noqa: BLE001
                 pass
             errs = validate_spec(spec, game["complexity"])
+        if not errs and game["ai_power"] >= 7 and spec.get("runtime") in ("dodge_collect", "top_down", "platformer"):
+            await _log(game_id, "art_direction", "AI Power 7+ — art direction, asset planning & stage-variation pass")
+            try:
+                raw2 = await call_llm(
+                    SPEC_SYSTEM,
+                    user_msg + "\nART DIRECTION PASS: improve the spec below — richer visual_theme palette, DISTINCT "
+                    "per-stage environments/hazard_types/formations (and modes where fitting), better balance and pacing. "
+                    "Keep the SAME runtime, at least the same stage count, and every complexity requirement. "
+                    "Return the FULL improved spec JSON.\nCURRENT SPEC: " + json.dumps(spec)[:7000],
+                    power=game["ai_power"], json_mode=True)
+                cost += t["est_cost_per_pass"]
+                spec2 = json.loads(raw2)
+                if not validate_spec(spec2, game["complexity"]):
+                    spec = spec2
+            except Exception:  # noqa: BLE001
+                pass
         await _log(game_id, "testing", "Running automated spec validation tests")
         errs = validate_spec(spec, game["complexity"])
         tests = {"passed": not errs, "errors": errs,

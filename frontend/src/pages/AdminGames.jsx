@@ -264,6 +264,37 @@ export default function AdminGames() {
                   <b className="text-[11px]">{(estimate.plan.save_features || []).join(", ") || "—"}</b>
                 </div>
               </div>
+              {estimate.plan.visual_plan && (
+                <div className="mt-2 rounded-lg p-2" style={{ background: "rgba(194,107,255,0.06)", border: "1px solid rgba(194,107,255,0.25)" }}
+                  data-testid="game-est-visual-plan">
+                  <div className="text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: "#C26BFF" }}>
+                    Presentation & Visual Plan
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
+                    <span>Mode: <b>{estimate.plan.visual_plan.presentation_mode?.replace(/_/g, " ")}</b></span>
+                    <span>Player: <b>{estimate.plan.visual_plan.player_appearance || "—"}</b></span>
+                    <span>Hazard types: <b>{estimate.plan.visual_plan.hazard_types_planned}</b></span>
+                    <span>Pickup types: <b>{estimate.plan.visual_plan.pickup_types_planned}</b></span>
+                    <span className="col-span-2">Stage visual groups: <b>{estimate.plan.visual_plan.stage_visual_groups}</b></span>
+                  </div>
+                  {estimate.plan.visual_plan.visual_style_summary && (
+                    <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>{estimate.plan.visual_plan.visual_style_summary}</p>
+                  )}
+                  {(estimate.plan.visual_plan.environment_themes || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {estimate.plan.visual_plan.environment_themes.map((e, i) => (
+                        <span key={i} className="text-[9.5px] px-2 py-0.5 rounded-full"
+                          style={{ background: "rgba(194,107,255,0.12)", border: "1px solid rgba(194,107,255,0.35)", color: "#C26BFF" }}>{e}</span>
+                      ))}
+                    </div>
+                  )}
+                  {(estimate.plan.visual_plan.visual_warning || estimate.plan.visual_plan.fallback_shapes) && (
+                    <div className="text-[10px] mt-1" style={{ color: "#F4A73B" }} data-testid="game-est-visual-warning">
+                      ⚠ {estimate.plan.visual_plan.visual_warning || "Basic procedural shapes will be used at this complexity."}
+                    </div>
+                  )}
+                </div>
+              )}
               {(estimate.plan.mechanics || []).length > 0 && (
                 <div className="mt-2" data-testid="game-est-mechanics">
                   <div className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Mechanics included</div>
