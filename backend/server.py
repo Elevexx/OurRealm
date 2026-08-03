@@ -92,6 +92,11 @@ async def root():
     return {"app": "OurRealm", "status": "ok"}
 
 
+@health.get("/health")
+async def api_health_probe():
+    return {"app": "OurRealm", "backend": "alive", "status": "ok"}
+
+
 @app.get("/health")
 async def health_probe():
     return {"status": "ok"}
@@ -225,6 +230,7 @@ async def validation_exception_handler(request, exc: RequestValidationError):
 # explicit public allow-list below (health + auth/recovery only).
 PUBLIC_API_PATHS = {
     "/api",
+    "/api/health",
     "/api/auth/register",
     "/api/auth/username/check",
     "/api/auth/login",
@@ -481,11 +487,35 @@ async def _safe_startup():
 
 async def _deferred_startup():
     import asyncio
-    global _mod_task
+    global _mod_task, _fire_finalize_task, _pulse_task
     logger.info("[startup-step] begin deferred startup")
-    if os.environ.get("STARTUP_MIGRATIONS", "on").lower() in ("off", "0", "false"):
-        logger.warning("[startup] STARTUP_MIGRATIONS=off — skipping boot migrations, arming loops only")
+    if os.environ.get("STARTUP_MIGRATIONS", "off").lower() in ("off", "0", "false"):
+        logger.warning("[startup] EMERGENCY MODE — boot migrations skipped (STARTUP_MIGRATIONS!=on); arming background workers only")
         _mod_task = asyncio.create_task(_moderation_loop())
+        try:
+            asyncio.create_task(orion_control_router_mod.scheduler_loop())
+        except Exception as e:
+            logger.warning(f"[orai-scheduler] startup error: {e}")
+        try:
+            from services import fire_vault as _fv
+            _fire_finalize_task = asyncio.create_task(_fv.finalization_loop(600))
+        except Exception as e:
+            logger.warning(f"[fire-finalize] startup error: {e}")
+        try:
+            _pulse_task = asyncio.create_task(_realm_pulse_loop())
+        except Exception as e:
+            logger.warning(f"[realm_pulse] startup failed: {e}")
+        try:
+            from services.purge_cron import start_purge_scheduler
+            start_purge_scheduler()
+        except Exception as e:
+            logger.warning(f"[purge_cron] startup failed: {e}")
+        try:
+            from services.rc_renewals import start_renewal_scheduler
+            start_renewal_scheduler()
+        except Exception as e:
+            logger.warning(f"[rc-renewals] startup failed: {e}")
+        logger.info("OurRealm startup complete (EMERGENCY MODE — workers armed, migrations skipped)")
         return
     logger.info("[startup-step] seed")
     try:
@@ -545,7 +575,6 @@ async def _deferred_startup():
     # Fire Vault — background finalization (Pending → Collectable).
     try:
         from services import fire_vault as _fv
-        global _fire_finalize_task
         _fire_finalize_task = asyncio.create_task(_fv.finalization_loop(600))
     except Exception as e:
         logger.warning(f"[fire-finalize] startup error: {e}")
@@ -564,7 +593,6 @@ async def _deferred_startup():
     try:
         from services import realm_pulse as rp
         await rp.ensure_indexes()
-        global _pulse_task
         _pulse_task = asyncio.create_task(_realm_pulse_loop())
     except Exception as e:
         logger.warning(f"[realm_pulse] startup failed: {e}")

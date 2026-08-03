@@ -19,6 +19,32 @@ def _iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+@admin.post("/import-showcase")
+async def import_showcase_games(current: CurrentUser):
+    """Founder-only, insert-only transfer of the packaged showcase games.
+    Never overwrites or modifies an existing game record."""
+    require_founder(current)
+    import json
+    from pathlib import Path
+    seed_path = Path(__file__).resolve().parent.parent / "seeds" / "showcase_games.json"
+    if not seed_path.exists():
+        raise HTTPException(status_code=404, detail="showcase seed file not present in this build")
+    games = json.loads(seed_path.read_text())
+    inserted, skipped = [], []
+    for g in games:
+        if not g.get("id"):
+            continue
+        existing = await db.games.find_one({"id": g["id"]}, {"_id": 1})
+        if existing:
+            skipped.append(g.get("title"))
+            continue
+        await db.games.insert_one(dict(g))
+        inserted.append(g.get("title"))
+    log.info(f"[import-showcase] inserted={len(inserted)} skipped={len(skipped)} by={current.get('username')}")
+    return {"inserted": inserted, "skipped": skipped,
+            "total_in_seed": len(games)}
+
+
 # ─── Founder Game Studio ─────────────────────────────────────────────────
 @admin.get("")
 async def studio_overview(current: CurrentUser):
