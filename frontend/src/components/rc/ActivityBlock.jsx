@@ -204,6 +204,11 @@ export default function ActivityBlock({ b }) {
     if (b.video_url) {
       return (
         <Shell title={b.title || "Video"} body={b.body} testid="block-video">
+          {b.video_dry_run && (
+            <div className="text-[9px] font-bold px-1.5 py-0.5 rounded-full inline-block mb-1.5"
+              style={{ background: "rgba(77,214,193,0.15)", color: "#4DD6C1", border: "1px solid rgba(77,214,193,0.4)" }}
+              data-testid="video-dryrun-badge">DRY RUN TEST CLIP</div>
+          )}
           <ResumableVideo b={b} />
           {b.video_caption && (
             <div className="text-[9px] mt-1" style={{ opacity: 0.6 }} data-testid="video-caption">{b.video_caption}</div>

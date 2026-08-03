@@ -62,6 +62,79 @@ async def delete_style_preset(preset_id: str, current: CurrentUser):
 
 
 # ── Founder Command Center ──────────────────────────────────────────────
+@admin_router.get("/diagnose")
+async def video_diagnose(lesson_id: str, block_id: str, current: CurrentUser):
+    """Founder-only playback diagnostics for one lesson video block."""
+    require_founder(current)
+    les = await db.rc_course_lessons.find_one({"id": lesson_id}, {"_id": 0, "blocks": 1})
+    block = next((b for b in (les or {}).get("blocks", []) if b.get("id") == block_id), None)
+    if not block:
+        raise HTTPException(status_code=404, detail="Block not found")
+    job = None
+    if block.get("video_job_id"):
+        job = await db.ai_video_jobs.find_one({"id": block["video_job_id"]}, {"_id": 0})
+    latest = await db.ai_video_jobs.find_one(
+        {"lesson_id": lesson_id, "block_id": block_id}, {"_id": 0}, sort=[("created_at", -1)])
+    ref = job or latest or {}
+    retry = await db.rc_media_retry_tasks.find_one(
+        {"lesson_id": lesson_id, "block_id": block_id, "asset_type": "video"},
+        {"_id": 0, "prompt": 0}, sort=[("updated_at", -1)])
+    url = block.get("video_url") or ""
+    from services.video_store import video_dir
+    f = (video_dir() / url.rsplit("/", 1)[-1]) if url else None
+    exists = bool(f and f.exists())
+    size = f.stat().st_size if exists else 0
+    storage_location = "local disk" if exists else None
+    if url and not exists:
+        try:
+            import asyncio as _a
+            from services.storage_adapter import get_storage_adapter
+            ad = get_storage_adapter()
+            fname = url.rsplit("/", 1)[-1]
+            def _head():
+                try:
+                    h = ad._client().head_object(Bucket=ad.bucket, Key=f"videos/{fname}")
+                    return int(h.get("ContentLength") or 0)
+                except Exception:  # noqa: BLE001
+                    return None
+            r2_size = await _a.to_thread(_head)
+            if r2_size is not None:
+                exists, storage_location, size = True, "Cloudflare R2", r2_size
+        except Exception:  # noqa: BLE001 — diagnostics must never 500
+            pass
+    s = await vg.get_video_settings()
+    dry = ref.get("dry_run")
+    import mimetypes
+    mime = mimetypes.guess_type(url)[0] if url else None
+    return {
+        "provider": ref.get("provider") or s.get("default_provider"),
+        "generation_job_id": ref.get("id") or block.get("video_job_id"),
+        "provider_job_id": ref.get("provider_job_id"),
+        "dry_run": dry,
+        "settings_dry_run": s.get("dry_run"),
+        "mime_type": mime,
+        "created_at": ref.get("created_at"),
+        "finished_at": ref.get("finished_at"),
+        "last_error": ref.get("error"),
+        "storage_url": url, "asset_url": url, "player_url": url,
+        "storage_file_exists": exists,
+        "storage_location": storage_location,
+        "storage_file_bytes": size,
+        "current_status": block.get("video_status"),
+        "job_status": ref.get("status"),
+        "ids_match": (not job or not latest or job["id"] == latest["id"]),
+        "attached_job_is_latest": (block.get("video_job_id") == (latest or {}).get("id")) if latest else None,
+        "last_retry": ({k: retry.get(k) for k in ("status", "attempt", "last_error", "updated_at", "provider")}
+                       if retry else None),
+        "last_provider_response": ref.get("error")
+            or ("dry-run: provider was never called — a free local test-pattern clip (ffmpeg testsrc2) was generated"
+                if dry else ("completed" if ref.get("status") == "complete" else ref.get("status"))),
+        "verdict": ("DRY-RUN MODE — the color-bar clip is the intentional free placeholder, not a bug. "
+                    "Turn off 'Dry run' in AI Video Settings and regenerate to get the real AI video."
+                    if dry else None),
+    }
+
+
 @admin_router.get("/settings")
 async def get_settings(current: CurrentUser):
     require_founder(current)

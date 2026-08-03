@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { Clapperboard, Loader2, Upload, Link2, Trash2, X, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
+import StyleSelector from "@/components/rc/StyleSelector";
+import VideoDiagnostics from "@/components/rc/VideoDiagnostics";
 
 const STATUS_COLORS = {
   queued: "#F4A73B", generating: "#C26BFF", downloading: "#2EA0FF",
@@ -78,7 +80,7 @@ function EstimateModal({ base, blockBody, onApprove, onClose }) {
           <button className="or-btn text-xs flex-1 font-bold" disabled={busy || !est || est.blockers.length > 0 || !prompt.trim()}
             onClick={approve} data-testid="video-approve-generate">
             {busy ? <Loader2 size={12} className="animate-spin" /> : <Clapperboard size={12} />}
-            Approve & Generate {est ? `($${est.estimated_cost.toFixed(2)})` : ""}
+            {est?.dry_run ? "Approve & Generate (FREE dry run)" : `Approve & Generate ${est ? `($${est.estimated_cost.toFixed(2)})` : ""}`}
           </button>
           <button className="or-btn or-btn-ghost text-xs" onClick={onClose}>Cancel</button>
         </div>
@@ -91,7 +93,7 @@ function EstimateModal({ base, blockBody, onApprove, onClose }) {
 
 // LessonVideoPanel — video controls for a video_embed block in the Course
 // Editor. Generate / upload / paste URL / remove — all provider-agnostic.
-export default function LessonVideoPanel({ centerId, courseId, lessonId, block, onBlockChange }) {
+function LessonVideoPanelInner({ centerId, courseId, lessonId, block, onBlockChange }) {
   const base = `/responsibility-center/${centerId}/courses/${courseId}/lessons/${lessonId}/video`;
   const [showEstimate, setShowEstimate] = useState(false);
   const [job, setJob] = useState(null);
@@ -203,6 +205,11 @@ export default function LessonVideoPanel({ centerId, courseId, lessonId, block, 
             style={{ background: `${STATUS_COLORS[status] || "#888"}22`, color: STATUS_COLORS[status] || "#888" }}
             data-testid="video-status-chip">{status}</span>
         )}
+        {block.video_dry_run && block.video_url && !job && (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+            style={{ background: "rgba(77,214,193,0.15)", color: "#4DD6C1", border: "1px solid rgba(77,214,193,0.4)" }}
+            data-testid="video-dryrun-chip">DRY RUN TEST CLIP</span>
+        )}
         {block.video_source && <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>({block.video_source})</span>}
       </div>
 
@@ -250,6 +257,32 @@ export default function LessonVideoPanel({ centerId, courseId, lessonId, block, 
         <EstimateModal base={base} blockBody={block.body?.slice(0, 500)}
           onApprove={startGenerate} onClose={() => setShowEstimate(false)} />
       )}
+      <VideoDiagnostics lessonId={lessonId} block={block} />
     </div>
   );
+}
+
+// Crash guard — a render error inside the video panel (or its modal) must
+// never blank the Course Editor; unsaved lesson edits stay intact.
+class VideoPanelBoundary extends React.Component {
+  state = { err: null };
+  static getDerivedStateFromError(err) { return { err }; }
+  render() {
+    if (this.state.err) {
+      return (
+        <div className="rounded-lg p-2.5 mb-2 text-[11px] flex items-center gap-2 flex-wrap"
+          style={{ background: "rgba(255,107,107,0.08)", border: "1px dashed rgba(255,107,107,0.4)", color: "#FF6B6B" }}
+          data-testid="video-panel-crash-guard">
+          ⚠ The video panel hit an error — your lesson edits are safe.
+          <button className="or-btn or-btn-ghost text-[10px]" onClick={() => this.setState({ err: null })}
+            data-testid="video-panel-crash-reset">Reload panel</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function LessonVideoPanel(props) {
+  return <VideoPanelBoundary><LessonVideoPanelInner {...props} /></VideoPanelBoundary>;
 }

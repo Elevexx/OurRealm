@@ -342,6 +342,7 @@ async def _run_pipeline(job_id: str):
                       "blocks.$.video_source": "generated",
                       "blocks.$.video_job_id": job_id,
                       "blocks.$.video_status": "ready",
+                      "blocks.$.video_dry_run": bool(job["dry_run"]),
                       "blocks.$.video_caption": ("Free dry-run test clip — not real AI output"
                                                  if job["dry_run"] else None),
                       "updated_at": _iso()}})
