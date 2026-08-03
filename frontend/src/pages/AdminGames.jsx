@@ -12,27 +12,68 @@ const STATUS_COLORS = {
 const POWER_LABELS = ["", "Fast & light", "Efficient", "Improved planning", "Planning + review",
   "Strong reasoning", "Deep QA", "Advanced design", "Rich iterations", "Highest intelligence", "Maximum depth"];
 
-function Slider({ label, value, onChange, max, lockedAbove, labels, testid }) {
+function Slider({ label, value, onChange, max, allowed, labels, testid }) {
+  const isAllowed = (n) => !allowed || allowed.includes(n);
   return (
     <div className="mb-3">
       <div className="flex justify-between text-xs mb-1">
         <b>{label}</b>
         <span style={{ color: "#2EE6FF" }} data-testid={`${testid}-value`}>
-          {value}{lockedAbove && value > lockedAbove ? " (locked)" : ""} — {labels ? labels[value] : ""}
+          {value}{!isAllowed(value) ? " (locked)" : ""} — {labels ? labels[value] : ""}
         </span>
       </div>
       <input type="range" min={1} max={max} value={value} className="w-full accent-[#2EE6FF]"
         onChange={(e) => onChange(Number(e.target.value))} data-testid={testid} />
       <div className="flex justify-between text-[9px]" style={{ color: "var(--text-muted)" }}>
         {Array.from({ length: max }, (_, i) => i + 1).map((n) => (
-          <span key={n} style={{ color: lockedAbove && n > lockedAbove ? "#556" : undefined }}>
-            {lockedAbove && n > lockedAbove ? <Lock size={8} className="inline" /> : n}
+          <span key={n} style={{ color: !isAllowed(n) ? "#556" : undefined }}>
+            {!isAllowed(n) ? <Lock size={8} className="inline" /> : n}
           </span>
         ))}
       </div>
-      {lockedAbove && value > lockedAbove && (
+      {!isAllowed(value) && (
         <div className="text-[10px] mt-1" style={{ color: "#F4A73B" }} data-testid={`${testid}-locked-note`}>
-          <Lock size={10} className="inline mr-1" />Levels {lockedAbove + 1}–{max} are coming in a future phase.
+          <Lock size={10} className="inline mr-1" />Level {value} isn't enabled — adjust in Game Creator Access below.
+        </div>
+      )}
+    </div>
+  );
+}
+
+const ALL_LEVELS = Array.from({ length: 10 }, (_, i) => i + 1);
+
+function AccessConfig({ label, cfg, onChange, testid }) {
+  return (
+    <div className="mb-3" data-testid={testid}>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <b className="text-[11px] w-full sm:w-40">{label}</b>
+        {["all", "range", "custom"].map((m) => (
+          <button key={m} className="or-btn or-btn-ghost text-[10px]"
+            style={cfg.mode === m ? { background: "rgba(46,230,255,0.15)", color: "#2EE6FF", borderColor: "rgba(46,230,255,0.5)" } : {}}
+            onClick={() => onChange({ ...cfg, mode: m })} data-testid={`${testid}-mode-${m}`}>
+            {m === "all" ? "All (default)" : m === "range" ? "Range" : "Custom"}
+          </button>
+        ))}
+      </div>
+      {cfg.mode === "range" && (
+        <div className="flex items-center gap-2 mt-1.5 text-[11px]">
+          Min <input type="number" min={1} max={10} value={cfg.min ?? 1} className="or-input w-16 text-xs"
+            onChange={(e) => onChange({ ...cfg, min: Number(e.target.value) })} data-testid={`${testid}-min`} />
+          Max <input type="number" min={1} max={10} value={cfg.max ?? 10} className="or-input w-16 text-xs"
+            onChange={(e) => onChange({ ...cfg, max: Number(e.target.value) })} data-testid={`${testid}-max`} />
+        </div>
+      )}
+      {cfg.mode === "custom" && (
+        <div className="flex gap-1 mt-1.5 flex-wrap">
+          {ALL_LEVELS.map((n) => {
+            const on = (cfg.levels || []).includes(n);
+            return (
+              <button key={n} className="text-[10px] w-7 h-7 rounded-lg"
+                style={{ border: `1px solid ${on ? "#2EE6FF" : "rgba(255,255,255,0.15)"}`, background: on ? "rgba(46,230,255,0.15)" : "transparent", color: on ? "#2EE6FF" : "var(--text-muted)" }}
+                onClick={() => onChange({ ...cfg, levels: on ? (cfg.levels || []).filter((x) => x !== n) : [...(cfg.levels || []), n] })}
+                data-testid={`${testid}-level-${n}`}>{n}</button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -51,8 +92,12 @@ export default function AdminGames() {
   const [estimate, setEstimate] = useState(null);
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState(null);
+  const [access, setAccess] = useState(null);
+  const [showAccess, setShowAccess] = useState(false);
   const pollRef = useRef(null);
   const selGame = params.get("game");
+  const allowedC = data?.allowed_complexity || ALL_LEVELS;
+  const allowedP = data?.allowed_power || ALL_LEVELS;
 
   const load = useCallback(() => {
     apiClient.get("/admin/games").then((r) => { setData(r.data); setDeniedMsg(null); })
@@ -62,6 +107,15 @@ export default function AdminGames() {
       });
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (data?.studio_access) setAccess((a) => a || data.studio_access); }, [data]);
+
+  const saveAccess = async () => {
+    try {
+      await apiClient.patch("/admin/games/settings", access);
+      toast.success("Game Creator access saved");
+      load();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Could not save access settings"); }
+  };
 
   useEffect(() => {
     const estId = params.get("estimate");
@@ -86,7 +140,7 @@ export default function AdminGames() {
     if (!request.trim()) { toast.error("Describe the game first"); return; }
     setBusy(true);
     try {
-      const r = await apiClient.post("/admin/games/estimate", { request, complexity: Math.min(complexity, 3), ai_power: power, ...opts });
+      const r = await apiClient.post("/admin/games/estimate", { request, complexity, ai_power: power, ...opts });
       setEstimate(r.data.estimate);
       toast.success("Estimate ready — nothing builds until you approve");
     } catch (e) { toast.error(e?.response?.data?.detail || "Estimate failed"); }
@@ -152,15 +206,39 @@ export default function AdminGames() {
                   data-testid={`game-opt-${k}`} />
               ))}
             </div>
-            <Slider label="Game Complexity" value={complexity} onChange={setComplexity} max={10} lockedAbove={3}
+            <Slider label="Game Complexity" value={complexity} onChange={setComplexity} max={10} allowed={allowedC}
               labels={["", "Very Simple", "Simple", "Enhanced", "Advanced", "Complex", "Highly Complex", "Simulation", "Large Experience", "World Scale", "Universe Scale"]}
               testid="game-complexity-slider" />
-            <Slider label="AI Power" value={power} onChange={setPower} max={10} labels={POWER_LABELS}
+            <Slider label="AI Power" value={power} onChange={setPower} max={10} allowed={allowedP} labels={POWER_LABELS}
               testid="game-power-slider" />
-            <button className="or-btn text-xs font-bold" disabled={busy || complexity > 3} onClick={makeEstimate}
+            <button className="or-btn text-xs font-bold"
+              disabled={busy || !allowedC.includes(complexity) || !allowedP.includes(power)} onClick={makeEstimate}
               data-testid="game-estimate-btn">
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} Get Cost Estimate
             </button>
+          </div>
+
+          <div className="or-surface p-3 mb-3" data-testid="game-access-panel">
+            <button className="w-full flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
+              style={{ color: "#F4A73B" }} onClick={() => setShowAccess(!showAccess)} data-testid="game-access-toggle">
+              <Lock size={11} /> Game Creator Access {showAccess ? "▾" : "▸"}
+              <span className="font-normal normal-case tracking-normal" style={{ color: "var(--text-muted)" }}>
+                (founder — configure which levels others can use)
+              </span>
+            </button>
+            {showAccess && access && (
+              <div className="mt-3">
+                <AccessConfig label="Game Complexity Access" cfg={access.complexity_access}
+                  onChange={(c) => setAccess({ ...access, complexity_access: c })} testid="access-complexity" />
+                <AccessConfig label="AI Power Access" cfg={access.ai_power_access}
+                  onChange={(c) => setAccess({ ...access, ai_power_access: c })} testid="access-power" />
+                <p className="text-[10px] mb-2" style={{ color: "var(--text-muted)" }}>
+                  Founders always keep 1–10. These limits apply to everyone else through the existing
+                  AI Access Policy system (per-user, badge, progression and invite rules plug in later).
+                </p>
+                <button className="or-btn text-xs" onClick={saveAccess} data-testid="game-access-save">Save Access</button>
+              </div>
+            )}
           </div>
 
           {estimate && (

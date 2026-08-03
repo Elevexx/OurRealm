@@ -26,9 +26,35 @@ async def studio_overview(current: CurrentUser):
     games = await db.games.find({}, {"_id": 0, "spec": 0, "build_log": 0}).sort("created_at", -1).to_list(100)
     estimates = await db.game_estimates.find(
         {"status": "awaiting_approval"}, {"_id": 0}).sort("created_at", -1).to_list(20)
+    settings = await gs.get_studio_settings()
+    # Founders always get the full 1-10; the configured access applies to
+    # everyone else (wired into the game_creator access policy flow).
     return {"games": games, "pending_estimates": estimates,
             "complexity_levels": gs.COMPLEXITY_LEVELS, "max_complexity": gs.MAX_COMPLEXITY,
-            "runtimes": gs.RUNTIMES}
+            "runtimes": gs.RUNTIMES, "studio_access": settings,
+            "allowed_complexity": list(range(1, 11)), "allowed_power": list(range(1, 11))}
+
+
+@admin.get("/settings")
+async def get_studio_access(current: CurrentUser):
+    require_founder(current)
+    return await gs.get_studio_settings()
+
+
+@admin.patch("/settings")
+async def patch_studio_access(body: dict, current: CurrentUser):
+    require_founder(current)
+    settings = await gs.get_studio_settings()
+    for key in ("complexity_access", "ai_power_access"):
+        if key in body and isinstance(body[key], dict):
+            cfg = {**settings[key], **{k: body[key][k] for k in ("mode", "min", "max", "levels") if k in body[key]}}
+            if cfg.get("mode") not in ("all", "range", "custom"):
+                cfg["mode"] = "all"
+            settings[key] = cfg
+    await db.game_studio_settings.update_one({"_id": "settings"}, {"$set": settings}, upsert=True)
+    await gs.audit(current, "game_studio_access_updated",
+                   detail=f"complexity={settings['complexity_access']['mode']} power={settings['ai_power_access']['mode']}")
+    return settings
 
 
 @admin.post("/estimate")
@@ -36,9 +62,17 @@ async def create_estimate(body: dict, current: CurrentUser):
     require_founder(current)
     from services.access_policy import require_access
     await require_access("game_creator", current, consume=False)
-    if int(body.get("complexity") or 1) > gs.MAX_COMPLEXITY:
-        raise HTTPException(status_code=400,
-                            detail=f"Complexity levels {gs.MAX_COMPLEXITY + 1}-10 are coming in a future phase")
+    complexity = min(max(int(body.get("complexity") or 1), 1), 10)
+    ai_power = min(max(int(body.get("ai_power") or 5), 1), 10)
+    # Founders bypass level access; configured levels gate everyone else
+    # once game creation opens beyond founders (policy-driven).
+    settings = await gs.get_studio_settings()
+    is_founder = True  # require_founder above guarantees it today
+    if not is_founder:
+        if complexity not in gs.levels_from(settings["complexity_access"]):
+            raise HTTPException(status_code=403, detail=f"Complexity level {complexity} is not enabled for your account")
+        if ai_power not in gs.levels_from(settings["ai_power_access"]):
+            raise HTTPException(status_code=403, detail=f"AI Power level {ai_power} is not enabled for your account")
     if not str(body.get("request") or "").strip():
         raise HTTPException(status_code=400, detail="Describe the game first")
     est = await gs.create_estimate(body, current)

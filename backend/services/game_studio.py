@@ -79,7 +79,41 @@ COMPLEXITY_LEVELS = {
     4: "Advanced", 5: "Complex", 6: "Highly Complex", 7: "Simulation",
     8: "Large Experience", 9: "World Scale", 10: "Universe Scale",
 }
-MAX_COMPLEXITY = 3  # Phase 1
+MAX_COMPLEXITY = 10  # all levels unlocked; access configured via studio settings
+
+
+def min_stages_for(c: int) -> int:
+    return 1 if c <= 1 else 3 if c == 2 else 5 if c == 3 else 5 + (c - 3)
+
+
+def complexity_features(c: int) -> list:
+    if c in COMPLEXITY_FEATURES:
+        return COMPLEXITY_FEATURES[c]
+    return COMPLEXITY_FEATURES[3] + [f"{min_stages_for(c)}+ stages",
+                                     f"deeper content & harder difficulty (level {c})"]
+
+
+# ── Studio level-access settings (founder-configurable) ─────────────────
+STUDIO_ACCESS_DEFAULT = {"mode": "all", "min": 1, "max": 10, "levels": []}
+
+
+async def get_studio_settings() -> dict:
+    doc = await db.game_studio_settings.find_one({"_id": "settings"}) or {}
+    return {"complexity_access": {**STUDIO_ACCESS_DEFAULT, **(doc.get("complexity_access") or {})},
+            "ai_power_access": {**STUDIO_ACCESS_DEFAULT, **(doc.get("ai_power_access") or {})}}
+
+
+def levels_from(cfg: dict) -> list:
+    try:
+        if cfg.get("mode") == "range":
+            lo = max(1, int(cfg.get("min") or 1)); hi = min(10, int(cfg.get("max") or 10))
+            return list(range(lo, hi + 1)) if lo <= hi else list(range(1, 11))
+        if cfg.get("mode") == "custom":
+            lv = sorted({int(x) for x in (cfg.get("levels") or []) if 1 <= int(x) <= 10})
+            return lv or list(range(1, 11))
+    except Exception:  # noqa: BLE001
+        pass
+    return list(range(1, 11))
 
 
 def _iso():
@@ -155,7 +189,7 @@ async def create_estimate(body: dict, current: dict) -> dict:
     plan["mechanics"] = [str(m)[:80] for m in (plan.get("mechanics") or [])][:12] or RUNTIME_MECHANICS[rt]
     plan["unsupported_mechanics"] = [str(m)[:120] for m in (plan.get("unsupported_mechanics") or [])][:8]
     plan["gameplay_summary"] = str(plan.get("gameplay_summary") or plan.get("concept") or "")[:400]
-    plan["complexity_features"] = COMPLEXITY_FEATURES[complexity]
+    plan["complexity_features"] = complexity_features(complexity)
     plan["save_features"] = (["best score"] if complexity == 1
                              else ["best score", "progress save"] if complexity == 2
                              else ["best score", "progress save", "checkpoints", "unlockables"])
@@ -163,8 +197,8 @@ async def create_estimate(body: dict, current: dict) -> dict:
         stages = int(plan.get("stages") or 1)
     except Exception:  # noqa: BLE001
         stages = 1
-    plan["stages"] = 1 if complexity == 1 else max(3, min(5, stages)) if complexity == 2 else max(5, stages)
-    plan["est_play_minutes"] = str(plan.get("est_play_minutes") or {1: "3-5", 2: "8-15", 3: "15-25"}[complexity])
+    plan["stages"] = 1 if complexity == 1 else max(3, min(5, stages)) if complexity == 2 else max(min_stages_for(complexity), stages)
+    plan["est_play_minutes"] = str(plan.get("est_play_minutes") or {1: "3-5", 2: "8-15", 3: "15-25"}.get(complexity, "20-45"))
     build_cost = round(t["est_cost"] + 0.01 * complexity, 2)
     est = {
         "id": uuid.uuid4().hex, "status": "awaiting_approval",
@@ -337,8 +371,8 @@ async def _run_build(game_id: str):
         user_msg = (
             f"Request: {game['request']}\nRuntime: {game['runtime']} (MANDATORY — the spec runtime must be exactly this)\n"
             f"Complexity: {game['complexity']} — {COMPLEXITY_LEVELS[game['complexity']]}\n"
-            f"COMPLEXITY CONTRACT (must all be present in the spec): {', '.join(COMPLEXITY_FEATURES[game['complexity']])}\n"
-            f"Stages required: {plan.get('stages') or {1: 1, 2: 3, 3: 5}[game['complexity']]}\n"
+            f"COMPLEXITY CONTRACT (must all be present in the spec): {', '.join(complexity_features(game['complexity']))}\n"
+            f"Stages required: {plan.get('stages') or min_stages_for(game['complexity'])}\n"
             + (f"Planned mechanics: {', '.join(plan.get('mechanics') or [])}\n" if plan.get("mechanics") else "")
             + (f"Gameplay summary to implement: {plan.get('gameplay_summary')}\n" if plan.get("gameplay_summary") else "")
             + "\n".join(f"{k}: {v}" for k, v in (game.get("options") or {}).items() if v)
