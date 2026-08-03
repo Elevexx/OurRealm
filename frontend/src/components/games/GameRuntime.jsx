@@ -561,5 +561,3 @@ export default function GameRuntime({ spec, onScore, height = 460, gameId }) {
       data-testid="game-runtime-iframe" />
   );
 }
-;
-}

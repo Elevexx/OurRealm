@@ -16,7 +16,7 @@ from services import game_studio as gs
 public2 = APIRouter(prefix="/api/games", tags=["games-plus"])
 admin2 = APIRouter(prefix="/api/admin/games", tags=["games-plus-admin"])
 
-REWARD_DEFAULTS = {"enabled": True, "first_completion": 5, "new_best": 2,
+REWARD_DEFAULTS = {"enabled": False, "first_completion": 5, "new_best": 2,
                    "achievement": 3, "daily_challenge": 5, "weekly_challenge": 15}
 
 

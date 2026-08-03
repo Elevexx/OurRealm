@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Gamepad2, Loader2, Lock, Rocket, CheckCircle2, XCircle, Trash2, RefreshCcw, Play, Eye, Archive, Sparkles } from "lucide-react";
+import { ArrowLeft, Gamepad2, Loader2, Lock, Rocket, CheckCircle2, XCircle, Trash2, RefreshCcw, Play, Eye, Archive, Sparkles, Flame } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import GameRuntime from "@/components/games/GameRuntime";
@@ -95,6 +95,8 @@ export default function AdminGames() {
   const [detail, setDetail] = useState(null);
   const [access, setAccess] = useState(null);
   const [showAccess, setShowAccess] = useState(false);
+  const [rewards, setRewards] = useState(null);
+  const [showRewards, setShowRewards] = useState(false);
   const [showcaseOnly, setShowcaseOnly] = useState(false);
   const pollRef = useRef(null);
   const loadDetail = (id) => apiClient.get(`/admin/games/${id}`).then((r) => setDetail(r.data.game)).catch(() => {});
@@ -111,6 +113,17 @@ export default function AdminGames() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (data?.studio_access) setAccess((a) => a || data.studio_access); }, [data]);
+
+  useEffect(() => {
+    apiClient.get("/admin/games/rewards").then((r) => setRewards(r.data)).catch(() => {});
+  }, []);
+  const saveRewards = async () => {
+    try {
+      const r = await apiClient.patch("/admin/games/rewards", rewards);
+      setRewards(r.data);
+      toast.success("Fire Power rewards saved");
+    } catch (e) { toast.error(e?.response?.data?.detail || "Could not save rewards"); }
+  };
 
   const saveAccess = async () => {
     try {
@@ -240,6 +253,41 @@ export default function AdminGames() {
                   AI Access Policy system (per-user, badge, progression and invite rules plug in later).
                 </p>
                 <button className="or-btn text-xs" onClick={saveAccess} data-testid="game-access-save">Save Access</button>
+              </div>
+            )}
+          </div>
+
+          <div className="or-surface p-3 mb-3" data-testid="game-rewards-panel">
+            <button className="w-full flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
+              style={{ color: "#FF8A5A" }} onClick={() => setShowRewards(!showRewards)} data-testid="game-rewards-toggle">
+              <Flame size={11} /> Fire Power Rewards {showRewards ? "▾" : "▸"}
+              <span className="font-normal normal-case tracking-normal" style={{ color: rewards?.enabled ? "#10E670" : "var(--text-muted)" }}>
+                {rewards ? (rewards.enabled ? "(enabled)" : "(disabled — default)") : ""}
+              </span>
+            </button>
+            {showRewards && rewards && (
+              <div className="mt-3">
+                <label className="flex items-center gap-2 text-[11px] mb-2 cursor-pointer">
+                  <input type="checkbox" checked={!!rewards.enabled} className="accent-[#FF8A5A]"
+                    onChange={(e) => setRewards({ ...rewards, enabled: e.target.checked })} data-testid="game-rewards-enabled" />
+                  <b>Grant Fire Power for game milestones</b>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
+                  {[["first_completion", "First completion"], ["new_best", "New best score"], ["achievement", "Achievement earned"],
+                    ["daily_challenge", "Daily challenge"], ["weekly_challenge", "Weekly challenge"]].map(([k, l]) => (
+                    <div key={k}>
+                      <div className="text-[9.5px]" style={{ color: "var(--text-muted)" }}>{l}</div>
+                      <input type="number" min={0} value={rewards[k] ?? 0} className="or-input w-full text-xs" disabled={!rewards.enabled}
+                        onChange={(e) => setRewards({ ...rewards, [k]: Math.max(0, Number(e.target.value)) })}
+                        data-testid={`game-rewards-${k}`} />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] mb-2" style={{ color: "var(--text-muted)" }}>
+                  Off by default. When enabled, players earn Fire Power (credited to their Fire Vault) for
+                  first-time completions, new bests and achievements. Rewards never block gameplay.
+                </p>
+                <button className="or-btn text-xs" onClick={saveRewards} data-testid="game-rewards-save">Save Rewards</button>
               </div>
             )}
           </div>
