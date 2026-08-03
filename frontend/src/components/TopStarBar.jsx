@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Star, Globe, Bell, MessageSquare, ShieldCheck } from "lucide-react";
+import { Star, Globe, Bell, MessageSquare, ShieldCheck, Gamepad2 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { RcImg } from "@/lib/rcAssets";
 import { useAuth } from "@/contexts/AuthContext";
@@ -18,6 +18,8 @@ const ITEMS = [
     testid: "star-responsibility-center", color: "var(--brand-green, #10E670)", matchPrefix: true,
     tooltip: "Responsibility Center — Manage responsibilities, tasks, teams, families, schools, businesses and organizations." },
   { to: "/discover",      label: "Discover",      Icon: Globe,        testid: "star-discover",      color: "var(--brand-blue)" },
+  { to: "/games",         label: "Games",         Icon: Gamepad2,     testid: "star-games",         color: "#C26BFF", policy: "games_play",
+    tooltip: "OurRealm Games — play ORAi-built games" },
   { to: "/notifications", label: "Notifications", Icon: Bell,         testid: "star-notifications", color: "#FF8AC2", isNotif: true },
   { to: "/messages",      label: "Messages",      Icon: MessageSquare,testid: "star-messages",      color: "var(--brand-blue)" },
 ];
@@ -41,6 +43,16 @@ export default function TopStarBar() {
   // ── Notifications badge: ONLY unread count, refreshed on route change.
   // Mark-as-seen happens when the user opens /notifications.
   const [unread, setUnread] = useState(0);
+  // Games icon visibility — reuses the AI Access Policy engine (games_play).
+  const [gamesAllowed, setGamesAllowed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) { setGamesAllowed(false); return; }
+    apiClient.get("/ai-policies/me")
+      .then(({ data }) => { if (!cancelled) setGamesAllowed(!!(data?.features?.games_play?.allowed ?? data?.games_play?.allowed)); })
+      .catch(() => { if (!cancelled) setGamesAllowed(false); });
+    return () => { cancelled = true; };
+  }, [user]);
   useEffect(() => {
     let cancelled = false;
     if (!user) { setUnread(0); return; }
@@ -110,7 +122,11 @@ export default function TopStarBar() {
           data-testid="star-bar"
           style={{ scrollSnapType: "x mandatory" }}
         >
-          {ITEMS.filter(({ to }) => to !== "/responsibility-center" || getState("responsibility_center").visible)
+          {ITEMS.filter(({ to, policy }) => {
+            if (to === "/responsibility-center" && !getState("responsibility_center").visible) return false;
+            if (policy === "games_play" && !gamesAllowed) return false;
+            return true;
+          })
             .map(({ to, label, Icon, testid, color, isNotif, matchPrefix, tooltip, rcLogo }) => {
             const pathOnly = to.split("?")[0];
             const active = matchPrefix ? location.pathname.startsWith(pathOnly) : location.pathname === pathOnly;
