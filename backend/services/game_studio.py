@@ -238,6 +238,11 @@ PLAYER_REPS = {
     "racing": ["race_car"],
     "farming": ["farmer_cursor"],
     "city_builder": ["mayor_cursor"],
+    "roguelike": ["dungeon_hero"],
+    "tactics": ["squad_commander"],
+    "idle": ["idle_tycoon"],
+    "visual_novel": ["story_protagonist"],
+    "fishing": ["angler"],
 }
 
 
