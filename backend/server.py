@@ -336,6 +336,63 @@ async def api_v1_alias(request, call_next):
     return response
 
 
+# ─── Auth response validator (outermost) — final wire-format check ─────
+# Guarantees every /api/auth response leaving the app is valid HTTP:
+# sane status, no control chars in headers, no duplicate headers, JSON
+# body parses, content-length exact. On violation: log the offending
+# header and return a clean JSON 500 instead of a malformed response.
+@app.middleware("http")
+async def auth_response_validator(request, call_next):
+    path = request.scope.get("path", "") or ""
+    if not path.startswith("/api/auth"):
+        return await call_next(request)
+    try:
+        response = await call_next(request)
+        offending = []
+        if not isinstance(response.status_code, int) or not (100 <= response.status_code <= 599):
+            offending.append(f"status={response.status_code!r}")
+        seen = {}
+        for rk, rv in response.headers.raw:
+            name, val = rk.decode("latin1"), rv.decode("latin1")
+            if any(c in name for c in ("\r", "\n", "\x00", " ")):
+                offending.append(f"header name {name!r}: invalid char")
+            if any(ord(c) < 32 or ord(c) > 126 for c in val):
+                offending.append(f"header {name!r}: control/non-ascii char in value {val!r}")
+            lk = name.lower()
+            if lk != "set-cookie":
+                seen[lk] = seen.get(lk, 0) + 1
+        dups = [k for k, c in seen.items() if c > 1]
+        if dups:
+            offending.append(f"duplicate headers: {dups}")
+        body = b""
+        async for chunk in response.body_iterator:
+            body += chunk if isinstance(chunk, bytes) else chunk.encode("utf-8")
+        cl = response.headers.get("content-length")
+        if cl is not None and cl.isdigit() and int(cl) != len(body):
+            offending.append(f"content-length mismatch: header={cl} actual={len(body)}")
+        if "application/json" in (response.headers.get("content-type") or "") and body:
+            import json as _json
+            try:
+                _json.loads(body)
+            except Exception as e:
+                offending.append(f"invalid JSON body: {e}")
+        if offending:
+            logger.error(f"[auth-response-validator] BLOCKED malformed response on {path}: {'; '.join(offending)}")
+            return JSONResponse(status_code=500, content={"detail": "auth_response_validation_failed"})
+        from starlette.responses import Response as _WireResponse
+        rebuilt = _WireResponse(content=body, status_code=response.status_code)
+        rebuilt.raw_headers = [(rk, rv) for rk, rv in response.headers.raw
+                               if rk.decode("latin1").lower() not in ("content-length", "content-type")]
+        if response.headers.get("content-type"):
+            rebuilt.headers["content-type"] = response.headers["content-type"]
+        rebuilt.headers["content-length"] = str(len(body))
+        rebuilt.background = response.background
+        return rebuilt
+    except Exception as e:
+        logger.error(f"[auth-response-validator] uncaught error on {path}: {type(e).__name__}: {e}")
+        return JSONResponse(status_code=500, content={"detail": "internal_error"})
+
+
 async def db_strip_fake_realm_counts() -> int:
     """Idempotent — $unset the seeded fake member/online estimate fields."""
     from core.db import db as _db

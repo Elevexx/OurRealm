@@ -213,3 +213,10 @@ KNOWN (pre-existing, by design): bottom mobile nav renders on desktop too — us
   4. Kill switch: env `STARTUP_MIGRATIONS=off` (settable in Emergent dashboard) skips all boot migrations and only arms the moderation loop.
 - VERIFIED in preview: full startup-step sequence completes, /health 200, stealth login OK, /api/auth/me 200, 11 showcase games intact.
 - NEXT: user must redeploy (Replace Deployment). If /api still 520s, pull deployment logs from dashboard; if logs show "OurRealm startup complete" yet /api 520s, it's platform-side (Emergent Support).
+
+## 2026-06 — P0 follow-up: raw HTTP capture + auth response validator (fork session)
+- Captured raw login response on localhost via raw socket: HTTP/1.1 200, headers 754B, zero control chars, zero duplicate headers, content-length exact (13199=13199), 2 valid Set-Cookie, valid JSON. NOTHING malformed.
+- Cloudflare COMPARISON: identical code through preview's Cloudflare returns 200 (edge rewrites cookies to SameSite=None; Partitioned + adds __cf_bm — both valid, done by Emergent proxy). Proves CF accepts this app's responses byte-for-byte.
+- Production ourrealm.social STILL 520s every /api route incl. GET /api/ (4 plain headers, no cookies, no DB) in ~0.15s → the failing responses cannot originate from this response path; production origin process is not serving.
+- Added `auth_response_validator` middleware (outermost, /api/auth only) in server.py: validates status range, header name/value control chars, duplicate headers, JSON body parse, exact content-length; rebuilds response with recomputed content-length; on violation logs offending header + returns clean JSON 500; wraps call_next in try/except so auth NEVER emits an unhandled exception response.
+- Verified via raw sockets: login 200 / bad-password 401 / signup-status 200 / me 401 / refresh 401 / logout 200 — all valid JSON, exact CL, clean headers. Via CF preview: login 200 + cookies preserved, google/session 400 JSON, signup-status 200. Zero validator violations logged.
