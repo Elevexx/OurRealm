@@ -4,6 +4,7 @@ import { ArrowLeft, Gamepad2, Loader2, Lock, Rocket, CheckCircle2, XCircle, Tras
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import GameRuntime from "@/components/games/GameRuntime";
+import GameBlueprint from "@/components/games/GameBlueprint";
 
 const STATUS_COLORS = {
   building: "#2EE6FF", pending_approval: "#F4A73B", approved: "#2EA0FF",
@@ -94,7 +95,9 @@ export default function AdminGames() {
   const [detail, setDetail] = useState(null);
   const [access, setAccess] = useState(null);
   const [showAccess, setShowAccess] = useState(false);
+  const [showcaseOnly, setShowcaseOnly] = useState(false);
   const pollRef = useRef(null);
+  const loadDetail = (id) => apiClient.get(`/admin/games/${id}`).then((r) => setDetail(r.data.game)).catch(() => {});
   const selGame = params.get("game");
   const allowedC = data?.allowed_complexity || ALL_LEVELS;
   const allowedP = data?.allowed_power || ALL_LEVELS;
@@ -343,12 +346,21 @@ export default function AdminGames() {
           )}
 
           <div className="space-y-2" data-testid="games-list">
-            {(data?.games || []).map((g) => (
+            <div className="flex gap-1.5 items-center">
+              <button className="or-btn or-btn-ghost text-[10px]"
+                style={showcaseOnly ? { background: "rgba(244,167,59,0.15)", color: "#F4A73B", borderColor: "rgba(244,167,59,0.5)" } : {}}
+                onClick={() => setShowcaseOnly(!showcaseOnly)} data-testid="games-filter-showcase">
+                ★ Showcase Games
+              </button>
+            </div>
+            {(data?.games || []).filter((g) => !showcaseOnly || g.showcase).map((g) => (
               <button key={g.id} className="or-surface p-3 w-full text-left flex items-center gap-3"
                 onClick={() => setParams({ game: g.id })} data-testid={`game-row-${g.id}`}>
                 <Gamepad2 size={16} style={{ color: "#C26BFF" }} />
                 <div className="flex-1 min-w-0">
                   <b className="text-xs">{g.title}</b>
+                  {g.showcase && <span className="text-[8.5px] font-bold ml-1.5 px-1.5 py-0.5 rounded-full"
+                    style={{ background: "rgba(244,167,59,0.15)", color: "#F4A73B" }}>ORAi SHOWCASE</span>}
                   <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>
                     {g.runtime} · C{g.complexity} · Power {g.ai_power} · est ${g.est_cost} / actual ${g.actual_cost} · {g.plays || 0} plays
                   </div>
@@ -439,6 +451,7 @@ export default function AdminGames() {
                 <Eye size={11} className="inline mr-1" />Playable preview (sandboxed — mobile & desktop)
               </div>
               <GameRuntime spec={detail.spec} height={440} gameId={detail.id} />
+              <GameBlueprint game={detail} onChanged={() => { loadDetail(detail.id); load(); }} />
             </div>
           )}
         </div>

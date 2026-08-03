@@ -1,5 +1,6 @@
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Check, X, ArrowUp, ArrowDown, Eye, Film } from "lucide-react";
+import GameRuntime from "@/components/games/GameRuntime";
 
 // ActivityBlock — REAL interactive lesson blocks (tap_select, matching,
 // ordering, short_answer, reflection, scenario, checklist, video_embed).
@@ -172,10 +173,40 @@ function Checklist({ b }) {
   );
 }
 
-const INTERACTIVE_TYPES = ["tap_select", "matching", "ordering", "short_answer", "reflection", "scenario", "checklist", "video_embed"];
+const INTERACTIVE_TYPES = ["tap_select", "matching", "ordering", "short_answer", "reflection", "scenario", "checklist", "video_embed", "mini_game"];
 
 export function isInteractiveBlock(b) {
   return INTERACTIVE_TYPES.includes(b?.type);
+}
+
+function MiniGameBlock({ b }) {
+  const [done, setDone] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`or-minigame-${b.id}`) || "null"); } catch { return null; }
+  });
+  const spec = useMemo(() => ({
+    runtime: b.game_runtime || "matching", title: b.title || "Mini-game",
+    lives: 3, combo: false, scoring: { points_per_correct: 10, pass_pct: 60 },
+    theme: { bg: "#0b1220", accent: "#2EE6FF", text: "#EAF2FF" },
+    stages: [b.game_stage],
+  }), [b]);
+  const onScore = (ev) => {
+    if (ev.completed) {
+      const rec = { score: ev.score, at: new Date().toISOString() };
+      setDone(rec);
+      try { localStorage.setItem(`or-minigame-${b.id}`, JSON.stringify(rec)); } catch { /* full */ }
+    }
+  };
+  return (
+    <Shell title={b.title || "Mini-game"} body={b.body} testid="block-mini-game">
+      {done && (
+        <div className="text-[10px] font-bold mb-1.5 px-2 py-1 rounded-lg inline-block"
+          style={{ background: "rgba(16,230,112,0.12)", color: "#10E670" }} data-testid="mini-game-completed">
+          ✓ Completed — score {done.score}
+        </div>
+      )}
+      <GameRuntime spec={spec} onScore={onScore} height={380} gameId={`mini-${b.id}`} />
+    </Shell>
+  );
 }
 
 function ResumableVideo({ b }) {
@@ -200,6 +231,7 @@ export default function ActivityBlock({ b }) {
   if (b.type === "short_answer" || b.type === "reflection") return <ShortAnswer b={b} />;
   if (b.type === "scenario" && (b.options || []).length >= 2) return <Scenario b={b} />;
   if (b.type === "checklist" && (b.items || []).length) return <Checklist b={b} />;
+  if (b.type === "mini_game" && b.game_stage) return <MiniGameBlock b={b} />;
   if (b.type === "video_embed") {
     if (b.video_url) {
       return (

@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/responsibility-center", tags=["rc-courses"])
 BLOCK_TYPES = {"text", "activity", "worksheet", "homework", "project", "review",
                # Interactive block types (rendered as real interactions):
                "tap_select", "matching", "ordering", "short_answer",
-               "reflection", "scenario", "audio_note", "video_embed", "checklist"}
+               "reflection", "scenario", "audio_note", "video_embed", "checklist", "mini_game"}
 LESSON_TYPES = {"lesson", "quiz", "checkpoint"}
 COURSE_COLORS = ["#2EA0FF", "#10E670", "#C26BFF", "#F4A73B", "#4DD6C1", "#FF8A5A"]
 
@@ -66,6 +66,8 @@ JSON shape:
             {"type": "text", "title": "section heading", "body": "teaching content, 2-4 paragraphs"},
             {"type": "activity", "title": "...", "body": "step-by-step interactive activity"},
             {"type": "tap_select", "title": "...", "body": "the question to answer", "options": ["A","B","C"], "answer_index": 0, "explanation": "why"},
+            {"type": "mini_game", "title": "...", "body": "1 sentence intro", "game_runtime": "matching|sorting|quiz_adventure|dodge_collect|puzzle_room|platformer",
+             "game_stage": ONE stage object matching that runtime's schema, e.g. matching: {"title":"...","pairs":[{"left":"...","right":"..."}]} or quiz_adventure: {"title":"...","questions":[...]} — use a playable mini-game when it reinforces the lesson},
             {"type": "matching", "title": "...", "body": "match these", "pairs": [{"left": "term", "right": "definition"}]},
             {"type": "ordering", "title": "...", "body": "put the steps in order", "items": ["first step", "second step", "third step"]},
             {"type": "short_answer", "title": "...", "body": "the written-response prompt", "sample_answer": "an example good answer"},
@@ -1524,7 +1526,7 @@ async def active_generate_job(center_id: str, current: CurrentUser):
 
 
 ACTIVITY_BLOCK_TYPES = {"activity", "tap_select", "matching", "ordering",
-                        "short_answer", "reflection", "scenario", "checklist"}
+                        "short_answer", "reflection", "scenario", "checklist", "mini_game"}
 
 
 @router.get("/{center_id}/courses/{course_id}/media-status")

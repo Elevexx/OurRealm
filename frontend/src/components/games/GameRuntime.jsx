@@ -14,6 +14,29 @@ const S=window.__SPEC__;const SAVE=window.__SAVE__||{};const root=document.getEl
 let score=0,stageIdx=0,correctTotal=0,answered=0;
 let lives=S.lives||3,combo=0,comboMult=1,best=SAVE.best_score||0,earned=[];
 const ARC={top_down:1,platformer:1,dodge_collect:1};
+let startMs=Date.now(),maxCombo=1,dmg=0;
+/* ── WebAudio synth SFX (no files, mobile-safe) ── */
+const AUD=window.__AUDIO__||{};let AU=null;
+function au(){if(AU===null){try{AU=new (window.AudioContext||window.webkitAudioContext)()}catch(e){AU=false}}return AU}
+document.addEventListener('pointerdown',()=>{const a=au();if(a&&a.resume)a.resume()});
+const SFX={collect:[880,1320,0.09,'sine'],combo:[660,990,0.14,'square'],hit:[200,60,0.28,'sawtooth'],
+ shield:[520,780,0.16,'triangle'],boost:[440,1760,0.22,'sawtooth'],portal:[330,660,0.5,'sine'],
+ checkpoint:[700,1050,0.13,'triangle'],stage:[523,784,0.4,'sine'],achievement:[784,1175,0.35,'triangle'],
+ victory:[523,1047,0.8,'sine'],gameover:[220,70,0.8,'sawtooth'],click:[600,600,0.05,'square']};
+function sfx(name){if(AUD.muted)return;const a=au();if(!a)return;const cf=SFX[name];if(!cf)return;
+ try{const t0=a.currentTime,o=a.createOscillator(),gn=a.createGain();
+ o.type=cf[3];o.frequency.setValueAtTime(cf[0],t0);o.frequency.exponentialRampToValueAtTime(Math.max(30,cf[1]),t0+cf[2]);
+ const v=0.22*(AUD.master!==undefined?AUD.master:0.8)*(AUD.effects!==undefined?AUD.effects:0.8);
+ if(v<=0)return;gn.gain.setValueAtTime(v,t0);gn.gain.exponentialRampToValueAtTime(0.001,t0+cf[2]);
+ o.connect(gn);gn.connect(a.destination);o.start(t0);o.stop(t0+cf[2]+0.02)}catch(e){}}
+let musicTimer=null;const SCALE=[261.6,311.1,392,466.2,523.3];
+function music(on){if(musicTimer){clearInterval(musicTimer);musicTimer=null}
+ if(!on||AUD.muted)return;const mv=(AUD.master!==undefined?AUD.master:0.8)*(AUD.music!==undefined?AUD.music:0.5);
+ if(mv<=0)return;
+ musicTimer=setInterval(()=>{const a=au();if(!a)return;try{const t0=a.currentTime,o=a.createOscillator(),gn=a.createGain();
+  o.type='sine';o.frequency.value=SCALE[Math.floor(Math.random()*SCALE.length)]*(Math.random()<0.3?0.5:1);
+  gn.gain.setValueAtTime(0.05*mv,t0);gn.gain.exponentialRampToValueAtTime(0.001,t0+1.4);
+  o.connect(gn);gn.connect(a.destination);o.start(t0);o.stop(t0+1.5)}catch(e){}},640)}
 const V=S.visual_theme||{};const PAL=V.palette||{};
 const T=S.theme||{bg:PAL.bg||'#0b1220',accent:PAL.glow||'#2EE6FF',text:'#EAF2FF'};
 const GLOW=PAL.glow||T.accent,ACC=PAL.accent||'#F4A73B',HAZC=PAL.hazard||'#FF3D5A';
@@ -21,35 +44,37 @@ const PCOL=PAL.player&&PAL.player.length?PAL.player:['#C26BFF','#2EE6FF'];
 document.body.style.cssText='margin:0;font-family:system-ui,sans-serif;background:'+(PAL.bg||T.bg)+';color:'+T.text+';min-height:100vh;overflow:hidden';
 root.style.transition='opacity .25s ease';
 function el(t,c,h){const e=document.createElement(t);if(c)e.className=c;if(h!==undefined)e.innerHTML=h;return e}
-function post(completed){parent.postMessage({type:'game_score',score:score,completed:!!completed,title:S.title},'*')}
+function post(completed){parent.postMessage({type:'game_score',score:score,completed:!!completed,title:S.title,
+ time_s:Math.round((Date.now()-startMs)/1000),stage_reached:stageIdx,max_combo:maxCombo,
+ no_damage:dmg===0,achievements:earned.slice()},'*')}
 function saveGame(){best=Math.max(best,score);parent.postMessage({type:'game_save',save:{best_score:best,stage:stageIdx}},'*')}
 function hud(){const h=el('div','','');h.style.cssText='display:flex;justify-content:space-between;gap:8px;padding:8px 12px;font-size:12px;opacity:.92;flex-wrap:wrap';
  let r='<span>Stage '+(Math.min(stageIdx,S.stages.length-1)+1)+'/'+S.stages.length+' · Score <b style="color:'+GLOW+'">'+score+'</b></span>';
  if(ARC[S.runtime]){r+='<span><span style="color:#FF6B6B">'+'\u2665'.repeat(Math.max(0,lives))+'</span>'+(S.combo?' · <span style="color:'+ACC+'">x'+comboMult.toFixed(1)+'</span>':'')+(best?' · Best '+best:'')+'</span>'}
  h.innerHTML='<b>'+S.title+'</b>'+r;return h}
 function btn(label,fn){const b=el('button','',label);b.style.cssText='margin:6px;padding:12px 18px;border-radius:12px;border:1px solid '+GLOW+'55;background:'+GLOW+'22;color:'+T.text+';font-size:15px;cursor:pointer;min-height:44px;transition:transform .1s';
- b.onpointerdown=()=>b.style.transform='scale(0.95)';b.onpointerup=()=>b.style.transform='';b.onclick=fn;return b}
+ b.onpointerdown=()=>b.style.transform='scale(0.95)';b.onpointerup=()=>b.style.transform='';b.onclick=()=>{sfx('click');fn()};return b}
 function fb(ok,msg,then){const f=el('div','',(ok?'\u2713 ':'\u2717 ')+(msg||''));f.style.cssText='padding:10px 14px;font-size:13px;color:'+(ok?'#10E670':'#FF6B6B');root.appendChild(f);setTimeout(()=>{f.remove();then()},950)}
 function addScore(pts){let p=(pts!==undefined?pts:((S.scoring||{}).points_per_correct||10));
- if(S.combo){combo++;comboMult=1+Math.min(3,Math.floor(combo/4)*0.5);p=Math.round(p*comboMult)}
- score+=p;correctTotal++;answered++;post(false);return p}
+ if(S.combo){combo++;const nm=1+Math.min(3,Math.floor(combo/4)*0.5);if(nm>comboMult)sfx('combo');comboMult=nm;maxCombo=Math.max(maxCombo,comboMult);p=Math.round(p*comboMult)}
+ sfx('collect');score+=p;correctTotal++;answered++;post(false);return p}
 function comboBreak(){combo=0;comboMult=1}
 function unlockMsg(){const u=(S.unlockables||[]).find(x=>Number(x.stage)===stageIdx+1);return u?' \u2605 Unlocked: '+u.label:''}
 function checkAchievements(pct){(S.achievements||[]).forEach(a=>{if(!earned.includes(a.label)&&(a.id==='perfect'?pct===100:true))earned.push(a.label)})}
-function done(){root.innerHTML='';root.appendChild(hud());const pct=answered?Math.round(correctTotal/answered*100):100;
+function done(){music(false);sfx('victory');if(earned.length)sfx('achievement');root.innerHTML='';root.appendChild(hud());const pct=answered?Math.round(correctTotal/answered*100):100;
  const pass=pct>=((S.scoring||{}).pass_pct||60)||ARC[S.runtime];checkAchievements(pct);saveGame();
  const d=el('div','','<h2 style="color:'+GLOW+';text-shadow:0 0 18px '+GLOW+'66">'+(pass?'\uD83C\uDFC6 Well done!':'Keep practicing!')+'</h2><p>Final score: <b>'+score+'</b>'+(score>=best&&score>0?' \u2014 <span style="color:#10E670">Best score!</span>':(best?' \u00b7 Best: '+best:''))+(ARC[S.runtime]?'':' \u00b7 Accuracy '+pct+'%')+'</p>'+
   (earned.length?'<p style="color:'+ACC+'">\u2605 '+earned.join(' \u00b7 ')+'</p>':''));
  d.style.cssText='text-align:center;padding:26px 16px';root.appendChild(d);
  root.appendChild(btn('Play again',restart));post(true)}
-function gameOver(){root.innerHTML='';root.appendChild(hud());saveGame();
+function gameOver(){music(false);sfx('gameover');root.innerHTML='';root.appendChild(hud());saveGame();
  const d=el('div','','<h2 style="color:#FF6B6B">Game Over</h2><p>Score: <b>'+score+'</b>'+(score>=best&&score>0?' \u2014 <span style="color:#10E670">Best score!</span>':(best?' \u00b7 Best: '+best:''))+'</p>');
  d.style.cssText='text-align:center;padding:30px 16px';root.appendChild(d);
  root.appendChild(btn('Try again',restart));post(true)}
-function restart(){score=0;stageIdx=0;correctTotal=0;answered=0;lives=S.lives||3;combo=0;comboMult=1;earned=[];stage()}
+function restart(){score=0;stageIdx=0;correctTotal=0;answered=0;lives=S.lives||3;combo=0;comboMult=1;earned=[];startMs=Date.now();maxCombo=1;dmg=0;stage()}
 function next(){saveGame();stageIdx++;if(stageIdx>=S.stages.length)done();else stage()}
 function mark(ok,pts){answered++;if(ok){addScore(pts);answered--;}else comboBreak();post(false)}
-function stage(){root.style.opacity=0;setTimeout(()=>{root.innerHTML='';root.appendChild(hud());const st=S.stages[stageIdx];
+function stage(){root.style.opacity=0;if(ARC[S.runtime])music(true);setTimeout(()=>{root.innerHTML='';root.appendChild(hud());const st=S.stages[stageIdx];
  const h=el('div','','<h3 style="margin:6px 12px;color:'+GLOW+'">'+(st.title||'')+'</h3>');root.appendChild(h);
  ({quiz_adventure:qa,matching:ma,sorting:so,memory:me,rhythm:rh,top_down:td,platformer:pf,dodge_collect:dc,puzzle_room:pz})[S.runtime](st);
  root.style.opacity=1},220)}
@@ -285,17 +310,17 @@ function dc(st){const c=mkCanvas(0),g=c.getContext('2d');
    const hitDist=(it.kind==='barrier'?ir*2.6:ir)+pw*0.42;
    const near=road?(it.z<0.1&&Math.abs(ix-pp.x)<hitDist):(Math.hypot(ix-pp.x,iy-pp.y)<hitDist);
    if(near){if(it.kind==='core'){collect(it,ix,iy)}
-    else if(it.kind==='shield'){shield=Math.min(2,shield+1);burst(ix,iy,GLOW,12,100);popup(ix,iy-16,'SHIELD +1',GLOW)}
-    else if(it.kind==='boost'){boostT=4;burst(ix,iy,'#FFD34D',14,120);popup(ix,iy-16,'BOOST!','#FFD34D')}
+    else if(it.kind==='shield'){shield=Math.min(2,shield+1);sfx('shield');burst(ix,iy,GLOW,12,100);popup(ix,iy-16,'SHIELD +1',GLOW)}
+    else if(it.kind==='boost'){boostT=4;sfx('boost');burst(ix,iy,'#FFD34D',14,120);popup(ix,iy-16,'BOOST!','#FFD34D')}
     else if(inv<=0)hit();
     return false}
    return true});
-  if(got>=target&&!portal)portal=road?{z:1}:{x:cx,y:mode==='space_flight'?H/2:-40};
+  if(got>=target&&!portal){portal=road?{z:1}:{x:cx,y:mode==='space_flight'?H/2:-40};sfx('portal')}
   if(portal){if(road){portal.z-=dt*(fall/700);if(portal.z<0.09&&Math.abs(cx+0*halfW(0)-pp.x)<halfW(0)){over=true}}
    else{if(mode==='space_flight'){portal.x=(portal.x===cx?W+60:portal.x);portal.x-=fall*dt*0.9}
     else portal.y+=fall*dt*0.8;
     if(Math.hypot(portal.x-pp.x,portal.y-pp.y)<40)over=true}
-   if(over){burst(pp.x,pp.y,'#C26BFF',30,180);
+   if(over){burst(pp.x,pp.y,'#C26BFF',30,180);sfx('stage');
     setTimeout(()=>fb(true,(st.title||'Stage')+' cleared!'+unlockMsg(),next),350);return requestAnimationFrame(paintOnly)}}
   // ── draw ──
   g.save();if(shake>0.4){g.translate((Math.random()-0.5)*shake,(Math.random()-0.5)*shake);shake*=0.86}
@@ -502,9 +527,9 @@ function rh(st){const beatMs=60000/(st.bpm||90);let i=0,hits=0,taps=st.pattern.f
 stage();
 `;
 
-function buildSrcdoc(spec, save) {
+function buildSrcdoc(spec, save, audio) {
   return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body><div id="g"></div><script>window.__SPEC__=${JSON.stringify(spec).replace(/</g, "\\u003c")};window.__SAVE__=${JSON.stringify(save || {}).replace(/</g, "\\u003c")};<\/script>
+<body><div id="g"></div><script>window.__SPEC__=${JSON.stringify(spec).replace(/</g, "\\u003c")};window.__SAVE__=${JSON.stringify(save || {}).replace(/</g, "\\u003c")};window.__AUDIO__=${JSON.stringify(audio || {}).replace(/</g, "\\u003c")};<\/script>
 <script>${RUNTIME_JS}<\/script></body></html>`;
 }
 
@@ -512,11 +537,12 @@ export default function GameRuntime({ spec, onScore, height = 460, gameId }) {
   const ref = useRef(null);
   const srcdoc = useMemo(() => {
     if (!spec) return "";
-    let save = {};
+    let save = {}, audio = {};
     if (gameId) {
       try { save = JSON.parse(localStorage.getItem(`or-game-save-${gameId}`) || "{}"); } catch { save = {}; }
     }
-    return buildSrcdoc(spec, save);
+    try { audio = JSON.parse(localStorage.getItem("or-game-audio") || "{}"); } catch { audio = {}; }
+    return buildSrcdoc(spec, save, audio);
   }, [spec, gameId]);
   useEffect(() => {
     const h = (e) => {
@@ -534,4 +560,6 @@ export default function GameRuntime({ spec, onScore, height = 460, gameId }) {
       className="w-full rounded-xl" style={{ height, border: "1px solid rgba(46,230,255,0.25)", background: "#0b1220" }}
       data-testid="game-runtime-iframe" />
   );
+}
+;
 }

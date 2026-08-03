@@ -4,6 +4,7 @@ import { Gamepad2, Search, Play, ArrowLeft, Trophy, Flag } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import GameRuntime from "@/components/games/GameRuntime";
+import { GameLeaderboard, AudioSettings } from "@/components/games/GameSocial";
 
 export default function GamesHub() {
   const [params, setParams] = useSearchParams();
@@ -29,6 +30,15 @@ export default function GamesHub() {
   const onScore = useCallback((ev) => {
     if (!playId) return;
     apiClient.post(`/games/${playId}/progress`, { score: ev.score, completed: ev.completed, title: ev.title }).catch(() => {});
+    if (ev.completed) {
+      apiClient.post(`/games/${playId}/score`, {
+        score: ev.score, completed: true, time_s: ev.time_s, stage_reached: ev.stage_reached,
+        achievements: ev.achievements || [], no_damage: ev.no_damage, max_combo: ev.max_combo,
+      }).then((r) => {
+        (r.data.fire_rewards || []).forEach((f) => toast.success(`🔥 +${f.amount} Fire Power — ${f.label}`));
+        (r.data.new_achievements || []).forEach((a) => toast.success(`★ Achievement unlocked: ${a}`));
+      }).catch(() => {});
+    }
   }, [playId]);
 
   if (denied) {
@@ -117,6 +127,8 @@ export default function GamesHub() {
             <b> Controls:</b> {playing.game.spec?.controls}
           </div>
           <GameRuntime spec={playing.game.spec} onScore={onScore} height={520} gameId={playing.game.id} />
+          <div className="flex justify-end mt-1"><AudioSettings /></div>
+          <GameLeaderboard gameId={playing.game.id} />
         </div>
       )}
     </div>
