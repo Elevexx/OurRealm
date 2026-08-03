@@ -25,16 +25,37 @@ from services.llm_router import call_llm, tier
 log = logging.getLogger("ourrealm.games")
 
 RUNTIMES = ["quiz_adventure", "matching", "sorting", "memory", "rhythm",
-            "top_down", "platformer", "dodge_collect", "puzzle_room"]
+            "top_down", "platformer", "dodge_collect", "puzzle_room",
+            "card_battle", "tower_defense", "match3"]
 RUNTIME_LABELS = {
     "quiz_adventure": "Quiz Adventure", "matching": "Memory Matching (pairs)",
     "sorting": "Sorting / Ordering", "memory": "Memory Cards", "rhythm": "Rhythm / Tap",
     "top_down": "Top-Down Movement", "platformer": "Platformer Lite",
     "dodge_collect": "Dodge & Collect Arcade", "puzzle_room": "Puzzle Room",
+    "card_battle": "Card Battle", "tower_defense": "Tower Defense", "match3": "Match-3 Puzzle",
+}
+# Template registry — every runtime family maps to exactly one vetted template.
+TEMPLATE_IDS = {rt: f"tpl_{rt}_v1" for rt in RUNTIMES}
+WIN_LOSS = {
+    "card_battle": ("defeat the enemy (enemy HP to 0)", "player HP reaches 0"),
+    "tower_defense": ("survive every wave with the base standing", "base HP reaches 0"),
+    "match3": ("complete the stage objective within the move limit", "moves run out before the objective"),
+    "dodge_collect": ("collect the target cores and reach the portal", "all lives lost"),
+    "top_down": ("collect all cores and reach the exit portal", "all lives lost"),
+    "platformer": ("reach the goal portal", "all lives lost"),
+    "puzzle_room": ("solve every puzzle to unlock the door", "n/a (untimed)"),
+    "rhythm": ("hit enough beats per track", "accuracy below pass threshold"),
+    "memory": ("clear every pair", "accuracy below pass threshold"),
+    "matching": ("match all pairs", "accuracy below pass threshold"),
+    "sorting": ("sort all items", "accuracy below pass threshold"),
+    "quiz_adventure": ("answer through the story", "accuracy below pass threshold"),
 }
 # Deterministic genre router — checked FIRST, in order. The LLM may refine
 # but can never silently reroute an action request into rhythm/quiz.
 GENRE_MAP = [
+    (("card battle", "card battler", "card game", "card clash", "deck build", "deckbuild", "tcg", "card duel"), "card_battle"),
+    (("tower defense", "tower defence", "defend the base", "td game", "place towers", "wave defense"), "tower_defense"),
+    (("match 3", "match-3", "match three", "gem swap", "tile match", "match puzzle", "bejeweled", "candy crush"), "match3"),
     (("rhythm", "beat match", "tempo", "tap to the", "music game", "drum"), "rhythm"),
     (("escape room", "puzzle room", "escape the", "riddle", "unlock the door"), "puzzle_room"),
     (("platformer", "platform game", "jump and run", "side-scroll", "jumping game"), "platformer"),
@@ -56,6 +77,12 @@ RUNTIME_MECHANICS = {
     "matching": ["pair matching"],
     "sorting": ["category sorting"],
     "quiz_adventure": ["story stages", "multiple-choice questions", "explanations"],
+    "card_battle": ["deck & hand", "draw/discard piles", "turn-based combat", "mana/energy",
+                    "attack/defense/special cards", "enemy AI", "player & enemy health"],
+    "tower_defense": ["tower placement", "upgrade/sell towers", "enemy pathing", "waves",
+                      "multiple enemy types", "range & damage", "base health", "resources"],
+    "match3": ["tile grid", "swap adjacent tiles", "match detection", "cascades",
+               "combo multiplier", "objectives", "move limit"],
 }
 COMPLEXITY_FEATURES = {
     1: ["single mechanic", "one stage", "simple scoring", "win/lose screen"],
@@ -72,6 +99,26 @@ def route_runtime(text: str):
         for k in kws:
             if re.search(r"(?<![a-z-])" + re.escape(k) + r"(?![a-z])", low):
                 return rt
+    return None
+
+
+# Genres users can name that no vetted runtime implements yet. Naming one of
+# these must surface "not supported yet" + explicit substitution approval (B5).
+UNSUPPORTED_GENRES = [
+    (("cooking", "time management", "restaurant game", "kitchen game", "serve customers", "food truck"), "Cooking / Time Management"),
+    (("word puzzle", "word game", "crossword", "word search", "anagram", "spelling game"), "Word Puzzle"),
+    (("bubble shooter", "bubble pop", "bubble blast"), "Bubble Shooter"),
+    (("city builder", "tycoon", "simulation city", "farming sim"), "Builder / Tycoon Simulation"),
+    (("fighting game", "beat em up", "beat-em-up", "brawler"), "Fighting / Brawler"),
+]
+
+
+def detect_unsupported(text: str):
+    low = (text or "").lower()
+    for kws, label in UNSUPPORTED_GENRES:
+        for k in kws:
+            if re.search(r"(?<![a-z-])" + re.escape(k) + r"(?![a-z])", low):
+                return label
     return None
 
 
@@ -144,6 +191,9 @@ PLAYER_REPS = {
     "matching": ["cards"],
     "sorting": ["cards"],
     "quiz_adventure": ["puzzle_cursor"],
+    "card_battle": ["card_commander"],
+    "tower_defense": ["tower_commander"],
+    "match3": ["puzzle_cursor"],
 }
 
 
@@ -170,6 +220,15 @@ IDENTITY_BASE = {
     "matching": ("click to pair items", "two-column UI", "match left to right", "match all pairs → next stage"),
     "sorting": ("click to categorize", "category UI", "assign items to categories", "sort all items → next stage"),
     "quiz_adventure": ("click to answer", "story UI", "answer story questions", "answer through the story → finale"),
+    "card_battle": ("click/tap cards to play them (mana gated) + end-turn button", "battle table UI",
+                    "draw a hand, spend mana on attack/defense/special cards, end turn, survive enemy attacks",
+                    "draw → play cards → end turn → enemy acts → repeat until one side falls"),
+    "tower_defense": ("select a tower then click/tap a build spot; upgrade/sell placed towers", "fixed overhead map",
+                      "place & upgrade towers to stop pathing enemy waves before they reach the base",
+                      "build phase → wave assault → earn resources → reinforce → next wave"),
+    "match3": ("click/tap or drag to swap adjacent tiles", "fixed tile-grid board",
+               "swap tiles to form 3+ matches, trigger cascades, hit the objective within the move limit",
+               "swap → match → cascade → objective progress → next stage"),
 }
 
 
@@ -256,7 +315,7 @@ async def showcase_similarity_for(ident: dict, exclude_id: str = None) -> dict:
 EST_SYSTEM = """You are ORAi's game designer. Turn a game request into a short build plan.
 Reply ONLY valid JSON:
 {"title": "game name", "concept": "2-3 sentence pitch",
- "runtime": "quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room",
+ "runtime": "quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room|card_battle|tower_defense|match3",
  "features": ["4-7 short planned features"],
  "mechanics": ["gameplay mechanics this game will include"],
  "unsupported_mechanics": ["requested mechanics the chosen runtime cannot do, [] if none"],
@@ -274,6 +333,9 @@ Reply ONLY valid JSON:
  "controls": "tap/click/drag/arrows ...", "replayability": "one sentence"}
 RUNTIME ROUTING — pick the runtime whose GAMEPLAY matches the request:
 - action/arcade/runner/dodge/shooter/racing/collecting -> dodge_collect
+- card battler/deck builder/TCG/turn-based card combat -> card_battle
+- tower defense/wave defense/place towers -> tower_defense
+- match-3/gem swap/tile matching puzzle -> match3
 - exploration/maze/adventure world/top-down movement -> top_down
 - platform/jumping/side-scrolling -> platformer
 - escape room/riddles/locks -> puzzle_room
@@ -313,6 +375,30 @@ async def create_estimate(body: dict, current: dict) -> dict:
             subs.append("The requested genre isn't a Phase 1 runtime — using Quiz Adventure as the closest honest fit")
     rt = plan["runtime"]
     plan["runtime_label"] = RUNTIME_LABELS[rt]
+    plan["template_id"] = TEMPLATE_IDS[rt]
+    plan["win_condition"], plan["loss_condition"] = WIN_LOSS.get(rt, ("complete all stages", "run out of lives"))
+    # Explicit fallback contract — never silent (B5).
+    unsupported_genre = detect_unsupported(str(body.get("request") or ""))
+    fallback_used = bool(unsupported_genre) or ((not routed) and (llm_rt is None))
+    plan["fallback_used"] = bool(fallback_used)
+    if unsupported_genre:
+        plan["fallback_reason"] = (f"This game type is not supported yet ({unsupported_genre}). "
+                                   f"ORAi proposes {RUNTIME_LABELS[rt]} as a substitution — generation only "
+                                   "proceeds if you explicitly accept it.")
+        subs.append(f"Requested {unsupported_genre} -> proposing {RUNTIME_LABELS[rt]} (unsupported genre)")
+    elif fallback_used:
+        plan["fallback_reason"] = ("This game type is not supported yet. The closest supported runtime "
+                                   f"({RUNTIME_LABELS[rt]}) is proposed — generation only proceeds if you approve this substitution.")
+    else:
+        plan["fallback_reason"] = None
+    plan["classification"] = {
+        "detected_genre": RUNTIME_LABELS.get(routed) if routed else (RUNTIME_LABELS.get(llm_rt) if llm_rt else "unrecognized"),
+        "confidence": 1.0 if routed else (0.6 if llm_rt else 0.0),
+        "method": "keyword_router" if routed else ("llm_plan" if llm_rt else "none"),
+        "runtime_id": rt, "template_id": TEMPLATE_IDS[rt],
+        "fallback_used": bool(fallback_used),
+        "fallback_reason": plan["fallback_reason"],
+    }
     plan["substitutions"] = subs
     plan["mechanics"] = [str(m)[:80] for m in (plan.get("mechanics") or [])][:12] or RUNTIME_MECHANICS[rt]
     plan["unsupported_mechanics"] = [str(m)[:120] for m in (plan.get("unsupported_mechanics") or [])][:8]
@@ -366,10 +452,15 @@ async def create_estimate(body: dict, current: dict) -> dict:
     ident["environments"] = sorted(set(vp["environment_themes"]))
     def plan_ident_controls(rt2, pm2):
         km = {"dodge_collect": "←/→ steer · ↑/↓ fly (space modes) · WASD", "platformer": "←/→ move · ↑/W/Space jump",
-              "top_down": "←→↑↓ / WASD move"}.get(rt2, "mouse / tap driven")
+              "top_down": "←→↑↓ / WASD move",
+              "card_battle": "click cards to play · click End Turn",
+              "tower_defense": "click tower type, then a build spot · click towers to upgrade/sell",
+              "match3": "click a tile, then an adjacent tile to swap"}.get(rt2, "mouse / tap driven")
         tl = {"dodge_collect": "drag steering", "platformer": "left/right/jump buttons", "top_down": "drag joystick",
               "puzzle_room": "tap, type & inspect", "rhythm": "tap the beat pad", "memory": "tap cards",
-              "matching": "tap pairs", "sorting": "tap categories", "quiz_adventure": "tap answers"}.get(rt2, "tap")
+              "matching": "tap pairs", "sorting": "tap categories", "quiz_adventure": "tap answers",
+              "card_battle": "tap cards + End Turn button", "tower_defense": "tap tower type, tap build spot",
+              "match3": "tap two adjacent tiles to swap"}.get(rt2, "tap")
         return km, tl
     dk, tl = plan_ident_controls(rt, pm)
     sc = str(body.get("supported_controls") or "both").lower()
@@ -430,6 +521,21 @@ puzzle_room: {"stages":[{"title":"Room name","intro":"scene description","puzzle
   {"type":"code","prompt":"...","answer":"1234","hint":"..."},
   {"type":"sequence","prompt":"...","options":["step A","step B","step C"],"order":[2,0,1]},
   {"type":"choice","prompt":"...","options":["..x3"],"answer_index":1}] (2-4 puzzles per room)}]}
+card_battle: {"stages":[{"title":"Battle name","enemy":{"name":"...","hp":30,"attack_min":3,"attack_max":6,"intent_telegraph":true},
+  "player_hp":30,"energy_per_turn":3,"hand_size":4,
+  "deck":[{"name":"Strike","type":"attack","cost":1,"value":6,"desc":"Deal 6 damage"},
+          {"name":"Guard","type":"defense","cost":1,"value":5,"desc":"Block 5 damage"},
+          {"name":"Focus","type":"special","cost":2,"value":2,"desc":"+2 energy next turn"}] (8-14 cards, mix of attack/defense/special)}]}
+  (NO movement/portals/collectibles — turn-based card combat only; later stages: stronger enemies)
+tower_defense: {"stages":[{"title":"Map name","base_hp":10,"start_resources":100,
+  "towers":[{"name":"Arrow","cost":40,"damage":3,"range":95,"fire_ms":600},{"name":"Cannon","cost":70,"damage":8,"range":75,"fire_ms":1300}],
+  "waves":[{"enemies":[{"type":"grunt","count":6,"hp":10,"speed":40,"bounty":8}]},
+           {"enemies":[{"type":"fast","count":5,"hp":7,"speed":70,"bounty":10},{"type":"tank","count":2,"hp":30,"speed":25,"bounty":18}]}] (2-6 waves)}]}
+  (NO player character/portals/collectibles — towers, pathing enemies and base defense only)
+match3: {"stages":[{"title":"Level name","grid_w":7,"grid_h":8,"colors":5,"moves":20,
+  "objective":{"type":"score","target":600}}]}
+  (objective.type: "score" (target points) or "clear_color" (also set "color":0-4 and "target" tiles);
+   NO movement/portals/collectibles — tile swapping, matches and cascades only)
 
 Wrap it as: {"runtime":"<runtime>","title":"...","description":"1-2 sentences","subject":"...",
  "grade_level":"...","learning_objective":"...","controls":"...",
@@ -518,6 +624,42 @@ def validate_spec(spec: dict, complexity: int = 1) -> list:
                     errs.append(f"stage {i+1}: choice puzzle needs options")
                 elif t in ("riddle", "code") and not p.get("answer"):
                     errs.append(f"stage {i+1}: {t} puzzle needs an answer")
+        elif r == "card_battle":
+            deck = st.get("deck") or []
+            enemy = st.get("enemy") or {}
+            if len(deck) < 6:
+                errs.append(f"stage {i+1}: card_battle needs a deck of ≥6 cards")
+            types = {c.get("type") for c in deck}
+            if not {"attack", "defense"}.issubset(types):
+                errs.append(f"stage {i+1}: deck needs attack AND defense cards")
+            if not enemy.get("hp"):
+                errs.append(f"stage {i+1}: enemy needs hp")
+            if not st.get("player_hp") or not st.get("energy_per_turn"):
+                errs.append(f"stage {i+1}: needs player_hp and energy_per_turn")
+            for banned in ("target_cores", "platforms", "hazards", "cores"):
+                if st.get(banned):
+                    errs.append(f"stage {i+1}: card_battle must not contain '{banned}' (no movement/collectibles)")
+        elif r == "tower_defense":
+            if not (st.get("towers") or []):
+                errs.append(f"stage {i+1}: tower_defense needs tower definitions")
+            if not (st.get("waves") or []):
+                errs.append(f"stage {i+1}: tower_defense needs waves")
+            if not st.get("base_hp") or st.get("start_resources") is None:
+                errs.append(f"stage {i+1}: needs base_hp and start_resources")
+            for banned in ("target_cores", "platforms", "cores", "deck"):
+                if st.get(banned):
+                    errs.append(f"stage {i+1}: tower_defense must not contain '{banned}' (no player character/collectibles)")
+        elif r == "match3":
+            if not st.get("grid_w") or not st.get("grid_h"):
+                errs.append(f"stage {i+1}: match3 needs grid_w and grid_h")
+            if not st.get("moves"):
+                errs.append(f"stage {i+1}: match3 needs a move limit")
+            obj = st.get("objective") or {}
+            if obj.get("type") not in ("score", "clear_color") or not obj.get("target"):
+                errs.append(f"stage {i+1}: match3 needs objective type (score|clear_color) + target")
+            for banned in ("target_cores", "platforms", "hazards", "cores", "deck", "waves"):
+                if st.get(banned):
+                    errs.append(f"stage {i+1}: match3 must not contain '{banned}' (no movement/collectibles)")
     # difficulty must actually ramp for arcade runtimes at complexity ≥2
     if complexity >= 2 and spec.get("runtime") == "dodge_collect" and len(stages) >= 2:
         try:

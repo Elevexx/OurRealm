@@ -242,6 +242,12 @@ async def play_game(game_id: str, current: CurrentUser):
     g = await db.games.find_one({"id": game_id, "status": "published"},
                                 {"_id": 0, "build_log": 0, "request": 0})
     if not g:
+        from core.permissions import get_admin_role, ROLE_FOUNDER
+        if get_admin_role(current) == ROLE_FOUNDER:
+            # founders can play approved (unpublished) validation games
+            g = await db.games.find_one({"id": game_id, "status": {"$in": ["approved", "published"]}},
+                                        {"_id": 0, "build_log": 0, "request": 0})
+    if not g:
         # course mini-games: playable if not published but user can access the course lesson
         g = await db.games.find_one({"id": game_id, "status": {"$in": ["approved", "published"]},
                                      "course_context.center_id": {"$exists": True}},

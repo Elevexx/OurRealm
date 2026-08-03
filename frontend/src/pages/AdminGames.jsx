@@ -379,6 +379,15 @@ export default function AdminGames() {
                     {estimate.plan.identity.touch_layout && (
                       <span className="col-span-2" data-testid="game-est-touch-layout">Touch layout: <b>{estimate.plan.identity.touch_layout}</b></span>
                     )}
+                    {estimate.plan.template_id && (
+                      <span data-testid="game-est-template">Template: <b>{estimate.plan.template_id}</b></span>
+                    )}
+                    {estimate.plan.win_condition && (
+                      <span data-testid="game-est-win">Win: <b>{estimate.plan.win_condition}</b></span>
+                    )}
+                    {estimate.plan.loss_condition && (
+                      <span className="col-span-2" data-testid="game-est-loss">Loss: <b>{estimate.plan.loss_condition}</b></span>
+                    )}
                   </div>
                   {estimate.plan.showcase_similarity && estimate.plan.showcase_similarity.top_match && (
                     <div className="text-[10px] mt-1.5 font-bold" data-testid="game-est-similarity"
@@ -419,6 +428,34 @@ export default function AdminGames() {
                   {(estimate.plan.unsupported_mechanics || []).map((s, i) => <div key={`u${i}`} className="text-[10px]">✗ Not in Phase 1: {s}</div>)}
                 </div>
               )}
+              <div className="mt-2 rounded-lg p-2 text-[10px] font-bold" data-testid="game-est-fallback"
+                style={estimate.plan.fallback_used
+                  ? { background: "rgba(255,61,90,0.1)", border: "1px solid rgba(255,61,90,0.45)", color: "#FF6B6B" }
+                  : { background: "rgba(16,230,112,0.06)", border: "1px solid rgba(16,230,112,0.25)", color: "#10E670" }}>
+                Fallback used: {estimate.plan.fallback_used ? "YES" : "NO"}
+                {estimate.plan.fallback_used && (
+                  <div className="font-normal mt-0.5">⚠ {estimate.plan.fallback_reason || "This game type is not supported yet."}</div>
+                )}
+              </div>
+              <details className="mt-2 rounded-lg p-2 text-[10px]" data-testid="game-est-debug"
+                style={{ background: "rgba(177,75,244,0.06)", border: "1px solid rgba(177,75,244,0.25)" }}>
+                <summary className="cursor-pointer font-bold text-[9px] uppercase tracking-wider" style={{ color: "#B14BF4" }}>
+                  🔍 ORAi Debug (founder only)
+                </summary>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1.5">
+                  <span>Detected genre: <b>{estimate.plan.classification?.detected_genre || "—"}</b></span>
+                  <span>Confidence: <b>{estimate.plan.classification?.confidence ?? "—"}</b></span>
+                  <span>Runtime ID: <b>{estimate.plan.classification?.runtime_id || estimate.plan.runtime}</b></span>
+                  <span>Template ID: <b>{estimate.plan.classification?.template_id || estimate.plan.template_id || "—"}</b></span>
+                  <span>Method: <b>{estimate.plan.classification?.method || "—"}</b></span>
+                  <span>Fallback: <b>{estimate.plan.classification?.fallback_used ? "YES" : "NO"}</b></span>
+                  <span className="col-span-2">Job ID: <b>{estimate.id}</b></span>
+                  <span className="col-span-2">Original prompt: <b>{estimate.request}</b></span>
+                  {estimate.plan.showcase_similarity && (
+                    <span className="col-span-2">Similarity: <b>{Math.round((estimate.plan.showcase_similarity.score || 0) * 100)}%</b></span>
+                  )}
+                </div>
+              </details>
               <div className="text-[11px] mt-2">
                 {(estimate.plan.features || []).map((f, i) => <div key={i}>• {f}</div>)}
               </div>
@@ -430,7 +467,8 @@ export default function AdminGames() {
               <div className="flex gap-2 mt-3">
                 <button className="or-btn text-xs font-bold" style={{ background: "#10E670", color: "#0a0a0a" }}
                   disabled={busy || estimate.plan.showcase_similarity?.blocked} onClick={approveBuild} data-testid="game-approve-build">
-                  <Rocket size={13} /> {estimate.plan.showcase_similarity?.blocked ? "Blocked — too similar" : "Approve & Build"}
+                  <Rocket size={13} /> {estimate.plan.showcase_similarity?.blocked ? "Blocked — too similar"
+                    : estimate.plan.fallback_used ? "Accept substitution & Build" : "Approve & Build"}
                 </button>
                 <button className="or-btn text-xs" disabled={busy}
                   onClick={async () => { await apiClient.post(`/admin/games/estimate/${estimate.id}/cancel`); setEstimate(null); toast.success("Cancelled"); }}
@@ -491,6 +529,30 @@ export default function AdminGames() {
               {detail.test_results && <> · tests: {detail.test_results.passed ? "✓ passed" : "✗ failed"}</>}
             </div>
             {detail.error && <div className="text-[10px] mt-1" style={{ color: "#FF8A8A" }} data-testid="game-error">{detail.error}</div>}
+            <details className="mt-2 rounded-lg p-2 text-[10px]" data-testid="game-debug-panel"
+              style={{ background: "rgba(177,75,244,0.06)", border: "1px solid rgba(177,75,244,0.25)" }}>
+              <summary className="cursor-pointer font-bold text-[9px] uppercase tracking-wider" style={{ color: "#B14BF4" }}>
+                🔍 ORAi Debug (founder only)
+              </summary>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1.5">
+                <span>Detected genre: <b>{detail.plan?.classification?.detected_genre || detail.plan?.runtime_label || detail.runtime}</b></span>
+                <span>Confidence: <b>{detail.plan?.classification?.confidence ?? "—"}</b></span>
+                <span>Runtime ID: <b>{detail.spec?.runtime || detail.runtime}</b></span>
+                <span>Template ID: <b>{detail.plan?.template_id || detail.plan?.classification?.template_id || `tpl_${detail.runtime}_v1`}</b></span>
+                <span>Fallback used: <b>{detail.plan?.fallback_used ? "YES" : "NO"}</b></span>
+                <span>Fallback reason: <b>{detail.plan?.fallback_reason || "—"}</b></span>
+                <span className="col-span-2">Generation job ID: <b>{detail.estimate_id || detail.id}</b></span>
+                <span>Validation: <b>{detail.test_results ? (detail.test_results.passed ? "✓ passed" : "✗ failed") : "—"}</b></span>
+                <span>Similarity: <b>{detail.plan?.showcase_similarity ? Math.round((detail.plan.showcase_similarity.score || 0) * 100) + "%" : "—"}</b></span>
+                <span>Builder: <b>{detail.builder_version || "orai-studio-v3"}</b></span>
+                <span>Renderer: <b>{detail.renderer_version || "runtime-v3"}</b></span>
+                {detail.request && <span className="col-span-2">Original prompt: <b>{detail.request}</b></span>}
+              </div>
+              {detail.spec && (
+                <pre className="mt-1.5 p-2 rounded text-[8.5px] overflow-x-auto max-h-40"
+                  style={{ background: "rgba(0,0,0,0.35)" }}>{JSON.stringify(detail.spec, null, 1).slice(0, 4000)}</pre>
+              )}
+            </details>
             {detail.status === "building" && (
               <div className="text-[11px] mt-2 flex items-center gap-1.5" style={{ color: "#2EE6FF" }} data-testid="game-building">
                 <Loader2 size={12} className="animate-spin" /> {detail.stage} — {(detail.build_log || []).slice(-1)[0]?.msg}
