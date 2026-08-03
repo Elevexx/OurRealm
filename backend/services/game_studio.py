@@ -23,7 +23,55 @@ from services.llm_router import call_llm, tier
 
 log = logging.getLogger("ourrealm.games")
 
-RUNTIMES = ["quiz_adventure", "matching", "sorting", "memory", "rhythm"]
+RUNTIMES = ["quiz_adventure", "matching", "sorting", "memory", "rhythm",
+            "top_down", "platformer", "dodge_collect", "puzzle_room"]
+RUNTIME_LABELS = {
+    "quiz_adventure": "Quiz Adventure", "matching": "Memory Matching (pairs)",
+    "sorting": "Sorting / Ordering", "memory": "Memory Cards", "rhythm": "Rhythm / Tap",
+    "top_down": "Top-Down Movement", "platformer": "Platformer Lite",
+    "dodge_collect": "Dodge & Collect Arcade", "puzzle_room": "Puzzle Room",
+}
+# Deterministic genre router — checked FIRST, in order. The LLM may refine
+# but can never silently reroute an action request into rhythm/quiz.
+GENRE_MAP = [
+    (("rhythm", "beat match", "tempo", "tap to the", "music game", "drum"), "rhythm"),
+    (("escape room", "puzzle room", "escape the", "riddle", "unlock the door"), "puzzle_room"),
+    (("platformer", "platform game", "jump and run", "side-scroll", "jumping game"), "platformer"),
+    (("maze", "top-down", "top down", "explore the", "arena", "adventure world", "dungeon crawl"), "top_down"),
+    (("runner", "dodge", "arcade", "action game", "shooter", "rush", "collect", "avoid the", "racing"), "dodge_collect"),
+    (("memory game", "concentration", "flip cards", "memory cards"), "memory"),
+    (("matching", "match the pairs", "pair up"), "matching"),
+    (("sort", "ordering", "categorize", "put in order", "sequence the"), "sorting"),
+    (("quiz", "trivia", "story adventure", "questions"), "quiz_adventure"),
+]
+RUNTIME_MECHANICS = {
+    "rhythm": ["beat timing", "tap accuracy", "tempo ramp"],
+    "puzzle_room": ["riddles", "code locks", "sequence puzzles", "hints", "room progression"],
+    "platformer": ["player movement", "jumping", "gravity", "collectibles", "hazards", "goal flag", "touch controls"],
+    "top_down": ["4-direction movement", "collectible cores", "patrol + chaser hazards", "obstacles", "finish portal", "touch controls"],
+    "dodge_collect": ["left/right movement", "falling collectibles", "moving hazards", "increasing speed", "touch/drag controls"],
+    "memory": ["card flipping", "pair recall"],
+    "matching": ["pair matching"],
+    "sorting": ["category sorting"],
+    "quiz_adventure": ["story stages", "multiple-choice questions", "explanations"],
+}
+COMPLEXITY_FEATURES = {
+    1: ["single mechanic", "one stage", "simple scoring", "win/lose screen"],
+    2: ["3-5 stages", "increasing difficulty", "3 lives", "progress save", "richer UI", "stage transitions"],
+    3: ["5+ stages", "lives + checkpoints", "combo multiplier", "achievements", "unlockables",
+        "best-score save", "increasing speed/difficulty", "finish portal + results screen",
+        "responsive mobile controls", "polished transitions"],
+}
+
+
+def route_runtime(text: str):
+    low = (text or "").lower()
+    for kws, rt in GENRE_MAP:
+        if any(k in low for k in kws):
+            return rt
+    return None
+
+
 COMPLEXITY_LEVELS = {
     1: "Very Simple — single screen, basic scoring",
     2: "Simple — multiple stages, progress, richer feedback",
@@ -52,12 +100,27 @@ async def audit(actor, action, game_id=None, detail="", cost=None):
 EST_SYSTEM = """You are ORAi's game designer. Turn a game request into a short build plan.
 Reply ONLY valid JSON:
 {"title": "game name", "concept": "2-3 sentence pitch",
- "runtime": "quiz_adventure|matching|sorting|memory|rhythm",
+ "runtime": "quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room",
  "features": ["4-7 short planned features"],
+ "mechanics": ["gameplay mechanics this game will include"],
+ "unsupported_mechanics": ["requested mechanics the chosen runtime cannot do, [] if none"],
+ "substitutions": ["honest 'requested X -> using Y instead' notes, [] if none"],
+ "gameplay_summary": "2 sentences describing moment-to-moment gameplay",
+ "est_play_minutes": "e.g. 10-20",
  "subject": "...", "target_age": "...", "grade_level": "...",
  "learning_objective": "one sentence", "stages": 3,
- "controls": "tap/click ...", "replayability": "one sentence"}
-Pick the runtime that best fits the request. stages: 1 for very simple, 2-4 for staged games."""
+ "controls": "tap/click/drag/arrows ...", "replayability": "one sentence"}
+RUNTIME ROUTING — pick the runtime whose GAMEPLAY matches the request:
+- action/arcade/runner/dodge/shooter/racing/collecting -> dodge_collect
+- exploration/maze/adventure world/top-down movement -> top_down
+- platform/jumping/side-scrolling -> platformer
+- escape room/riddles/locks -> puzzle_room
+- music/beat/tempo -> rhythm
+- memory/concentration -> memory | pair matching -> matching | sorting/ordering -> sorting
+- trivia/story questions -> quiz_adventure
+NEVER route an action/movement game into rhythm, quiz or matching. If the exact requested genre
+is unsupported, choose the CLOSEST supported runtime and record it in "substitutions" honestly.
+stages: 1 for complexity 1, 3-5 for complexity 2, 5+ for complexity 3."""
 
 
 async def create_estimate(body: dict, current: dict) -> dict:
@@ -72,7 +135,36 @@ async def create_estimate(body: dict, current: dict) -> dict:
         plan = {"title": "New Game", "concept": raw[:300], "runtime": "quiz_adventure",
                 "features": [], "stages": 1}
     if plan.get("runtime") not in RUNTIMES:
-        plan["runtime"] = "quiz_adventure"
+        plan["runtime"] = None
+    # Deterministic genre router — an action/movement request can never be
+    # silently shoehorned into a tap/quiz template.
+    routed = route_runtime(str(body.get("request") or ""))
+    llm_rt = plan.get("runtime")
+    subs = [str(s)[:200] for s in (plan.get("substitutions") or []) if s]
+    if routed and llm_rt != routed and llm_rt in (None, "rhythm", "quiz_adventure", "matching", "memory", "sorting"):
+        if llm_rt:
+            subs.append(f"Rerouted from {RUNTIME_LABELS[llm_rt]} to {RUNTIME_LABELS[routed]} to match the requested gameplay")
+        plan["runtime"] = routed
+    elif not llm_rt:
+        plan["runtime"] = routed or "quiz_adventure"
+        if not routed:
+            subs.append("The requested genre isn't a Phase 1 runtime — using Quiz Adventure as the closest honest fit")
+    rt = plan["runtime"]
+    plan["runtime_label"] = RUNTIME_LABELS[rt]
+    plan["substitutions"] = subs
+    plan["mechanics"] = [str(m)[:80] for m in (plan.get("mechanics") or [])][:12] or RUNTIME_MECHANICS[rt]
+    plan["unsupported_mechanics"] = [str(m)[:120] for m in (plan.get("unsupported_mechanics") or [])][:8]
+    plan["gameplay_summary"] = str(plan.get("gameplay_summary") or plan.get("concept") or "")[:400]
+    plan["complexity_features"] = COMPLEXITY_FEATURES[complexity]
+    plan["save_features"] = (["best score"] if complexity == 1
+                             else ["best score", "progress save"] if complexity == 2
+                             else ["best score", "progress save", "checkpoints", "unlockables"])
+    try:
+        stages = int(plan.get("stages") or 1)
+    except Exception:  # noqa: BLE001
+        stages = 1
+    plan["stages"] = 1 if complexity == 1 else max(3, min(5, stages)) if complexity == 2 else max(5, stages)
+    plan["est_play_minutes"] = str(plan.get("est_play_minutes") or {1: "3-5", 2: "8-15", 3: "15-25"}[complexity])
     build_cost = round(t["est_cost"] + 0.01 * complexity, 2)
     est = {
         "id": uuid.uuid4().hex, "status": "awaiting_approval",
@@ -104,18 +196,35 @@ matching: {"stages":[{"title":"...","pairs":[{"left":"...","right":"..."}] (5-8 
 sorting: {"stages":[{"title":"...","categories":["A","B"],"items":[{"label":"...","category":"A"}] (6-10 items)}]}
 memory: {"stages":[{"title":"...","cards":["term1","term2",...] (6-8 unique terms, runtime duplicates them)}]}
 rhythm: {"stages":[{"title":"...","bpm":90,"pattern":[1,0,1,1,0,1,0,1] (16 beats, 1=tap),"lesson_tip":"..."}]}
+dodge_collect: {"stages":[{"title":"...","target_cores":8,"fall_speed":140,"spawn_ms":700,"core_ratio":0.6}]}
+  (each later stage: higher fall_speed +15-25%, lower spawn_ms, more target_cores, lower core_ratio)
+top_down: {"stages":[{"title":"...","cores":6,"obstacles":3,"player_speed":180,"hazards":[{"type":"patrol","speed":120},{"type":"chaser","speed":80}]}]}
+  (each later stage: more cores/hazards/obstacles, faster hazards; max 5 hazards)
+platformer: {"stages":[{"title":"...","platforms":[{"x":0,"y":92,"w":100},{"x":10,"y":72,"w":20},...],
+  "cores":[{"x":20,"y":64}],"hazards":[{"x":50,"y":88}],"goal":{"x":90,"y":16}}]}
+  (x/y/w are 0-100 percent of the play area, y grows downward; first platform must be a wide floor;
+   platforms must be REACHABLE by jumping ~20 y-units; goal on the highest platform)
+puzzle_room: {"stages":[{"title":"Room name","intro":"scene description","puzzles":[
+  {"type":"riddle","prompt":"...","answer":"one-word answer","hint":"..."},
+  {"type":"code","prompt":"...","answer":"1234","hint":"..."},
+  {"type":"sequence","prompt":"...","options":["step A","step B","step C"],"order":[2,0,1]},
+  {"type":"choice","prompt":"...","options":["..x3"],"answer_index":1}] (2-4 puzzles per room)}]}
 
 Wrap it as: {"runtime":"<runtime>","title":"...","description":"1-2 sentences","subject":"...",
  "grade_level":"...","learning_objective":"...","controls":"...",
  "theme":{"bg":"#0b1220","accent":"#2EE6FF","text":"#EAF2FF"},
  "scoring":{"points_per_correct":10,"pass_pct":70},
+ "lives":3, "combo":true|false, "checkpoints":true|false,
+ "unlockables":[{"stage":3,"label":"Turbo Trail"}],
  "adaptive": true|false, "achievements":[{"id":"perfect","label":"Perfect Round"}],
  "stages":[...]}
-Rules: stage count and depth must match the requested complexity. Educational content must be
-accurate and age-appropriate. adaptive+achievements ONLY for complexity 3. English only."""
+Rules: stage count and depth must match the requested complexity contract in the user message.
+Difficulty must visibly ramp across stages (speed, hazards, puzzle difficulty). Educational content
+must be accurate and age-appropriate. combo/checkpoints/unlockables/achievements ONLY for
+complexity 3; lives 3 for complexity 2-3, lives 1 for complexity 1. English only."""
 
 
-def validate_spec(spec: dict) -> list:
+def validate_spec(spec: dict, complexity: int = 1) -> list:
     """Automated tests — every failure blocks approval submission."""
     errs = []
     if spec.get("runtime") not in RUNTIMES:
@@ -124,6 +233,13 @@ def validate_spec(spec: dict) -> list:
     stages = spec.get("stages") or []
     if not stages:
         errs.append("no stages")
+    min_stages = {1: 1, 2: 3, 3: 5}.get(complexity, 1)
+    if len(stages) < min_stages:
+        errs.append(f"complexity {complexity} requires at least {min_stages} stages (got {len(stages)})")
+    if complexity == 3 and not spec.get("combo"):
+        errs.append("complexity 3 requires combo:true")
+    if complexity == 3 and not (spec.get("achievements") or []):
+        errs.append("complexity 3 requires at least one achievement")
     for i, st in enumerate(stages):
         r = spec["runtime"]
         if r == "quiz_adventure":
@@ -146,6 +262,36 @@ def validate_spec(spec: dict) -> list:
         elif r == "rhythm":
             if not st.get("pattern") or not st.get("bpm"):
                 errs.append(f"stage {i+1}: needs bpm + pattern")
+        elif r == "dodge_collect":
+            if not st.get("target_cores"):
+                errs.append(f"stage {i+1}: needs target_cores")
+        elif r == "top_down":
+            if not st.get("cores"):
+                errs.append(f"stage {i+1}: needs cores count")
+        elif r == "platformer":
+            plats = st.get("platforms") or []
+            if plats and not all(isinstance(p, dict) and all(k in p for k in ("x", "y", "w")) for p in plats):
+                errs.append(f"stage {i+1}: platforms need x/y/w")
+        elif r == "puzzle_room":
+            pzs = st.get("puzzles") or []
+            if not pzs:
+                errs.append(f"stage {i+1}: needs puzzles")
+            for p in pzs:
+                t = p.get("type")
+                if t == "sequence" and not (p.get("options") and p.get("order")):
+                    errs.append(f"stage {i+1}: sequence puzzle needs options + order")
+                elif t == "choice" and not p.get("options"):
+                    errs.append(f"stage {i+1}: choice puzzle needs options")
+                elif t in ("riddle", "code") and not p.get("answer"):
+                    errs.append(f"stage {i+1}: {t} puzzle needs an answer")
+    # difficulty must actually ramp for arcade runtimes at complexity ≥2
+    if complexity >= 2 and spec.get("runtime") == "dodge_collect" and len(stages) >= 2:
+        try:
+            if float(stages[-1].get("fall_speed") or 0) <= float(stages[0].get("fall_speed") or 0) \
+                    and int(stages[-1].get("target_cores") or 0) <= int(stages[0].get("target_cores") or 0):
+                errs.append("difficulty must increase across stages (fall_speed or target_cores)")
+        except Exception:  # noqa: BLE001
+            pass
     return errs
 
 
@@ -156,6 +302,7 @@ async def start_build(estimate: dict, current: dict) -> dict:
         "status": "building", "stage": "designing",
         "complexity": estimate["complexity"], "ai_power": estimate["ai_power"],
         "runtime": estimate["plan"].get("runtime"),
+        "plan": estimate["plan"],
         "request": estimate["request"], "options": estimate["options"],
         "course_context": estimate.get("course_context"),
         "spec": None, "test_results": None, "build_log": [],
@@ -186,16 +333,21 @@ async def _run_build(game_id: str):
     cost = 0.0
     try:
         await _log(game_id, "designing", f"AI Power {game['ai_power']} → {t['label']} ({t['passes']} passes)")
+        plan = game.get("plan") or {}
         user_msg = (
-            f"Request: {game['request']}\nRuntime: {game['runtime']}\n"
+            f"Request: {game['request']}\nRuntime: {game['runtime']} (MANDATORY — the spec runtime must be exactly this)\n"
             f"Complexity: {game['complexity']} — {COMPLEXITY_LEVELS[game['complexity']]}\n"
+            f"COMPLEXITY CONTRACT (must all be present in the spec): {', '.join(COMPLEXITY_FEATURES[game['complexity']])}\n"
+            f"Stages required: {plan.get('stages') or {1: 1, 2: 3, 3: 5}[game['complexity']]}\n"
+            + (f"Planned mechanics: {', '.join(plan.get('mechanics') or [])}\n" if plan.get("mechanics") else "")
+            + (f"Gameplay summary to implement: {plan.get('gameplay_summary')}\n" if plan.get("gameplay_summary") else "")
             + "\n".join(f"{k}: {v}" for k, v in (game.get("options") or {}).items() if v)
             + (f"\nCourse context: {json.dumps(game['course_context'])[:400]}" if game.get("course_context") else ""))
         await _log(game_id, "generating_spec", "Writing game specification in the isolated build workspace")
         raw = await call_llm(SPEC_SYSTEM, user_msg, power=game["ai_power"], json_mode=True)
         cost += t["est_cost_per_pass"]
         spec = json.loads(raw)
-        errs = validate_spec(spec)
+        errs = validate_spec(spec, game["complexity"])
         # refinement passes: fix validation errors / review quality
         for p in range(t["passes"] - 1):
             if not errs and p > 0:
@@ -212,9 +364,9 @@ async def _run_build(game_id: str):
                 spec = json.loads(raw)
             except Exception:  # noqa: BLE001
                 pass
-            errs = validate_spec(spec)
+            errs = validate_spec(spec, game["complexity"])
         await _log(game_id, "testing", "Running automated spec validation tests")
-        errs = validate_spec(spec)
+        errs = validate_spec(spec, game["complexity"])
         tests = {"passed": not errs, "errors": errs,
                  "checks": ["runtime schema", "stage content", "answer integrity", "category integrity"],
                  "at": _iso()}
@@ -223,7 +375,12 @@ async def _run_build(game_id: str):
         if game["complexity"] < 3:
             spec["adaptive"] = False
             spec["achievements"] = []
-        spec["runtime"] = game["runtime"] if spec.get("runtime") not in RUNTIMES else spec["runtime"]
+            spec["combo"] = False
+            spec["checkpoints"] = False
+            spec["unlockables"] = []
+        spec["lives"] = 1 if game["complexity"] == 1 else int(spec.get("lives") or 3)
+        # The routed runtime is a hard contract — the model can never swap it.
+        spec["runtime"] = game["runtime"]
         await db.games.update_one({"id": game_id}, {"$set": {
             "spec": spec, "test_results": tests, "status": "pending_approval",
             "stage": "preview_ready", "actual_cost": round(cost, 3),

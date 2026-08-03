@@ -216,21 +216,31 @@ async def assistant_chat(body: ChatBody, user: CurrentUser):
             from services.access_policy import require_access as _ra
             await _ra("game_creator", user, consume=False)
             from services import game_studio as gsvc
+            import re as _rec
             course_ctx = None
             if ctx.lesson_id or ctx.course_id:
                 course_ctx = {"course_id": ctx.course_id, "lesson_id": ctx.lesson_id, "center_id": ctx.center_id}
+            m_c = _rec.search(r"complexity\s*[:\-]?\s*(\d+)", low)
+            m_p = _rec.search(r"(?:ai\s*)?power\s*[:\-]?\s*(\d+)", low)
             est = await gsvc.create_estimate(
-                {"request": message, "complexity": 2, "ai_power": 5, "course_context": course_ctx}, user)
+                {"request": message, "complexity": int(m_c.group(1)) if m_c else 2,
+                 "ai_power": int(m_p.group(1)) if m_p else 5, "course_context": course_ctx}, user)
             plan_g = est["plan"]
+            card_lines = [
+                f"{plan_g.get('title')} — {plan_g.get('gameplay_summary', plan_g.get('concept', ''))[:140]}",
+                f"Runtime: {plan_g.get('runtime_label') or plan_g.get('runtime')} · Complexity {est['complexity']} · AI Power {est['ai_power']} ({est['tier']['label']})",
+                f"{plan_g.get('stages')} stages · ~{plan_g.get('est_play_minutes')} min play · Mechanics: {', '.join((plan_g.get('mechanics') or [])[:5])}",
+            ]
+            for s in (plan_g.get("substitutions") or [])[:2]:
+                card_lines.append(f"⚠ {s}")
+            card_lines += [
+                f"Estimated cost: ~${est['estimates']['provider_cost']} · ~{est['estimates']['generation_time_min']} min build",
+                "Nothing builds until you approve it in Game Studio.",
+            ]
             edu_card = {
                 "type": "game_estimate", "estimate_id": est["id"],
                 "title": "GAME PLAN READY — APPROVAL REQUIRED",
-                "lines": [
-                    f"{plan_g.get('title')} — {plan_g.get('concept', '')[:120]}",
-                    f"Runtime: {plan_g.get('runtime')} · Complexity {est['complexity']} · AI Power {est['ai_power']} ({est['tier']['label']})",
-                    f"Estimated cost: ~${est['estimates']['provider_cost']} · ~{est['estimates']['generation_time_min']} min build",
-                    "Nothing builds until you approve it in Game Studio.",
-                ],
+                "lines": card_lines,
                 "button": {"label": "PREVIEW BUILD", "to": f"/admin/games?estimate={est['id']}"}}
             extra.append(
                 f"YOU (ORAi) JUST CREATED A GAME BUILD ESTIMATE \"{plan_g.get('title')}\" — it requires approval "

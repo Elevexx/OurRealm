@@ -116,7 +116,7 @@ export default function GamesHub() {
             {playing.game.spec?.description} · <b>Objective:</b> {playing.game.spec?.learning_objective} ·
             <b> Controls:</b> {playing.game.spec?.controls}
           </div>
-          <GameRuntime spec={playing.game.spec} onScore={onScore} height={520} />
+          <GameRuntime spec={playing.game.spec} onScore={onScore} height={520} gameId={playing.game.id} />
         </div>
       )}
     </div>

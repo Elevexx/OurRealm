@@ -169,12 +169,54 @@ export default function AdminGames() {
                 Approval required — nothing builds until you approve
               </div>
               <b className="text-sm">{estimate.plan.title}</b>
-              <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>{estimate.plan.concept}</p>
-              <div className="text-[11px] mt-1.5">
+              <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
+                {estimate.plan.gameplay_summary || estimate.plan.concept}
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                <div className="rounded-lg p-2" style={{ background: "rgba(46,230,255,0.06)" }} data-testid="game-est-runtime">
+                  <div className="text-[9px] uppercase tracking-wider" style={{ color: "#2EE6FF" }}>Runtime selected</div>
+                  <b className="text-[11px]">{estimate.plan.runtime_label || estimate.plan.runtime}</b>
+                </div>
+                <div className="rounded-lg p-2" style={{ background: "rgba(194,107,255,0.06)" }} data-testid="game-est-stages">
+                  <div className="text-[9px] uppercase tracking-wider" style={{ color: "#C26BFF" }}>Stages · Play time</div>
+                  <b className="text-[11px]">{estimate.plan.stages} stages · ~{estimate.plan.est_play_minutes} min</b>
+                </div>
+                <div className="rounded-lg p-2" style={{ background: "rgba(16,230,112,0.06)" }} data-testid="game-est-saves">
+                  <div className="text-[9px] uppercase tracking-wider" style={{ color: "#10E670" }}>Save features</div>
+                  <b className="text-[11px]">{(estimate.plan.save_features || []).join(", ") || "—"}</b>
+                </div>
+              </div>
+              {(estimate.plan.mechanics || []).length > 0 && (
+                <div className="mt-2" data-testid="game-est-mechanics">
+                  <div className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Mechanics included</div>
+                  <div className="flex flex-wrap gap-1">
+                    {estimate.plan.mechanics.map((m, i) => (
+                      <span key={i} className="text-[9.5px] px-2 py-0.5 rounded-full"
+                        style={{ background: "rgba(46,230,255,0.1)", border: "1px solid rgba(46,230,255,0.3)", color: "#2EE6FF" }}>{m}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(estimate.plan.complexity_features || []).length > 0 && (
+                <div className="mt-2" data-testid="game-est-complexity-features">
+                  <div className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Complexity {estimate.complexity} features</div>
+                  <div className="text-[10px]" style={{ color: "var(--text-main)" }}>
+                    {estimate.plan.complexity_features.map((f, i) => <span key={i}>✓ {f}{i < estimate.plan.complexity_features.length - 1 ? "  ·  " : ""}</span>)}
+                  </div>
+                </div>
+              )}
+              {((estimate.plan.substitutions || []).length > 0 || (estimate.plan.unsupported_mechanics || []).length > 0) && (
+                <div className="mt-2 rounded-lg p-2" style={{ background: "rgba(244,167,59,0.08)", border: "1px solid rgba(244,167,59,0.3)" }}
+                  data-testid="game-est-substitutions">
+                  <div className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: "#F4A73B" }}>Honest limits & substitutions</div>
+                  {(estimate.plan.substitutions || []).map((s, i) => <div key={`s${i}`} className="text-[10px]">⚠ {s}</div>)}
+                  {(estimate.plan.unsupported_mechanics || []).map((s, i) => <div key={`u${i}`} className="text-[10px]">✗ Not in Phase 1: {s}</div>)}
+                </div>
+              )}
+              <div className="text-[11px] mt-2">
                 {(estimate.plan.features || []).map((f, i) => <div key={i}>• {f}</div>)}
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
-                <span>Runtime: <b style={{ color: "var(--text-main)" }}>{estimate.plan.runtime}</b></span>
                 <span>Complexity <b style={{ color: "var(--text-main)" }}>{estimate.complexity}</b> · AI Power <b style={{ color: "var(--text-main)" }}>{estimate.ai_power}</b></span>
                 <span data-testid="game-est-cost">Est. cost: <b style={{ color: "#F4A73B" }}>${estimate.estimates.provider_cost}</b></span>
                 <span>~{estimate.estimates.generation_time_min} min · {estimate.estimates.testing}</span>
@@ -287,7 +329,7 @@ export default function AdminGames() {
               <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "#2EE6FF" }}>
                 <Eye size={11} className="inline mr-1" />Playable preview (sandboxed — mobile & desktop)
               </div>
-              <GameRuntime spec={detail.spec} height={440} />
+              <GameRuntime spec={detail.spec} height={440} gameId={detail.id} />
             </div>
           )}
         </div>
