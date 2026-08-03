@@ -8,6 +8,7 @@ import GameBlueprint from "@/components/games/GameBlueprint";
 import GameFireEconomy from "@/components/games/GameFireEconomy";
 import GameControlsPanel from "@/components/games/GameControlsPanel";
 import GameOraiEdit from "@/components/games/GameOraiEdit";
+import GameQuickActions from "@/components/games/GameQuickActions";
 
 const STATUS_COLORS = {
   building: "#2EE6FF", pending_approval: "#F4A73B", approved: "#2EA0FF",
@@ -607,6 +608,7 @@ export default function AdminGames() {
                 <Eye size={11} className="inline mr-1" />Playable preview (sandboxed — mobile & desktop)
               </div>
               <GameRuntime spec={detail.spec} height={440} gameId={detail.id} controls={detail.controls} />
+              <GameQuickActions game={detail} onChanged={() => { loadDetail(detail.id); load(); }} />
               <GameOraiEdit gameId={detail.id} onChanged={() => loadDetail(detail.id)} />
               <GameControlsPanel gameId={detail.id} onChanged={() => loadDetail(detail.id)} />
               <GameFireEconomy gameId={detail.id} />

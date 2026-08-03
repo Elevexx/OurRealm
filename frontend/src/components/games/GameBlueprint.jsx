@@ -121,6 +121,9 @@ export default function GameBlueprint({ game, onChanged }) {
                       <button className="or-btn or-btn-ghost text-[9px]" disabled={busy}
                         onClick={() => call(() => apiClient.post(`/admin/games/${game.id}/rollback`, { index: i }), `Rolled back to v${v.version}`)}
                         data-testid={`version-rollback-${i}`}><RotateCcw size={9} /> Rollback</button>
+                      <button className="or-btn or-btn-ghost text-[9px]" disabled={busy}
+                        onClick={() => call(() => apiClient.post(`/admin/games/${game.id}/versions/${i}/duplicate`), `Duplicated v${v.version}`)}
+                        data-testid={`version-duplicate-${i}`}>Duplicate</button>
                     </div>
                   ))}
                   {cmp != null && versions.versions[cmp] && (

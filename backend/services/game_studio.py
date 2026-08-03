@@ -26,20 +26,33 @@ log = logging.getLogger("ourrealm.games")
 
 RUNTIMES = ["quiz_adventure", "matching", "sorting", "memory", "rhythm",
             "top_down", "platformer", "dodge_collect", "puzzle_room",
-            "card_battle", "tower_defense", "match3"]
+            "card_battle", "tower_defense", "match3",
+            "rpg", "racing", "farming", "city_builder"]
+# Registered in the catalog but not yet playable — classification detects them,
+# generation refuses them with an explicit "not supported yet" + approval gate.
+SCAFFOLDED_RUNTIMES = {
+    "roguelike": "Roguelike", "tactics": "Tactical Strategy", "idle": "Idle / Incremental",
+    "visual_novel": "Visual Novel", "fishing": "Fishing",
+}
 RUNTIME_LABELS = {
     "quiz_adventure": "Quiz Adventure", "matching": "Memory Matching (pairs)",
     "sorting": "Sorting / Ordering", "memory": "Memory Cards", "rhythm": "Rhythm / Tap",
     "top_down": "Top-Down Movement", "platformer": "Platformer Lite",
     "dodge_collect": "Dodge & Collect Arcade", "puzzle_room": "Puzzle Room",
     "card_battle": "Card Battle", "tower_defense": "Tower Defense", "match3": "Match-3 Puzzle",
+    "rpg": "RPG Adventure", "racing": "Racing", "farming": "Farming", "city_builder": "City Builder",
+    **SCAFFOLDED_RUNTIMES,
 }
-# Template registry — every runtime family maps to exactly one vetted template.
-TEMPLATE_IDS = {rt: f"tpl_{rt}_v1" for rt in RUNTIMES}
+# Template registry — every catalog family maps to exactly one vetted template.
+TEMPLATE_IDS = {rt: f"tpl_{rt}_v1" for rt in RUNTIMES + list(SCAFFOLDED_RUNTIMES)}
 WIN_LOSS = {
     "card_battle": ("defeat the enemy (enemy HP to 0)", "player HP reaches 0"),
     "tower_defense": ("survive every wave with the base standing", "base HP reaches 0"),
     "match3": ("complete the stage objective within the move limit", "moves run out before the objective"),
+    "rpg": ("complete the quest and reach the exit", "HP reaches 0 in combat"),
+    "racing": ("finish all laps in 1st-3rd place", "finish last / miss checkpoints"),
+    "farming": ("reach the coin goal before the season ends", "season ends short of the goal"),
+    "city_builder": ("grow the city to the population target", "treasury and food collapse"),
     "dodge_collect": ("collect the target cores and reach the portal", "all lives lost"),
     "top_down": ("collect all cores and reach the exit portal", "all lives lost"),
     "platformer": ("reach the goal portal", "all lives lost"),
@@ -56,6 +69,17 @@ GENRE_MAP = [
     (("card battle", "card battler", "card game", "card clash", "deck build", "deckbuild", "tcg", "card duel"), "card_battle"),
     (("tower defense", "tower defence", "defend the base", "td game", "place towers", "wave defense"), "tower_defense"),
     (("match 3", "match-3", "match three", "gem swap", "tile match", "match puzzle", "bejeweled", "candy crush"), "match3"),
+    (("rpg", "jrpg", "role playing", "role-playing", "creature collect", "creature-collect", "monster catching",
+      "monster taming", "monster collector", "creature companion", "catch creatures", "catch monsters",
+      "pokemon", "monster battle adventure", "creature battle"), "rpg"),
+    (("racing", "race track", "kart", "lap race", "street race", "drift", "grand prix"), "racing"),
+    (("farming", "farm sim", "farm simulator", "harvest game", "crop game", "plant and harvest"), "farming"),
+    (("city builder", "city building", "build a city", "town builder", "settlement builder"), "city_builder"),
+    (("roguelike", "rogue-like", "dungeon crawler", "permadeath"), "roguelike"),
+    (("tactical strategy", "turn-based strategy", "tactics game", "grid combat", "xcom"), "tactics"),
+    (("idle game", "incremental game", "clicker", "prestige game"), "idle"),
+    (("visual novel", "dating sim", "branching story", "interactive fiction"), "visual_novel"),
+    (("fishing", "fish catching", "angling"), "fishing"),
     (("rhythm", "beat match", "tempo", "tap to the", "music game", "drum"), "rhythm"),
     (("escape room", "puzzle room", "escape the", "riddle", "unlock the door"), "puzzle_room"),
     (("platformer", "platform game", "jump and run", "side-scroll", "jumping game"), "platformer"),
@@ -83,6 +107,18 @@ RUNTIME_MECHANICS = {
                       "multiple enemy types", "range & damage", "base health", "resources"],
     "match3": ["tile grid", "swap adjacent tiles", "match detection", "cascades",
                "combo multiplier", "objectives", "move limit"],
+    "rpg": ["overworld exploration", "world map zones (towns & dungeons)", "quests", "NPC dialogue",
+            "inventory", "equipment", "XP & leveling", "turn-based battles",
+            "creature collection", "party system", "creature evolution"],
+    "racing": ["laps & checkpoints", "AI racers", "steering", "drift", "boost pads", "position leaderboard"],
+    "farming": ["plant seeds", "watering", "growth timers", "harvesting", "crafting goods", "seasonal day cycle", "market sales"],
+    "city_builder": ["building placement", "gold/food/population economy", "production chains",
+                     "housing & growth", "expansion"],
+    "roguelike": ["procedural levels", "permadeath", "randomized loot", "run upgrades"],
+    "tactics": ["grid movement", "turn-based combat", "abilities", "cover", "enemy AI turns"],
+    "idle": ["passive generation", "automation", "upgrades", "prestige"],
+    "visual_novel": ["branching dialogue", "portraits", "choices", "multiple endings"],
+    "fishing": ["casting", "timing catch", "bait", "fish rarity", "collection"],
 }
 COMPLEXITY_FEATURES = {
     1: ["single mechanic", "one stage", "simple scoring", "win/lose screen"],
@@ -194,6 +230,10 @@ PLAYER_REPS = {
     "card_battle": ["card_commander"],
     "tower_defense": ["tower_commander"],
     "match3": ["puzzle_cursor"],
+    "rpg": ["hero_sprite"],
+    "racing": ["race_car"],
+    "farming": ["farmer_cursor"],
+    "city_builder": ["mayor_cursor"],
 }
 
 
@@ -229,6 +269,18 @@ IDENTITY_BASE = {
     "match3": ("click/tap or drag to swap adjacent tiles", "fixed tile-grid board",
                "swap tiles to form 3+ matches, trigger cascades, hit the objective within the move limit",
                "swap → match → cascade → objective progress → next stage"),
+    "rpg": ("tap/click a tile to step toward it; combat via action buttons", "top-down overworld grid",
+            "explore, talk to NPCs, take quests, loot chests, equip gear, fight monsters, level up",
+            "explore → quest → fight → loot & level → unlock exit"),
+    "racing": ("←/→ steer · space drift · touch steering buttons", "top-down chase camera on a circuit",
+               "steer through checkpoints, drift corners, grab boosts, beat AI racers across laps",
+               "race lap → hit checkpoints → overtake AI → finish placement"),
+    "farming": ("tap plots to plant/water/harvest · tap goods to craft & sell", "fixed farm-plot grid",
+                "plant seeds, water them, harvest crops, craft goods and sell before the season ends",
+                "plant → water → grow → harvest → craft → sell → next day"),
+    "city_builder": ("tap a building type, then a free tile to construct", "fixed city grid",
+                     "place houses, farms, mines and markets to balance gold/food and grow population",
+                     "build → produce → feed & grow population → expand → reach target"),
 }
 
 
@@ -315,7 +367,7 @@ async def showcase_similarity_for(ident: dict, exclude_id: str = None) -> dict:
 EST_SYSTEM = """You are ORAi's game designer. Turn a game request into a short build plan.
 Reply ONLY valid JSON:
 {"title": "game name", "concept": "2-3 sentence pitch",
- "runtime": "quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room|card_battle|tower_defense|match3",
+ "runtime": "quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room|card_battle|tower_defense|match3|rpg|racing|farming|city_builder",
  "features": ["4-7 short planned features"],
  "mechanics": ["gameplay mechanics this game will include"],
  "unsupported_mechanics": ["requested mechanics the chosen runtime cannot do, [] if none"],
@@ -336,6 +388,10 @@ RUNTIME ROUTING — pick the runtime whose GAMEPLAY matches the request:
 - card battler/deck builder/TCG/turn-based card combat -> card_battle
 - tower defense/wave defense/place towers -> tower_defense
 - match-3/gem swap/tile matching puzzle -> match3
+- RPG/JRPG/quests+NPCs+leveling -> rpg
+- racing/karts/laps -> racing
+- farming/planting/harvest -> farming
+- city building/settlement economy -> city_builder
 - exploration/maze/adventure world/top-down movement -> top_down
 - platform/jumping/side-scrolling -> platformer
 - escape room/riddles/locks -> puzzle_room
@@ -363,7 +419,12 @@ async def create_estimate(body: dict, current: dict) -> dict:
     # Deterministic genre router — an action/movement request can never be
     # silently shoehorned into a tap/quiz template.
     routed = route_runtime(str(body.get("request") or ""))
+    if routed in SCAFFOLDED_RUNTIMES:
+        routed = None  # registered in catalog but not yet playable — handled as explicit fallback below
     llm_rt = plan.get("runtime")
+    if llm_rt in SCAFFOLDED_RUNTIMES or (llm_rt and llm_rt not in RUNTIMES):
+        llm_rt = None
+        plan["runtime"] = None
     subs = [str(s)[:200] for s in (plan.get("substitutions") or []) if s]
     if routed and llm_rt != routed and llm_rt in (None, "rhythm", "quiz_adventure", "matching", "memory", "sorting"):
         if llm_rt:
@@ -377,11 +438,21 @@ async def create_estimate(body: dict, current: dict) -> dict:
     plan["runtime_label"] = RUNTIME_LABELS[rt]
     plan["template_id"] = TEMPLATE_IDS[rt]
     plan["win_condition"], plan["loss_condition"] = WIN_LOSS.get(rt, ("complete all stages", "run out of lives"))
-    # Explicit fallback contract — never silent (B5).
-    unsupported_genre = detect_unsupported(str(body.get("request") or ""))
-    fallback_used = bool(unsupported_genre) or ((not routed) and (llm_rt is None))
+    # Explicit fallback contract — never silent (B5/C).
+    req_text = str(body.get("request") or "")
+    unsupported_genre = detect_unsupported(req_text)
+    scaffold_hit = None
+    _raw_route = route_runtime(req_text)
+    if _raw_route in SCAFFOLDED_RUNTIMES:
+        scaffold_hit = SCAFFOLDED_RUNTIMES[_raw_route]
+    fallback_used = bool(unsupported_genre) or bool(scaffold_hit) or ((not routed) and (llm_rt is None))
     plan["fallback_used"] = bool(fallback_used)
-    if unsupported_genre:
+    if scaffold_hit:
+        plan["fallback_reason"] = (f"This game type is not supported yet ({scaffold_hit} is registered in the "
+                                   f"runtime catalog — coming soon). ORAi proposes {RUNTIME_LABELS[rt]} as a "
+                                   "substitution — generation only proceeds if you explicitly accept it.")
+        subs.append(f"Requested {scaffold_hit} (catalog, not yet playable) -> proposing {RUNTIME_LABELS[rt]}")
+    elif unsupported_genre:
         plan["fallback_reason"] = (f"This game type is not supported yet ({unsupported_genre}). "
                                    f"ORAi proposes {RUNTIME_LABELS[rt]} as a substitution — generation only "
                                    "proceeds if you explicitly accept it.")
@@ -455,12 +526,18 @@ async def create_estimate(body: dict, current: dict) -> dict:
               "top_down": "←→↑↓ / WASD move",
               "card_battle": "click cards to play · click End Turn",
               "tower_defense": "click tower type, then a build spot · click towers to upgrade/sell",
-              "match3": "click a tile, then an adjacent tile to swap"}.get(rt2, "mouse / tap driven")
+              "match3": "click a tile, then an adjacent tile to swap",
+              "rpg": "click a tile to walk · combat action buttons",
+              "racing": "←/→ steer · Space drift",
+              "farming": "click plots to plant/water/harvest · craft & sell buttons",
+              "city_builder": "click a building type, then a free tile"}.get(rt2, "mouse / tap driven")
         tl = {"dodge_collect": "drag steering", "platformer": "left/right/jump buttons", "top_down": "drag joystick",
               "puzzle_room": "tap, type & inspect", "rhythm": "tap the beat pad", "memory": "tap cards",
               "matching": "tap pairs", "sorting": "tap categories", "quiz_adventure": "tap answers",
               "card_battle": "tap cards + End Turn button", "tower_defense": "tap tower type, tap build spot",
-              "match3": "tap two adjacent tiles to swap"}.get(rt2, "tap")
+              "match3": "tap two adjacent tiles to swap",
+              "rpg": "tap tiles to walk + action buttons", "racing": "left/right/drift buttons",
+              "farming": "tap plots + craft buttons", "city_builder": "tap building, tap tile"}.get(rt2, "tap")
         return km, tl
     dk, tl = plan_ident_controls(rt, pm)
     sc = str(body.get("supported_controls") or "both").lower()
@@ -536,6 +613,29 @@ match3: {"stages":[{"title":"Level name","grid_w":7,"grid_h":8,"colors":5,"moves
   "objective":{"type":"score","target":600}}]}
   (objective.type: "score" (target points) or "clear_color" (also set "color":0-4 and "target" tiles);
    NO movement/portals/collectibles — tile swapping, matches and cascades only)
+rpg: {"stages":[{"title":"Region name","zone":"overworld|town|dungeon","grid_w":9,"grid_h":7,"player_hp":24,
+  "quest":{"giver":"Elder Rowan","text":"Recover the lost amulet","item":"Amulet"},
+  "npcs":[{"name":"Elder Rowan","x":1,"y":1,"dialog":"Please find my amulet!"}],
+  "monsters":[{"name":"Slime","x":4,"y":3,"hp":10,"attack":3,"xp":8}] (0-4),
+  "creatures":[{"name":"Embercub","x":3,"y":5,"hp":12,"attack":4,"xp":10,"catchable":true,"evolves_to":"Emberlord","evolve_level":3}] (0-3 wild catchable creatures),
+  "starter_creature":{"name":"Sproutle","hp":14,"attack":4},
+  "chests":[{"x":6,"y":2,"loot":{"kind":"weapon","name":"Iron Sword","power":3}},
+            {"x":7,"y":5,"loot":{"kind":"quest_item","name":"Amulet"}}],
+  "exit":{"x":8,"y":6}}]}
+  (loot.kind: weapon|armor|potion|quest_item; exit unlocks when quest item is returned to the giver;
+   stages form the world map: mix town/dungeon/overworld zones; creatures join the party when caught,
+   fight in turn-based battles, level up and can evolve)
+racing: {"stages":[{"title":"Circuit name","laps":3,"ai_racers":3,"track":"oval|figure8",
+  "boosts":2,"car_speed":150,"ai_speed":135}]}
+  (player steers + drifts; checkpoints are generated from the track shape)
+farming: {"stages":[{"title":"Season name","plots":8,"days":10,"coin_goal":120,
+  "crops":[{"name":"Wheat","cost":4,"grow_days":1,"sell":9},{"name":"Pumpkin","cost":8,"grow_days":2,"sell":22}],
+  "recipes":[{"name":"Bread","needs":{"Wheat":2},"sell":26}]}]}
+farming NOTE: plant->water->harvest->craft->sell loop; day advances via the End Day button
+city_builder: {"stages":[{"title":"Settlement name","grid_w":6,"grid_h":5,"start_gold":60,"pop_target":24,
+  "buildings":[{"name":"House","cost":18,"pop":4,"food_upkeep":2},{"name":"Farm","cost":14,"food":5},
+               {"name":"Mine","cost":22,"gold":6,"pop_req":3},{"name":"Market","cost":30,"gold_mult":1.5}]}]}
+  (tick economy: farms feed houses, mines need population, markets multiply gold income)
 
 Wrap it as: {"runtime":"<runtime>","title":"...","description":"1-2 sentences","subject":"...",
  "grade_level":"...","learning_objective":"...","controls":"...",
@@ -561,11 +661,15 @@ VISUAL SCALING (canvas runtimes: dodge_collect, top_down, platformer):
   Stages must be visually and mechanically distinct — never identical stages with only faster numbers."""
 
 
-def validate_spec(spec: dict, complexity: int = 1) -> list:
+def validate_spec(spec: dict, complexity: int = 1, expected_runtime: str | None = None) -> list:
     """Automated tests — every failure blocks approval submission."""
     errs = []
     if spec.get("runtime") not in RUNTIMES:
         errs.append("unknown runtime")
+        return errs
+    if expected_runtime and spec.get("runtime") != expected_runtime:
+        errs.append(f"spec runtime '{spec.get('runtime')}' does not match the approved plan runtime "
+                    f"'{expected_runtime}' — runtime substitution is not allowed")
         return errs
     stages = spec.get("stages") or []
     rep = spec.get("player_representation")
@@ -649,6 +753,40 @@ def validate_spec(spec: dict, complexity: int = 1) -> list:
             for banned in ("target_cores", "platforms", "cores", "deck"):
                 if st.get(banned):
                     errs.append(f"stage {i+1}: tower_defense must not contain '{banned}' (no player character/collectibles)")
+        elif r == "rpg":
+            if not st.get("grid_w") or not st.get("grid_h"):
+                errs.append(f"stage {i+1}: rpg needs grid_w/grid_h")
+            if not (st.get("quest") or {}).get("item"):
+                errs.append(f"stage {i+1}: rpg needs a quest with a quest item")
+            if not (st.get("npcs") or []):
+                errs.append(f"stage {i+1}: rpg needs at least one NPC")
+            if not (st.get("monsters") or []) and not (st.get("creatures") or []):
+                errs.append(f"stage {i+1}: rpg needs monsters and/or wild creatures")
+            if not (st.get("chests") or []):
+                errs.append(f"stage {i+1}: rpg needs chests (loot + quest item)")
+            if not st.get("exit"):
+                errs.append(f"stage {i+1}: rpg needs an exit tile")
+        elif r == "racing":
+            if not st.get("laps"):
+                errs.append(f"stage {i+1}: racing needs laps")
+            if st.get("ai_racers") is None:
+                errs.append(f"stage {i+1}: racing needs ai_racers")
+            for banned in ("deck", "waves", "plots", "quest"):
+                if st.get(banned):
+                    errs.append(f"stage {i+1}: racing must not contain '{banned}'")
+        elif r == "farming":
+            if not (st.get("crops") or []):
+                errs.append(f"stage {i+1}: farming needs crop definitions")
+            if not st.get("plots") or not st.get("days") or not st.get("coin_goal"):
+                errs.append(f"stage {i+1}: farming needs plots, days and coin_goal")
+        elif r == "city_builder":
+            if not (st.get("buildings") or []):
+                errs.append(f"stage {i+1}: city_builder needs building definitions")
+            if not st.get("pop_target") or st.get("start_gold") is None:
+                errs.append(f"stage {i+1}: city_builder needs pop_target and start_gold")
+            for banned in ("monsters", "deck", "waves", "laps"):
+                if st.get(banned):
+                    errs.append(f"stage {i+1}: city_builder must not contain '{banned}'")
         elif r == "match3":
             if not st.get("grid_w") or not st.get("grid_h"):
                 errs.append(f"stage {i+1}: match3 needs grid_w and grid_h")
@@ -743,7 +881,7 @@ async def _run_build(game_id: str):
         raw = await call_llm(SPEC_SYSTEM, user_msg, power=game["ai_power"], json_mode=True)
         cost += t["est_cost_per_pass"]
         spec = json.loads(raw)
-        errs = validate_spec(spec, game["complexity"])
+        errs = validate_spec(spec, game["complexity"], expected_runtime=game.get("runtime"))
         # refinement passes: fix validation errors / review quality
         for p in range(t["passes"] - 1):
             if not errs and p > 0:
@@ -760,7 +898,7 @@ async def _run_build(game_id: str):
                 spec = json.loads(raw)
             except Exception:  # noqa: BLE001
                 pass
-            errs = validate_spec(spec, game["complexity"])
+            errs = validate_spec(spec, game["complexity"], expected_runtime=game.get("runtime"))
         if not errs and game["ai_power"] >= 7 and spec.get("runtime") in ("dodge_collect", "top_down", "platformer"):
             await _log(game_id, "art_direction", "AI Power 7+ — art direction, asset planning & stage-variation pass")
             try:

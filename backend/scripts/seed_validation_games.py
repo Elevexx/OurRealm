@@ -14,10 +14,12 @@ def iso():
 
 def mk(rt, title, desc, request, spec_stages, extra_spec=None):
     spec = {"runtime": rt, "title": title, "description": desc,
-            "player_representation": {"card_battle": "card_commander", "tower_defense": "tower_commander"}.get(rt, "puzzle_cursor"),
+            "player_representation": {"card_battle": "card_commander", "tower_defense": "tower_commander", "rpg": "hero_sprite", "racing": "race_car", "farming": "farmer_cursor", "city_builder": "mayor_cursor"}.get(rt, "puzzle_cursor"),
             "theme": {"bg": "#0b1220", "accent": "#2EE6FF", "text": "#EAF2FF"},
-            "visual_theme": {"palette": {"bg": {"card_battle": "#140a1e", "tower_defense": "#0a1a12", "match3": "#1a0a14"}[rt],
-                                          "glow": {"card_battle": "#B14BF4", "tower_defense": "#10E670", "match3": "#FF5A8A"}[rt],
+            "visual_theme": {"palette": {"bg": {"card_battle": "#140a1e", "tower_defense": "#0a1a12", "match3": "#1a0a14",
+                                                "rpg": "#0e1a0e", "racing": "#101018", "farming": "#141a08", "city_builder": "#0a141e"}.get(rt, "#0b1220"),
+                                          "glow": {"card_battle": "#B14BF4", "tower_defense": "#10E670", "match3": "#FF5A8A",
+                                                   "rpg": "#7CFF6B", "racing": "#2EE6FF", "farming": "#FFD34D", "city_builder": "#6BB8FF"}.get(rt, "#2EE6FF"),
                                           "accent": "#F4A73B", "hazard": "#FF3D5A"}},
             "scoring": {"points_per_correct": 10, "pass_pct": 60}, "lives": 1, "combo": False,
             "stages": spec_stages, **(extra_spec or {})}
@@ -78,9 +80,47 @@ M3 = mk("match3", "Crystal Fusion",
         [{"title": "Fusion Chamber I", "grid_w": 7, "grid_h": 8, "colors": 5, "moves": 22,
           "objective": {"type": "score", "target": 650}}])
 
+RPG = mk("rpg", "Emberbound Chronicles",
+         "Explore Willowdale, catch wild creatures, level your party and return the Sunstone to Elder Bran.",
+         "founder validation: creature collecting rpg",
+         [{"title": "Willowdale Village", "zone": "town", "grid_w": 9, "grid_h": 7, "player_hp": 26,
+           "quest": {"giver": "Elder Bran", "text": "Recover the Sunstone from the old ruins", "item": "Sunstone"},
+           "npcs": [{"name": "Elder Bran", "x": 1, "y": 1, "dialog": "The Sunstone was stolen — please bring it back!"}],
+           "monsters": [{"name": "Ruin Wisp", "x": 5, "y": 3, "hp": 12, "attack": 3, "xp": 10}],
+           "creatures": [{"name": "Embercub", "x": 3, "y": 5, "hp": 12, "mx": 12, "attack": 4, "xp": 10,
+                          "catchable": True, "evolves_to": "Emberlord", "evolve_level": 2}],
+           "starter_creature": {"name": "Sproutle", "hp": 14, "attack": 4},
+           "chests": [{"x": 6, "y": 2, "loot": {"kind": "weapon", "name": "Bronze Blade", "power": 3}},
+                      {"x": 7, "y": 5, "loot": {"kind": "quest_item", "name": "Sunstone"}},
+                      {"x": 2, "y": 6, "loot": {"kind": "potion", "name": "Herb Tonic"}}],
+           "exit": {"x": 8, "y": 6}}])
+
+RACE = mk("racing", "Nitro Circuit GP",
+          "Three laps of drift-heavy circuit racing against rival AI karts — grab boosts and take the podium.",
+          "founder validation: kart racing",
+          [{"title": "Sunset Speedway", "laps": 3, "ai_racers": 3, "track": "oval", "boosts": 2,
+            "car_speed": 150, "ai_speed": 132}])
+
+FARM = mk("farming", "Harvest Hollow",
+          "Plant, water and harvest crops, bake goods and hit the season's coin goal in ten days.",
+          "founder validation: farm simulator",
+          [{"title": "Spring at Harvest Hollow", "plots": 8, "days": 10, "coin_goal": 120,
+            "crops": [{"name": "Wheat", "cost": 4, "grow_days": 1, "sell": 9},
+                      {"name": "Pumpkin", "cost": 8, "grow_days": 2, "sell": 22}],
+            "recipes": [{"name": "Bread", "needs": {"Wheat": 2}, "sell": 26}]}])
+
+CITY = mk("city_builder", "New Haven Rising",
+          "Balance gold, food and housing to grow a frontier settlement into a thriving town.",
+          "founder validation: city builder",
+          [{"title": "Founding New Haven", "grid_w": 6, "grid_h": 5, "start_gold": 60, "pop_target": 20,
+            "buildings": [{"name": "House", "cost": 18, "pop": 4, "food_upkeep": 2},
+                          {"name": "Farm", "cost": 14, "food": 5},
+                          {"name": "Mine", "cost": 22, "gold": 6, "pop_req": 3},
+                          {"name": "Market", "cost": 30, "gold_mult": 1.5}]}])
+
 
 async def main():
-    for doc in (CARD, TD, M3):
+    for doc in (CARD, TD, M3, RPG, RACE, FARM, CITY):
         existing = await db.games.find_one({"title": doc["title"], "labels": "founder_validation"}, {"_id": 1, "id": 1})
         if existing:
             print(f"SKIP (exists): {doc['title']} id={existing.get('id')}")

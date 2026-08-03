@@ -318,7 +318,7 @@ async def orai_edit(game_id: str, body: dict, current: CurrentUser):
     errs = gs.validate_spec(spec, int(g.get("complexity") or 5))
     if errs:
         raise HTTPException(status_code=422, detail="ORAi edit failed validation: " + "; ".join(errs[:3]))
-    versions = (g.get("versions") or [])[-5:] + [_versions_entry(g)]
+    versions = (g.get("versions") or [])[-29:] + [_versions_entry(g)]
     new_v = int(g.get("version") or 1) + 1
     await db.games.update_one({"id": game_id}, {"$set": {
         "spec": spec, "versions": versions, "version": new_v, "updated_at": _iso(),
@@ -386,7 +386,7 @@ async def patch_fire_economy(game_id: str, body: dict, current: CurrentUser):
                 if k in body["rewards"]:
                     econ["rewards"][k] = max(0, int(body["rewards"][k]))
     # every economy change is a new version, like any other game change
-    versions = (g.get("versions") or [])[-5:] + [_versions_entry(g)]
+    versions = (g.get("versions") or [])[-29:] + [_versions_entry(g)]
     await db.games.update_one({"id": game_id}, {"$set": {
         "fire_economy": econ, "versions": versions,
         "version": int(g.get("version") or 1) + 1, "updated_at": _iso()}})
@@ -441,7 +441,135 @@ def _versions_entry(g: dict) -> dict:
     return {"version": int(g.get("version") or 1), "at": _iso(),
             "spec": g.get("spec"), "plan": g.get("plan"), "status": g.get("status"),
             "complexity": g.get("complexity"), "ai_power": g.get("ai_power"), "request": g.get("request"),
-            "fire_economy": g.get("fire_economy"), "controls": g.get("controls")}
+            "fire_economy": g.get("fire_economy"), "controls": g.get("controls"),
+            "title": g.get("title"), "description": g.get("description"), "genre": g.get("genre"),
+            "labels": g.get("labels"), "cover_url": g.get("cover_url")}
+
+
+META_EDITABLE = {"title": 150, "description": 500, "genre": 60}
+
+
+@admin2.patch("/{game_id}/meta")
+async def patch_meta(game_id: str, body: dict, current: CurrentUser):
+    """Universal editor: core metadata + labels + difficulty. Every save = new version."""
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    upd = {}
+    for k, maxlen in META_EDITABLE.items():
+        if k in body and str(body[k]).strip():
+            upd[k] = str(body[k]).strip()[:maxlen]
+    if "labels" in body and isinstance(body["labels"], list):
+        upd["labels"] = [str(x)[:40] for x in body["labels"]][:12]
+    if "complexity" in body:
+        upd["complexity"] = min(max(int(body["complexity"]), 1), 10)
+    if not upd:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    versions = (g.get("versions") or [])[-29:] + [_versions_entry(g)]
+    upd.update({"versions": versions, "version": int(g.get("version") or 1) + 1, "updated_at": _iso()})
+    if "title" in upd and g.get("spec"):
+        await db.games.update_one({"id": game_id}, {"$set": {"spec.title": upd["title"]}})
+    await db.games.update_one({"id": game_id}, {"$set": upd})
+    await gs.audit(current, "game_meta_edited", game_id, detail=",".join(k for k in upd if k not in ("versions", "version", "updated_at")))
+    return {"ok": True, "version": upd["version"]}
+
+
+@admin2.post("/{game_id}/reroll-audio")
+async def reroll_audio(game_id: str, body: dict, current: CurrentUser):
+    """Reroll procedural WebAudio parameters (music or sfx). No audio assets generated."""
+    require_founder(current)
+    import random as _r
+    kind = body.get("kind")
+    if kind not in ("music", "sfx"):
+        raise HTTPException(status_code=400, detail="kind must be music|sfx")
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    spec = g.get("spec") or {}
+    key = f"audio_variant_{kind}"
+    old = int(spec.get(key) or 0)
+    new_v = _r.choice([v for v in range(1, 12) if v != old])
+    spec[key] = new_v
+    versions = (g.get("versions") or [])[-29:] + [_versions_entry(g)]
+    await db.games.update_one({"id": game_id}, {"$set": {
+        "spec": spec, "versions": versions, "version": int(g.get("version") or 1) + 1, "updated_at": _iso()}})
+    await gs.audit(current, f"game_audio_reroll_{kind}", game_id, detail=f"variant {old}->{new_v}")
+    return {"ok": True, "kind": kind, "variant": new_v}
+
+
+@admin2.post("/{game_id}/regen-cover")
+async def regen_cover(game_id: str, body: dict, current: CurrentUser):
+    """Regenerate the cover via the existing AI image pipeline. Founder-clicked only."""
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    from services.orai_images import generate_orai_image
+    from services import image_store
+    prompt = (body.get("prompt") or
+              f"Video game cover art, {g.get('genre') or 'arcade'} style: {g.get('title')}. "
+              f"{(g.get('description') or '')[:200]} Vibrant, dramatic lighting, no text.")
+    try:
+        img_bytes, model = await generate_orai_image(prompt[:900])
+        rec = await image_store.save_bytes(img_bytes, current["id"], "image/png")
+        url = rec.original_url
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Cover generation failed: {str(e)[:140]}")
+    versions = (g.get("versions") or [])[-29:] + [_versions_entry(g)]
+    await db.games.update_one({"id": game_id}, {"$set": {
+        "cover_url": url, "versions": versions,
+        "version": int(g.get("version") or 1) + 1, "updated_at": _iso()}})
+    await gs.audit(current, "game_cover_regenerated", game_id, detail=model)
+    return {"ok": True, "cover_url": url, "model": model}
+
+
+@admin2.get("/{game_id}/export")
+async def export_game(game_id: str, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    await gs.audit(current, "game_exported", game_id)
+    return {"export": g, "format": "ourrealm-game-v1"}
+
+
+@admin2.post("/import")
+async def import_game(body: dict, current: CurrentUser):
+    """Insert-only import of an exported game document (new id, never overwrites)."""
+    require_founder(current)
+    g = body.get("export") or body.get("game")
+    if not isinstance(g, dict) or not g.get("spec") or not g.get("title"):
+        raise HTTPException(status_code=400, detail="Invalid export payload (need title + spec)")
+    errs = gs.validate_spec(g["spec"], 1)
+    if errs:
+        raise HTTPException(status_code=422, detail="Spec failed validation: " + "; ".join(errs[:3]))
+    new = {**g, "id": uuid.uuid4().hex, "status": "approved", "published_at": None,
+           "plays": 0, "saves": 0, "versions": [], "version": 1, "showcase": False,
+           "labels": list({*(g.get("labels") or []), "imported"}),
+           "created_by": current["id"], "created_by_username": current.get("username"),
+           "created_at": _iso(), "updated_at": _iso(), "review": {}, "build_log": []}
+    new.pop("_id", None)
+    await db.games.insert_one({**new})
+    await gs.audit(current, "game_imported", new["id"], detail=g.get("title", "")[:80])
+    return {"ok": True, "game_id": new["id"], "title": new["title"]}
+
+
+@admin2.post("/{game_id}/versions/{idx}/duplicate")
+async def duplicate_version(game_id: str, idx: int, current: CurrentUser):
+    """Duplicate a stored version snapshot as the newest version entry."""
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    versions = g.get("versions") or []
+    if not (0 <= idx < len(versions)):
+        raise HTTPException(status_code=400, detail="No such version")
+    dup = {**versions[idx], "version": int(g.get("version") or 1) + 1, "at": _iso(), "duplicated_from": versions[idx].get("version")}
+    await db.games.update_one({"id": game_id}, {"$set": {
+        "versions": (versions[-29:] + [dup]), "version": dup["version"], "updated_at": _iso()}})
+    await gs.audit(current, "game_version_duplicated", game_id, detail=f"v{versions[idx].get('version')} -> v{dup['version']}")
+    return {"ok": True, "version": dup["version"]}
 
 
 # ─── Controls & Input Modes (per-game, versioned, runtime-aware) ─────────
@@ -538,7 +666,7 @@ async def patch_controls(game_id: str, body: dict, current: CurrentUser):
     errs = validate_controls(cfg, g.get("runtime"))
     if errs:
         raise HTTPException(status_code=400, detail="Controls validation failed: " + "; ".join(errs[:4]))
-    versions = (g.get("versions") or [])[-5:] + [_versions_entry(g)]
+    versions = (g.get("versions") or [])[-29:] + [_versions_entry(g)]
     await db.games.update_one({"id": game_id}, {"$set": {
         "controls": cfg, "versions": versions,
         "version": int(g.get("version") or 1) + 1, "updated_at": _iso()}})
@@ -581,7 +709,7 @@ async def rebuild_game(game_id: str, body: dict, current: CurrentUser):
     g = await db.games.find_one({"id": game_id}, {"_id": 0})
     if not g:
         raise HTTPException(status_code=404, detail="Game not found")
-    versions = (g.get("versions") or [])[-5:] + [_versions_entry(g)]
+    versions = (g.get("versions") or [])[-29:] + [_versions_entry(g)]
     upd = {"versions": versions, "version": int(g.get("version") or 1) + 1, "updated_at": _iso()}
     if body.get("spec"):  # direct blueprint edit — validate, no LLM cost
         spec = body["spec"]
@@ -633,7 +761,7 @@ async def rollback_game(game_id: str, body: dict, current: CurrentUser):
     if not (0 <= idx < len(versions)):
         raise HTTPException(status_code=400, detail="No such version")
     v = versions[idx]
-    versions = versions[-5:] + [_versions_entry(g)]
+    versions = versions[-29:] + [_versions_entry(g)]
     await db.games.update_one({"id": game_id}, {"$set": {
         "spec": v.get("spec"), "plan": v.get("plan") or g.get("plan"),
         "versions": versions, "version": int(g.get("version") or 1) + 1, "updated_at": _iso()}})
