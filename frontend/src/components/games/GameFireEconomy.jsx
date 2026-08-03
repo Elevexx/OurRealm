@@ -78,6 +78,16 @@ export default function GameFireEconomy({ gameId }) {
             <button className="or-btn or-btn-ghost text-[10px]" disabled={busy}
               onClick={() => window.confirm("Reset pool to initial size?") && patch({ action: "reset" })}
               data-testid="fire-econ-reset"><RotateCcw size={10} /> Reset</button>
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Daily cap/player:</span>
+            <input type="number" min={0} defaultValue={econ.daily_player_cap || 0} key={`cap${econ.daily_player_cap}`}
+              className="or-input w-20 text-xs" title="Max Fire a single player can earn from this game per day (0 = unlimited)"
+              onBlur={(e) => Number(e.target.value) !== (econ.daily_player_cap || 0) && patch({ daily_player_cap: Number(e.target.value) })}
+              data-testid="fire-econ-daily-cap" />
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Cooldown (s):</span>
+            <input type="number" min={0} defaultValue={econ.claim_cooldown_s || 0} key={`cd${econ.claim_cooldown_s}`}
+              className="or-input w-20 text-xs" title="Minimum seconds between rewards for the same player (0 = off)"
+              onBlur={(e) => Number(e.target.value) !== (econ.claim_cooldown_s || 0) && patch({ claim_cooldown_s: Number(e.target.value) })}
+              data-testid="fire-econ-cooldown" />
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-2" data-testid="fire-econ-rewards">
             {REWARD_FIELDS.map(([k, l]) => (

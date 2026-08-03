@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import uuid
+import re
 from datetime import datetime, timezone
 
 from core.db import db
@@ -38,11 +39,12 @@ GENRE_MAP = [
     (("escape room", "puzzle room", "escape the", "riddle", "unlock the door"), "puzzle_room"),
     (("platformer", "platform game", "jump and run", "side-scroll", "jumping game"), "platformer"),
     (("maze", "top-down", "top down", "explore the", "arena", "adventure world", "dungeon crawl"), "top_down"),
-    (("runner", "dodge", "arcade", "action game", "shooter", "rush", "collect", "avoid the", "racing"), "dodge_collect"),
     (("memory game", "concentration", "flip cards", "memory cards"), "memory"),
     (("matching", "match the pairs", "pair up"), "matching"),
     (("sort", "ordering", "categorize", "put in order", "sequence the"), "sorting"),
-    (("quiz", "trivia", "story adventure", "questions"), "quiz_adventure"),
+    (("quiz", "trivia", "story adventure", "questions", "narrative"), "quiz_adventure"),
+    # generic action keywords LAST so specific genres always win
+    (("runner", "dodge", "arcade", "action game", "shooter", "rush", "collect", "avoid the", "racing"), "dodge_collect"),
 ]
 RUNTIME_MECHANICS = {
     "rhythm": ["beat timing", "tap accuracy", "tempo ramp"],
@@ -67,8 +69,9 @@ COMPLEXITY_FEATURES = {
 def route_runtime(text: str):
     low = (text or "").lower()
     for kws, rt in GENRE_MAP:
-        if any(k in low for k in kws):
-            return rt
+        for k in kws:
+            if re.search(r"(?<![a-z-])" + re.escape(k) + r"(?![a-z])", low):
+                return rt
     return None
 
 
@@ -223,9 +226,10 @@ SIMILARITY_BLOCK = 0.75
 FIRE_ECON_DEFAULTS = {
     "enabled": True, "paused": False,
     "pool": 1_000_000, "pool_initial": 1_000_000, "distributed": 0,
+    "daily_player_cap": 0, "claim_cooldown_s": 0,
     "rewards": {"completion": 10, "perfect": 5, "speed": 5, "speed_time_s": 300,
                 "hidden_objective": 0, "achievement": 5, "boss": 0,
-                "daily": 0, "weekly": 0, "final_completion": 50},
+                "daily": 0, "weekly": 0, "final_completion": 100},
 }
 
 

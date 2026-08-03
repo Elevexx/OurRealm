@@ -12,6 +12,7 @@ from core.db import db
 from core.deps import CurrentUser
 from core.permissions import require_founder
 from services import game_studio as gs
+from services.llm_router import call_llm, tier
 
 public2 = APIRouter(prefix="/api/games", tags=["games-plus"])
 admin2 = APIRouter(prefix="/api/admin/games", tags=["games-plus-admin"])
@@ -53,12 +54,27 @@ def econ_preview(econ: dict, spec: dict) -> dict:
             "pool_pct_remaining": round(100 * pool / max(1, initial), 1)}
 
 
-async def _pool_grant(game_id: str, user_id: str, key: str, amount: int, granted: list, label: str):
+async def _pool_grant(game_id: str, user_id: str, key: str, amount: int, granted: list, label: str,
+                      cap: int = 0, cooldown: int = 0):
     """Atomic pool decrement + idempotent audited ledger credit (claimable in Fire Vault)."""
     amount = int(amount)
     if amount <= 0:
         return
     try:
+        if cap or cooldown:
+            q = {"post_id": game_id, "sender_id": "game_fire_pool", "user_id": user_id}
+            if cooldown:
+                lastr = await db.fire_wallet_transactions.find_one(q, {"created_at": 1}, sort=[("created_at", -1)])
+                if lastr:
+                    prev_t = datetime.fromisoformat(str(lastr["created_at"]).replace("Z", "+00:00"))
+                    if (datetime.now(timezone.utc) - prev_t).total_seconds() < cooldown:
+                        return
+            if cap:
+                day = _iso()[:10]
+                rows = await db.fire_wallet_transactions.find(
+                    {**q, "created_at": {"$gte": day}}, {"amount": 1}).to_list(500)
+                if sum(int(r["amount"]) for r in rows) + amount > cap:
+                    return
         r = await db.games.update_one(
             {"id": game_id, "fire_economy.pool": {"$gte": amount}},
             {"$inc": {"fire_economy.pool": -amount, "fire_economy.distributed": amount}})
@@ -198,33 +214,34 @@ async def submit_score(game_id: str, body: dict, current: CurrentUser):
         await db.games.update_one({"id": game_id, "fire_economy": {"$exists": False}},
                                   {"$set": {"fire_economy": {**econ}}})
         rw, uid = econ["rewards"], current["id"]
+        cap, cd = int(econ.get("daily_player_cap") or 0), int(econ.get("claim_cooldown_s") or 0)
         n_stages = len(((g_full or {}).get("spec") or {}).get("stages") or []) or 1
         for s_i in range(1, min(stage, n_stages) + 1):
             await _pool_grant(game_id, uid, f"gfp:stage:{game_id}:{uid}:{s_i}",
-                              rw["completion"], granted, f"Stage {s_i} cleared")
+                              rw["completion"], granted, f"Stage {s_i} cleared", cap, cd)
         for a in new_ach:
             await _pool_grant(game_id, uid, f"gfp:ach:{game_id}:{uid}:{a[:40]}",
-                              rw["achievement"], granted, f"Achievement: {a}")
+                              rw["achievement"], granted, f"Achievement: {a}", cap, cd)
         if completed:
             await _pool_grant(game_id, uid, f"gfp:final:{game_id}:{uid}",
-                              rw["final_completion"], granted, "Game completed")
+                              rw["final_completion"], granted, "Game completed", cap, cd)
             if body.get("no_damage"):
                 await _pool_grant(game_id, uid, f"gfp:perfect:{game_id}:{uid}",
-                                  rw["perfect"], granted, "Perfect run")
+                                  rw["perfect"], granted, "Perfect run", cap, cd)
             if time_s and int(rw.get("speed_time_s") or 0) and time_s <= int(rw["speed_time_s"]):
                 await _pool_grant(game_id, uid, f"gfp:speed:{game_id}:{uid}",
-                                  rw["speed"], granted, "Speed bonus")
+                                  rw["speed"], granted, "Speed bonus", cap, cd)
             if rw.get("boss"):
                 await _pool_grant(game_id, uid, f"gfp:boss:{game_id}:{uid}",
-                                  rw["boss"], granted, "Boss defeated")
+                                  rw["boss"], granted, "Boss defeated", cap, cd)
             day = _iso()[:10]
             if rw.get("daily"):
                 await _pool_grant(game_id, uid, f"gfp:daily:{game_id}:{uid}:{day}",
-                                  rw["daily"], granted, "Daily bonus")
+                                  rw["daily"], granted, "Daily bonus", cap, cd)
             if rw.get("weekly"):
                 wk = datetime.now(timezone.utc).strftime("%G-W%V")
                 await _pool_grant(game_id, uid, f"gfp:weekly:{game_id}:{uid}:{wk}",
-                                  rw["weekly"], granted, "Weekly bonus")
+                                  rw["weekly"], granted, "Weekly bonus", cap, cd)
     return {"ok": True, "best_score": max(score, prev_best), "new_achievements": new_ach,
             "fire_rewards": granted, "claim_hint": "Claimable in your Fire Vault" if granted else None}
 
@@ -244,6 +261,72 @@ async def patch_rewards(body: dict, current: CurrentUser):
     await db.game_reward_settings.update_one({"_id": "settings"}, {"$set": upd}, upsert=True)
     await gs.audit(current, "game_rewards_updated", detail=json.dumps(upd)[:150])
     return await reward_settings()
+
+
+# ─── Edit with ORAi — targeted spec patching (Living Projects) ───────────
+ENGINE_CAPS_NOTE = (
+    "ENGINE CAPABILITIES (honest contract — never fake anything): the runtime is FIXED per game; "
+    "dodge_collect presentation modes: road_3d|lane_runner|vertical|space_flight|arena_360|tunnel; "
+    "any 'environment' theme string works (procedurally rendered); hazards, moving hazards, chasers, cores, "
+    "pickups (shield/boost/multiplier), portals, checkpoints, combo, lives, achievements, unlockables, "
+    "palette/visual_theme colors, built-in synth audio, stage titles/stories. "
+    "NOT SUPPORTED: multiplayer, controller/gamepad, networked play, 3D models, video cutscenes, voice narration, "
+    "custom image assets. If asked for these, leave the spec unchanged for that part and explain in '_substitutions'.")
+EDIT_SYSTEM = (
+    "You are ORAi's game editor. You receive a game's CURRENT spec JSON and ONE edit request.\n"
+    "Apply ONLY what the request asks — preserve every other field exactly as-is.\n"
+    "Never change 'runtime'. Keep 'player_representation' unchanged unless explicitly asked.\n"
+    + ENGINE_CAPS_NOTE +
+    "\nReturn ONLY the FULL updated spec JSON with one extra top-level key "
+    "'_substitutions': [strings describing anything you could not honor and the closest supported thing you did instead] (empty if none).")
+
+
+@admin2.post("/{game_id}/orai-edit")
+async def orai_edit(game_id: str, body: dict, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    if g.get("status") == "building":
+        raise HTTPException(status_code=400, detail="Game is currently building")
+    prompt = str(body.get("prompt") or "").strip()[:1500]
+    scope = str(body.get("scope") or "full")[:30]
+    add_stages = min(10, max(0, int(body.get("add_stages") or 0)))
+    if not prompt and not add_stages:
+        raise HTTPException(status_code=400, detail="Describe what ORAi should change, or set add_stages")
+    power = min(max(int(body.get("ai_power") or g.get("ai_power") or 5), 1), 10)
+    t = tier(power)
+    est = round(t["est_cost_per_pass"] * (2 if add_stages else 1), 3)
+    if body.get("dry_run"):
+        return {"estimated_cost": est, "model": t["label"], "scope": scope,
+                "add_stages": add_stages, "note": "Only the requested scope is regenerated — everything else is preserved."}
+    user = ("CURRENT SPEC:\n" + json.dumps(g.get("spec") or {})[:24000]
+            + "\n\nEDIT SCOPE: " + scope
+            + ("\nEDIT REQUEST: " + prompt if prompt else "")
+            + (f"\nAPPEND exactly {add_stages} brand-new stages that continue the difficulty escalation with NEW "
+               f"environments and fresh hazard mixes. Do NOT modify existing stages." if add_stages else ""))
+    try:
+        raw = await call_llm(EDIT_SYSTEM, user, power=power, json_mode=True)
+        spec = json.loads(raw)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"ORAi edit generation failed: {str(e)[:150]}")
+    subs = [str(s)[:300] for s in (spec.pop("_substitutions", None) or [])][:8]
+    spec["runtime"] = g["runtime"]
+    if spec.get("player_representation") not in (gs.PLAYER_REPS.get(g["runtime"]) or []):
+        spec["player_representation"] = ((g.get("spec") or {}).get("player_representation")
+                                         or gs.default_rep(g["runtime"], str(spec.get("mode") or "")))
+    errs = gs.validate_spec(spec, int(g.get("complexity") or 5))
+    if errs:
+        raise HTTPException(status_code=422, detail="ORAi edit failed validation: " + "; ".join(errs[:3]))
+    versions = (g.get("versions") or [])[-5:] + [_versions_entry(g)]
+    new_v = int(g.get("version") or 1) + 1
+    await db.games.update_one({"id": game_id}, {"$set": {
+        "spec": spec, "versions": versions, "version": new_v, "updated_at": _iso(),
+        "actual_cost": round(float(g.get("actual_cost") or 0) + est, 3)}})
+    await gs.audit(current, "game_orai_edit", game_id,
+                   detail=f"scope={scope} add_stages={add_stages} · {prompt[:120]}", cost=est)
+    return {"ok": True, "version": new_v, "cost": est, "substitutions": subs,
+            "stages": len(spec.get("stages") or []), "title": spec.get("title")}
 
 
 async def _fire_analytics(game_id: str) -> dict:
@@ -295,6 +378,9 @@ async def patch_fire_economy(game_id: str, body: dict, current: CurrentUser):
         if "pool" in body:
             econ["pool"] = max(0, int(body["pool"]))
             econ["pool_initial"] = max(econ["pool"], int(econ.get("pool_initial") or 0)) if body.get("keep_initial") else econ["pool"]
+        for k in ("daily_player_cap", "claim_cooldown_s"):
+            if k in body:
+                econ[k] = max(0, int(body[k]))
         if isinstance(body.get("rewards"), dict):
             for k in gs.FIRE_ECON_DEFAULTS["rewards"]:
                 if k in body["rewards"]:

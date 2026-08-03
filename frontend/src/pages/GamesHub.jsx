@@ -62,7 +62,7 @@ export default function GamesHub() {
             <Gamepad2 size={26} style={{ color: "#C26BFF" }} /> OurRealm Games
           </h1>
           <p className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>
-            Playable learning games created with ORAi — approved and published by the founder.
+            A curated library of playable demos built with ORAi — every title a different genre, world and playstyle. Fully editable Living Projects.
           </p>
           <div className="relative mb-4 max-w-sm">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
@@ -84,19 +84,51 @@ export default function GamesHub() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid="games-grid">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3" data-testid="games-grid">
             {(data?.games || []).map((g) => (
-              <button key={g.id} className="or-surface p-4 text-left" onClick={() => setParams({ play: g.id })}
-                data-testid={`games-card-${g.id}`}>
-                <div className="flex items-center gap-2">
-                  <Gamepad2 size={16} style={{ color: "#C26BFF" }} />
-                  <b className="text-sm flex-1">{g.title}</b>
-                  {prog.get(g.id) && <Trophy size={13} style={{ color: "#F4A73B" }} />}
-                </div>
-                <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>{g.spec?.description}</p>
-                <div className="text-[9px] mt-1.5 uppercase tracking-widest" style={{ color: "#2EE6FF" }}>
-                  {g.spec?.subject || "General"} · {g.spec?.grade_level || "All ages"} · {g.plays || 0} plays
-                </div>
+              <button key={g.id} className="text-left group relative overflow-hidden rounded-2xl transition-transform duration-200 hover:-translate-y-1"
+                style={{ border: "1px solid var(--border-col)", background: "var(--bgc)" }}
+                onClick={() => setParams({ play: g.id })} data-testid={`games-card-${g.id}`}>
+                {g.cover_url ? (
+                  <div className="relative w-full overflow-hidden" style={{ aspectRatio: "4/5" }}>
+                    <img src={g.cover_url} alt={g.title} loading="lazy"
+                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, transparent 35%, rgba(4,8,18,0.55) 68%, rgba(4,8,18,0.96) 100%)" }} />
+                    {g.genre && (
+                      <span className="absolute top-2 left-2 text-[8.5px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
+                        style={{ background: "rgba(4,8,18,0.72)", color: "#2EE6FF", border: "1px solid rgba(46,230,255,0.35)", backdropFilter: "blur(6px)" }}>
+                        {g.genre}
+                      </span>
+                    )}
+                    {prog.get(g.id) && <Trophy size={13} className="absolute top-2.5 right-2.5" style={{ color: "#F4A73B", filter: "drop-shadow(0 0 5px #F4A73B)" }} />}
+                    <div className="absolute bottom-0 left-0 right-0 p-2.5">
+                      <b className="block text-sm leading-tight" style={{ fontFamily: "var(--font-display)" }}>{g.title}</b>
+                      <div className="flex items-center justify-between mt-1.5 gap-1">
+                        {g.fire_max > 0 ? (
+                          <span className="text-[9.5px] font-bold" style={{ color: "#FF8A5A" }} data-testid={`games-card-fire-${g.id}`}>
+                            🔥 up to {g.fire_max}
+                          </span>
+                        ) : <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>{g.plays || 0} plays</span>}
+                        <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-lg transition-colors"
+                          style={{ background: "rgba(194,107,255,0.2)", color: "#C26BFF", border: "1px solid rgba(194,107,255,0.4)" }}>
+                          ▶ Play
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4">
+                    <div className="flex items-center gap-2">
+                      <Gamepad2 size={16} style={{ color: "#C26BFF" }} />
+                      <b className="text-sm flex-1">{g.title}</b>
+                      {prog.get(g.id) && <Trophy size={13} style={{ color: "#F4A73B" }} />}
+                    </div>
+                    <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>{g.spec?.description}</p>
+                    <div className="text-[9px] mt-1.5 uppercase tracking-widest" style={{ color: "#2EE6FF" }}>
+                      {g.spec?.subject || "General"} · {g.plays || 0} plays{g.fire_max > 0 && <> · <span style={{ color: "#FF8A5A" }}>🔥 up to {g.fire_max}</span></>}
+                    </div>
+                  </div>
+                )}
               </button>
             ))}
             {data && !data.games.length && (

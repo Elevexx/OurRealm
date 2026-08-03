@@ -189,8 +189,20 @@ async def games_hub(current: CurrentUser, q: str = "", subject: str = ""):
         query["spec.subject"] = {"$regex": subject[:60], "$options": "i"}
     rows = await db.games.find(query, {"_id": 0, "id": 1, "title": 1, "runtime": 1, "complexity": 1,
                                        "plays": 1, "published_at": 1, "spec.description": 1,
-                                       "spec.subject": 1, "spec.grade_level": 1,
+                                       "spec.subject": 1, "spec.grade_level": 1, "spec.stages": 1,
+                                       "cover_url": 1, "genre": 1, "showcase": 1, "fire_economy": 1,
+                                       "spec.achievements": 1,
                                        "spec.learning_objective": 1}).sort("published_at", -1).to_list(60)
+    from routers.games_plus import fire_econ, econ_preview
+    for r in rows:
+        econ = fire_econ(r)
+        if econ["enabled"] and not econ["paused"]:
+            r["fire_max"] = econ_preview(econ, r.get("spec") or {})["max_per_player"]
+        else:
+            r["fire_max"] = 0
+        r.pop("fire_economy", None)
+        (r.get("spec") or {}).pop("stages", None)
+        (r.get("spec") or {}).pop("achievements", None)
     mine = await db.game_progress.find({"user_id": current["id"]}, {"_id": 0}).sort("last_played", -1).to_list(30)
     return {"games": rows, "my_progress": mine}
 
