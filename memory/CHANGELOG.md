@@ -229,3 +229,11 @@ KNOWN (pre-existing, by design): bottom mobile nav renders on desktop too — us
 - Added founder-only POST /api/admin/games/import-showcase — INSERT-ONLY (never overwrites existing records). Verified in preview: 11/11 skipped (already present), unauth → 401.
 - VERIFIED in preview (through Cloudflare): /api/health 200 JSON, /api/ 200, stealth sign-in, /api/auth/me 200, signup (qe2emerg*) OK, google/session flow alive (400 JSON w/o session), /api/games → 11 published w/ covers, game fetch w/ spec OK, /games UI renders all covers + Play buttons (screenshot).
 - AFTER USER REDEPLOYS: 1) verify https://ourrealm.social/api/health, 2) login as stealth on production, 3) POST /api/admin/games/import-showcase with founder token to install the 11 games into the production DB, 4) verify /games. If /api still 520 with "startup complete" in deploy logs → escalate to Emergent Support (origin /api routing).
+
+## 2026-06 — PHASE A COMPLETE: production games migration (fork session)
+- Production restored after redeploy w/ emergency-mode code: /api/health 200 on ourrealm.social + realm-deploy.emergent.host.
+- Login flap explained: founder had changed prod password; temporarily reset to Password1$ for migration (user will rotate again). NOTE: production founder password ≠ preview after rotation.
+- MIGRATION (insert-only via POST /api/admin/games/import-showcase): collection touched: `games` ONLY. Examined 11 seed records; inserted 11; skipped 0; failed 0; duplicates 0. Idempotency re-run: inserted 0 / skipped 11.
+- Production had 5 pre-existing games (Dragon Spellkeeper: Forest Trials [47 plays], Mystic Hollow, Neon Tunnel Overdrive, Neon Core Rush: Rift Escape, Neon Core Rush) — all preserved w/ live play counts. Total now 16, zero dup ids.
+- VERIFIED on ourrealm.social: /games shows all games w/ covers/genre/Fire info; desktop launch OK (Mystic Hollow runtime + Fire banner); MOBILE launch OK (Velocity Demo playing, Stage 1/12, score ticking, road_3d cyber city); admin endpoints unauth → 401; 11/11 health polls 200 over 5 min.
+- PHASE B (true game-type routing: registry, no silent fallback, card battle/tower defense/match-3 runtimes + debug panel) — AWAITING USER APPROVAL per instruction.
