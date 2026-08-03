@@ -87,6 +87,11 @@ async def approve_and_build(est_id: str, current: CurrentUser):
     est = await db.game_estimates.find_one({"id": est_id}, {"_id": 0})
     if not est or est["status"] != "awaiting_approval":
         raise HTTPException(status_code=404, detail="Estimate not found or already used")
+    sim = (est.get("plan") or {}).get("showcase_similarity") or {}
+    if sim.get("blocked"):
+        raise HTTPException(status_code=400, detail=(
+            f"Showcase Diversity Validation blocked this build: {round(sim.get('score', 0) * 100)}% structural overlap "
+            f"with \"{sim.get('top_match')}\". Change the runtime, control model or player representation and re-estimate."))
     await gs.audit(current, "game_build_approved", detail=est["plan"].get("title"))
     game = await gs.start_build(est, current)
     return {"game": {k: v for k, v in game.items() if k != "spec"}}
@@ -137,6 +142,10 @@ async def game_action(game_id: str, body: dict, current: CurrentUser):
     elif action == "publish":
         if g["status"] not in ("approved", "pending_approval"):
             raise HTTPException(status_code=400, detail="Approve the game before publishing")
+        from routers.games_plus import game_controls, validate_controls
+        cerrs = validate_controls(game_controls(g), g.get("runtime"))
+        if cerrs:
+            raise HTTPException(status_code=400, detail="Controls validation blocks publishing: " + "; ".join(cerrs[:3]))
         await db.games.update_one({"id": game_id}, {"$set": {
             "status": "published", "published_at": _iso(),
             "review": {"decided_by": current.get("username"), "at": _iso()}, "updated_at": _iso()}})

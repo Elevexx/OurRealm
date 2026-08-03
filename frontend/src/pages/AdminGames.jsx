@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import apiClient from "@/api/client";
 import GameRuntime from "@/components/games/GameRuntime";
 import GameBlueprint from "@/components/games/GameBlueprint";
+import GameFireEconomy from "@/components/games/GameFireEconomy";
+import GameControlsPanel from "@/components/games/GameControlsPanel";
 
 const STATUS_COLORS = {
   building: "#2EE6FF", pending_approval: "#F4A73B", approved: "#2EA0FF",
@@ -89,7 +91,7 @@ export default function AdminGames() {
   const [request, setRequest] = useState("");
   const [complexity, setComplexity] = useState(2);
   const [power, setPower] = useState(5);
-  const [opts, setOpts] = useState({ target_age: "", grade_level: "", subject: "" });
+  const [opts, setOpts] = useState({ target_age: "", grade_level: "", subject: "", supported_controls: "both" });
   const [estimate, setEstimate] = useState(null);
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState(null);
@@ -222,6 +224,17 @@ export default function AdminGames() {
                   data-testid={`game-opt-${k}`} />
               ))}
             </div>
+            <div className="flex items-center gap-2 mb-2 text-[11px]">
+              <b>Supported controls:</b>
+              <select className="or-input text-xs py-1 w-auto" value={opts.supported_controls}
+                onChange={(e) => setOpts({ ...opts, supported_controls: e.target.value })}
+                data-testid="game-opt-supported-controls">
+                <option value="both">Desktop + Mobile (default)</option>
+                <option value="auto">Auto — ORAi picks</option>
+                <option value="desktop">Desktop keyboard only</option>
+                <option value="mobile">Mobile touch only</option>
+              </select>
+            </div>
             <Slider label="Game Complexity" value={complexity} onChange={setComplexity} max={10} allowed={allowedC}
               labels={["", "Very Simple", "Simple", "Enhanced", "Advanced", "Complex", "Highly Complex", "Simulation", "Large Experience", "World Scale", "Universe Scale"]}
               testid="game-complexity-slider" />
@@ -346,6 +359,38 @@ export default function AdminGames() {
                   )}
                 </div>
               )}
+              {estimate.plan.identity && (
+                <div className="mt-2 rounded-lg p-2" style={{ background: "rgba(46,230,255,0.06)", border: "1px solid rgba(46,230,255,0.25)" }}
+                  data-testid="game-est-identity">
+                  <div className="text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: "#2EE6FF" }}>
+                    Game Identity — Diversity Contract
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
+                    <span>Runtime family: <b>{estimate.plan.identity.runtime_family}</b></span>
+                    <span>Player: <b>{(estimate.plan.identity.player_representation || "").replace(/_/g, " ")}</b></span>
+                    <span>Controls: <b>{estimate.plan.identity.control_model}</b></span>
+                    <span>Camera: <b>{estimate.plan.identity.camera_model}</b></span>
+                    <span className="col-span-2">Interaction: <b>{estimate.plan.identity.primary_interaction}</b></span>
+                    <span className="col-span-2">Core loop: <b>{estimate.plan.identity.core_loop}</b></span>
+                    {estimate.plan.identity.desktop_map && (
+                      <span className="col-span-2" data-testid="game-est-desktop-map">Desktop keys: <b>{estimate.plan.identity.desktop_map}</b></span>
+                    )}
+                    {estimate.plan.identity.touch_layout && (
+                      <span className="col-span-2" data-testid="game-est-touch-layout">Touch layout: <b>{estimate.plan.identity.touch_layout}</b></span>
+                    )}
+                  </div>
+                  {estimate.plan.showcase_similarity && estimate.plan.showcase_similarity.top_match && (
+                    <div className="text-[10px] mt-1.5 font-bold" data-testid="game-est-similarity"
+                      style={{ color: estimate.plan.showcase_similarity.blocked ? "#FF6B6B" : "#10E670" }}>
+                      Showcase similarity: {Math.round((estimate.plan.showcase_similarity.score || 0) * 100)}% vs
+                      "{estimate.plan.showcase_similarity.top_match}"
+                      {estimate.plan.showcase_similarity.blocked
+                        ? " — TOO SIMILAR. Approval blocked: change runtime, controls or player, then re-estimate."
+                        : " — unique enough ✓"}
+                    </div>
+                  )}
+                </div>
+              )}
               {(estimate.plan.mechanics || []).length > 0 && (
                 <div className="mt-2" data-testid="game-est-mechanics">
                   <div className="text-[9px] uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Mechanics included</div>
@@ -383,8 +428,8 @@ export default function AdminGames() {
               </div>
               <div className="flex gap-2 mt-3">
                 <button className="or-btn text-xs font-bold" style={{ background: "#10E670", color: "#0a0a0a" }}
-                  disabled={busy} onClick={approveBuild} data-testid="game-approve-build">
-                  <Rocket size={13} /> Approve & Build
+                  disabled={busy || estimate.plan.showcase_similarity?.blocked} onClick={approveBuild} data-testid="game-approve-build">
+                  <Rocket size={13} /> {estimate.plan.showcase_similarity?.blocked ? "Blocked — too similar" : "Approve & Build"}
                 </button>
                 <button className="or-btn text-xs" disabled={busy}
                   onClick={async () => { await apiClient.post(`/admin/games/estimate/${estimate.id}/cancel`); setEstimate(null); toast.success("Cancelled"); }}
@@ -498,7 +543,9 @@ export default function AdminGames() {
               <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "#2EE6FF" }}>
                 <Eye size={11} className="inline mr-1" />Playable preview (sandboxed — mobile & desktop)
               </div>
-              <GameRuntime spec={detail.spec} height={440} gameId={detail.id} />
+              <GameRuntime spec={detail.spec} height={440} gameId={detail.id} controls={detail.controls} />
+              <GameControlsPanel gameId={detail.id} onChanged={() => loadDetail(detail.id)} />
+              <GameFireEconomy gameId={detail.id} />
               <GameBlueprint game={detail} onChanged={() => { loadDetail(detail.id); load(); }} />
             </div>
           )}

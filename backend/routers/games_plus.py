@@ -29,6 +29,53 @@ async def reward_settings() -> dict:
     return {**REWARD_DEFAULTS, **{k: doc[k] for k in REWARD_DEFAULTS if k in doc}}
 
 
+# ─── Per-game Fire Power Economy (reuses the audited Fire Vault ledger) ──
+def fire_econ(g: dict) -> dict:
+    d = gs.FIRE_ECON_DEFAULTS
+    e = (g or {}).get("fire_economy") or {}
+    return {**d, **e, "rewards": {**d["rewards"], **(e.get("rewards") or {})}}
+
+
+def econ_preview(econ: dict, spec: dict) -> dict:
+    n = len((spec or {}).get("stages") or []) or 1
+    n_ach = len((spec or {}).get("achievements") or [])
+    rw = econ["rewards"]
+    base = rw["completion"] * n + rw["final_completion"]
+    max_pp = base + rw["perfect"] + rw["speed"] + rw["boss"] + rw["hidden_objective"] + rw["achievement"] * n_ach
+    worst_month = max_pp + rw["daily"] * 30 + rw["weekly"] * 4
+    pool = int(econ.get("pool") or 0)
+    initial = int(econ.get("pool_initial") or pool or 1)
+    return {"stages": n, "achievements": n_ach,
+            "avg_per_player": round(base + 0.5 * (max_pp - base)),
+            "max_per_player": max_pp, "base_per_player": base,
+            "worst_case_month_per_player": worst_month,
+            "full_completions_supported": pool // max(1, max_pp),
+            "pool_pct_remaining": round(100 * pool / max(1, initial), 1)}
+
+
+async def _pool_grant(game_id: str, user_id: str, key: str, amount: int, granted: list, label: str):
+    """Atomic pool decrement + idempotent audited ledger credit (claimable in Fire Vault)."""
+    amount = int(amount)
+    if amount <= 0:
+        return
+    try:
+        r = await db.games.update_one(
+            {"id": game_id, "fire_economy.pool": {"$gte": amount}},
+            {"$inc": {"fire_economy.pool": -amount, "fire_economy.distributed": amount}})
+        if not r.modified_count:
+            return  # pool depleted or missing
+        from services.fire_vault import credit_fire
+        tx = await credit_fire(user_id, "game_fire_pool", game_id, key, amount,
+                               idempotency_key=key, finalize_at=_iso())
+        if tx is None:  # duplicate/replay — refund the pool untouched
+            await db.games.update_one({"id": game_id}, {"$inc": {
+                "fire_economy.pool": amount, "fire_economy.distributed": -amount}})
+            return
+        granted.append({"label": label, "amount": amount})
+    except Exception:  # noqa: BLE001 — rewards must never break gameplay
+        pass
+
+
 async def _grant(user_id: str, game_id: str, key: str, amount: int, granted: list, label: str):
     if amount <= 0:
         return
@@ -143,8 +190,43 @@ async def submit_score(game_id: str, body: dict, current: CurrentUser):
             day = _iso()[:10]
             await _grant(current["id"], game_id, f"gr:daily:{current['id']}:{day}",
                          rs["daily_challenge"], granted, "Daily challenge")
+    # per-game Fire Power pool (validated, idempotent, audited, claimable in Fire Vault)
+    g_full = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "fire_economy": 1,
+                                                       "spec.stages": 1, "spec.achievements": 1})
+    econ = fire_econ(g_full)
+    if econ["enabled"] and not econ["paused"]:
+        await db.games.update_one({"id": game_id, "fire_economy": {"$exists": False}},
+                                  {"$set": {"fire_economy": {**econ}}})
+        rw, uid = econ["rewards"], current["id"]
+        n_stages = len(((g_full or {}).get("spec") or {}).get("stages") or []) or 1
+        for s_i in range(1, min(stage, n_stages) + 1):
+            await _pool_grant(game_id, uid, f"gfp:stage:{game_id}:{uid}:{s_i}",
+                              rw["completion"], granted, f"Stage {s_i} cleared")
+        for a in new_ach:
+            await _pool_grant(game_id, uid, f"gfp:ach:{game_id}:{uid}:{a[:40]}",
+                              rw["achievement"], granted, f"Achievement: {a}")
+        if completed:
+            await _pool_grant(game_id, uid, f"gfp:final:{game_id}:{uid}",
+                              rw["final_completion"], granted, "Game completed")
+            if body.get("no_damage"):
+                await _pool_grant(game_id, uid, f"gfp:perfect:{game_id}:{uid}",
+                                  rw["perfect"], granted, "Perfect run")
+            if time_s and int(rw.get("speed_time_s") or 0) and time_s <= int(rw["speed_time_s"]):
+                await _pool_grant(game_id, uid, f"gfp:speed:{game_id}:{uid}",
+                                  rw["speed"], granted, "Speed bonus")
+            if rw.get("boss"):
+                await _pool_grant(game_id, uid, f"gfp:boss:{game_id}:{uid}",
+                                  rw["boss"], granted, "Boss defeated")
+            day = _iso()[:10]
+            if rw.get("daily"):
+                await _pool_grant(game_id, uid, f"gfp:daily:{game_id}:{uid}:{day}",
+                                  rw["daily"], granted, "Daily bonus")
+            if rw.get("weekly"):
+                wk = datetime.now(timezone.utc).strftime("%G-W%V")
+                await _pool_grant(game_id, uid, f"gfp:weekly:{game_id}:{uid}:{wk}",
+                                  rw["weekly"], granted, "Weekly bonus")
     return {"ok": True, "best_score": max(score, prev_best), "new_achievements": new_ach,
-            "fire_rewards": granted}
+            "fire_rewards": granted, "claim_hint": "Claimable in your Fire Vault" if granted else None}
 
 
 # ─── Founder tools ───────────────────────────────────────────────────────
@@ -162,6 +244,85 @@ async def patch_rewards(body: dict, current: CurrentUser):
     await db.game_reward_settings.update_one({"_id": "settings"}, {"$set": upd}, upsert=True)
     await gs.audit(current, "game_rewards_updated", detail=json.dumps(upd)[:150])
     return await reward_settings()
+
+
+async def _fire_analytics(game_id: str) -> dict:
+    rows = await db.fire_wallet_transactions.find(
+        {"post_id": game_id, "sender_id": "game_fire_pool"},
+        {"_id": 0, "amount": 1, "user_id": 1, "created_at": 1, "status": 1}).to_list(5000)
+    now = datetime.now(timezone.utc)
+    day = now.date().isoformat()
+    week_ago = (now - timedelta(days=7)).isoformat()
+    month_ago = (now - timedelta(days=30)).isoformat()
+    amounts = [int(r["amount"]) for r in rows]
+    return {"distributed": sum(amounts), "claims": len(rows),
+            "claimed": sum(int(r["amount"]) for r in rows if r.get("status") == "collected"),
+            "unique_claimants": len({r["user_id"] for r in rows}),
+            "avg_reward": round(sum(amounts) / len(amounts), 1) if amounts else 0,
+            "largest_reward": max(amounts) if amounts else 0,
+            "claims_today": sum(1 for r in rows if str(r.get("created_at") or "")[:10] == day),
+            "claims_week": sum(1 for r in rows if str(r.get("created_at") or "") >= week_ago),
+            "claims_month": sum(1 for r in rows if str(r.get("created_at") or "") >= month_ago)}
+
+
+@admin2.get("/{game_id}/fire-economy")
+async def get_fire_economy(game_id: str, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "fire_economy": 1, "spec": 1})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    econ = fire_econ(g)
+    return {"economy": econ, "preview": econ_preview(econ, g.get("spec") or {}),
+            "analytics": await _fire_analytics(game_id)}
+
+
+@admin2.patch("/{game_id}/fire-economy")
+async def patch_fire_economy(game_id: str, body: dict, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    econ = fire_econ(g)
+    action = body.get("action")
+    if action == "reset":
+        econ["pool"] = int(econ.get("pool_initial") or 1_000_000)
+    elif action == "refill":
+        econ["pool"] = int(econ["pool"]) + max(0, int(body.get("amount") or econ.get("pool_initial") or 0))
+    else:
+        for k in ("enabled", "paused"):
+            if k in body:
+                econ[k] = bool(body[k])
+        if "pool" in body:
+            econ["pool"] = max(0, int(body["pool"]))
+            econ["pool_initial"] = max(econ["pool"], int(econ.get("pool_initial") or 0)) if body.get("keep_initial") else econ["pool"]
+        if isinstance(body.get("rewards"), dict):
+            for k in gs.FIRE_ECON_DEFAULTS["rewards"]:
+                if k in body["rewards"]:
+                    econ["rewards"][k] = max(0, int(body["rewards"][k]))
+    # every economy change is a new version, like any other game change
+    versions = (g.get("versions") or [])[-5:] + [_versions_entry(g)]
+    await db.games.update_one({"id": game_id}, {"$set": {
+        "fire_economy": econ, "versions": versions,
+        "version": int(g.get("version") or 1) + 1, "updated_at": _iso()}})
+    await gs.audit(current, "game_fire_economy_" + (action or "updated"), game_id,
+                   detail=f"pool={econ['pool']} enabled={econ['enabled']} paused={econ['paused']}")
+    spec = g.get("spec") or {}
+    return {"economy": econ, "preview": econ_preview(econ, spec),
+            "analytics": await _fire_analytics(game_id)}
+
+
+@public2.get("/{game_id}/fire-info")
+async def game_fire_info(game_id: str, current: CurrentUser):
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "fire_economy": 1, "spec.stages": 1, "spec.achievements": 1})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    econ = fire_econ(g)
+    if not econ["enabled"] or econ["paused"]:
+        return {"enabled": False, "message": "Fire Rewards Currently Disabled"}
+    pv = econ_preview(econ, g.get("spec") or {})
+    return {"enabled": True, "pool_remaining": econ["pool"], "pool_pct": pv["pool_pct_remaining"],
+            "rewards": econ["rewards"], "max_per_player": pv["max_per_player"],
+            "base_per_player": pv["base_per_player"], "stages": pv["stages"]}
 
 
 @admin2.get("/{game_id}/scores")
@@ -193,7 +354,111 @@ async def lb_action(game_id: str, body: dict, current: CurrentUser):
 def _versions_entry(g: dict) -> dict:
     return {"version": int(g.get("version") or 1), "at": _iso(),
             "spec": g.get("spec"), "plan": g.get("plan"), "status": g.get("status"),
-            "complexity": g.get("complexity"), "ai_power": g.get("ai_power"), "request": g.get("request")}
+            "complexity": g.get("complexity"), "ai_power": g.get("ai_power"), "request": g.get("request"),
+            "fire_economy": g.get("fire_economy"), "controls": g.get("controls")}
+
+
+# ─── Controls & Input Modes (per-game, versioned, runtime-aware) ─────────
+RUNTIME_KEY_ACTIONS = {
+    "dodge_collect": {"left": ["ArrowLeft", "a"], "right": ["ArrowRight", "d"],
+                      "up": ["ArrowUp", "w"], "down": ["ArrowDown", "s"],
+                      "pause": ["p"], "restart": ["r"]},
+    "platformer": {"left": ["ArrowLeft", "a"], "right": ["ArrowRight", "d"],
+                   "jump": ["ArrowUp", "w", " "], "pause": ["p"], "restart": ["r"]},
+    "top_down": {"left": ["ArrowLeft", "a"], "right": ["ArrowRight", "d"],
+                 "up": ["ArrowUp", "w"], "down": ["ArrowDown", "s"],
+                 "pause": ["p"], "restart": ["r"]},
+}
+TOUCH_LAYOUTS = {"dodge_collect": "drag steering (+ lane taps)", "platformer": "left / right / jump buttons",
+                 "top_down": "drag joystick movement", "puzzle_room": "tap, type & inspect",
+                 "rhythm": "tap the beat pad", "memory": "tap cards", "matching": "tap pairs",
+                 "sorting": "tap categories", "quiz_adventure": "tap answers"}
+CONTROLS_DEFAULTS = {
+    "desktop_enabled": True, "mobile_enabled": True,
+    "keyboard_map": None, "touch_layout": "auto",
+    "sensitivity": 1.0, "joystick_size": 1.0, "button_size": 1.0,
+    "button_position": "center", "left_handed": False, "haptics": True,
+    "touch_opacity": 0.85, "swipe_sensitivity": 1.0, "hold_toggle": "hold",
+    "reduced_motion": False, "high_contrast": False, "show_guide": True,
+}
+
+
+def game_controls(g: dict) -> dict:
+    return {**CONTROLS_DEFAULTS, **((g or {}).get("controls") or {})}
+
+
+def validate_controls(cfg: dict, runtime: str) -> list:
+    errs = []
+    if not cfg.get("desktop_enabled") and not cfg.get("mobile_enabled"):
+        errs.append("At least one control mode (desktop or mobile) must stay enabled")
+    km = cfg.get("keyboard_map")
+    if km:
+        actions = RUNTIME_KEY_ACTIONS.get(runtime) or {}
+        seen = {}
+        for action, keyz in km.items():
+            if action not in actions:
+                errs.append(f"'{action}' is not a supported action for the {runtime} runtime")
+                continue
+            for k in keyz or []:
+                if k in seen and seen[k] != action:
+                    errs.append(f"Key '{k}' is mapped to both '{seen[k]}' and '{action}'")
+                seen[k] = action
+        for action in actions:
+            if action in ("pause", "restart"):
+                continue
+            if action in km and not km[action]:
+                errs.append(f"Required action '{action}' has no key assigned")
+    return errs
+
+
+@admin2.get("/{game_id}/controls")
+async def get_controls(game_id: str, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "controls": 1, "runtime": 1})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    cfg = game_controls(g)
+    rt = g.get("runtime")
+    return {"controls": cfg, "runtime": rt,
+            "runtime_actions": RUNTIME_KEY_ACTIONS.get(rt) or {},
+            "touch_layout_default": TOUCH_LAYOUTS.get(rt, "tap"),
+            "validation": validate_controls(cfg, rt)}
+
+
+@admin2.patch("/{game_id}/controls")
+async def patch_controls(game_id: str, body: dict, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    cfg = game_controls(g)
+    if body.get("action") == "reset_keys":
+        cfg["keyboard_map"] = None
+    else:
+        for k in ("desktop_enabled", "mobile_enabled", "left_handed", "haptics",
+                  "reduced_motion", "high_contrast", "show_guide"):
+            if k in body:
+                cfg[k] = bool(body[k])
+        for k in ("sensitivity", "joystick_size", "button_size", "touch_opacity", "swipe_sensitivity"):
+            if k in body:
+                cfg[k] = min(2.0, max(0.3, float(body[k])))
+        for k in ("button_position", "hold_toggle", "touch_layout"):
+            if k in body:
+                cfg[k] = str(body[k])[:30]
+        if "keyboard_map" in body:
+            km = body["keyboard_map"]
+            cfg["keyboard_map"] = {str(a)[:20]: [str(k)[:20] for k in (v or [])][:4]
+                                   for a, v in km.items()} if isinstance(km, dict) else None
+    errs = validate_controls(cfg, g.get("runtime"))
+    if errs:
+        raise HTTPException(status_code=400, detail="Controls validation failed: " + "; ".join(errs[:4]))
+    versions = (g.get("versions") or [])[-5:] + [_versions_entry(g)]
+    await db.games.update_one({"id": game_id}, {"$set": {
+        "controls": cfg, "versions": versions,
+        "version": int(g.get("version") or 1) + 1, "updated_at": _iso()}})
+    await gs.audit(current, "game_controls_updated", game_id,
+                   detail=f"desktop={cfg['desktop_enabled']} mobile={cfg['mobile_enabled']}")
+    return {"controls": cfg, "validation": [], "version": int(g.get("version") or 1) + 1}
 
 
 @admin2.post("/{game_id}/clone")
@@ -207,6 +472,7 @@ async def clone_game(game_id: str, body: dict, current: CurrentUser):
            "title": str(ov.get("title") or (g["title"] + " (Clone)"))[:150],
            "status": "approved", "stage": "preview_ready", "published_at": None,
            "plays": 0, "saves": 0, "versions": [], "version": 1,
+           "fire_economy": {**fire_econ(g), "pool": int(fire_econ(g).get("pool_initial") or 1_000_000), "distributed": 0},
            "showcase": bool(g.get("showcase")) and not body.get("regenerate"),
            "created_by": current["id"], "created_by_username": current.get("username"),
            "created_at": _iso(), "updated_at": _iso(), "review": {}, "build_log": []}
@@ -290,31 +556,22 @@ async def rollback_game(game_id: str, body: dict, current: CurrentUser):
 
 
 def spec_similarity(a: dict, b: dict) -> float:
-    s = 0.0
-    if a.get("runtime") == b.get("runtime"):
-        s += 0.35
-    am = {st.get("mode") for st in a.get("stages") or [] if st.get("mode")} or {a.get("mode")}
-    bm = {st.get("mode") for st in b.get("stages") or [] if st.get("mode")} or {b.get("mode")}
-    if am & bm:
-        s += 0.15 * len(am & bm) / max(1, len(am | bm))
-    ae = {st.get("environment") for st in a.get("stages") or [] if st.get("environment")}
-    be = {st.get("environment") for st in b.get("stages") or [] if st.get("environment")}
-    if ae or be:
-        s += 0.2 * len(ae & be) / max(1, len(ae | be))
+    """Structural comparison: controls, representation, camera, interaction, mode, envs + legacy hazard/palette."""
+    ia = gs._game_identity({"spec": a, "plan": {}, "runtime": a.get("runtime")})
+    ib = gs._game_identity({"spec": b, "plan": {}, "runtime": b.get("runtime")})
+    s = gs.identity_similarity(ia, ib)
     ah, bh = set(), set()
     for st in a.get("stages") or []:
         ah.update(st.get("hazard_types") or [])
     for st in b.get("stages") or []:
         bh.update(st.get("hazard_types") or [])
     if ah or bh:
-        s += 0.15 * len(ah & bh) / max(1, len(ah | bh))
+        s += 0.05 * len(ah & bh) / max(1, len(ah | bh))
     ap = ((a.get("visual_theme") or {}).get("palette") or {}).get("glow")
     bp = ((b.get("visual_theme") or {}).get("palette") or {}).get("glow")
     if ap and ap == bp:
-        s += 0.1
-    if (a.get("visual_theme") or {}).get("player") == (b.get("visual_theme") or {}).get("player"):
         s += 0.05
-    return round(s, 3)
+    return round(min(s, 1.0), 3)
 
 
 @admin2.get("/showcase/diversity")

@@ -11,6 +11,7 @@ export default function GamesHub() {
   const [data, setData] = useState(null);
   const [q, setQ] = useState("");
   const [playing, setPlaying] = useState(null);
+  const [fireInfo, setFireInfo] = useState(null);
   const [denied, setDenied] = useState(null);
   const playId = params.get("play");
 
@@ -22,9 +23,10 @@ export default function GamesHub() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (!playId) { setPlaying(null); return; }
+    if (!playId) { setPlaying(null); setFireInfo(null); return; }
     apiClient.get(`/games/${playId}`).then((r) => setPlaying(r.data))
       .catch((e) => toast.error(e?.response?.data?.detail || "Game not found"));
+    apiClient.get(`/games/${playId}/fire-info`).then((r) => setFireInfo(r.data)).catch(() => setFireInfo(null));
   }, [playId]);
 
   const onScore = useCallback((ev) => {
@@ -35,7 +37,7 @@ export default function GamesHub() {
         score: ev.score, completed: true, time_s: ev.time_s, stage_reached: ev.stage_reached,
         achievements: ev.achievements || [], no_damage: ev.no_damage, max_combo: ev.max_combo,
       }).then((r) => {
-        (r.data.fire_rewards || []).forEach((f) => toast.success(`🔥 +${f.amount} Fire Power — ${f.label}`));
+        (r.data.fire_rewards || []).forEach((f) => toast.success(`🔥 +${f.amount} Fire Power — ${f.label} (claim in your Fire Vault)`));
         (r.data.new_achievements || []).forEach((a) => toast.success(`★ Achievement unlocked: ${a}`));
       }).catch(() => {});
     }
@@ -126,7 +128,28 @@ export default function GamesHub() {
             {playing.game.spec?.description} · <b>Objective:</b> {playing.game.spec?.learning_objective} ·
             <b> Controls:</b> {playing.game.spec?.controls}
           </div>
-          <GameRuntime spec={playing.game.spec} onScore={onScore} height={520} gameId={playing.game.id} />
+          {fireInfo && (
+            <div className="rounded-xl p-2.5 mb-2 text-[11px]" data-testid="game-fire-info"
+              style={{ background: "rgba(255,138,90,0.07)", border: "1px solid rgba(255,138,90,0.3)" }}>
+              {fireInfo.enabled ? (
+                <>
+                  <b style={{ color: "#FF8A5A" }}>🔥 {fireInfo.pool_remaining.toLocaleString()} Fire available</b>
+                  <span style={{ color: "var(--text-muted)" }}>
+                    {" "}· Stage clear +{fireInfo.rewards.completion} · Finish +{fireInfo.rewards.final_completion}
+                    {fireInfo.rewards.perfect > 0 && <> · Perfect +{fireInfo.rewards.perfect}</>}
+                    {fireInfo.rewards.speed > 0 && <> · Speed +{fireInfo.rewards.speed}</>}
+                    {fireInfo.rewards.achievement > 0 && <> · Achievements +{fireInfo.rewards.achievement}</>}
+                    {" "}· up to <b style={{ color: "#FF8A5A" }}>{fireInfo.max_per_player} 🔥</b> per player
+                    · community pool {fireInfo.pool_pct}% remaining
+                  </span>
+                </>
+              ) : (
+                <span style={{ color: "var(--text-muted)" }} data-testid="game-fire-disabled">🔥 Fire Rewards Currently Disabled</span>
+              )}
+            </div>
+          )}
+          <GameRuntime spec={playing.game.spec} onScore={onScore} height={520} gameId={playing.game.id}
+            controls={playing.game.controls} />
           <div className="flex justify-end mt-1"><AudioSettings /></div>
           <GameLeaderboard gameId={playing.game.id} />
         </div>

@@ -130,6 +130,124 @@ async def audit(actor, action, game_id=None, detail="", cost=None):
         pass
 
 
+# ── Player representation contract + structural identity ────────────────
+PLAYER_REPS = {
+    "dodge_collect": ["hovercraft", "spaceship", "hover_bike", "runner", "rolling_orb"],
+    "top_down": ["explorer", "stealth_operative", "robot", "knight", "wizard", "rolling_orb"],
+    "platformer": ["platform_hero", "explorer", "knight", "robot", "wizard"],
+    "puzzle_room": ["puzzle_cursor"],
+    "rhythm": ["rhythm_notes"],
+    "memory": ["cards"],
+    "matching": ["cards"],
+    "sorting": ["cards"],
+    "quiz_adventure": ["puzzle_cursor"],
+}
+
+
+def default_rep(rt: str, mode: str = "") -> str:
+    if rt == "dodge_collect":
+        return "spaceship" if mode == "space_flight" else "hovercraft"
+    return (PLAYER_REPS.get(rt) or ["puzzle_cursor"])[0]
+
+
+DC_CONTROLS = {"road_3d": "steer left/right on a 3D road", "lane_runner": "discrete lane switching",
+               "vertical": "horizontal steering", "space_flight": "free 2D flight in all directions",
+               "arena_360": "free movement, 360° threats", "tunnel": "radial steering in a tunnel"}
+DC_CAMERAS = {"road_3d": "pseudo-3D chase cam", "lane_runner": "vertical scroll", "vertical": "vertical scroll",
+              "space_flight": "side-scrolling space", "arena_360": "fixed overhead arena", "tunnel": "pseudo-3D tunnel"}
+IDENTITY_BASE = {
+    "top_down": ("free top-down movement (arrows/WASD/touch)", "overhead camera",
+                 "move, collect cores, evade patrols & chasers", "explore arena → collect all cores → reach exit portal"),
+    "platformer": ("run + jump (gravity, platforms)", "side-view camera",
+                   "jump between platforms, collect, avoid spikes", "traverse platforms → collect gems → reach goal portal"),
+    "puzzle_room": ("point-and-click + typed answers", "static room UI",
+                    "inspect, solve riddles/codes/sequences", "solve every puzzle → unlock door → next room"),
+    "rhythm": ("timed taps to the beat", "static stage UI", "tap in the beat window", "hit enough beats per track → next song"),
+    "memory": ("click to flip cards", "card grid UI", "flip & match pairs", "clear every pair → next round"),
+    "matching": ("click to pair items", "two-column UI", "match left to right", "match all pairs → next stage"),
+    "sorting": ("click to categorize", "category UI", "assign items to categories", "sort all items → next stage"),
+    "quiz_adventure": ("click to answer", "story UI", "answer story questions", "answer through the story → finale"),
+}
+
+
+def plan_identity(rt: str, mode: str, rep: str) -> dict:
+    if rt == "dodge_collect":
+        control, camera = DC_CONTROLS.get(mode, "steering"), DC_CAMERAS.get(mode, "scrolling")
+        interaction, loop = "dodge hazards, collect cores & pickups", "survive + collect target cores → portal → harder stage"
+    else:
+        control, camera, interaction, loop = IDENTITY_BASE[rt]
+    return {"runtime_family": RUNTIME_LABELS[rt], "control_model": control, "camera_model": camera,
+            "primary_interaction": interaction, "core_loop": loop, "player_representation": rep}
+
+
+def _game_identity(g: dict) -> dict:
+    spec, plan = g.get("spec") or {}, g.get("plan") or {}
+    rt = spec.get("runtime") or g.get("runtime")
+    if rt not in RUNTIMES:
+        return {}
+    modes = [st.get("mode") for st in (spec.get("stages") or []) if st.get("mode")]
+    mode = spec.get("mode") or (modes[0] if modes else "") or str((plan.get("visual_plan") or {}).get("presentation_mode") or "")
+    rep = spec.get("player_representation") or plan.get("player_representation") or default_rep(rt, mode)
+    ident = plan_identity(rt, mode, rep)
+    ident["mode"] = mode
+    envs = {st.get("environment") for st in (spec.get("stages") or []) if st.get("environment")}
+    ident["environments"] = sorted(envs or set((plan.get("visual_plan") or {}).get("environment_themes") or []))
+    return ident
+
+
+def identity_similarity(a: dict, b: dict) -> float:
+    """Structural similarity: controls, representation, camera, interaction — not just labels."""
+    if not a or not b:
+        return 0.0
+    s = 0.0
+    if a.get("runtime_family") == b.get("runtime_family"):
+        s += 0.25
+    if a.get("control_model") == b.get("control_model"):
+        s += 0.2
+    if a.get("player_representation") == b.get("player_representation"):
+        s += 0.15
+    if a.get("camera_model") == b.get("camera_model"):
+        s += 0.1
+    if a.get("mode") and a.get("mode") == b.get("mode"):
+        s += 0.1
+    if a.get("primary_interaction") == b.get("primary_interaction"):
+        s += 0.1
+    ea, eb = set(a.get("environments") or []), set(b.get("environments") or [])
+    if ea or eb:
+        s += 0.1 * len(ea & eb) / max(1, len(ea | eb))
+    return round(s, 3)
+
+
+SIMILARITY_BLOCK = 0.75
+
+FIRE_ECON_DEFAULTS = {
+    "enabled": True, "paused": False,
+    "pool": 1_000_000, "pool_initial": 1_000_000, "distributed": 0,
+    "rewards": {"completion": 10, "perfect": 5, "speed": 5, "speed_time_s": 300,
+                "hidden_objective": 0, "achievement": 5, "boss": 0,
+                "daily": 0, "weekly": 0, "final_completion": 50},
+}
+
+
+def _controls_from_options(options: dict) -> dict:
+    sc = str((options or {}).get("supported_controls") or "both").lower()
+    return {"desktop_enabled": sc in ("both", "desktop", "auto"),
+            "mobile_enabled": sc in ("both", "mobile", "auto")}
+
+
+async def showcase_similarity_for(ident: dict, exclude_id: str = None) -> dict:
+    rows = await db.games.find({"showcase": True},
+                               {"_id": 0, "id": 1, "title": 1, "spec": 1, "plan": 1, "runtime": 1}).to_list(30)
+    best, match = 0.0, None
+    for g in rows:
+        if exclude_id and g.get("id") == exclude_id:
+            continue
+        sim = identity_similarity(ident, _game_identity(g))
+        if sim > best:
+            best, match = sim, g.get("title")
+    return {"score": best, "top_match": match, "threshold": SIMILARITY_BLOCK, "blocked": best >= SIMILARITY_BLOCK}
+
+
 # ── Cost estimate (always required before generation) ───────────────────
 EST_SYSTEM = """You are ORAi's game designer. Turn a game request into a short build plan.
 Reply ONLY valid JSON:
@@ -143,6 +261,7 @@ Reply ONLY valid JSON:
  "presentation_mode": "for dodge_collect pick: road_3d|lane_runner|vertical|space_flight|arena_360|tunnel (action/racing/runner -> road_3d or lane_runner)",
  "visual_style_summary": "1-2 sentences: art direction, palette, atmosphere",
  "player_appearance": "e.g. neon hover vehicle",
+ "player_representation": "REQUIRED — pick ONE that fits the theme. dodge_collect: hovercraft|spaceship|hover_bike|runner|rolling_orb · top_down: explorer|stealth_operative|robot|knight|wizard|rolling_orb · platformer: platform_hero|explorer|knight|robot|wizard · puzzle_room: puzzle_cursor · rhythm: rhythm_notes · memory/matching/sorting: cards · quiz_adventure: puzzle_cursor. NEVER default to spaceship unless the game is actually set in space.",
  "environment_themes": ["planned stage environments e.g. cyber_city, space, sunset, crystal"],
  "hazard_types_planned": 3, "pickup_types_planned": 2, "stage_visual_groups": 4,
  "est_play_minutes": "e.g. 10-20",
@@ -230,6 +349,32 @@ async def create_estimate(body: dict, current: dict) -> dict:
     else:
         vp["visual_warning"] = None
     plan["visual_plan"] = vp
+    # player representation contract + structural diversity validation
+    rep = str(plan.get("player_representation") or "").strip().lower().replace(" ", "_").replace("-", "_")
+    allowed = PLAYER_REPS.get(rt) or []
+    if rep and rep not in allowed:
+        subs.append(f"Player '{rep}' isn't supported by the {RUNTIME_LABELS[rt]} runtime — using '{default_rep(rt, pm)}' instead")
+        rep = ""
+    plan["player_representation"] = rep or default_rep(rt, pm)
+    vp["player_representation"] = plan["player_representation"]
+    ident = plan_identity(rt, pm if rt == "dodge_collect" else "", plan["player_representation"])
+    ident["mode"] = pm
+    ident["environments"] = sorted(set(vp["environment_themes"]))
+    def plan_ident_controls(rt2, pm2):
+        km = {"dodge_collect": "←/→ steer · ↑/↓ fly (space modes) · WASD", "platformer": "←/→ move · ↑/W/Space jump",
+              "top_down": "←→↑↓ / WASD move"}.get(rt2, "mouse / tap driven")
+        tl = {"dodge_collect": "drag steering", "platformer": "left/right/jump buttons", "top_down": "drag joystick",
+              "puzzle_room": "tap, type & inspect", "rhythm": "tap the beat pad", "memory": "tap cards",
+              "matching": "tap pairs", "sorting": "tap categories", "quiz_adventure": "tap answers"}.get(rt2, "tap")
+        return km, tl
+    dk, tl = plan_ident_controls(rt, pm)
+    sc = str(body.get("supported_controls") or "both").lower()
+    ident["desktop_map"] = dk if sc in ("both", "desktop", "auto") else "disabled"
+    ident["touch_layout"] = tl if sc in ("both", "mobile", "auto") else "disabled"
+    ident["supported_controls"] = sc
+    plan["identity"] = ident
+    plan["showcase_similarity"] = await showcase_similarity_for(ident)
+    plan["substitutions"] = subs
     build_cost = round(t["est_cost"] + 0.01 * complexity, 2)
     est = {
         "id": uuid.uuid4().hex, "status": "awaiting_approval",
@@ -237,7 +382,8 @@ async def create_estimate(body: dict, current: dict) -> dict:
         "complexity": complexity, "ai_power": power, "tier": t,
         "plan": plan,
         "options": {k: str(body.get(k) or "")[:120] for k in
-                    ("target_age", "grade_level", "subject", "visual_style", "audio", "accessibility")},
+                    ("target_age", "grade_level", "subject", "visual_style", "audio", "accessibility",
+                     "supported_controls")},
         "course_context": body.get("course_context") or None,
         "estimates": {
             "provider_cost": build_cost, "generation_time_min": 1 + t["passes"],
@@ -283,6 +429,7 @@ puzzle_room: {"stages":[{"title":"Room name","intro":"scene description","puzzle
 
 Wrap it as: {"runtime":"<runtime>","title":"...","description":"1-2 sentences","subject":"...",
  "grade_level":"...","learning_objective":"...","controls":"...",
+ "player_representation":"copy EXACTLY from the plan in the user message — the renderer honors this field",
  "visual_theme":{"environment":"cyber_city|space|sunset|crystal|lava|tunnel|grid",
    "player":"hover_car","player_name":"e.g. neon hover vehicle",
    "palette":{"bg":"#05060f","glow":"#2EE6FF","accent":"#F4A73B","hazard":"#FF3D5A","player":["#C26BFF","#2EE6FF"],"lane":"#2EE6FF"}},
@@ -311,6 +458,9 @@ def validate_spec(spec: dict, complexity: int = 1) -> list:
         errs.append("unknown runtime")
         return errs
     stages = spec.get("stages") or []
+    rep = spec.get("player_representation")
+    if rep and rep not in (PLAYER_REPS.get(spec.get("runtime")) or []):
+        errs.append(f"player_representation '{rep}' is not supported by the {spec.get('runtime')} runtime")
     if not stages:
         errs.append("no stages")
     min_stages = {1: 1, 2: 3, 3: 5}.get(complexity, 1)
@@ -407,6 +557,8 @@ async def start_build(estimate: dict, current: dict) -> dict:
         "created_by": current["id"], "created_by_username": current.get("username"),
         "created_at": _iso(), "updated_at": _iso(),
         "review": {}, "published_at": None,
+        "fire_economy": {**FIRE_ECON_DEFAULTS, "rewards": {**FIRE_ECON_DEFAULTS["rewards"]}},
+        "controls": _controls_from_options(estimate.get("options") or {}),
     }
     await db.games.insert_one({**game})
     await db.game_estimates.update_one({"id": estimate["id"]}, {"$set": {"status": "building", "game_id": game["id"]}})
@@ -435,6 +587,8 @@ async def _run_build(game_id: str):
             f"Complexity: {game['complexity']} — {COMPLEXITY_LEVELS[game['complexity']]}\n"
             f"COMPLEXITY CONTRACT (must all be present in the spec): {', '.join(complexity_features(game['complexity']))}\n"
             f"Stages required: {plan.get('stages') or min_stages_for(game['complexity'])}\n"
+            + (f"Player representation (MANDATORY — set player_representation to exactly this): {plan.get('player_representation')}\n"
+               if plan.get("player_representation") else "")
             + (f"Planned mechanics: {', '.join(plan.get('mechanics') or [])}\n" if plan.get("mechanics") else "")
             + (f"Gameplay summary to implement: {plan.get('gameplay_summary')}\n" if plan.get("gameplay_summary") else "")
             + "\n".join(f"{k}: {v}" for k, v in (game.get("options") or {}).items() if v)
@@ -493,6 +647,10 @@ async def _run_build(game_id: str):
         spec["lives"] = 1 if game["complexity"] == 1 else int(spec.get("lives") or 3)
         # The routed runtime is a hard contract — the model can never swap it.
         spec["runtime"] = game["runtime"]
+        prep = (game.get("plan") or {}).get("player_representation")
+        if spec.get("player_representation") not in (PLAYER_REPS.get(game["runtime"]) or []):
+            spec["player_representation"] = (prep if prep in (PLAYER_REPS.get(game["runtime"]) or [])
+                                             else default_rep(game["runtime"], str(spec.get("mode") or "")))
         await db.games.update_one({"id": game_id}, {"$set": {
             "spec": spec, "test_results": tests, "status": "pending_approval",
             "stage": "preview_ready", "actual_cost": round(cost, 3),
