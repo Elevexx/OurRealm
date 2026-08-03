@@ -92,6 +92,11 @@ async def root():
     return {"app": "OurRealm", "status": "ok"}
 
 
+@app.get("/health")
+async def health_probe():
+    return {"status": "ok"}
+
+
 app.include_router(health)
 app.include_router(auth_router_mod.router)
 app.include_router(profile_router_mod.router)
@@ -404,8 +409,16 @@ async def _realm_pulse_loop():
 @app.on_event("startup")
 async def on_startup():
     import asyncio
+    asyncio.create_task(_deferred_startup())
+
+
+async def _deferred_startup():
+    import asyncio
     global _mod_task
-    await seed_mod.run_startup()
+    try:
+        await seed_mod.run_startup()
+    except Exception as e:
+        logger.warning(f"[seed] startup error: {e}")
     # Phase F — ensure hashtag indexes exist + retroactively index any
     # legacy posts that pre-date the hashtag system.
     try:
