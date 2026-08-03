@@ -196,3 +196,20 @@ KNOWN (pre-existing, by design): bottom mobile nav renders on desktop too — us
 - FIX in /app/backend/server.py: added unauthenticated `@app.get("/health")` returning {"status":"ok"} instantly; renamed startup body to `_deferred_startup()` and on_startup now just `asyncio.create_task(_deferred_startup())`; wrapped seed_mod.run_startup() in try/except so a seed error can't kill the deferred chain. Port binds in ~2s; migrations complete in background (log line "OurRealm startup complete" confirmed).
 - Deployment readiness scan found one more blocker: .gitignore had `.env` / `.env.*` / `*.env` (lines 166-168) which would exclude backend/.env + frontend/.env from the deploy repo. Removed; `git check-ignore` confirms env files tracked. Re-scan: PASS, zero findings.
 - Verified e2e: /health 200 in ~2s after restart; login as stealth + GET /api/games returns all 11 showcase games. NO games generated/modified, NO ORAi calls, NO LLM credits spent.
+
+## 2026-06 — P0 Production login 520 investigation + startup hardening (fork session)
+- SYMPTOM: production (ourrealm.social) frontend loads, but EVERY /api/* request (incl. unauthenticated /api/, /api/auth/signup-status, /api/auth/login) returns Cloudflare 520 instantly (~0.1-0.4s). Preview works perfectly through the same Cloudflare stack.
+- FORENSICS (all via curl, zero LLM credits):
+  * Stopped preview backend → preview /api returns **502** through Cloudflare → "backend down" = 502, NOT 520.
+  * SIGSTOP-froze preview backend (port open, unresponsive) → requests hang ≥45s → "blocked event loop" ≠ instant 520 either.
+  * Cold probe after 90s idle → still instant 520 → origin failure is immediate, not a timeout.
+  * prod /health returns 200 but it is the FRONTEND catch-all (index.html), not the backend.
+  * emergent.host origin is also Cloudflare-fronted, raw origin response not observable from here.
+- CONCLUSION: production backend process is not serving (crashed after passing the deploy health check, or supervisor gave up), or Emergent LB maps its failure differently than preview. Root cause is ONLY visible in the production deployment logs (Emergent dashboard) — not reproducible in preview.
+- HARDENING applied to /app/backend/server.py so no code-side cause can survive:
+  1. `_safe_startup()` wrapper catches **BaseException** (incl. SystemExit) so nothing in the deferred chain can ever kill the event loop/process.
+  2. `[startup-step] <name>` INFO markers before every boot-migration block (seed, hashtags, sound-migration, media-rights, sound-indexes, realm-pulse, admin-widgets, orion-heal, progression, communities, website-media, storage, media-proxy-migration) → next deploy's logs pinpoint the exact dying step.
+  3. `migrate_legacy_uploads` now runs via `asyncio.to_thread` (sync file copy off the event loop).
+  4. Kill switch: env `STARTUP_MIGRATIONS=off` (settable in Emergent dashboard) skips all boot migrations and only arms the moderation loop.
+- VERIFIED in preview: full startup-step sequence completes, /health 200, stealth login OK, /api/auth/me 200, 11 showcase games intact.
+- NEXT: user must redeploy (Replace Deployment). If /api still 520s, pull deployment logs from dashboard; if logs show "OurRealm startup complete" yet /api 520s, it's platform-side (Emergent Support).

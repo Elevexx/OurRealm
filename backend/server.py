@@ -409,16 +409,33 @@ async def _realm_pulse_loop():
 @app.on_event("startup")
 async def on_startup():
     import asyncio
-    asyncio.create_task(_deferred_startup())
+    asyncio.create_task(_safe_startup())
+
+
+async def _safe_startup():
+    import asyncio
+    try:
+        await _deferred_startup()
+    except asyncio.CancelledError:
+        raise
+    except BaseException as e:
+        logger.error(f"[startup] deferred startup aborted ({type(e).__name__}): {e}")
 
 
 async def _deferred_startup():
     import asyncio
     global _mod_task
+    logger.info("[startup-step] begin deferred startup")
+    if os.environ.get("STARTUP_MIGRATIONS", "on").lower() in ("off", "0", "false"):
+        logger.warning("[startup] STARTUP_MIGRATIONS=off — skipping boot migrations, arming loops only")
+        _mod_task = asyncio.create_task(_moderation_loop())
+        return
+    logger.info("[startup-step] seed")
     try:
         await seed_mod.run_startup()
     except Exception as e:
         logger.warning(f"[seed] startup error: {e}")
+    logger.info("[startup-step] hashtags")
     # Phase F — ensure hashtag indexes exist + retroactively index any
     # legacy posts that pre-date the hashtag system.
     try:
@@ -439,6 +456,7 @@ async def _deferred_startup():
     # track gets its canonical post (+ hearts → 1× Fire) so all Sound
     # posts carry the unified Fire Power control. Idempotent no-op when
     # everything is already canonical.
+    logger.info("[startup-step] sound-migration")
     try:
         from services import sound_posts as _sp
         await _sp.run_startup_migration()
@@ -455,6 +473,7 @@ async def _deferred_startup():
     # Media rights (Phase 1-2) — label legacy videos ("confirmation not
     # collected", metadata only) and default existing Sounds to
     # playable-only reuse. Idempotent, non-destructive.
+    logger.info("[startup-step] media-rights")
     try:
         from services.sound_permissions import run_startup_migration as _mrm
         await _mrm()
@@ -475,6 +494,7 @@ async def _deferred_startup():
         logger.warning(f"[fire-finalize] startup error: {e}")
 
     # Canonical Sound posts — indexes + classification seed (idempotent).
+    logger.info("[startup-step] sound-indexes")
     try:
         from services import sound_posts as _sp
         await _sp.ensure_sound_indexes()
@@ -483,6 +503,7 @@ async def _deferred_startup():
         logger.warning(f"[sound-posts] startup error: {e}")
 
     # Realm Pulse — ensure indexes + boot the hourly snapshot loop.
+    logger.info("[startup-step] realm-pulse")
     try:
         from services import realm_pulse as rp
         await rp.ensure_indexes()
@@ -499,6 +520,7 @@ async def _deferred_startup():
 
     # Widgets & Badges admin registry — seed 16 system widgets +
     # ensure unique-key indexes for both registries and user_badges.
+    logger.info("[startup-step] admin-widgets")
     try:
         await admin_widgets_router_mod.ensure_indexes()
         await admin_widgets_router_mod.seed_system_widgets()
@@ -512,6 +534,7 @@ async def _deferred_startup():
     # row from the widget_templates blueprint so the founder chat works
     # immediately on any fresh DB. Uses $setOnInsert so a real seeded
     # row is never overwritten.
+    logger.info("[startup-step] orion-heal")
     try:
         from routers.widget_chat import _heal_orion_registry, ORION_WIDGET_KEYS
         for key in ("stealth_ai_5a6",):  # canonical founder key
@@ -533,6 +556,7 @@ async def _deferred_startup():
         logger.warning(f"[api_widgets] startup failed: {e}")
 
     # Progression system — indexes + editable seed levels (idempotent).
+    logger.info("[startup-step] progression")
     try:
         from services.progression.indexes import ensure_progression_indexes
         from services.progression.seed import ensure_progression_seed
@@ -545,6 +569,7 @@ async def _deferred_startup():
 
     # Communities (Realms + Groups + Chats) — ensure indexes + seed
     # the legacy mock realms into Mongo on the very first startup.
+    logger.info("[startup-step] communities")
     try:
         from services import community_seed
         await community_seed.ensure_indexes()
@@ -569,6 +594,7 @@ async def _deferred_startup():
     except Exception as e:
         logger.warning(f"[communities] startup failed: {e}")
 
+    logger.info("[startup-step] website-media")
     try:
         from routers.website_media import ensure_website_media_seed
         await ensure_website_media_seed()
@@ -579,6 +605,7 @@ async def _deferred_startup():
     # PART 4 — log the resolved media-storage root so deploy logs make
     # it obvious whether uploads are landing on a persistent volume or
     # the ephemeral fallback.
+    logger.info("[startup-step] storage")
     try:
         from services.storage import uploads_root, is_persistent_storage_configured, migrate_legacy_uploads
         root = uploads_root()
@@ -587,7 +614,7 @@ async def _deferred_startup():
         if persistent:
             logger.info(msg)
             try:
-                copied = migrate_legacy_uploads()
+                copied = await asyncio.to_thread(migrate_legacy_uploads)
                 total = sum(v for v in copied.values() if isinstance(v, int))
                 if total:
                     logger.info(f"[storage] migrated {total} legacy files: {copied}")
@@ -621,6 +648,7 @@ async def _deferred_startup():
     # (`/api/sounds/file/<name>`) to the new stable proxy path
     # (`/api/media/<kind>/<name>`). Running on every boot is safe
     # because the script no-ops when nothing matches.
+    logger.info("[startup-step] media-proxy-migration")
     try:
         from scripts.migrate_to_media_proxy import main as media_migrate_main
         import sys as _sys
