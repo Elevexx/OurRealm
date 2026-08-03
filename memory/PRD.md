@@ -1,5 +1,40 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## AAA SHOWCASE QUALITY PASS — Complete 10-Game Library (Aug 3, 2026) ✅ COMPLETE — tested (iteration_115, 100%)
+### The 10 Founder Showcase games (all published, unique runtime/mode/rep, cover art + genre, demo reward 100 🔥)
+1. Temple of Echoes dfb1c04e (puzzle_room · Puzzle Exploration)
+2. Galaxy Salvager d36d0d04 (dodge/space_flight/spaceship · Space Survival)
+3. Crystal Caverns 850b4ee4 (platformer/platform_hero · Platform Adventure)
+4. Cyber Heist af6cab00 (top_down/stealth_operative · Top-Down Stealth)
+5. Starlight Drummer cef889d9 (rhythm · Rhythm & Music)
+6. Neon Core Rush: Velocity Demo 5b171783 (dodge/road_3d/hovercraft · Arcade Racer)
+7. Arcanum Cards 5eb9556d (matching/cards · Memory Strategy)
+8. Skyforge Cargo Command 88b63899 (sorting/cards · Sorting Strategy)
+9. Neon Tunnel Drift 2f9d083b (dodge/tunnel/hover_bike · Tunnel Racer)
+10. Chrono Rift 9f2895d0 (quiz_adventure/puzzle_cursor · Story Adventure)
+Diversity endpoint: 0 flagged pairs. Original "Neon Core Rush" (193b8eeb) unpublished (duplicate of Velocity Demo). RTTEST games unpublished earlier.
+
+### Engine-wide AAA polish (GameRuntime.jsx — ALL games inherit automatically)
+- Cinematic title screen ("ORAi PRESENTS" + animated glowing title + ambient particles + TAP/KEY to start)
+- Stage intro banners (STAGE N/M + title, animated in/out), victory screen (trophy, stats grid: score/best/time/combo/accuracy, confetti, achievements chips, Fire Vault hint), game-over screen (stats grid), CSS vignette + top-glow bloom overlays on every canvas, checkpoint "⚑ CHECKPOINT" popups, injected keyframe animation system (orpop/orbanner/orconf/orglow...)
+
+### Living Projects v1 — Edit with ORAi (games_plus.py orai-edit + GameOraiEdit.jsx)
+- POST /api/admin/games/{id}/orai-edit {prompt, scope, add_stages, ai_power, dry_run} — dry_run returns cost estimate FIRST; real run patches ONLY the requested scope, preserves the rest, forces runtime+player_rep, validates spec, creates a new version, audits cost
+- EDIT_SYSTEM has an honest ENGINE_CAPS contract: unsupported asks (multiplayer, gamepad, 3D, video, voice) are declared in `_substitutions`, never faked
+- UI: prompt box + quick chips (New Biome, Boss Stage, Better HUD, More Animations, New Ending, Endless Mode Feel, Side Quests, Seasonal Event) + dimmed Multiplayer/Controller chips with honest warnings + Generate More Levels (add_stages) + scope select + Estimate→Apply flow
+
+### Fire economy upgrades
+- Demo completion reward default 100 🔥 (all showcase + new games), anti-abuse: daily_player_cap + claim_cooldown_s enforced in _pool_grant (ledger-backed), editable in Fire panel
+- Runtime router hardened: word-boundary keyword matching + generic action keywords checked LAST (fixes "rift-runner"→dodge misroute); story/quiz phrasing now routes correctly
+
+### Premium /games hub
+- 10 AI-generated cinematic covers (stored on game.cover_url + genre label); public list returns cover_url/genre/fire_max; card grid: cover art (4/5), genre chip, "🔥 up to N", Play button, hover scale — matches the user's reference image
+- Public GET /api/games/{id} now always returns populated controls (defaults applied)
+
+### Known learnings
+- Backend hot-reload KILLS in-flight game builds (async task lost → stuck "building"). Never edit backend files while a build is running; stuck builds must be deleted via DB.
+- Nohup launches from execute_bash can double-fire if the command times out — check for duplicate runs.
+
 ## GAME CREATOR POLISH — Player Diversity + Fire Economy + Controls (Aug 3, 2026) ✅ COMPLETE — tested (iteration_114, 100%)
 **User plan approved: Phase A (diversity) → Phase C (engine polish) → Phase B (Living Projects). A is DONE; C is NEXT; B after.**
 

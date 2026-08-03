@@ -223,6 +223,8 @@ async def play_game(game_id: str, current: CurrentUser):
         if not g:
             raise HTTPException(status_code=404, detail="Game not found")
     prog = await db.game_progress.find_one({"game_id": game_id, "user_id": current["id"]}, {"_id": 0})
+    from routers.games_plus import game_controls
+    g["controls"] = game_controls(g)
     return {"game": g, "progress": prog}
 
 
