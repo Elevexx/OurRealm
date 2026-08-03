@@ -1,5 +1,40 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## GAME CREATOR POLISH — Player Diversity + Fire Economy + Controls (Aug 3, 2026) ✅ COMPLETE — tested (iteration_114, 100%)
+**User plan approved: Phase A (diversity) → Phase C (engine polish) → Phase B (Living Projects). A is DONE; C is NEXT; B after.**
+
+### Fixed first: GameRuntime.jsx compile error (stray `;}` at EOF) — production build verified before any paid generation.
+
+### Founder Showcase — first batch LIVE (6 showcase games, published)
+- Temple of Echoes (puzzle_room, C6, puzzle_cursor) dfb1c04e68f64a55bb7673ead2bacae0
+- Galaxy Salvager (dodge_collect/space_flight, C8, spaceship) d36d0d0472054c5ab6da438d0bc8f865
+- Crystal Caverns (platformer, C7, platform_hero) 850b4ee4b6ed48899229355aa86d5e9a
+- Cyber Heist (top_down, C7, stealth_operative) af6cab00d0d2406892d8bcb0b419e234
+- Starlight Drummer (rhythm, C5, rhythm_notes) cef889d900e04908bf69efdc6e1321fa
+- Neon Core Rush: Velocity Demo (dodge_collect/road_3d, C10, hovercraft) 5b171783b8714cc8a63be54ca0105d39
+- AWAITING USER REVIEW before generating the remaining games (user wants /games to feel like a pro indie showcase).
+
+### Phase A — Player Representation + Structural Diversity (game_studio.py, games_plus.py, games.py, GameRuntime.jsx)
+- `PLAYER_REPS` contract per runtime; `player_representation` REQUIRED in plan+spec (validate_spec enforces); renderer painters: hovercraft/spaceship/hover_bike/runner/rolling_orb (dodge), animated humanoid heroes w/ knight/robot/wizard/explorer variants (platformer), overhead operative w/ vision cone/robot/knight/wizard (top_down). No more default rockets.
+- `plan_identity()` + `identity_similarity()` — structural comparison (runtime family, control model, player rep, camera, mode, interaction, environments). Estimate shows Game Identity block + showcase similarity; `blocked` at >=0.75 → approve_and_build returns 400. games_plus spec_similarity rewritten to use it. Verified: Galaxy Salvager reskin scored 0.9 → blocked; unique concepts pass.
+
+### Fire Power Economy (per game — reuses existing Fire Vault ledger, NO parallel economy)
+- `fire_economy` on every game: pool 1,000,000 default, enabled by default, pausable; rewards config (completion/perfect/speed+speed_time_s/hidden_objective/achievement/boss/daily/weekly/final_completion).
+- Grants on validated score submit: atomic pool decrement guard + `credit_fire(sender="game_fire_pool", finalize_at=now)` → immediately claimable in Fire Vault → player presses Claim (`POST /api/fire/wallet/collect {"collect_all":true}`). Idempotency keys `gfp:*` make replay/refresh/duplicate abuse impossible (verified: replay returns []).
+- Endpoints: GET/PATCH `/api/admin/games/{id}/fire-economy` (+actions refill/reset; every change = new game version), public GET `/api/games/{id}/fire-info` ("Fire Rewards Currently Disabled" when off/paused). Analytics: distributed/claimed/unique claimants/avg/largest/claims today-week-month.
+- UI: `GameFireEconomy.jsx` founder panel (stats grid, toggles, pool+refill/reset, reward inputs, preview: avg/max per player, worst-case month, completions supported, % remaining); GamesHub fire banner before play. Clones get a fresh full pool.
+
+### Controls & Input Modes (per game, versioned)
+- `controls` config: desktop_enabled/mobile_enabled (both default ON), keyboard_map remapping (conflict + missing-action validation, 400 on invalid; publish BLOCKED when no mode can play), touch settings (button size/opacity/position, joystick size, sensitivity, swipe, hold/toggle), accessibility (left-handed, haptics, reduced motion, high contrast, control guide).
+- Renderer honors all of it: `act()` remap layer, P pause / R restart, pointerType gating (touch vs mouse), input auto-detect + seamless switching, control-guide overlay at start, vibration on hit, reduced-motion shake gate, high-contrast filter.
+- Endpoints GET/PATCH `/api/admin/games/{id}/controls`; UI `GameControlsPanel.jsx`; creation flow "Supported controls" select (Auto/Desktop/Mobile/Both, default Both) + estimate identity shows desktop map + touch layout.
+
+### NEXT (user-approved order)
+1. **Phase C — engine-wide polish** (animations, particles, lighting, HUD, transitions, stage intros/outros, ambience, camera, menus, procedural variety) so every game inherits it.
+2. **Phase B — Living Projects** (ORAi Project panel w/ per-section Edit with ORAi, Generate More Levels, prompt box, scope-limited regeneration, version compare/fork/merge). Cost shown before every targeted edit; never rebuild more than requested.
+3. Remaining showcase games after user reviews the first batch.
+- Backlog: modularize AdminOrion.jsx (P2); AdminGames.jsx growing (463→~540 lines, watch).
+
 ## PHASE 3 — Game Creator Phase 1 + Education Completions (Aug 2-3, 2026) ✅ COMPLETE — tested (iteration_113, 95%→fix applied)
 **Verified E2E: estimate ($0.04 shown BEFORE build) → founder Approve & Build → staged build (design→spec→refine→automated validation tests) → pending_approval → publish → /games hub → playable sandboxed game → progress save → non-founder 403 → full audit. ORAi chat "create a game..." → GAME PLAN READY card → PREVIEW BUILD deep link → estimate card → cancel (no build). Review Friday lesson + Parent Digest verified.**
 - `services/llm_router.py`: provider-agnostic AI Power 1-10 routing via Emergent universal key (emergentintegrations): 1-2 gpt-5-nano/gpt-5.4-mini · 3-6 gpt-5.4-mini/gpt-5.4 · 7-10 claude-sonnet-4-6/5, real passes + token budgets + est cost per tier; fallback openai gpt-5.4.
