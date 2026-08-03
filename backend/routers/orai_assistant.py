@@ -242,6 +242,41 @@ async def assistant_chat(body: ChatBody, user: CurrentUser):
         except Exception as e:  # noqa: BLE001
             extra.append(f"NOTE: Game estimate failed: {str(e)[:150]}. Apologize briefly.")
 
+    # ── ORAi Preview Builder: founder-only bridge to the internal build workflow ──
+    import re as _re
+    if (edu_card is None and access.get("founder")
+            and "game" not in low
+            and any(k in low for k in ("build", "create", "make", "design"))
+            and _re.search(r"\b(page|preview|component|ui|banner|section|styling|style|layout|faq)\b", low)):
+        try:
+            require_founder(user)
+            from routers.orai_builds import draft_build
+            req = await draft_build(message, user)
+            edu_card = {
+                "type": "preview_build", "build_id": req["id"],
+                "title": "PREVIEW BUILD READY — APPROVAL REQUIRED",
+                "lines": [
+                    req["title"],
+                    req["summary"][:220],
+                    "Sandboxed admin-only preview — cannot touch production, the database, auth, billing or secrets.",
+                    "Nothing is built until you press Approve and Build Preview.",
+                ],
+                "build": {"id": req["id"], "title": req["title"], "build_prompt": req["build_prompt"]},
+            }
+            extra.append(
+                f"YOU (ORAi) JUST DRAFTED PREVIEW BUILD REQUEST \"{req['title']}\" — an approval card with an "
+                "'Approve and Build Preview' button is attached to your reply. Briefly summarize what will be built "
+                "and that it lands on an admin-only preview route. Nothing is built until they approve. "
+                "Do NOT include action markers for this.")
+            await orai_audit(user, "preview_build_drafted_from_chat", detail=req["id"])
+        except ValueError as e:
+            extra.append(f"NOTE: You tried to draft a preview build but it was BLOCKED because {e}. "
+                         "Explain this restriction briefly and politely.")
+        except HTTPException:
+            pass
+        except Exception as e:  # noqa: BLE001
+            extra.append(f"NOTE: Preview build draft failed: {str(e)[:150]}. Apologize briefly.")
+
     allowed = op.allowed_actions(user, ctx.center_id)
     actions_list = "\n".join(f"- {aid} — {a['label']}" for aid, a in allowed.items())
     system = SYSTEM_TMPL.format(

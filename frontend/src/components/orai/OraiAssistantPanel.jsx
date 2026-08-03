@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Sparkles, X, Send, Loader2, Volume2, Crown, ShieldAlert, GraduationCap } from "lucide-react";
+import { Sparkles, X, Send, Loader2, Volume2, Crown, ShieldAlert, GraduationCap, Hammer, Copy } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -67,6 +67,63 @@ function FounderStrip({ onNavigate }) {
           <ShieldAlert size={10} /> Emergency Disable
         </button>
       </div>
+    </div>
+  );
+}
+
+function PreviewBuildActions({ build, onDone }) {
+  const [state, setState] = useState("idle");
+  const approve = async () => {
+    setState("building");
+    try {
+      await apiClient.post(`/orai/builds/${build.id}/approve`);
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const { data } = await apiClient.get(`/orai/builds/${build.id}`);
+        if (data.status === "complete") {
+          setState("done");
+          onDone(
+            `✓ Preview built: ${data.title}\nPreview route: ${data.preview_route}\nChanged files:\n${(data.changed_files || []).map((f) => `• ${f}`).join("\n")}`,
+            [{ id: "open_preview", label: "Open Preview", kind: "navigate", to: data.preview_route }]);
+          return;
+        }
+        if (data.status === "failed") {
+          setState("failed");
+          onDone(`✗ Preview build failed: ${data.error || "unknown error"}`, []);
+          return;
+        }
+      }
+      setState("failed");
+      onDone("✗ Preview build timed out — ask me to check its status later.", []);
+    } catch (e) {
+      setState("failed");
+      toast.error(e?.response?.data?.detail || "Could not start the build");
+    }
+  };
+  const copyForEmergent = async () => {
+    const text = `Build request from OurRealm ORAi (id ${build.id}):\n\n${build.build_prompt}\n\nConstraints: preview-only change inside the existing OurRealm project. Reuse the existing framework, theme system, routing, shared components and admin permissions. No production publishing, no database migrations, no file deletion, no auth/billing changes, no secrets or environment-variable changes. Return the preview route and the list of changed files.`;
+    try { await navigator.clipboard.writeText(text); toast.success("Copied — paste it into the Emergent chat"); }
+    catch { toast.error("Could not copy"); }
+  };
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2" data-testid={`preview-build-actions-${build.id}`}>
+      {state === "idle" && (
+        <button className="or-btn text-xs font-bold flex-1 justify-center py-2"
+          style={{ background: "#10E670", color: "#0a0a0a" }}
+          onClick={approve} data-testid="preview-build-approve">
+          <Hammer size={12} /> Approve and Build Preview
+        </button>
+      )}
+      {state === "building" && (
+        <div className="text-[11px] flex items-center gap-1.5 py-1" style={{ color: "#C26BFF" }} data-testid="preview-build-progress">
+          <Loader2 size={12} className="animate-spin" /> Building your preview…
+        </div>
+      )}
+      {state === "done" && <div className="text-[11px] py-1 font-bold" style={{ color: "#10E670" }}>✓ Built</div>}
+      {state === "failed" && <div className="text-[11px] py-1" style={{ color: "#FF6B6B" }}>Build failed</div>}
+      <button className="or-btn or-btn-ghost text-[10px]" onClick={copyForEmergent} data-testid="preview-build-copy-emergent">
+        <Copy size={10} /> Copy for Emergent
+      </button>
     </div>
   );
 }
@@ -242,6 +299,10 @@ export default function OraiAssistantPanel() {
                         data-testid={`orai-card-button-${i}`}>
                         {m.card.button.label}
                       </button>
+                    )}
+                    {m.card.type === "preview_build" && m.card.build && (
+                      <PreviewBuildActions build={m.card.build}
+                        onDone={(content, actions) => setMessages((mm) => [...mm, { role: "assistant", content, actions }])} />
                     )}
                   </div>
                 )}

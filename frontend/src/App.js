@@ -47,6 +47,7 @@ import AdminRcTemplates from "@/pages/AdminRcTemplates";
 import AdminResponsibilityCenterDetail from "@/pages/AdminResponsibilityCenterDetail";
 import AdminRcMedia from "@/pages/AdminRcMedia";
 const AdminAiVideo = React.lazy(() => import("@/pages/AdminAiVideo"));
+const AdminPreview = React.lazy(() => import("@/pages/AdminPreview"));
 const AdminAiPolicies = React.lazy(() => import("@/pages/AdminAiPolicies"));
 const EduPlans = React.lazy(() => import("@/pages/EduPlans"));
 const AdminGames = React.lazy(() => import("@/pages/AdminGames"));
@@ -242,6 +243,7 @@ function App() {
             <Route path="/admin/responsibility-center" element={<ShellRoute><AdminResponsibilityCenter /></ShellRoute>} />
             <Route path="/admin/media/responsibility-center" element={<ShellRoute><AdminRcMedia /></ShellRoute>} />
             <Route path="/admin/ai-video" element={<ShellRoute><Lazy><AdminAiVideo /></Lazy></ShellRoute>} />
+            <Route path="/admin/previews/:buildId" element={<ShellRoute><Lazy><AdminPreview /></Lazy></ShellRoute>} />
             <Route path="/admin/ai-policies" element={<ShellRoute><Lazy><AdminAiPolicies /></Lazy></ShellRoute>} />
             <Route path="/admin/games" element={<ShellRoute><Lazy><AdminGames /></Lazy></ShellRoute>} />
             <Route path="/games" element={<ShellRoute><Lazy><GamesHub /></Lazy></ShellRoute>} />
