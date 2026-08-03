@@ -27,13 +27,10 @@ log = logging.getLogger("ourrealm.games")
 RUNTIMES = ["quiz_adventure", "matching", "sorting", "memory", "rhythm",
             "top_down", "platformer", "dodge_collect", "puzzle_room",
             "card_battle", "tower_defense", "match3",
-            "rpg", "racing", "farming", "city_builder"]
-# Registered in the catalog but not yet playable — classification detects them,
-# generation refuses them with an explicit "not supported yet" + approval gate.
-SCAFFOLDED_RUNTIMES = {
-    "roguelike": "Roguelike", "tactics": "Tactical Strategy", "idle": "Idle / Incremental",
-    "visual_novel": "Visual Novel", "fishing": "Fishing",
-}
+            "rpg", "racing", "farming", "city_builder",
+            "roguelike", "tactics", "idle", "visual_novel", "fishing"]
+# Catalog entries registered but not yet playable (all Phase C runtimes are now live).
+SCAFFOLDED_RUNTIMES = {}
 RUNTIME_LABELS = {
     "quiz_adventure": "Quiz Adventure", "matching": "Memory Matching (pairs)",
     "sorting": "Sorting / Ordering", "memory": "Memory Cards", "rhythm": "Rhythm / Tap",
@@ -41,6 +38,8 @@ RUNTIME_LABELS = {
     "dodge_collect": "Dodge & Collect Arcade", "puzzle_room": "Puzzle Room",
     "card_battle": "Card Battle", "tower_defense": "Tower Defense", "match3": "Match-3 Puzzle",
     "rpg": "RPG Adventure", "racing": "Racing", "farming": "Farming", "city_builder": "City Builder",
+    "roguelike": "Roguelike", "tactics": "Tactical Strategy", "idle": "Idle / Incremental",
+    "visual_novel": "Visual Novel", "fishing": "Fishing",
     **SCAFFOLDED_RUNTIMES,
 }
 # Template registry — every catalog family maps to exactly one vetted template.
@@ -53,6 +52,11 @@ WIN_LOSS = {
     "racing": ("finish all laps in 1st-3rd place", "finish last / miss checkpoints"),
     "farming": ("reach the coin goal before the season ends", "season ends short of the goal"),
     "city_builder": ("grow the city to the population target", "treasury and food collapse"),
+    "roguelike": ("clear every dungeon floor and survive the run", "HP reaches 0 — permadeath restarts the run"),
+    "tactics": ("defeat every enemy unit", "your whole squad falls"),
+    "idle": ("reach the production goal", "n/a (untimed)"),
+    "visual_novel": ("reach an ending of every chapter", "n/a (choice-driven, no fail state)"),
+    "fishing": ("catch the target fish before casts run out", "casts run out short of the goal"),
     "dodge_collect": ("collect the target cores and reach the portal", "all lives lost"),
     "top_down": ("collect all cores and reach the exit portal", "all lives lost"),
     "platformer": ("reach the goal portal", "all lives lost"),
@@ -144,7 +148,7 @@ UNSUPPORTED_GENRES = [
     (("cooking", "time management", "restaurant game", "kitchen game", "serve customers", "food truck"), "Cooking / Time Management"),
     (("word puzzle", "word game", "crossword", "word search", "anagram", "spelling game"), "Word Puzzle"),
     (("bubble shooter", "bubble pop", "bubble blast"), "Bubble Shooter"),
-    (("city builder", "tycoon", "simulation city", "farming sim"), "Builder / Tycoon Simulation"),
+    (("tycoon", "simulation city"), "Builder / Tycoon Simulation"),
     (("fighting game", "beat em up", "beat-em-up", "brawler"), "Fighting / Brawler"),
 ]
 
@@ -281,6 +285,22 @@ IDENTITY_BASE = {
     "city_builder": ("tap a building type, then a free tile to construct", "fixed city grid",
                      "place houses, farms, mines and markets to balance gold/food and grow population",
                      "build → produce → feed & grow population → expand → reach target"),
+    "roguelike": ("tap/click a tile to step; bump into monsters to attack", "top-down dungeon grid",
+                  "descend procedural floors, fight monsters, grab loot, pick run boons — death restarts the run",
+                  "explore floor → fight & loot → reach stairs → pick boon → deeper floor"),
+    "tactics": ("tap a unit, a highlighted tile to move, then an enemy in range to attack; End Turn button",
+                "fixed tactical grid",
+                "command a squad in turn-based grid combat with move/attack ranges and cover",
+                "position units → attack → end turn → enemy phase → repeat until one side falls"),
+    "idle": ("tap the generator button; click to buy generators & upgrades", "single-screen dashboard UI",
+             "tap for resources, buy generators for passive income, prestige to multiply production",
+             "tap → buy generators → automate → prestige → reach the goal"),
+    "visual_novel": ("click/tap dialogue choices", "portrait + text-box UI",
+                     "read branching dialogue and make choices that steer the story to different endings",
+                     "read scene → choose → branch → reach an ending"),
+    "fishing": ("tap Cast, then tap Hook when the marker is in the green zone", "lakeside timing UI",
+                "pick bait, cast, hook with timing, collect rarer fish with better accuracy",
+                "pick bait → cast → hook on time → log the catch → fill the collection"),
 }
 
 
@@ -367,7 +387,7 @@ async def showcase_similarity_for(ident: dict, exclude_id: str = None) -> dict:
 EST_SYSTEM = """You are ORAi's game designer. Turn a game request into a short build plan.
 Reply ONLY valid JSON:
 {"title": "game name", "concept": "2-3 sentence pitch",
- "runtime": "quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room|card_battle|tower_defense|match3|rpg|racing|farming|city_builder",
+ "runtime": "quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room|card_battle|tower_defense|match3|rpg|racing|farming|city_builder|roguelike|tactics|idle|visual_novel|fishing",
  "features": ["4-7 short planned features"],
  "mechanics": ["gameplay mechanics this game will include"],
  "unsupported_mechanics": ["requested mechanics the chosen runtime cannot do, [] if none"],
@@ -392,6 +412,11 @@ RUNTIME ROUTING — pick the runtime whose GAMEPLAY matches the request:
 - racing/karts/laps -> racing
 - farming/planting/harvest -> farming
 - city building/settlement economy -> city_builder
+- roguelike/dungeon crawler/permadeath runs -> roguelike
+- turn-based tactics/grid squad combat -> tactics
+- idle/clicker/incremental/prestige -> idle
+- visual novel/branching story/dating sim -> visual_novel
+- fishing/angling -> fishing
 - exploration/maze/adventure world/top-down movement -> top_down
 - platform/jumping/side-scrolling -> platformer
 - escape room/riddles/locks -> puzzle_room
@@ -530,14 +555,22 @@ async def create_estimate(body: dict, current: dict) -> dict:
               "rpg": "click a tile to walk · combat action buttons",
               "racing": "←/→ steer · Space drift",
               "farming": "click plots to plant/water/harvest · craft & sell buttons",
-              "city_builder": "click a building type, then a free tile"}.get(rt2, "mouse / tap driven")
+              "city_builder": "click a building type, then a free tile",
+              "roguelike": "click a tile to step · bump enemies to attack",
+              "tactics": "click unit → tile → target · End Turn",
+              "idle": "click to generate, buy generators & upgrades",
+              "visual_novel": "click dialogue choices",
+              "fishing": "click Cast, then Hook on the timing bar"}.get(rt2, "mouse / tap driven")
         tl = {"dodge_collect": "drag steering", "platformer": "left/right/jump buttons", "top_down": "drag joystick",
               "puzzle_room": "tap, type & inspect", "rhythm": "tap the beat pad", "memory": "tap cards",
               "matching": "tap pairs", "sorting": "tap categories", "quiz_adventure": "tap answers",
               "card_battle": "tap cards + End Turn button", "tower_defense": "tap tower type, tap build spot",
               "match3": "tap two adjacent tiles to swap",
               "rpg": "tap tiles to walk + action buttons", "racing": "left/right/drift buttons",
-              "farming": "tap plots + craft buttons", "city_builder": "tap building, tap tile"}.get(rt2, "tap")
+              "farming": "tap plots + craft buttons", "city_builder": "tap building, tap tile",
+              "roguelike": "tap tiles to step & fight", "tactics": "tap unit, tile, then target",
+              "idle": "tap to generate", "visual_novel": "tap choices",
+              "fishing": "tap Cast / Hook"}.get(rt2, "tap")
         return km, tl
     dk, tl = plan_ident_controls(rt, pm)
     sc = str(body.get("supported_controls") or "both").lower()
@@ -636,6 +669,30 @@ city_builder: {"stages":[{"title":"Settlement name","grid_w":6,"grid_h":5,"start
   "buildings":[{"name":"House","cost":18,"pop":4,"food_upkeep":2},{"name":"Farm","cost":14,"food":5},
                {"name":"Mine","cost":22,"gold":6,"pop_req":3},{"name":"Market","cost":30,"gold_mult":1.5}]}]}
   (tick economy: farms feed houses, mines need population, markets multiply gold income)
+roguelike: {"stages":[{"title":"Floor name","grid_w":9,"grid_h":7,"player_hp":20,
+  "monsters":3,"monster_hp":8,"monster_attack":3,"loot":2,"walls":10}]}
+  (each stage is ONE dungeon floor, procedurally laid out at runtime; later floors: more monsters,
+   higher monster_hp/attack. PERMADEATH — death restarts the whole run; boons are picked between floors)
+tactics: {"stages":[{"title":"Battle name","grid_w":8,"grid_h":6,
+  "units":[{"name":"Knight","hp":14,"attack":5,"range":1,"move":3},{"name":"Archer","hp":9,"attack":4,"range":3,"move":2}] (2-3 units),
+  "enemies":[{"name":"Raider","x":7,"y":1,"hp":10,"attack":4,"move":2},{"name":"Brute","x":7,"y":4,"hp":16,"attack":6,"move":1}] (2-5)}]}
+  (turn-based grid combat: each unit moves then attacks, End Turn triggers the enemy phase;
+   walls give adjacent cover (-1 damage); later stages: more/stronger enemies)
+idle: {"stages":[{"title":"Era name","goal":1000,"click_power":1,
+  "generators":[{"name":"Miner","cost":15,"rate":1},{"name":"Drill","cost":80,"rate":6}] (2-4),
+  "upgrades":[{"name":"Sharper Pick","cost":60,"mult":2}] (1-3)}]}
+  (tap to generate, generators give passive income with rising costs, prestige multiplies production;
+   later stages: much bigger goals)
+visual_novel: {"stages":[{"title":"Chapter name","scenes":[
+  {"id":"s1","speaker":"Mira","portrait":"one emoji","text":"1-3 sentences","choices":[{"label":"...","next":"s2","points":10},{"label":"...","next":"s3","points":5}]},
+  {"id":"s2","speaker":"Mira","portrait":"...","text":"...","ending":true,"good":true,"ending_label":"True Friend"}] (4-8 scenes)}]}
+  (every choices[].next MUST reference an existing scene id in the SAME stage; each stage needs >=1 ending
+   scene (ending:true, good:true|false); branch meaningfully — different choices reach different endings)
+fishing: {"stages":[{"title":"Waters name","casts":8,"goal_fish":5,
+  "fish":[{"name":"Minnow","rarity":"common","points":5},{"name":"Bass","rarity":"uncommon","points":12},{"name":"Golden Koi","rarity":"rare","points":30}] (3-6, mix rarities),
+  "baits":[{"name":"Worm","cost":0,"rare_bonus":0},{"name":"Glow Shrimp","cost":15,"rare_bonus":0.2}] (1-3)}]}
+  (cast -> wait for the bite -> tap Hook when the marker is in the green zone; accuracy + bait raise rare
+   odds; later stages: fewer casts / higher goal_fish / rarer fish)
 
 Wrap it as: {"runtime":"<runtime>","title":"...","description":"1-2 sentences","subject":"...",
  "grade_level":"...","learning_objective":"...","controls":"...",
@@ -798,6 +855,32 @@ def validate_spec(spec: dict, complexity: int = 1, expected_runtime: str | None 
             for banned in ("target_cores", "platforms", "hazards", "cores", "deck", "waves"):
                 if st.get(banned):
                     errs.append(f"stage {i+1}: match3 must not contain '{banned}' (no movement/collectibles)")
+        elif r == "roguelike":
+            if not st.get("grid_w") or not st.get("grid_h"):
+                errs.append(f"stage {i+1}: roguelike needs grid_w/grid_h")
+            if not st.get("monsters"):
+                errs.append(f"stage {i+1}: roguelike needs a monsters count")
+        elif r == "tactics":
+            if not (st.get("units") or []) or not (st.get("enemies") or []):
+                errs.append(f"stage {i+1}: tactics needs units and enemies")
+        elif r == "idle":
+            if not st.get("goal") or not (st.get("generators") or []):
+                errs.append(f"stage {i+1}: idle needs a goal and generators")
+        elif r == "visual_novel":
+            scenes = st.get("scenes") or []
+            if not scenes:
+                errs.append(f"stage {i+1}: visual_novel needs scenes")
+            else:
+                ids = {s.get("id") for s in scenes}
+                if not any(s.get("ending") for s in scenes):
+                    errs.append(f"stage {i+1}: visual_novel needs at least one ending scene")
+                for s in scenes:
+                    for ch in (s.get("choices") or []):
+                        if ch.get("next") not in ids:
+                            errs.append(f"stage {i+1}: choice '{ch.get('label')}' points to unknown scene '{ch.get('next')}'")
+        elif r == "fishing":
+            if not st.get("casts") or not (st.get("fish") or []):
+                errs.append(f"stage {i+1}: fishing needs casts and fish definitions")
     # difficulty must actually ramp for arcade runtimes at complexity ≥2
     if complexity >= 2 and spec.get("runtime") == "dodge_collect" and len(stages) >= 2:
         try:

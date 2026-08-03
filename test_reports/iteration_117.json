@@ -1,0 +1,32 @@
+{
+  "summary": "Phase C iter117 — validated 5 newly-live runtimes (roguelike/tactics/idle/visual_novel/fishing) end-to-end plus Farming plant-picker fix and hub regression. Backend pytest (test_phase_c_iter117.py): 12/13 pass. All 5 estimate classifications route deterministically to the correct new runtime with fallback_used=false and no 'not supported yet' reason (LLM ~4s each, cancelled — no builds). validate_spec accepts good specs and rejects bad ones for each new branch (roguelike missing monsters, visual_novel choice→unknown-scene, missing ending, tactics missing units/enemies, idle missing goal/generators, fishing missing casts/fish). RUNTIMES catalog has 21 entries; SCAFFOLDED_RUNTIMES is empty; RUNTIME_LABELS/WIN_LOSS/IDENTITY_BASE all include the 5 new ids. GET /api/games returns exactly 11 published showcase games — none of the 5 runtime-test games (3a0f96ab/8d4fec1e/70f57f67/410bf9e8/59b4e1ca) leak. **BUG FOUND**: PLAYER_REPS dict is missing entries for roguelike/tactics/idle/visual_novel/fishing — validate_spec() will reject any spec that carries a player_representation for these runtimes (rep and rep not in PLAYER_REPS.get(rt) or [] fires), and default_rep() falls back to 'puzzle_cursor'. Frontend (stealth founder, sandboxed iframe via content_frame): Roguelike (3a0f96ab) — rgl-hp='❤ 20/20', rgl-atk='⚔ 4', rgl-floor='Floor 1/3', rgl-potion='🧪 ×1', 63 tiles rendered; player+ghost+stairs+chest+gem all present, tile-click stepping works (element-detach after 20 clicks toward stairs = DOM re-render mid-walk). Tactics (8d4fec1e) — tac-turn transitions 'Turn 1' → 'Turn 2' on END TURN; tac-unit-0 'Knight 14/14', tac-unit-1 'Archer 9/9', tac-enemies '👹 ×2'; obstacles + 2 enemies visible. Idle (70f57f67) — 15 taps drove idl-count 0→15; buying idl-gen-0 (cost 15 Apprentice) succeeded, HUD shows core=65 after 50 more taps + gen, +0/s→(needs a tick), goal 300 (22%), idl-prestige gated until 150. Visual Novel (410bf9e8) — vn-speaker='Mira', typewriter click completes text, vn-choice-0/1 present, following choice path reached vn-ending banner '✨ GOOD ENDING — Keeper of the Light' + vn-continue button ✓. Fishing (59b4e1ca) — fsh-casts=10, fsh-caught=0/4, fsh-bait-0=Worm, cast triggered 'waiting for a bite' → fsh-hook appeared → hooked but caught stayed 0/4 (mistimed marker — expected for random timing). Farming picker fix (cd4e50c8 Harvest Hollow): tapping empty plot NOW opens picker row with frm-plant-Wheat ($4·1d→$9), frm-plant-Pumpkin ($8·2d→$22) and frm-plant-cancel ✓; OLD frm-seed-N chips REMOVED (0 found) ✓; picking Wheat plants it and coins dropped 12→8 (screenshot confirms) ✓; cancel closes picker (0 chips post-cancel) ✓; END DAY button (frm-end-day) still present. Regression: Neon Core Rush 5b171783… iframe canvas renders ✓; /games hub renders 11 unique game cards (21 total testids because each card has a paired games-card-fire-<id> sub-testid). NO estimates approved, NO games built, NO games deleted, imported test games left in place.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "services.game_studio.PLAYER_REPS", "issue": "Missing entries for roguelike/tactics/idle/visual_novel/fishing. validate_spec rejects any spec containing player_representation for these runtimes (rep not in PLAYER_REPS.get(rt) or []). default_rep() returns 'puzzle_cursor' fallback instead of a themed rep. IDENTITY_BASE has all 5, so this is a partial-scaffold miss.", "priority": "MEDIUM"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_phase_c_iter117.py", "/app/test_reports/pytest/phase_c_iter117.xml"],
+  "action_items": [
+    "Add PLAYER_REPS entries for roguelike/tactics/idle/visual_novel/fishing in /app/backend/services/game_studio.py (mirror IDENTITY_BASE — e.g. roguelike:['dungeon_hero'], tactics:['squad_commander'], idle:['forge_master'], visual_novel:['novel_reader'], fishing:['angler']). Currently a spec with player_representation for these runtimes fails validate_spec — silently OK today only because these are still founder-only and specs likely omit that field, but any LLM-authored spec that includes it will be rejected."
+  ],
+  "critical_code_review_comments": [
+    "game_studio.PLAYER_REPS declared 16 runtimes but RUNTIMES has 21 — the two dicts should be locked in sync. Consider asserting `set(PLAYER_REPS) == set(RUNTIMES)` at module import (or in a startup health check) so the next runtime addition can't ship half-scaffolded.",
+    "GameRuntime.jsx line 126 dispatch map covers all 21 runtimes but is a single dense object literal — as the count grows, extracting the runtime→engine map to a top-level constant (or per-runtime file split) will help maintainability; the file is already 1386 lines.",
+    "Roguelike engine re-renders the whole tile grid on each step (tiles detach mid-click loop). Non-blocking for humans but flaky for automated tests — consider incremental DOM updates or exposing player x/y as data attributes on the container for testability."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase_c_iter117.py (new)"
+  ],
+  "success_rate": {"backend": "92% (12/13 — 1 fail is the confirmed PLAYER_REPS gap, treated as bug not test-flake)", "frontend": "100% (all 5 new runtimes render + interactive; farming picker fix validated; hub + Neon regression OK)"},
+  "test_credentials": "stealth / Password1$ (founder)",
+  "seed_data_creation": "None. 5 short estimate LLM calls were made and immediately cancelled (no builds, no LLM approve budget spent). Imported runtime-test games left untouched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression file: /app/backend/tests/test_phase_c_iter117.py — module-load `from services import game_studio` needs backend/.env loaded (dotenv is imported at top). Auth: POST /api/auth/login {'email':'stealth','password':'Password1$'} → access_token. Estimate route: POST /api/admin/games/estimate {'request':..., 'complexity':1, 'ai_power':3}; cancel via POST /api/admin/games/estimate/{id}/cancel. 5 runtime-test games (roguelike/tactics/idle/visual_novel/fishing) remain in DB status=approved (label 'runtime-test') and are correctly excluded from /api/games hub. Farming picker fix (frm-plant-<Crop> + frm-plant-cancel) validated on Harvest Hollow cd4e50c828314f73a38d39ef0ead0e65. Only backend gap: PLAYER_REPS missing 5 entries (see action_items)."
+}
