@@ -359,6 +359,51 @@ def identity_similarity(a: dict, b: dict) -> float:
 
 SIMILARITY_BLOCK = 0.75
 
+# ── Cover art (founder-approved only — never auto-generated) ─────────────
+COVER_IMG_COST = 0.04  # per generated cover image
+
+
+def build_cover_prompt(g: dict) -> dict:
+    """Suggested cover prompt composed from the game's own record."""
+    spec, plan = g.get("spec") or {}, g.get("plan") or {}
+    rt = spec.get("runtime") or g.get("runtime") or "quiz_adventure"
+    label = RUNTIME_LABELS.get(rt, rt)
+    ident = plan.get("identity") or {}
+    vp = plan.get("visual_plan") or {}
+    rep = str(spec.get("player_representation") or plan.get("player_representation") or "").replace("_", " ")
+    envs = [st.get("environment") for st in (spec.get("stages") or []) if st.get("environment")]
+    envs = list(dict.fromkeys([str(e) for e in envs] + [str(x) for x in (vp.get("environment_themes") or [])]))[:3]
+    foes = []
+    for st in (spec.get("stages") or []):
+        for m in (st.get("monsters") or []) + (st.get("creatures") or []) + (st.get("enemies") or []):
+            if isinstance(m, dict) and m.get("name"):
+                foes.append(str(m["name"]))
+        foes.extend(str(h) for h in (st.get("hazard_types") or []))
+        if isinstance(st.get("enemy"), dict) and st["enemy"].get("name"):
+            foes.append(str(st["enemy"]["name"]))
+    foes = list(dict.fromkeys(foes))[:4]
+    mood = str(vp.get("visual_style_summary") or spec.get("description") or g.get("description") or "")[:140]
+    base = IDENTITY_BASE.get(rt) or ("", "", "", "")
+    camera = ident.get("camera_model") or base[1]
+    loop = ident.get("core_loop") or base[3]
+    parts = [
+        f"Cinematic video game cover art for \"{g.get('title') or spec.get('title') or 'Untitled'}\", a {label} game.",
+        f"Hero: {rep}." if rep else "",
+        f"World: {', '.join(envs)}." if envs else "",
+        f"Challenges: {', '.join(foes)}." if foes else "",
+        f"Mood and style: {mood}" + ("" if mood.endswith(".") else ".") if mood else "",
+        f"Perspective inspired by the game's {camera}." if camera else "",
+        f"Capture the core loop: {loop}." if loop else "",
+        "Vertical portrait 4:5 composition, main subject framed in the upper two-thirds, bottom third "
+        "kept simpler and darker for a title overlay, readable focal point at small mobile sizes. "
+        "Dramatic lighting, rich color, highly detailed digital illustration. "
+        "Original artwork only — no text, no words, no logos, no watermarks, no existing characters or brands.",
+    ]
+    return {"prompt": " ".join(p for p in parts if p)[:900],
+            "aspect_ratio": "4:5 portrait (games card)",
+            "style": "cinematic digital illustration",
+            "est_cost": COVER_IMG_COST, "created_at": _iso()}
+
 FIRE_ECON_DEFAULTS = {
     "enabled": True, "paused": False,
     "pool": 1_000_000, "pool_initial": 1_000_000, "distributed": 0,
@@ -1026,6 +1071,7 @@ async def _run_build(game_id: str):
         await db.games.update_one({"id": game_id}, {"$set": {
             "spec": spec, "test_results": tests, "status": "pending_approval",
             "stage": "preview_ready", "actual_cost": round(cost, 3),
+            "cover_suggestion": build_cover_prompt({**game, "spec": spec}),
             "title": str(spec.get("title") or game["title"])[:150], "updated_at": _iso()}})
         await audit(None, "game_build_completed", game_id, detail=spec.get("title"), cost=round(cost, 3))
         from services import responsibility_center as rc

@@ -9,6 +9,7 @@ import GameFireEconomy from "@/components/games/GameFireEconomy";
 import GameControlsPanel from "@/components/games/GameControlsPanel";
 import GameOraiEdit from "@/components/games/GameOraiEdit";
 import GameQuickActions from "@/components/games/GameQuickActions";
+import GameCoverPanel from "@/components/games/GameCoverPanel";
 
 const STATUS_COLORS = {
   building: "#2EE6FF", pending_approval: "#F4A73B", approved: "#2EA0FF",
@@ -102,7 +103,12 @@ export default function AdminGames() {
   const [rewards, setRewards] = useState(null);
   const [showRewards, setShowRewards] = useState(false);
   const [showcaseOnly, setShowcaseOnly] = useState(false);
+  const [missing, setMissing] = useState(null);
+  const [showCovers, setShowCovers] = useState(false);
+  const [selCovers, setSelCovers] = useState([]);
   const pollRef = useRef(null);
+  const loadMissing = () => apiClient.get("/admin/games/covers/missing")
+    .then((r) => { setMissing(r.data); setSelCovers([]); }).catch(() => {});
   const loadDetail = (id) => apiClient.get(`/admin/games/${id}`).then((r) => setDetail(r.data.game)).catch(() => {});
   const selGame = params.get("game");
   const allowedC = data?.allowed_complexity || ALL_LEVELS;
@@ -303,6 +309,74 @@ export default function AdminGames() {
                   first-time completions, new bests and achievements. Rewards never block gameplay.
                 </p>
                 <button className="or-btn text-xs" onClick={saveRewards} data-testid="game-rewards-save">Save Rewards</button>
+              </div>
+            )}
+          </div>
+
+          <div className="or-surface p-3 mb-3" data-testid="game-covers-panel">
+            <button className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5"
+              style={{ color: "#F4A73B" }} data-testid="adm-covers-toggle"
+              onClick={() => { const n = !showCovers; setShowCovers(n); if (n) loadMissing(); }}>
+              🖼 Missing Covers {missing ? `(${missing.count})` : ""} {showCovers ? "▾" : "▸"}
+            </button>
+            {showCovers && (
+              <div className="mt-2" data-testid="adm-covers-list">
+                {!missing && <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>Loading…</div>}
+                {missing && !missing.count && (
+                  <div className="text-[10px]" style={{ color: "#10E670" }} data-testid="adm-covers-empty">
+                    Every published game has a cover. 🎉</div>
+                )}
+                {missing && missing.count > 0 && (
+                  <>
+                    <div className="text-[9.5px] mb-2" style={{ color: "var(--text-muted)" }}>
+                      Published games without cover art (text-card fallback shown on /games).
+                      Est. ${missing.est_cost_each}/cover · nothing generates without your approval.
+                    </div>
+                    {missing.games.map((g) => (
+                      <div key={g.id} className="flex items-center gap-2 py-1.5 text-xs" style={{ borderTop: "1px solid var(--border-col)" }}
+                        data-testid={`adm-cover-row-${g.id}`}>
+                        <input type="checkbox" checked={selCovers.includes(g.id)} data-testid={`adm-cover-check-${g.id}`}
+                          onChange={(e) => setSelCovers(e.target.checked ? [...selCovers, g.id] : selCovers.filter((x) => x !== g.id))} />
+                        <button className="flex-1 min-w-0 text-left" onClick={() => setParams({ game: g.id })}>
+                          <b>{g.title}</b> <span className="text-[9.5px]" style={{ color: "var(--text-muted)" }}>· {g.runtime}</span>
+                        </button>
+                        <button className="or-btn or-btn-ghost text-[10px]" disabled={busy} style={{ color: "#F4A73B" }}
+                          data-testid={`adm-cover-gen-${g.id}`}
+                          onClick={async () => {
+                            if (!window.confirm(`Generate cover for "${g.title}"? Estimated cost $${missing.est_cost_each}`)) return;
+                            setBusy(true);
+                            try {
+                              await apiClient.post(`/admin/games/${g.id}/regen-cover`, {});
+                              toast.success(`Cover generated for ${g.title}`);
+                              loadMissing(); load();
+                            } catch (e) { toast.error(e?.response?.data?.detail || "Cover generation failed"); }
+                            finally { setBusy(false); }
+                          }}>Generate Missing Cover</button>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <button className="or-btn text-xs font-bold" disabled={busy || !selCovers.length}
+                        style={{ background: selCovers.length ? "#F4A73B" : undefined, color: selCovers.length ? "#0a0a0a" : undefined }}
+                        data-testid="adm-covers-bulk"
+                        onClick={async () => {
+                          const total = (selCovers.length * missing.est_cost_each).toFixed(2);
+                          if (!window.confirm(`Generate covers for ${selCovers.length} selected game(s)?\nTotal estimated cost: $${total}`)) return;
+                          setBusy(true);
+                          try {
+                            const r = await apiClient.post(`/admin/games/covers/bulk-generate`, { game_ids: selCovers });
+                            toast.success(`Queued ${r.data.queued} covers (est $${r.data.est_total_cost}) — refresh in a minute`);
+                            setSelCovers([]);
+                          } catch (e) { toast.error(e?.response?.data?.detail || "Bulk generation failed"); }
+                          finally { setBusy(false); }
+                        }}>
+                        Generate Covers for Selected ({selCovers.length})
+                        {selCovers.length > 0 && ` — est $${(selCovers.length * missing.est_cost_each).toFixed(2)}`}
+                      </button>
+                      <button className="or-btn or-btn-ghost text-[10px]" disabled={busy} onClick={loadMissing}
+                        data-testid="adm-covers-refresh">Refresh</button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -609,6 +683,7 @@ export default function AdminGames() {
               </div>
               <GameRuntime spec={detail.spec} height={440} gameId={detail.id} controls={detail.controls} />
               <GameQuickActions game={detail} onChanged={() => { loadDetail(detail.id); load(); }} />
+              <GameCoverPanel game={detail} onChanged={() => { loadDetail(detail.id); load(); }} />
               <GameOraiEdit gameId={detail.id} onChanged={() => loadDetail(detail.id)} />
               <GameControlsPanel gameId={detail.id} onChanged={() => loadDetail(detail.id)} />
               <GameFireEconomy gameId={detail.id} />

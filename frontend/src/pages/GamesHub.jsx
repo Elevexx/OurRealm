@@ -92,6 +92,7 @@ export default function GamesHub() {
                 {g.cover_url ? (
                   <div className="relative w-full overflow-hidden" style={{ aspectRatio: "4/5" }}>
                     <img src={g.cover_url} alt={g.title} loading="lazy"
+                      onError={(e) => { e.currentTarget.style.display = "none"; }}
                       className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                     <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, transparent 35%, rgba(4,8,18,0.55) 68%, rgba(4,8,18,0.96) 100%)" }} />
                     {g.genre && (

@@ -500,28 +500,177 @@ async def reroll_audio(game_id: str, body: dict, current: CurrentUser):
 
 @admin2.post("/{game_id}/regen-cover")
 async def regen_cover(game_id: str, body: dict, current: CurrentUser):
-    """Regenerate the cover via the existing AI image pipeline. Founder-clicked only."""
+    """Generate/regenerate the cover via the existing AI image pipeline. Founder-clicked only."""
     require_founder(current)
     g = await db.games.find_one({"id": game_id}, {"_id": 0})
     if not g:
         raise HTTPException(status_code=404, detail="Game not found")
     from services.orai_images import generate_orai_image
-    from services import image_store
-    prompt = (body.get("prompt") or
-              f"Video game cover art, {g.get('genre') or 'arcade'} style: {g.get('title')}. "
-              f"{(g.get('description') or '')[:200]} Vibrant, dramatic lighting, no text.")
+    prompt = str(body.get("prompt") or (g.get("cover_suggestion") or {}).get("prompt")
+                 or gs.build_cover_prompt(g)["prompt"])[:900]
     try:
-        img_bytes, model = await generate_orai_image(prompt[:900])
-        rec = await image_store.save_bytes(img_bytes, current["id"], "image/png")
-        url = rec.original_url
+        img_bytes, model = await generate_orai_image(prompt)
+        url = await _apply_cover(g, current, img_bytes, prompt, model, "generated")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Cover generation failed: {str(e)[:140]}")
+    await gs.audit(current, "game_cover_regenerated", game_id, detail=model, cost=gs.COVER_IMG_COST)
+    return {"ok": True, "cover_url": url, "model": model, "prompt": prompt}
+
+
+# ── Cover art workflow (founder-only, never auto-generated) ──────────────
+COVER_W, COVER_H = 832, 1040  # exact 4:5 /games card crop
+
+
+def _crop_cover_bytes(raw: bytes) -> bytes:
+    """Center-crop to the exact 4:5 card ratio with a safe focal point."""
+    import io
+    from PIL import Image, ImageOps
+    img = ImageOps.exif_transpose(Image.open(io.BytesIO(raw)))
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    img = ImageOps.fit(img, (COVER_W, COVER_H), Image.LANCZOS, centering=(0.5, 0.42))
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=86, optimize=True)
+    return out.getvalue()
+
+
+async def _apply_cover(g: dict, current: dict, img_bytes: bytes, prompt: str, model: str, source: str) -> str:
+    """Store original + exact card crop, keep history for restore, bump version."""
+    from services import image_store
+    orig = await image_store.save_bytes(img_bytes, current["id"])
+    card = await image_store.save_bytes(_crop_cover_bytes(img_bytes), current["id"], "image/jpeg")
+    history = g.get("cover_history") or []
+    if g.get("cover_url"):
+        history = history[-9:] + [{"cover_url": g["cover_url"],
+                                   "cover_original_url": g.get("cover_original_url"),
+                                   "meta": g.get("cover_meta"), "at": _iso()}]
+    meta = {"prompt": (prompt or "")[:900], "model": model, "source": source,
+            "cost": gs.COVER_IMG_COST if source == "generated" else 0.0,
+            "card_crop": f"{COVER_W}x{COVER_H} (4:5)", "at": _iso()}
+    versions = (g.get("versions") or [])[-29:] + [_versions_entry(g)]
+    await db.games.update_one({"id": g["id"]}, {"$set": {
+        "cover_url": card.original_url, "cover_original_url": orig.original_url,
+        "cover_meta": meta, "cover_history": history,
+        "versions": versions, "version": int(g.get("version") or 1) + 1, "updated_at": _iso()}})
+    return card.original_url
+
+
+@admin2.get("/covers/missing")
+async def covers_missing(current: CurrentUser):
+    """Every published game with no cover image (honest text-card fallback stays until fixed)."""
+    require_founder(current)
+    rows = await db.games.find(
+        {"status": "published", "$or": [{"cover_url": None}, {"cover_url": ""}, {"cover_url": {"$exists": False}}]},
+        {"_id": 0, "id": 1, "title": 1, "runtime": 1, "genre": 1, "created_at": 1}).sort("created_at", -1).to_list(200)
+    return {"games": rows, "count": len(rows), "est_cost_each": gs.COVER_IMG_COST,
+            "est_total_cost": round(len(rows) * gs.COVER_IMG_COST, 2)}
+
+
+@admin2.post("/covers/bulk-generate")
+async def covers_bulk_generate(body: dict, current: CurrentUser):
+    """Generate covers for founder-selected games (cost approved on the client confirm)."""
+    require_founder(current)
+    ids = [str(x) for x in (body.get("game_ids") or []) if x][:12]
+    if not ids:
+        raise HTTPException(status_code=400, detail="Select at least one game")
+    actor = {"id": current["id"], "username": current.get("username")}
+
+    async def _bulk():
+        from services.orai_images import generate_orai_image
+        for gid in ids:
+            g = await db.games.find_one({"id": gid}, {"_id": 0})
+            if not g or g.get("cover_url"):
+                continue
+            try:
+                prompt = str((g.get("cover_suggestion") or {}).get("prompt") or gs.build_cover_prompt(g)["prompt"])[:900]
+                img_bytes, model = await generate_orai_image(prompt)
+                await _apply_cover(g, actor, img_bytes, prompt, model, "generated")
+                await gs.audit(actor, "game_cover_bulk_generated", gid, detail=model, cost=gs.COVER_IMG_COST)
+            except Exception as e:  # noqa: BLE001
+                await gs.audit(actor, "game_cover_bulk_failed", gid, detail=str(e)[:150])
+    asyncio.create_task(_bulk())
+    await gs.audit(current, "game_cover_bulk_started", detail=f"{len(ids)} games",
+                   cost=round(len(ids) * gs.COVER_IMG_COST, 2))
+    return {"ok": True, "queued": len(ids), "est_total_cost": round(len(ids) * gs.COVER_IMG_COST, 2)}
+
+
+@admin2.get("/{game_id}/cover-suggestion")
+async def cover_suggestion(game_id: str, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    sug = g.get("cover_suggestion") or gs.build_cover_prompt(g)
+    return {"suggestion": sug, "has_cover": bool(g.get("cover_url")),
+            "history_count": len(g.get("cover_history") or []), "cover_meta": g.get("cover_meta")}
+
+
+@admin2.post("/{game_id}/cover-upload")
+async def cover_upload(game_id: str, body: dict, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    import base64 as _b64
+    b64 = str(body.get("image_b64") or "")
+    if "," in b64[:80]:
+        b64 = b64.split(",", 1)[1]
+    try:
+        raw = _b64.b64decode(b64)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid image data")
+    if not raw or len(raw) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image must be under 8 MB")
+    try:
+        url = await _apply_cover(g, current, raw, "(founder upload)", "upload", "upload")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)[:140])
+    await gs.audit(current, "game_cover_uploaded", game_id)
+    return {"ok": True, "cover_url": url}
+
+
+@admin2.post("/{game_id}/cover-remove")
+async def cover_remove(game_id: str, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    if not g.get("cover_url"):
+        raise HTTPException(status_code=400, detail="This game has no cover")
+    history = (g.get("cover_history") or [])[-9:] + [{
+        "cover_url": g["cover_url"], "cover_original_url": g.get("cover_original_url"),
+        "meta": g.get("cover_meta"), "at": _iso()}]
     versions = (g.get("versions") or [])[-29:] + [_versions_entry(g)]
     await db.games.update_one({"id": game_id}, {"$set": {
-        "cover_url": url, "versions": versions,
+        "cover_url": None, "cover_original_url": None, "cover_meta": None,
+        "cover_history": history, "versions": versions,
         "version": int(g.get("version") or 1) + 1, "updated_at": _iso()}})
-    await gs.audit(current, "game_cover_regenerated", game_id, detail=model)
-    return {"ok": True, "cover_url": url, "model": model}
+    await gs.audit(current, "game_cover_removed", game_id)
+    return {"ok": True}
+
+
+@admin2.post("/{game_id}/cover-restore")
+async def cover_restore(game_id: str, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    history = g.get("cover_history") or []
+    if not history:
+        raise HTTPException(status_code=400, detail="No previous cover to restore")
+    prev, rest = history[-1], history[:-1]
+    if g.get("cover_url"):
+        rest = rest[-9:] + [{"cover_url": g["cover_url"], "cover_original_url": g.get("cover_original_url"),
+                             "meta": g.get("cover_meta"), "at": _iso()}]
+    versions = (g.get("versions") or [])[-29:] + [_versions_entry(g)]
+    await db.games.update_one({"id": game_id}, {"$set": {
+        "cover_url": prev.get("cover_url"), "cover_original_url": prev.get("cover_original_url"),
+        "cover_meta": prev.get("meta"), "cover_history": rest, "versions": versions,
+        "version": int(g.get("version") or 1) + 1, "updated_at": _iso()}})
+    await gs.audit(current, "game_cover_restored", game_id)
+    return {"ok": True, "cover_url": prev.get("cover_url")}
 
 
 @admin2.get("/{game_id}/export")

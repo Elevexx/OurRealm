@@ -264,3 +264,11 @@ KNOWN (pre-existing, by design): bottom mobile nav renders on desktop too — us
 - 5 approved (unpublished) demo games imported with label `runtime-test` for founder preview: roguelike 3a0f96ab…, tactics 8d4fec1e…, idle 70f57f67…, visual_novel 410bf9e8…, fishing 59b4e1ca… (play via /games?play=<id> as founder; delete via admin action=delete when done).
 - Tested: iteration_117 — backend 13/13 after PLAYER_REPS fix, frontend 100% (all 5 runtimes interactive, farming picker validated, hub shows exactly 11 published games, no leak, Neon Core Rush regression OK).
 - Learning: parallel search_replace batches on the SAME file can clobber each other (RUNTIMES + PLAYER_REPS edits were silently lost twice) — verify grep after batched same-file edits.
+
+## 2026-06 — Game cover art workflow (P0)
+- Suggested cover prompts auto-composed from game record (title/runtime/rep/world/enemies/theme/camera/loop) — stored on build via `game_studio.build_cover_prompt`, computed on-demand for older games via GET /api/admin/games/{id}/cover-suggestion. NEVER auto-generates.
+- Cover endpoints (founder-only, games_plus.py): regen-cover (accepts prompt, defaults to suggestion), cover-upload (b64), cover-remove, cover-restore (history swap), covers/missing (published+coverless), covers/bulk-generate (≤12, background, audit per game, cost $0.04/img).
+- Perfect card fit: `_crop_cover_bytes` → exact 832×1040 (4:5) JPEG q86, focal 0.42; stores cover_url (card crop) + cover_original_url + cover_meta {prompt,model,source,cost,card_crop} + cover_history (10) + version bump + audit w/ cost.
+- Frontend: GameCoverPanel.jsx (qa-cover-* testids) in admin detail; Missing Covers panel in AdminGames list (adm-covers-*, per-game + bulk with total cost confirm); GamesHub img onError hides broken images (text-card fallback stays).
+- E2E on Bake the Fraction Feast (only published coverless game): suggestion → $0.04 estimate → Gemini generation → 832×1040 crop → hub thumbnail (desktop+mobile) → regenerate → restore → remove → restore. All verified via curl + screenshots.
+- Note: /api/media/images/* is behind the site-access gate (401 for anon curl) — fine in-app since /games requires login.

@@ -3585,3 +3585,7 @@ User approved 4-phase plan: P1 ORAi text chat (DONE) → P2 Voice Mode (record�
 - 5 founder-preview demo games imported (label `runtime-test`, approved/unpublished): rgl 3a0f96ab, tac 8d4fec1e, idl 70f57f67, vn 410bf9e8, fsh 59b4e1ca.
 - Validated by testing agent iteration_117 (backend 13/13, frontend 100%). Regression pytest: /app/backend/tests/test_phase_c_iter117.py.
 - Remaining backlog: publish/curate showcase games for the 5 new runtimes; optional per-runtime file split of GameRuntime.jsx (1386 lines).
+
+## 2026-06 — Cover Art Workflow (P0) COMPLETE
+- Every game (existing + future) has an optional founder-approved cover flow: suggested prompt, est cost, generate/regenerate/edit-prompt/upload/remove/restore-previous, missing-covers list + bulk generate with total cost approval. Exact 4:5 card crops (832×1040), original + crop + meta + history stored. Honest text-card fallback retained; broken images auto-hidden.
+- E2E tested on "Bake the Fraction Feast" — now has a generated cover live on /games.
