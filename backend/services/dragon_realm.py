@@ -193,21 +193,25 @@ async def claim_reward(user: dict, reward_id: str) -> dict:
     try:
         txn = await credit_fire(user["id"], "dragon_realm", GAME_ID, idem, amount,
                                 idempotency_key=idem, finalize_at=_iso())
-        await settle_due(user["id"])
-        if txn:
-            await collect_fire(user, [txn["id"]])  # straight into the Fire Power Vault
-        await db.dragon_realm_saves.update_one(
-            {"user_id": user["id"], "game": GAME_ID},
-            {"$set": {f"trusted.rewards.{reward_id}.status": "claimed",
-                      f"trusted.rewards.{reward_id}.claimed_at": _iso(),
-                      f"trusted.rewards.{reward_id}.txn_id": (txn or {}).get("id"),
-                      "updated_at": _iso()}})
     except Exception:
         await db.dragon_realm_saves.update_one(  # roll back so the reward is not lost
             {"user_id": user["id"], "game": GAME_ID,
              f"trusted.rewards.{reward_id}.status": "claiming"},
             {"$set": {f"trusted.rewards.{reward_id}.status": "unclaimed"}})
         raise
+    # Ledger credit succeeded (or was an idempotent replay) — stamp claimed FIRST.
+    await db.dragon_realm_saves.update_one(
+        {"user_id": user["id"], "game": GAME_ID},
+        {"$set": {f"trusted.rewards.{reward_id}.status": "claimed",
+                  f"trusted.rewards.{reward_id}.claimed_at": _iso(),
+                  f"trusted.rewards.{reward_id}.txn_id": (txn or {}).get("id"),
+                  "updated_at": _iso()}})
+    try:  # move straight into the Fire Power Vault (recoverable via Fire page if it fails)
+        await settle_due(user["id"])
+        if txn:
+            await collect_fire(user, [txn["id"]])
+    except Exception:  # noqa: BLE001
+        pass
     from services import game_studio as gs
     await gs.audit({"id": user["id"], "username": user.get("username")},
                    "dragon_realm_reward_claimed", GAME_ID,

@@ -3589,3 +3589,7 @@ User approved 4-phase plan: P1 ORAi text chat (DONE) → P2 Voice Mode (record�
 ## 2026-06 — Cover Art Workflow (P0) COMPLETE
 - Every game (existing + future) has an optional founder-approved cover flow: suggested prompt, est cost, generate/regenerate/edit-prompt/upload/remove/restore-previous, missing-covers list + bulk generate with total cost approval. Exact 4:5 card crops (832×1040), original + crop + meta + history stored. Honest text-card fallback retained; broken images auto-hidden.
 - E2E tested on "Bake the Fraction Feast" — now has a generated cover live on /games.
+
+## 2026-06 — Dragon Realm: The Fire Quest (vertical slice COMPLETE, awaiting founder verification)
+- Phase 1 audit + contract and Phase 2 Enchanted Forest slice done per user directive: no FP burning, rewards 25/10/100 founder-only admin-configurable, real Fire Vault ledger, idempotent/replay-proof claims.
+- Pending (user-gated): Phase 3 regions 2-6 + 40 dragons, Phase 4 multi-dragon Dragon King, Phase 5 polish (region music, admin UI panel), Phase 6 beta validation. Do NOT start until founder verifies the slice.
