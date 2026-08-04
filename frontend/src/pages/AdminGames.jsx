@@ -10,6 +10,7 @@ import GameControlsPanel from "@/components/games/GameControlsPanel";
 import GameOraiEdit from "@/components/games/GameOraiEdit";
 import GameQuickActions from "@/components/games/GameQuickActions";
 import GameCoverPanel from "@/components/games/GameCoverPanel";
+import DragonRealmAdminPanel from "@/components/games/DragonRealmAdminPanel";
 
 const STATUS_COLORS = {
   building: "#2EE6FF", pending_approval: "#F4A73B", approved: "#2EA0FF",
@@ -312,6 +313,8 @@ export default function AdminGames() {
               </div>
             )}
           </div>
+
+          <DragonRealmAdminPanel />
 
           <div className="or-surface p-3 mb-3" data-testid="game-covers-panel">
             <button className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5"

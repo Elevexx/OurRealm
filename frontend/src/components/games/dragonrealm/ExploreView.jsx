@@ -1,15 +1,16 @@
 import { useEffect, useRef, useCallback } from "react";
-import { FOREST_MAP, BLOCKED, SPAWN_DRAGONS, sfx } from "./engine";
+import { BLOCKED, sfx } from "./engine";
 import { drawTile, drawSprite, DRAGON_PX, WIZARD_PX, WIZ_PAL, ELEM_PAL } from "./sprites";
 
 /* Exploration view: canvas tile map, keyboard + tap movement, mobile D-pad. */
-export const ExploreView = ({ pos, setPos, dragons, resolved, chestOpen, onEncounter, onNpc, onChest, onBossGate, reducedMotion }) => {
+export const ExploreView = ({ theme, spawnMap, pos, setPos, dragons, resolved, chestOpen, onEncounter, onNpc, onChest, onBossGate, reducedMotion }) => {
+  const MAP = theme.map;
   const canvasRef = useRef(null);
   const tickRef = useRef(0);
   const posRef = useRef(pos);
   posRef.current = pos;
 
-  const tileAt = (x, y) => (FOREST_MAP[y] || "")[x] || "T";
+  const tileAt = (x, y) => (MAP[y] || "")[x] || "T";
 
   const tryMove = useCallback((dx, dy) => {
     const p = posRef.current;
@@ -20,7 +21,7 @@ export const ExploreView = ({ pos, setPos, dragons, resolved, chestOpen, onEncou
     if (ch === "C") { if (!chestOpen) onChest(); return; }
     if (ch === "B") { onBossGate(); return; }
     if (/[1-6]/.test(ch)) {
-      const id = SPAWN_DRAGONS[ch];
+      const id = spawnMap[ch];
       if (!resolved.includes(id)) { onEncounter(id); return; }
     }
     sfx("step");
@@ -41,17 +42,17 @@ export const ExploreView = ({ pos, setPos, dragons, resolved, chestOpen, onEncou
     let raf;
     const cv = canvasRef.current;
     const ctx = cv.getContext("2d");
-    const W = FOREST_MAP[0].length, H = FOREST_MAP.length;
+    const W = MAP[0].length, H = MAP.length;
     const draw = () => {
       const s = cv.width / W;
       tickRef.current += 1;
       const tick = reducedMotion ? 0 : tickRef.current;
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const ch = tileAt(x, y);
-        drawTile(ctx, /[1-6SN]/.test(ch) ? "." : ch, x * s, y * s, s, tick);
-        if (ch === "N") drawTile(ctx, "N", x * s, y * s, s, tick);
+        drawTile(ctx, /[1-6SN]/.test(ch) ? "." : ch, x * s, y * s, s, tick, theme);
+        if (ch === "N") drawTile(ctx, "N", x * s, y * s, s, tick, theme);
         if (/[1-6]/.test(ch)) {
-          const id = SPAWN_DRAGONS[ch];
+          const id = spawnMap[ch];
           if (!resolved.includes(id)) {
             const el = dragons[id]?.element || "nature";
             const bob = reducedMotion ? 0 : Math.sin(tick / 14 + x) * 2;
@@ -65,12 +66,12 @@ export const ExploreView = ({ pos, setPos, dragons, resolved, chestOpen, onEncou
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [dragons, resolved, reducedMotion]);
+  }, [dragons, resolved, reducedMotion, theme]);
 
   const tapCanvas = (e) => {
     const cv = canvasRef.current;
     const r = cv.getBoundingClientRect();
-    const s = r.width / FOREST_MAP[0].length;
+    const s = r.width / MAP[0].length;
     const tx = Math.floor((e.clientX - r.left) / s), ty = Math.floor((e.clientY - r.top) / s);
     const p = posRef.current;
     const dx = tx - p.x, dy = ty - p.y;
@@ -89,7 +90,7 @@ export const ExploreView = ({ pos, setPos, dragons, resolved, chestOpen, onEncou
     <div className="relative select-none" data-testid="dr-explore">
       <canvas ref={canvasRef} width={800} height={560} onPointerDown={tapCanvas}
         className="w-full rounded-xl cursor-pointer" style={{ imageRendering: "pixelated", border: "3px solid #10102a" }}
-        aria-label="Enchanted Forest map — use arrow keys, WASD or tap a direction to move" />
+        aria-label="Region map — use arrow keys, WASD or tap a direction to move" />
       <div className="absolute bottom-3 left-3 sm:hidden">
         <div className="flex justify-center"><DBtn label="▲" dx={0} dy={-1} testid="dr-dpad-up" /></div>
         <div className="flex gap-12"><DBtn label="◀" dx={-1} dy={0} testid="dr-dpad-left" /><DBtn label="▶" dx={1} dy={0} testid="dr-dpad-right" /></div>

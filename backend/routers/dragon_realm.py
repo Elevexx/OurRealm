@@ -26,7 +26,8 @@ async def state(current: CurrentUser):
             "version": cfg["game_version"],
             "save": doc.get("save"), "save_version": doc.get("save_version") or 0,
             "trusted": doc.get("trusted"),
-            "content": {"dragons": dr.DRAGONS, "boss": dr.BOSS, "quest": dr.QUEST},
+            "content": {"regions": dr.REGIONS, "region_order": dr.REGION_ORDER,
+                        "bosses": dr.BOSSES, "quests": dr.QUESTS},
             "rewards_config": cfg["rewards"],
             "fire": await dr.wallet_summary(current)}
 
@@ -97,7 +98,7 @@ async def admin_config_put(body: dict, current: CurrentUser):
         changes["rewards"] = {k: max(0, int(v)) for k, v in (changes["rewards"] or {}).items()
                               if k in dr.DEFAULT_CONFIG["rewards"]}
         changes["rewards"] = {**cfg["rewards"], **changes["rewards"]}
-    if changes.get("access_mode") not in (None, "founder_only", "custom", "beta", "live", "maintenance"):
+    if changes.get("access_mode") not in (None, *dr.ACCESS_MODES):
         raise HTTPException(status_code=400, detail="Invalid access mode")
     await db.dragon_realm_config.update_one({"id": "config"}, {"$set": {
         **changes, "updated_at": dr._iso(), "updated_by": current["id"]}}, upsert=True)

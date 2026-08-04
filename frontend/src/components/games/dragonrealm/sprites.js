@@ -76,16 +76,30 @@ export function drawSprite(ctx, rows, pal, x, y, s, flip = false) {
   }
 }
 
-export function drawTile(ctx, ch, x, y, s, tick) {
-  ctx.fillStyle = "#2f7a35"; ctx.fillRect(x, y, s, s); // grass base
-  if ((x / s + y / s) % 2 === 0) { ctx.fillStyle = "rgba(255,255,255,0.03)"; ctx.fillRect(x, y, s, s); }
-  if (ch === "p") { ctx.fillStyle = "#b89a5e"; ctx.fillRect(x, y, s, s); ctx.fillStyle = "rgba(0,0,0,0.08)"; ctx.fillRect(x + s * 0.2, y + s * 0.3, s * 0.2, s * 0.15); }
+export function drawTile(ctx, ch, x, y, s, tick, th) {
+  th = th || { ground: "#2f7a35", path: "#b89a5e", liquid: "#2a5a9e", obstacle: "tree", oa: "#1d5a28", ob: "#3f9e4d", trunk: "#5a3a1e" };
+  ctx.fillStyle = th.ground; ctx.fillRect(x, y, s, s);
+  if ((x / s + y / s) % 2 === 0) { ctx.fillStyle = "rgba(255,255,255,0.04)"; ctx.fillRect(x, y, s, s); }
+  if (ch === "p") { ctx.fillStyle = th.path; ctx.fillRect(x, y, s, s); ctx.fillStyle = "rgba(0,0,0,0.08)"; ctx.fillRect(x + s * 0.2, y + s * 0.3, s * 0.2, s * 0.15); }
   else if (ch === "T") {
-    ctx.fillStyle = "#5a3a1e"; ctx.fillRect(x + s * 0.4, y + s * 0.55, s * 0.2, s * 0.4);
-    ctx.fillStyle = "#1d5a28"; ctx.beginPath(); ctx.arc(x + s * 0.5, y + s * 0.35, s * 0.4, 0, 7); ctx.fill();
-    ctx.fillStyle = "#3f9e4d"; ctx.beginPath(); ctx.arc(x + s * 0.38, y + s * 0.3, s * 0.22, 0, 7); ctx.fill();
+    if (th.obstacle === "crystal") {
+      ctx.fillStyle = th.oa; ctx.beginPath(); ctx.moveTo(x + s * 0.5, y + s * 0.05); ctx.lineTo(x + s * 0.85, y + s * 0.9); ctx.lineTo(x + s * 0.15, y + s * 0.9); ctx.fill();
+      ctx.fillStyle = th.ob; ctx.fillRect(x + s * 0.42, y + s * 0.25, s * 0.16, s * 0.4);
+    } else if (th.obstacle === "dune") {
+      ctx.fillStyle = th.oa; ctx.beginPath(); ctx.arc(x + s * 0.5, y + s * 0.85, s * 0.45, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = th.ob; ctx.beginPath(); ctx.arc(x + s * 0.38, y + s * 0.85, s * 0.22, Math.PI, 0); ctx.fill();
+    } else if (th.obstacle === "cloud") {
+      ctx.fillStyle = th.ob; ctx.beginPath(); ctx.arc(x + s * 0.35, y + s * 0.5, s * 0.25, 0, 7); ctx.arc(x + s * 0.65, y + s * 0.5, s * 0.3, 0, 7); ctx.fill();
+    } else if (th.obstacle === "pillar") {
+      ctx.fillStyle = th.oa; ctx.fillRect(x + s * 0.25, y + s * 0.1, s * 0.5, s * 0.85);
+      ctx.fillStyle = th.ob; ctx.fillRect(x + s * 0.2, y + s * 0.05, s * 0.6, s * 0.15);
+    } else { // tree / ice pine
+      ctx.fillStyle = th.trunk; ctx.fillRect(x + s * 0.4, y + s * 0.55, s * 0.2, s * 0.4);
+      ctx.fillStyle = th.oa; ctx.beginPath(); ctx.arc(x + s * 0.5, y + s * 0.35, s * 0.4, 0, 7); ctx.fill();
+      ctx.fillStyle = th.ob; ctx.beginPath(); ctx.arc(x + s * 0.38, y + s * 0.3, s * 0.22, 0, 7); ctx.fill();
+    }
   } else if (ch === "w") {
-    ctx.fillStyle = "#2a5a9e"; ctx.fillRect(x, y, s, s);
+    ctx.fillStyle = th.liquid; ctx.fillRect(x, y, s, s);
     ctx.fillStyle = "rgba(255,255,255,0.25)"; ctx.fillRect(x + ((tick / 20 + x) % s), y + s * 0.3, s * 0.25, 2);
   } else if (ch === "r") { ctx.fillStyle = "#7a7a8a"; ctx.beginPath(); ctx.arc(x + s * 0.5, y + s * 0.6, s * 0.32, 0, 7); ctx.fill(); }
   else if (ch === "f") {
