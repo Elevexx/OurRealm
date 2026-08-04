@@ -46,6 +46,71 @@ async def import_showcase_games(current: CurrentUser):
 
 
 # ─── Founder Game Studio ─────────────────────────────────────────────────
+@admin.post("/import-batch")
+async def import_batch(body: dict, current: CurrentUser):
+    """Founder-only, INSERT-ONLY migration endpoint. Copies full game
+    documents from another environment. Never updates, replaces or deletes
+    an existing record — existing IDs are skipped. `dry_run` reports what
+    would happen (incl. duplicate-title warnings) without writing.
+    Optional per-game `cover_b64` re-hosts the cover through image_store."""
+    require_founder(current)
+    games = body.get("games") or []
+    dry_run = bool(body.get("dry_run", True))
+    if not isinstance(games, list) or len(games) > 100:
+        raise HTTPException(status_code=400, detail="games must be a list (max 100)")
+    count_before = await db.games.count_documents({})
+    existing_ids = {g["id"] async for g in db.games.find({}, {"id": 1})}
+    existing_titles = {(g.get("title") or "").strip().lower()
+                       async for g in db.games.find({}, {"title": 1})}
+    report = {"dry_run": dry_run, "examined": 0, "inserted": 0, "skipped_existing": 0,
+              "duplicate_title_warnings": [], "failed": [], "titles_inserted": [],
+              "count_before": count_before}
+    batch_titles = set()
+    for g in games:
+        report["examined"] += 1
+        gid = str(g.get("id") or "").strip()
+        title = str(g.get("title") or "").strip()
+        try:
+            if not gid or not title or not (g.get("runtime") or g.get("spec")):
+                raise ValueError("missing id/title/runtime")
+            if gid in existing_ids:
+                report["skipped_existing"] += 1
+                continue
+            tkey = title.lower()
+            if tkey in existing_titles or tkey in batch_titles:
+                report["duplicate_title_warnings"].append(
+                    {"id": gid, "title": title,
+                     "note": "same title already exists (different id) — inserted anyway" if not dry_run
+                             else "same title already exists (different id)"})
+            batch_titles.add(tkey)
+            if dry_run:
+                report["titles_inserted"].append(title)
+                report["inserted"] += 1
+                continue
+            doc = {k: v for k, v in g.items() if k not in ("_id", "cover_b64", "cover_mime")}
+            doc["plays"], doc["saves"] = 0, 0  # never carry preview play data
+            doc["migrated_from"] = "preview"
+            doc["migrated_at"] = _iso()
+            if g.get("cover_b64"):
+                import base64
+                from services.image_store import save_bytes
+                rec = await save_bytes(base64.b64decode(g["cover_b64"]), current["id"],
+                                       declared_mime=g.get("cover_mime") or "image/jpeg")
+                doc["cover_url"] = rec.original_url
+                doc["cover_original_url"] = rec.original_url
+            await db.games.insert_one(doc)
+            existing_ids.add(gid)
+            report["inserted"] += 1
+            report["titles_inserted"].append(title)
+        except Exception as e:  # noqa: BLE001
+            report["failed"].append({"id": gid, "title": title, "error": str(e)[:200]})
+    report["count_after"] = await db.games.count_documents({})
+    if not dry_run:
+        await gs.audit(current, "games_import_batch",
+                       detail=f"inserted {report['inserted']}, skipped {report['skipped_existing']}, failed {len(report['failed'])}")
+    return report
+
+
 @admin.get("")
 async def studio_overview(current: CurrentUser):
     require_founder(current)
