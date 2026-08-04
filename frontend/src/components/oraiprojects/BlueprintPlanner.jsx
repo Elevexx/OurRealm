@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { ArrowLeft, Check, Cpu, Layers, Library, RefreshCw, ShieldAlert, Wand2, X } from "lucide-react";
@@ -271,11 +271,106 @@ export default function BlueprintPlanner({ bp, onUpdate, onExit }) {
           </>
         )}
         {approved && (
-          <div className="text-[10.5px] flex items-center gap-1.5" style={{ color: "#10E670" }} data-testid="approved-note">
-            <Wand2 size={12} /> Approved. Asset resolution & build come in the next phase — no media was generated.
-            <button className="or-btn text-[10px] ml-2" onClick={onExit} data-testid="approved-exit-btn">Done</button>
+          <div className="text-[10.5px] flex items-center gap-1.5 w-full" style={{ color: "#10E670" }} data-testid="approved-note">
+            <Wand2 size={12} /> Blueprint approved — review the build below. No media was generated.
           </div>
         )}
+        {approved && (
+          <BuildReviewPanel bp={bp} onExit={onExit} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BuildReviewPanel({ bp, onExit }) {
+  const [review, setReview] = useState(null);
+  const [building, setBuilding] = useState(bp.status === "building" || bp.status === "built");
+  const [status, setStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!building) {
+      apiClient.get(`/orai/projects/blueprints/${bp.id}/build/review`)
+        .then((r) => setReview(r.data.review)).catch(() => {});
+    }
+  }, [bp.id, building]);
+
+  useEffect(() => {
+    if (!building) return;
+    const t = setInterval(() => {
+      apiClient.get(`/orai/projects/blueprints/${bp.id}/build/status`)
+        .then((r) => {
+          setStatus(r.data);
+          if (["built", "build_failed"].includes(r.data.blueprint_status)) clearInterval(t);
+        }).catch(() => {});
+    }, 3000);
+    return () => clearInterval(t);
+  }, [bp.id, building]);
+
+  const approveBuild = async () => {
+    setBusy(true);
+    try {
+      await apiClient.post(`/orai/projects/blueprints/${bp.id}/build/approve`);
+      toast.success("Build approved — assembling your game");
+      setBuilding(true);
+    } catch (e) {
+      const d = e?.response?.data?.detail;
+      toast.error(typeof d === "string" ? d : d?.message || "Build validation failed");
+    } finally { setBusy(false); }
+  };
+
+  if (building) {
+    const g = status?.game;
+    const done = status?.blueprint_status === "built";
+    const failed = status?.blueprint_status === "build_failed";
+    return (
+      <div className="w-full" data-testid="build-progress-panel">
+        <div className="text-[11px] font-bold mb-1" style={{ color: failed ? "#FF5470" : done ? "#10E670" : "#2EA0FF" }}>
+          {failed ? "Build failed" : done ? "Playable build ready — pending your review in Game Studio" : `Building… ${g?.stage || ""}`}
+        </div>
+        {(g?.build_log || []).slice(-3).map((l, i) => (
+          <div key={i} className="text-[9px]" style={{ color: "var(--text-muted)" }}>{l.stage}: {l.msg}</div>
+        ))}
+        {done && g && (
+          <div className="text-[10px] mt-1.5 flex items-center gap-2 flex-wrap" data-testid="build-done-note">
+            <Chip color="#10E670">{g.title}</Chip>
+            <Chip color="#2EA0FF">{g.runtime}</Chip>
+            <Chip color="#F4A73B">{(g.scene_graph || []).length} scenes</Chip>
+            <span style={{ color: "var(--text-muted)" }}>Editable · remixable · founder-only release. Preview & publish in /admin/games.</span>
+            <button className="or-btn text-[10px]" onClick={onExit} data-testid="build-exit-btn">Done</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (!review) return <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>Loading build review…</div>;
+  const v = review.validation;
+  return (
+    <div className="w-full" data-testid="build-review-panel">
+      <div className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+        Founder Build Review — nothing builds until you approve
+      </div>
+      <div className="flex flex-wrap gap-1.5 mb-1.5">
+        <Chip color="#2EA0FF">{review.runtime_label}</Chip>
+        <Chip color="#7B8CFF">{review.scenes.length} scenes</Chip>
+        <Chip color="#10E670">{review.asset_resolution.resolved} library assets</Chip>
+        <Chip color="#F4A73B">{review.asset_resolution.placeholders} placeholders</Chip>
+        <Chip color="#C26BFF">~{review.estimated_build_seconds}s · ${review.estimated_ai_usage.amount}</Chip>
+        <Chip color={v.passed ? "#10E670" : "#FF5470"}>{v.passed ? "validation passed" : "validation failed"}</Chip>
+      </div>
+      {v.blocking.map((w, i) => <div key={i} className="text-[10px]" style={{ color: "#FF5470" }} data-testid="build-blocking">{w}</div>)}
+      {v.warnings.slice(0, 3).map((w, i) => <div key={i} className="text-[9.5px]" style={{ color: "#F4A73B" }}>{w}</div>)}
+      <div className="flex flex-wrap gap-2 mt-2">
+        <button className="or-btn text-[11px] font-bold px-4 py-2"
+          style={{ background: "linear-gradient(90deg,#2EA0FF,#10E670)", color: "#04220f" }}
+          disabled={busy || !v.passed} onClick={approveBuild} data-testid="approve-build-btn">
+          Approve Build
+        </button>
+        <button className="or-btn text-[10.5px]" onClick={() => { toast.success("Draft kept — build anytime"); onExit(); }}
+          data-testid="build-save-draft-btn">Save draft</button>
+        <button className="or-btn text-[10.5px]" onClick={onExit} data-testid="build-cancel-btn">Cancel</button>
       </div>
     </div>
   );

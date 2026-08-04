@@ -266,6 +266,47 @@ async def media_package(bid: str, current: CurrentUser):
     return {"media_package": pkg, "media_generated": False}
 
 
+@router.get("/{bid}/build/review")
+async def build_review(bid: str, current: CurrentUser):
+    """Founder Build Review — validation + estimates. Never builds."""
+    require_founder(current)
+    from services import game_build_engine as be
+    doc = _pub(await _own(bid, current))
+    return {"review": await be.build_review(doc, current["id"])}
+
+
+@router.post("/{bid}/build/approve")
+async def build_approve(bid: str, current: CurrentUser):
+    """Explicit founder build approval — the ONLY way a build starts."""
+    require_founder(current)
+    rl = await rate_limit(f"bp-build:{current['id']}", max_requests=10, window_seconds=3600)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail="Too many build approvals — try later")
+    from services import game_build_engine as be
+    doc = _pub(await _own(bid, current))
+    if doc.get("status") == "building":
+        return {"started": True, "game_id": doc.get("game_id"), "already_building": True}
+    res = await be.start_blueprint_build(doc, current)
+    if not res["started"]:
+        raise HTTPException(status_code=400, detail={
+            "message": "Build validation failed — build NOT started",
+            "validation": res["validation"]})
+    return res
+
+
+@router.get("/{bid}/build/status")
+async def build_status(bid: str, current: CurrentUser):
+    require_founder(current)
+    doc = await _own(bid, current)
+    game = None
+    if doc.get("game_id"):
+        game = await db.games.find_one({"id": doc["game_id"]},
+                                       {"_id": 0, "id": 1, "title": 1, "status": 1, "stage": 1,
+                                        "build_log": 1, "actual_cost": 1, "runtime": 1,
+                                        "test_results": 1, "scene_graph": 1})
+    return {"blueprint_status": doc.get("status"), "game": game}
+
+
 @router.post("/{bid}/cancel")
 async def cancel(bid: str, current: CurrentUser):
     require_founder(current)
