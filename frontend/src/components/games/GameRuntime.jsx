@@ -55,6 +55,22 @@ const V=S.visual_theme||{};const PAL=V.palette||{};
 const T=S.theme||{bg:PAL.bg||'#0b1220',accent:PAL.glow||'#2EE6FF',text:'#EAF2FF'};
 const GLOW=PAL.glow||T.accent,ACC=PAL.accent||'#F4A73B',HAZC=PAL.hazard||'#FF3D5A';
 const PCOL=PAL.player&&PAL.player.length?PAL.player:['#C26BFF','#2EE6FF'];
+/* ── Real image assets (Game Asset Studio): S.assets = {slot:{url,meta}} ── */
+const AST=S.assets||{};const AIMG={};
+for(const k in AST){if(AST[k]&&AST[k].url){const im=new Image();im.src=AST[k].url;AIMG[k]=im}}
+function aimg(k){const im=AIMG[k];return im&&im.complete&&im.naturalWidth>0?im:null}
+function drawSpr(g,k,x,y,size,ang,t,flip){const im=aimg(k);if(!im)return false;const m=(AST[k]&&AST[k].meta)||{};
+ const fr=m.frames&&m.frames>1?m.frames:1;const fi=fr>1?Math.floor((t||0)*(m.fps||6))%fr:0;
+ const fw=im.naturalWidth/fr,fh=im.naturalHeight;const ar=fw/fh;
+ g.save();g.translate(x,y);if(ang)g.rotate(ang);if(flip)g.scale(-1,1);
+ g.drawImage(im,fi*fw,0,fw,fh,-size*ar/2,-size/2,size*ar,size);g.restore();return true}
+function drawTileFill(g,x,y,w,h2,row,col){const im=aimg('tileset');if(!im)return false;
+ const m=(AST.tileset&&AST.tileset.meta&&AST.tileset.meta.tile)||{cols:4,rows:4};
+ const tw=im.naturalWidth/(m.cols||4),th=im.naturalHeight/(m.rows||4);
+ const sx=(col||0)*tw,sy=(row||0)*th;g.save();g.beginPath();g.rect(x,y,w,h2);g.clip();
+ for(let ty=y;ty<y+h2;ty+=24)for(let tx=x;tx<x+w;tx+=24)g.drawImage(im,sx,sy,tw,th,tx,ty,24,24);
+ g.restore();return true}
+function drawFxAt(g,x,y,size,t){return drawSpr(g,'effect_fx',x,y,size,(t||0)*2.4,t)}
 document.body.style.cssText='margin:0;font-family:system-ui,sans-serif;background:'+(PAL.bg||T.bg)+';color:'+T.text+';min-height:100vh;overflow:hidden';
 root.style.transition='opacity .25s ease';
 function el(t,c,h){const e=document.createElement(t);if(c)e.className=c;if(h!==undefined)e.innerHTML=h;return e}
@@ -63,6 +79,7 @@ function post(completed){parent.postMessage({type:'game_score',score:score,compl
  no_damage:dmg===0,achievements:earned.slice()},'*')}
 function saveGame(){best=Math.max(best,score);parent.postMessage({type:'game_save',save:Object.assign({best_score:best,stage:stageIdx},SAVE_X)},'*')}
 function hud(){const h=el('div','','');h.style.cssText='display:flex;justify-content:space-between;gap:8px;padding:8px 12px;font-size:12px;opacity:.92;flex-wrap:wrap';
+ if(AST.ui_frame&&AST.ui_frame.url){h.style.borderImage='url('+AST.ui_frame.url+') 24 fill / 12px stretch';h.style.borderWidth='6px';h.style.borderStyle='solid'}
  let r='<span>Stage '+(Math.min(stageIdx,S.stages.length-1)+1)+'/'+S.stages.length+' · Score <b style="color:'+GLOW+'">'+score+'</b></span>';
  if(ARC[S.runtime]){r+='<span><span style="color:#FF6B6B">'+'\u2665'.repeat(Math.max(0,lives))+'</span>'+(S.combo?' · <span style="color:'+ACC+'">x'+comboMult.toFixed(1)+'</span>':'')+(best?' · Best '+best:'')+'</span>'}
  h.innerHTML='<b>'+S.title+'</b>'+r;return h}
@@ -260,12 +277,17 @@ function paintRunnerP(g,x,y,w,tilt,boostT,shieldN,t){g.save();g.translate(x,y);g
  g.fillStyle='rgba(180,240,255,0.95)';g.beginPath();g.arc(0,-h*0.4,w*0.13,0,7);g.fill();
  paintShieldRing(g,w,t,shieldN);g.restore()}
 function paintAvatar(g,x,y,w,tilt,boostT,shieldN,t,mode){const rp=repFor(mode);
+ if(aimg('player_sprite')){if(boostT>0)drawFxAt(g,x,y,w*3,t);
+  drawSpr(g,'player_sprite',x,y,w*2.3,(tilt||0)*0.4,t);
+  if(shieldN){g.save();g.translate(x,y);paintShieldRing(g,w,t,shieldN);g.restore()}return}
  if(rp==='spaceship')paintShipP(g,x,y,w,tilt,boostT,shieldN,t);
  else if(rp==='rolling_orb')paintOrbP(g,x,y,w,tilt,boostT,shieldN,t);
  else if(rp==='hover_bike')paintBikeP(g,x,y,w,tilt,boostT,shieldN,t);
  else if(rp==='runner')paintRunnerP(g,x,y,w,tilt,boostT,shieldN,t);
  else paintPlayer(g,x,y,w,tilt,boostT,shieldN,t)}
 function paintHeroSide(g,x,y,w,h,face,wph,grounded,rep,inv,t){g.save();g.translate(x+w/2,y+h);if(face<0)g.scale(-1,1);
+ if(aimg('player_sprite')){g.restore();if(inv>0)drawFxAt(g,x+w/2,y+h/2,h*2,t);
+  drawSpr(g,'player_sprite',x+w/2,y+h*0.42,h*1.35,0,t,face<0);return}
  const cA=inv>0?ACC:PCOL[0],cB=PCOL[1]||GLOW;const lg2=grounded?Math.sin(wph)*w*0.3:w*0.18;
  g.strokeStyle=cB;g.lineWidth=3;g.lineCap='round';
  g.beginPath();g.moveTo(0,-h*0.42);g.lineTo(lg2,0);g.stroke();
@@ -287,6 +309,8 @@ function paintHeroSide(g,x,y,w,h,face,wph,grounded,rep,inv,t){g.save();g.transla
  else{g.fillStyle=cB;g.fillRect(-w*0.25,-h*1.08,w*0.5,w*0.14)}
  g.restore()}
 function paintHeroTop(g,x,y,r,ang,rep,inv,t){g.save();g.translate(x,y);g.rotate(ang);
+ if(aimg('player_sprite')){g.restore();if(inv>0)drawFxAt(g,x,y,r*3.4,t);
+  drawSpr(g,'player_sprite',x,y,r*2.6,ang+1.5708,t);return}
  const cA=inv>0?ACC:PCOL[0],cB=PCOL[1]||GLOW;
  if(rep==='stealth_operative'){g.fillStyle='rgba(46,230,255,0.06)';g.beginPath();g.moveTo(0,0);g.arc(0,0,r*4,-0.55,0.55);g.closePath();g.fill()}
  g.shadowColor=GLOW;g.shadowBlur=12;
@@ -312,7 +336,10 @@ function paintCore(g,x,y,r,t){g.save();g.translate(x,y);
  g.fillStyle=rg;g.beginPath();g.arc(0,0,pr*1.6,0,7);g.fill();
  g.strokeStyle=GLOW;g.lineWidth=1.5;g.globalAlpha=0.8;g.rotate(t*2);
  g.beginPath();g.ellipse(0,0,pr*1.35,pr*0.5,0,0,7);g.stroke();g.globalAlpha=1;g.restore()}
-function paintHazard(g,x,y,r,kind,t,px){g.save();g.translate(x,y);g.shadowColor=HAZC;g.shadowBlur=12;
+function paintHazard(g,x,y,r,kind,t,px){
+ if(kind==='boss'&&drawSpr(g,'boss_sprite',x,y,r*3.4,0,t))return;
+ if(drawSpr(g,'enemy_sprite',x,y,r*2.7,0,t))return;
+ g.save();g.translate(x,y);g.shadowColor=HAZC;g.shadowBlur=12;
  if(kind==='barrier'){const w2=r*3.2;
   const bg2=g.createLinearGradient(-w2,0,w2,0);bg2.addColorStop(0,'rgba(255,61,90,0)');bg2.addColorStop(0.5,HAZC);bg2.addColorStop(1,'rgba(255,61,90,0)');
   g.fillStyle=bg2;g.globalAlpha=0.75+Math.sin(t*17)*0.2;g.fillRect(-w2,-r*0.35,w2*2,r*0.7);g.globalAlpha=1;
@@ -354,7 +381,10 @@ function paintPortal(g,x,y,r,t){g.save();g.translate(x,y);
  g.shadowBlur=0;g.restore()}
 
 /* ── ENVIRONMENT BACKGROUNDS (layered parallax) ─────────────────────── */
-function skyGrad(g,W,H,c1,c2){const sg=g.createLinearGradient(0,0,0,H);sg.addColorStop(0,c1);sg.addColorStop(1,c2);g.fillStyle=sg;g.fillRect(0,0,W,H)}
+function skyGrad(g,W,H,c1,c2){const bim=aimg('background');
+ if(bim){g.drawImage(bim,0,0,bim.naturalWidth,bim.naturalHeight,0,0,W,H);
+  g.fillStyle='rgba(4,8,20,0.28)';g.fillRect(0,0,W,H);return}
+ const sg=g.createLinearGradient(0,0,0,H);sg.addColorStop(0,c1);sg.addColorStop(1,c2);g.fillStyle=sg;g.fillRect(0,0,W,H)}
 function cityLayer(g,W,H,base,seed,colw,color,winCol,off){g.fillStyle=color;
  const n=Math.ceil(W/colw)+2,shift=off%colw;
  for(let i=0;i<n;i++){const bh=(0.25+hz(seed+i)*0.55)*base;const bx=i*colw-shift;

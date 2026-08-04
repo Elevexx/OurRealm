@@ -15,7 +15,8 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
 import httpx  # noqa: E402
 
-INCLUDE_RTTEST = "--include-rttest" in sys.argv
+INCLUDE_RTTEST = True  # founder decision 1c: include everything
+EXCLUDE_IDS = set()    # founder decision 2b: include both Emberbound records
 BASE = os.environ.get("PREVIEW_BASE_URL", "http://localhost:8001")
 TOKEN = os.environ.get("MIGRATION_TOKEN", "")
 HDRS = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
@@ -28,6 +29,8 @@ async def main():
         async for g in db.games.find({"status": {"$in": ["published", "approved"]}}):
             title = g.get("title") or ""
             if not INCLUDE_RTTEST and (title.startswith("RTTEST") or "(Clone)" in title):
+                continue
+            if any((g.get("id") or "").startswith(x) for x in EXCLUDE_IDS):
                 continue
             g.pop("_id", None)
             g.pop("plays", None)

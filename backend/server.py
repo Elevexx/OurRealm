@@ -192,6 +192,9 @@ from routers import orai_builds as orai_builds_router_mod  # noqa: E402
 app.include_router(orai_builds_router_mod.router)
 from routers import orai_projects as orai_projects_router_mod  # noqa: E402
 app.include_router(orai_projects_router_mod.router)
+from routers import game_assets as game_assets_router_mod  # noqa: E402
+app.include_router(game_assets_router_mod.router)
+app.include_router(game_assets_router_mod.public_router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
@@ -302,7 +305,8 @@ async def global_access_control_guard(request, call_next):
 async def global_auth_guard(request, call_next):
     path = (request.scope.get("path", "") or "").rstrip("/") or "/"
     if (request.method == "OPTIONS" or not path.startswith("/api")
-            or path in PUBLIC_API_PATHS):
+            or path in PUBLIC_API_PATHS
+            or path.startswith("/api/public/game-assets/")):
         return await call_next(request)
     from core.deps import get_current_user
     try:
