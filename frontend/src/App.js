@@ -65,6 +65,7 @@ const AdminOraiControl = React.lazy(() => import("@/pages/AdminOraiControl"));
 const OraiProjects = React.lazy(() => import("@/pages/OraiProjects"));
 const RcRoutines = React.lazy(() => import("@/pages/RcRoutines"));
 const AdminAccessControl = React.lazy(() => import("@/pages/AdminAccessControl"));
+const AdminTrustSafety = React.lazy(() => import("@/pages/AdminTrustSafety"));
 const ParentDashboard = React.lazy(() => import("@/pages/ParentDashboard"));
 const ParentTeenManage = React.lazy(() => import("@/pages/ParentTeenManage"));
 const MyLimits = React.lazy(() => import("@/pages/MyLimits"));
@@ -205,6 +206,7 @@ function App() {
             <Route path="/interests" element={<ShellRoute><Home /></ShellRoute>} />
             <Route path="/admin" element={<ShellRoute><AdminHub /></ShellRoute>} />
             <Route path="/admin/data-health" element={<ShellRoute><AdminDataHealth /></ShellRoute>} />
+            <Route path="/admin/trust-safety" element={<ShellRoute><Lazy><AdminTrustSafety /></Lazy></ShellRoute>} />
             <Route path="/admin/WebsiteMedia" element={<ShellRoute><AdminWebsiteMedia /></ShellRoute>} />
             <Route path="/admin/widgets" element={<ShellRoute><AdminWidgets /></ShellRoute>} />
             <Route path="/admin/orion-logs" element={<ShellRoute><AdminOrionLogs /></ShellRoute>} />

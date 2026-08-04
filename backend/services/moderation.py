@@ -283,6 +283,15 @@ async def scan_and_apply(
             reason=dec.reason,
             meta={"score": dec.score, "triggered": dec.triggered_reasons},
         )
+    # Trust & Safety hook — universal scoring, trust score, escalation
+    try:
+        import asyncio as _aio
+        from services.trust_safety import on_content_scanned
+        _aio.create_task(on_content_scanned(
+            coll_name.rstrip("s"), str(doc[doc_id_field]), user_id, text,
+            dec.status, dec.triggered_reasons, dec.score))
+    except Exception:  # noqa: BLE001
+        pass
     return dec
 
 
@@ -307,18 +316,39 @@ def asdict_decision(d: ModerationDecision) -> dict:
 async def ensure_not_limited(user_id: str, capability: str) -> None:
     """Trust & Safety account-limit gate. Raises 403 when the user is
     actively limited from the given capability. Expired limits self-heal."""
-    u = await db.users.find_one({"id": user_id}, {"_id": 0, "account_limits": 1})
+    u = await db.users.find_one({"id": user_id}, {"_id": 0, "account_limits": 1, "trust": 1})
     lim = (u or {}).get("account_limits") or {}
-    if not lim.get("active"):
-        return
-    exp = lim.get("expires_at")
-    if exp and exp <= datetime.now(timezone.utc).isoformat():
-        await db.users.update_one({"id": user_id},
-                                  {"$set": {"account_limits.active": False}})
-        return
-    if capability in (lim.get("capabilities") or []):
+    if lim.get("active"):
+        exp = lim.get("expires_at")
+        if exp and exp <= datetime.now(timezone.utc).isoformat():
+            await db.users.update_one({"id": user_id},
+                                      {"$set": {"account_limits.active": False}})
+        elif capability in (lim.get("capabilities") or []):
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=403,
+                detail="Your account is temporarily limited from this action. "
+                       "Check your notifications for details.")
+    # Progressive trust tier rate caps (fail-open on any error)
+    try:
+        trust = (u or {}).get("trust") or {}
+        limits = trust.get("limits") or {}
+        cap_key = {"posting": "posts_per_day", "commenting": "comments_per_day",
+                   "messaging": "dms_per_day"}.get(capability)
+        max_per_day = limits.get(cap_key)
+        if max_per_day:
+            from datetime import timedelta
+            since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            coll, fld = {"posting": ("posts", "author_id"), "commenting": ("comments", "author_id"),
+                         "messaging": ("messages", "sender_id")}[capability]
+            n = await getattr(db, coll).count_documents({fld: user_id, "created_at": {"$gte": since}})
+            if n >= int(max_per_day):
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Daily limit reached for your trust level ({trust.get('tier', 'limited')}). "
+                           "Limits grow as your account builds trust.")
+    except Exception as e:  # noqa: BLE001
         from fastapi import HTTPException
-        raise HTTPException(
-            status_code=403,
-            detail="Your account is temporarily limited from this action. "
-                   "Check your notifications for details.")
+        if isinstance(e, HTTPException):
+            raise

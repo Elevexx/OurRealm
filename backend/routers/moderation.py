@@ -107,9 +107,24 @@ async def submit_report(payload: ReportPayload, current: CurrentUser):
                 "ticket": {"id": existing.get("ticket_id"), "ticket_number": existing.get("ticket_number")}}
 
     now = datetime.now(timezone.utc).isoformat()
+    # Resolve the reported content's owner so Trust & Safety can attribute
+    # the report to the target account (best-effort, non-message content).
+    target_user_id = None
+    if payload.content_type != "message":
+        try:
+            _c = getattr(db, CONTENT_TYPES[payload.content_type])
+            _doc = await _c.find_one({"id": payload.content_id},
+                                     {"_id": 0, "author_id": 1, "user_id": 1, "id": 1})
+            if payload.content_type == "profile":
+                target_user_id = payload.content_id
+            else:
+                target_user_id = (_doc or {}).get("author_id") or (_doc or {}).get("user_id")
+        except Exception:  # noqa: BLE001
+            pass
     rep = {
         "id":            uuid.uuid4().hex,
         "reporter_id":   current["id"],
+        "target_user_id": target_user_id,
         "content_type":  payload.content_type,
         "content_id":    payload.content_id,
         "reason":        payload.reason,
