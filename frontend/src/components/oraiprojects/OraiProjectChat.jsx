@@ -27,7 +27,6 @@ export const OraiProjectChat = ({ onUsePrompt }) => {
     if (!msg || busy) return;
     setInput("");
     setMessages((m) => [...m, { role: "user", content: msg }]);
-    onUsePrompt?.(msg, { silent: true });
     setBusy(true);
     try {
       const { data } = await apiClient.post("/orai/assistant/chat", {
@@ -55,7 +54,7 @@ export const OraiProjectChat = ({ onUsePrompt }) => {
           ORAi Chat
         </span>
         <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-          — describe your project; your prompt fills the Project Summary
+          — chat freely; tap “Use as project prompt” to fill the Project Summary
         </span>
       </div>
       {messages.length > 0 && (

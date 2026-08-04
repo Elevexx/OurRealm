@@ -191,7 +191,7 @@ export default function OraiProjects() {
             <input className="or-input text-sm sm:col-span-1" placeholder="Project name"
               value={proj.name} onChange={(e) => setProj({ ...proj, name: e.target.value })}
               data-testid="project-name-input" aria-label="Project name" />
-            <input className="or-input text-sm sm:col-span-2" placeholder="Main project prompt (auto-filled from chat)"
+            <input className="or-input text-sm sm:col-span-2" placeholder="Main project prompt (type here or use a chat message)"
               value={proj.prompt} onChange={(e) => setProj({ ...proj, prompt: e.target.value })}
               data-testid="project-prompt-input" aria-label="Project prompt" />
           </div>

@@ -337,9 +337,11 @@ async def assistant_chat(body: ChatBody, user: CurrentUser):
             {"id": uuid.uuid4().hex, "session_id": session_id, "user_id": user["id"],
              "role": "assistant", "content": reply, "actions": actions, "card": edu_card, "created_at": now},
         ])
-        return {"success": True, "session_id": session_id, "reply": reply, "actions": actions,
+        return {"success": True, "session_id": session_id, "conversation_id": session_id,
+                "reply": reply, "assistant_reply": reply, "actions": actions,
                 "card": edu_card, "request_id": request_id,
-                "provider": result.get("provider"), "model": result.get("model")}
+                "provider": result.get("provider"), "model": result.get("model"),
+                "fallback_used": result.get("provider") != "openai"}
     except Exception:  # noqa: BLE001
         log.exception("orai chat: post-LLM failure rid=%s", request_id[:8])
         return JSONResponse(status_code=500, content={
