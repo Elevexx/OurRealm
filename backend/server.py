@@ -103,6 +103,31 @@ async def health_probe():
     return {"status": "ok"}
 
 
+@app.get("/api/health/version")
+async def health_version():
+    """Public, no-secret build marker so any environment (incl production)
+    can be verified from outside. Booleans only — never values."""
+    return {
+        "app": "OurRealm",
+        "backend_build": "2026-08-04-ts-p0-cors500",
+        "features": {
+            "ctx_path_fix": True,
+            "structured_chat_contract": True,
+            "cors_headers_on_unhandled_500": True,
+            "direct_openai_routing": True,
+            "gpt5_temperature_strip": True,
+            "blueprint_build_engine": True,
+            "trust_safety_center": True,
+        },
+        "env": {
+            "openai_key_set": bool(os.environ.get("OPENAI_API_KEY")),
+            "emergent_key_set": bool(os.environ.get("EMERGENT_LLM_KEY")),
+            "cors_origins_count": len(get_cors_origins()),
+            "db_name_set": bool(os.environ.get("DB_NAME")),
+        },
+    }
+
+
 app.include_router(health)
 app.include_router(dragon_realm_router_mod.router)
 app.include_router(auth_router_mod.router)
@@ -239,12 +264,41 @@ async def validation_exception_handler(request, exc: RequestValidationError):
         return JSONResponse(status_code=422, content={"detail": message})
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request, exc: Exception):
+    """Catch-all so an unhandled error is returned as JSON WITH CORS headers.
+    Starlette's ServerErrorMiddleware runs OUTSIDE CORSMiddleware, so a bare
+    500 has no Access-Control-Allow-Origin and browsers block it — the client
+    then only sees a generic error. We echo the CORS headers manually for any
+    trusted origin. Full traceback is logged server-side; client gets a stable
+    contract with a reference id."""
+    import re as _re
+    import uuid as _uuid
+    ref = _uuid.uuid4().hex
+    logging.getLogger("ourrealm").exception(
+        "unhandled exception ref=%s path=%s", ref, request.scope.get("path", "?"))
+    headers = {}
+    origin = request.headers.get("origin")
+    if origin:
+        trusted = origin in set(get_cors_origins()) or bool(
+            _re.fullmatch(r"https://[a-z0-9-]+\.(emergent\.host|preview\.emergentagent\.com)", origin))
+        if trusted:
+            headers["Access-Control-Allow-Origin"] = origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+            headers["Vary"] = "Origin"
+    return JSONResponse(status_code=500, headers=headers, content={
+        "success": False, "error_code": "internal_error",
+        "message": "Something went wrong on our end — please try again.",
+        "request_id": ref})
+
 # ─── Global auth enforcement ────────────────────────────────────────────
 # Every /api endpoint requires an authenticated session except the
 # explicit public allow-list below (health + auth/recovery only).
 PUBLIC_API_PATHS = {
     "/api",
     "/api/health",
+    "/api/health/version",
     "/api/auth/register",
     "/api/auth/username/check",
     "/api/auth/login",
