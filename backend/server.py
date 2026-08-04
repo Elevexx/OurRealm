@@ -109,7 +109,7 @@ async def health_version():
     can be verified from outside. Booleans only — never values."""
     return {
         "app": "OurRealm",
-        "backend_build": "2026-08-04-ts-p0-cors500-dbg1",
+        "backend_build": "2026-08-04-openai-key-hardening",
         "features": {
             "ctx_path_fix": True,
             "structured_chat_contract": True,
@@ -121,7 +121,11 @@ async def health_version():
         },
         "env": {
             "openai_key_set": bool(os.environ.get("OPENAI_API_KEY")),
+            "openai_key_clean": (os.environ.get("OPENAI_API_KEY") or "").strip().isascii()
+                                and bool((os.environ.get("OPENAI_API_KEY") or "").strip()),
             "emergent_key_set": bool(os.environ.get("EMERGENT_LLM_KEY")),
+            "emergent_key_clean": (os.environ.get("EMERGENT_LLM_KEY") or "").strip().isascii()
+                                  and bool((os.environ.get("EMERGENT_LLM_KEY") or "").strip()),
             "cors_origins_count": len(get_cors_origins()),
             "db_name_set": bool(os.environ.get("DB_NAME")),
         },

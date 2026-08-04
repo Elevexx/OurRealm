@@ -217,8 +217,19 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
     if not messages:
         raise HTTPException(status_code=400, detail="No messages to send.")
 
-    primary_key = os.environ.get("OPENAI_API_KEY")
-    fallback_key = os.environ.get("EMERGENT_LLM_KEY")
+    def _clean_key(raw: Optional[str], name: str) -> Optional[str]:
+        key = (raw or "").strip()
+        if not key:
+            return None
+        if not key.isascii():
+            bad = [f"pos {i}: U+{ord(c):04X}" for i, c in enumerate(key) if ord(c) > 127][:3]
+            logger.error("ORAi LLM: %s contains non-ASCII characters (%s) — likely a paste "
+                         "corruption in the environment variable. Key skipped.", name, "; ".join(bad))
+            return None
+        return key
+
+    primary_key = _clean_key(os.environ.get("OPENAI_API_KEY"), "OPENAI_API_KEY")
+    fallback_key = _clean_key(os.environ.get("EMERGENT_LLM_KEY"), "EMERGENT_LLM_KEY")
     if not primary_key and not fallback_key:
         logger.error("ORAi LLM call: no OPENAI_API_KEY and no EMERGENT_LLM_KEY configured.")
         raise HTTPException(status_code=503, detail="ORAi LLM provider is unavailable or misconfigured.")
@@ -281,6 +292,10 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
         except httpx.HTTPError as e:
             logger.warning("ORAi LLM openai transport error: %s", e)
             last_error = "openai_transport"
+        except Exception as e:  # noqa: BLE001 — e.g. UnicodeEncodeError from a corrupted key
+            logger.error("ORAi LLM openai unexpected error (%s): %s — trying Emergent fallback.",
+                         type(e).__name__, str(e)[:200])
+            last_error = f"openai_{type(e).__name__}"
 
     # ── Attempt 2: Emergent universal key via emergentintegrations ────
     if fallback_key:
