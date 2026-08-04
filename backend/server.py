@@ -12,7 +12,7 @@ load_dotenv(ROOT_DIR / ".env")
 import logging
 import os
 
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from starlette.middleware.cors import CORSMiddleware
 
 from core import seed as seed_mod
@@ -109,7 +109,7 @@ async def health_version():
     can be verified from outside. Booleans only — never values."""
     return {
         "app": "OurRealm",
-        "backend_build": "2026-08-04-ts-p0-cors500",
+        "backend_build": "2026-08-04-ts-p0-cors500-dbg1",
         "features": {
             "ctx_path_fix": True,
             "structured_chat_contract": True,
@@ -126,6 +126,19 @@ async def health_version():
             "db_name_set": bool(os.environ.get("DB_NAME")),
         },
     }
+
+
+@app.get("/api/admin/system/errors")
+async def recent_unhandled_errors(request: Request, limit: int = 10, request_id: str = ""):
+    """Founder-only: recent unhandled 500 tracebacks (production debugging)."""
+    from core.deps import get_current_user
+    from core.permissions import require_founder
+    user = await get_current_user(request)
+    require_founder(user)
+    from core.db import db as _db
+    q = {"request_id": request_id} if request_id else {}
+    rows = await _db.unhandled_errors.find(q, {"_id": 0}).sort("at", -1).to_list(min(limit, 25))
+    return {"errors": rows}
 
 
 app.include_router(health)
@@ -275,9 +288,23 @@ async def unhandled_exception_handler(request, exc: Exception):
     contract with a reference id."""
     import re as _re
     import uuid as _uuid
+    import traceback as _tb
+    from datetime import datetime as _dtc, timezone as _tzc
     ref = _uuid.uuid4().hex
     logging.getLogger("ourrealm").exception(
         "unhandled exception ref=%s path=%s", ref, request.scope.get("path", "?"))
+    try:
+        from core.db import db as _db
+        await _db.unhandled_errors.insert_one({
+            "id": ref, "request_id": ref,
+            "path": request.scope.get("path", "?"),
+            "method": request.method,
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:500],
+            "traceback": _tb.format_exc()[-6000:],
+            "at": _dtc.now(_tzc.utc).isoformat()})
+    except Exception:  # noqa: BLE001 — error store must never block the response
+        pass
     headers = {}
     origin = request.headers.get("origin")
     if origin:
