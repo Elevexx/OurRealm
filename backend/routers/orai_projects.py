@@ -298,6 +298,111 @@ async def retry(pid: str, body: dict, current: CurrentUser):
     return await approve(pid, {"idempotency_key": uuid.uuid4().hex}, current)
 
 
+@router.post("/{pid}/repair")
+async def repair(pid: str, current: CurrentUser):
+    """ZERO-COST reconciliation. Recovers existing outputs (no regeneration):
+    - audio: recompute 0:00 durations from the real file; reconnect metadata
+    - image: reattach orphaned generated assets to the project outputs
+    - video: keep failed stage retryable, report the original error
+    Never fabricates success — missing media stays honestly retryable."""
+    require_founder(current)
+    p = await db.orai_projects.find_one({"id": pid, "creator_id": current["id"]})
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if p["status"] in ("queued", "generating"):
+        raise HTTPException(status_code=400, detail="Project is running — repair after it stops")
+    report = {"audio": [], "image": [], "video": [], "stages": []}
+    outputs = list(p.get("outputs") or [])
+    stages = list(p.get("stages") or [])
+
+    def stage(sid):
+        return next((s for s in stages if s["id"] == sid), None)
+
+    # ── AUDIO: reconnect / recompute duration ────────────────────────
+    from services.audio_store import audio_dir, _extract_duration
+    tracks = await db.tracks.find({"source_project_id": pid}).to_list(10)
+    for tr in tracks:
+        entry = {"track_id": tr["id"], "title": tr.get("title")}
+        name = (tr.get("file_url") or "").rsplit("/", 1)[-1]
+        ext = name.rsplit(".", 1)[-1] if "." in name else "mp3"
+        local = audio_dir() / name
+        raw = None
+        if local.exists():
+            raw = local.read_bytes()
+        elif (tr.get("file_url") or "").startswith("http"):
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=30, follow_redirects=True) as c:
+                    r = await c.get(tr["file_url"])
+                    raw = r.content if r.status_code == 200 else None
+            except Exception:  # noqa: BLE001
+                raw = None
+        if raw:
+            if float(tr.get("duration_seconds") or 0) <= 0.01:
+                dur = _extract_duration(raw, ext, on_disk_path=local if local.exists() else None)
+                if dur > 0:
+                    await db.tracks.update_one({"id": tr["id"]}, {"$set": {"duration_seconds": dur}})
+                    await db.orai_assets.update_many({"project_id": pid, "type": "audio"},
+                                                     {"$set": {"refs.duration": dur}})
+                    for o in outputs:
+                        if o.get("type") == "audio":
+                            o["duration"] = dur
+                    entry["repaired"] = f"duration recomputed: {round(dur, 2)}s"
+                else:
+                    entry["repaired"] = False
+                    entry["reason"] = "file exists but duration unreadable (possibly corrupt) — narration stays playable"
+            else:
+                entry["repaired"] = "already healthy"
+        else:
+            entry["repaired"] = False
+            entry["reason"] = "audio file not reachable — stage marked retryable"
+            st = stage("audio")
+            if st:
+                st["status"] = "failed"
+                st["detail"] = "Audio file missing — retry available"
+            outputs = [o for o in outputs if o.get("type") != "audio"]
+        report["audio"].append(entry)
+
+    # ── IMAGE: reattach orphaned generated assets ────────────────────
+    have = {o.get("asset_id") for o in outputs}
+    orphans = await db.orai_assets.find({"project_id": pid, "type": "image",
+                                         "id": {"$nin": list(have)}}).to_list(30)
+    for a in orphans:
+        refs = a.get("refs") or {}
+        outputs.append({"type": "image", "asset_id": a["id"],
+                        "url": refs.get("url"), "thumb": refs.get("thumb")})
+        report["image"].append({"asset_id": a["id"], "recovered": True, "url": refs.get("url")})
+    img_st = stage("image")
+    if img_st and img_st["status"] != "complete":
+        n_imgs = sum(1 for o in outputs if o.get("type") == "image")
+        report["image"].append({"original_failure": img_st.get("detail") or "unknown"})
+        if n_imgs > 0:
+            img_st["status"] = "complete"
+            img_st["detail"] = f"recovered {n_imgs} existing image(s) — no regeneration"
+            report["stages"].append("image: marked complete from recovered assets")
+
+    # ── VIDEO: keep honestly retryable, surface root cause ───────────
+    vid_st = stage("video")
+    if vid_st and vid_st["status"] != "complete":
+        report["video"].append({"original_failure": vid_st.get("detail") or "unknown",
+                                "retryable": True,
+                                "note": "VideoRecord.file_url bug fixed — Retry will only rerun the video stage"})
+        vid_st["status"] = "failed"
+        if "file_url" in (vid_st.get("detail") or ""):
+            vid_st["detail"] = "Backend bug (VideoRecord.file_url) — fixed; retry will not regenerate other stages"
+
+    failed = [s for s in stages if s["status"] == "failed"]
+    new_status = "partially_completed" if failed else (
+        "completed" if all(s["status"] == "complete" for s in stages) else p["status"])
+    await db.orai_projects.update_one({"id": pid}, {"$set": {
+        "outputs": outputs, "stages": stages, "status": new_status, "updated_at": _iso()}})
+    await db.orai_projects.update_one({"id": pid}, {"$push": {"activity": {
+        "at": _iso(), "msg": "Zero-cost repair executed — existing outputs reconnected, failed stages kept retryable"}}})
+    await op.audit(current, "project_repaired", pid, str({k: len(v) for k, v in report.items()}))
+    return {"report": report, "status": new_status,
+            "retryable_stages": [s["id"] for s in failed]}
+
+
 @router.post("/{pid}/duplicate")
 async def duplicate(pid: str, current: CurrentUser):
     require_founder(current)

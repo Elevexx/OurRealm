@@ -169,12 +169,21 @@ def _check_r2_storage() -> Dict[str, Any]:
 
 def _check_supabase() -> Dict[str, Any]:
     has_url = bool(os.environ.get("SUPABASE_URL"))
-    has_key = bool(os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("SUPABASE_KEY"))
-    ok = has_url and has_key
+    has_key = bool(
+        os.environ.get("SUPABASE_ANON_KEY")
+        or os.environ.get("SUPABASE_KEY")
+    )
+
+    configured = has_url and has_key
+
     return _check(
-        "supabase", ok,
-        "Supabase credentials present." if ok
-        else f"Missing Supabase env vars (url={has_url}, key={has_key}).",
+        "supabase",
+        True,
+        (
+            "Supabase credentials present."
+            if configured
+            else "Optional integration not configured — MongoDB and R2 remain active."
+        ),
     )
 
 

@@ -1,7 +1,7 @@
 """Provider-agnostic LLM router — AI Power levels 1-10 map to REAL model
 routing, refinement passes and token budgets via the Emergent universal key
 (emergentintegrations). Lower power = fast/cheap models, higher = strongest
-models + deeper review. Falls back to OpenAI gpt-5.4 if a provider fails."""
+models + deeper review. Falls back to OpenAI gpt-5 if a provider fails."""
 import logging
 import os
 import uuid
@@ -14,15 +14,15 @@ log = logging.getLogger("ourrealm.llm.router")
 # level: (provider, model, passes, max_tokens, est_cost_per_pass, label)
 AI_POWER_TIERS = {
     1: ("openai", "gpt-5-nano", 1, 3000, 0.01, "Fast & light"),
-    2: ("openai", "gpt-5.4-mini", 1, 4000, 0.02, "Efficient"),
-    3: ("openai", "gpt-5.4-mini", 2, 5000, 0.02, "Improved planning"),
-    4: ("openai", "gpt-5.4-mini", 2, 6000, 0.03, "Planning + review"),
-    5: ("openai", "gpt-5.4", 2, 6000, 0.05, "Strong reasoning"),
-    6: ("openai", "gpt-5.4", 3, 7000, 0.05, "Deep QA"),
-    7: ("anthropic", "claude-sonnet-4-6", 3, 8000, 0.08, "Advanced design"),
-    8: ("anthropic", "claude-sonnet-4-6", 3, 9000, 0.08, "Rich iterations"),
-    9: ("anthropic", "claude-sonnet-5", 4, 10000, 0.12, "Highest intelligence"),
-    10: ("anthropic", "claude-sonnet-5", 4, 12000, 0.15, "Maximum depth"),
+    2: ("openai", "gpt-5-nano", 1, 4000, 0.01, "Efficient"),
+    3: ("openai", "gpt-5-mini", 2, 5000, 0.02, "Improved planning"),
+    4: ("openai", "gpt-5-mini", 2, 6000, 0.03, "Planning + review"),
+    5: ("openai", "gpt-5-mini", 2, 6000, 0.03, "Strong reasoning"),
+    6: ("openai", "gpt-5-mini", 3, 7000, 0.04, "Deep QA"),
+    7: ("openai", "gpt-5", 3, 8000, 0.08, "Advanced design"),
+    8: ("openai", "gpt-5", 3, 9000, 0.08, "Rich iterations"),
+    9: ("openai", "gpt-5.6-luna", 4, 10000, 0.12, "Highest intelligence"),
+    10: ("openai", "gpt-5.6-terra", 4, 12000, 0.15, "Maximum depth"),
 }
 
 
@@ -42,8 +42,8 @@ async def call_llm(system: str, user: str, *, power: int = 5, json_mode: bool = 
         return await _call(t["provider"], t["model"], system, user,
                            max_tokens or t["max_tokens"], json_mode)
     except Exception as e:  # noqa: BLE001
-        log.warning("llm %s/%s failed (%s) — falling back to openai/gpt-5.4", t["provider"], t["model"], e)
-        return await _call("openai", "gpt-5.4", system, user, max_tokens or t["max_tokens"], json_mode)
+        log.warning("llm %s/%s failed (%s) — falling back to openai/gpt-5", t["provider"], t["model"], e)
+        return await _call("openai", "gpt-5", system, user, max_tokens or t["max_tokens"], json_mode)
 
 
 async def _call(provider, model, system, user, max_tokens, json_mode):

@@ -68,6 +68,15 @@ class VideoRecord:
     def url(self) -> str:
         return self.cloud_url or f"/api/videos/{self.id}.{self.ext}"
 
+
+def playable_info(rec, *, provider: str = None, model: str = None,
+                  duration: float = None, status: str = "ready") -> dict:
+    """Single normalized video output contract. Always returns a playable
+    URL (public cloud URL or API route) — never a filesystem path."""
+    return {"url": rec.url, "thumbnail": getattr(rec, "thumbnail_url", None),
+            "mime": rec.mime, "provider": provider, "model": model,
+            "duration": duration, "status": status}
+
     def to_dict(self) -> dict:
         d = asdict(self)
         d["url"] = self.url

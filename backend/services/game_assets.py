@@ -108,6 +108,8 @@ def build_manifest(game: dict) -> dict:
     ready = [s for s in required if s["status"] == "ready"]
     return {"game_id": game["id"], "runtime": game.get("runtime"), "profile": prof,
             "slots": slots,
+            "cover": {"status": "ready" if game.get("cover_url") else "missing",
+                      "url": game.get("cover_url"), "workflow": "existing_cover_panel"},
             "art_status": "polished" if required and len(ready) == len(required) else "placeholder",
             "required_ready": len(ready), "required_total": len(required)}
 

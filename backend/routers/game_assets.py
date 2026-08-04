@@ -54,8 +54,12 @@ async def _game(gid: str):
 
 @router.get("/assets/library")
 async def asset_library(current: CurrentUser, q: str = "", kind: str = "", runtime: str = "", page: int = 1):
+    """Searchable Game Asset Library — includes dedicated game assets AND the
+    founder's own ORAi project image outputs so they are reusable in games."""
     require_founder(current)
-    flt = {"type": "game_asset", "archived": {"$ne": True}}
+    flt = {"archived": {"$ne": True},
+           "$and": [{"$or": [{"type": "game_asset"},
+                             {"type": "image", "creator_id": current["id"]}]}]}
     if kind.strip():
         flt["subtype"] = kind.strip()
     if runtime.strip():
@@ -64,7 +68,7 @@ async def asset_library(current: CurrentUser, q: str = "", kind: str = "", runti
         words = [re.escape(w) for w in q.strip().split()[:4] if len(w) > 1]
         if words:
             rx = {"$regex": "|".join(words), "$options": "i"}
-            flt["$or"] = [{"title": rx}, {"prompt": rx}, {"tags": rx}]
+            flt["$and"].append({"$or": [{"title": rx}, {"prompt": rx}, {"tags": rx}]})
     page = max(1, page)
     total = await db.orai_assets.count_documents(flt)
     rows = await db.orai_assets.find(flt, {"_id": 0}).sort("created_at", -1) \

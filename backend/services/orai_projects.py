@@ -55,7 +55,7 @@ def provider_catalog() -> list:
         {"id": "openai", "name": "OpenAI", "type": "external", "icon": "openai",
          "connected": emergent or openai_direct, "enabled": True,
          "tools": ["text", "image", "audio"], "roles": ["reasoning", "text", "image", "narration"],
-         "models": ["gpt-5.4", "gpt-5.4-mini", "gpt-image-2", "tts-1"],
+         "models": ["gpt-5", "gpt-5-mini", "gpt-image-2", "tts-1"],
          "pricing": "configured_internal_estimate", "recommended": True,
          "via": "Emergent Universal Key" if emergent else "direct",
          "disabled_reason": None if (emergent or openai_direct) else "No credentials configured"},
@@ -291,7 +291,7 @@ async def _stage(pid, sid, patch):
 
 async def _cancelled(pid):
     d = await db.orai_projects.find_one({"id": pid}, {"cancel_requested": 1})
-    return bool(d and d.get("cancel_requested"))
+    return d is None or bool(d.get("cancel_requested"))  # missing project == cancel
 
 
 def stages_for(project: dict) -> list:
@@ -494,15 +494,18 @@ async def run_generation(pid: str, current: dict):
                         raise RuntimeError(st.get("error") or "Video generation failed")
                 if not raw:
                     raise RuntimeError("Video render timed out")
-                rec = await video_store.save_video(raw, current["id"], declared_mime="video/mp4", filename="orai.mp4")
+                rec = await video_store.save_video(raw, current["id"], declared_mime="video/mp4",
+                                                   filename="orai.mp4", audio_choice="original",
+                                                   rights_confirmed=True)
+                info = video_store.playable_info(rec, provider="openai_video", model=model, duration=secs)
                 cost = prov.estimate_cost(model, secs, size) or 0.10 * secs
                 await _use(pid, f"Video {secs}s ({model})", cost)
                 a = await save_asset(current, p, atype="video", subtype="clip",
                                      title=f"{p['name']} — video",
-                                     refs={"video_id": rec.id, "url": rec.file_url},
+                                     refs={"video_id": rec.id, **info},
                                      meta={"provider": "openai_video", "model": model,
                                            "settings": {"seconds": secs, "size": size}})
-                outputs.append({"type": "video", "asset_id": a["id"], "url": rec.file_url})
+                outputs.append({"type": "video", "asset_id": a["id"], **info})
                 await done("video"); await _push_activity(pid, "Video generated")
             except asyncio.CancelledError:
                 raise
