@@ -1,5 +1,13 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## PRODUCTION VERIFICATION — "Hit a snag" Redeploy Check (Aug 4, 2026) ⚠️ BLOCKED ON USER DEPLOY CLICK
+- Preview VERIFIED perfect: /api/health/version → build `2026-08-04-ts-p0-cors500`; ORAi chat 200 with exact reply "production matches preview." via DIRECT openai/gpt-5-mini-2025-08-07, fallback=None.
+- Production (https://ourrealm.social) still runs the OLD backend: /api/health/version → 401 Not authenticated (endpoint made public only in new build); ORAi chat → 500 Internal Server Error (old ctx.page bug). Polled ~12 min, no change.
+- ROOT CAUSE: previous session's "deployment trigger" was only the static deployment_agent readiness check (status: pass, zero blockers) — it does NOT deploy. Actual redeploy requires the USER to press Deploy → Update existing deployment in the Emergent UI (~10-15 min, no cost, custom domain unaffected).
+- Production login with temp password stealth/Abc123$ WORKS (200, token issued). Keep the temp password until production verification completes.
+- REMAINING after user redeploys: re-run version check (expect 200 + new build), prod ORAi chat 200 test, Complexity-1/AI-Power-3 text-only planning smoke test, frontend screenshot (no duplicate chat prompt), then tell user to revert password.
+- ZERO COST RULE still active: no media generation, no Dragon Realm build. P1-P11 tasks NOT started (blocked until prod matches preview).
+
 ## AAA SHOWCASE QUALITY PASS — Complete 10-Game Library (Aug 3, 2026) ✅ COMPLETE — tested (iteration_115, 100%)
 ### The 10 Founder Showcase games (all published, unique runtime/mode/rep, cover art + genre, demo reward 100 🔥)
 1. Temple of Echoes dfb1c04e (puzzle_room · Puzzle Exploration)
