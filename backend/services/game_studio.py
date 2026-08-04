@@ -29,8 +29,11 @@ RUNTIMES = ["quiz_adventure", "matching", "sorting", "memory", "rhythm",
             "card_battle", "tower_defense", "match3",
             "rpg", "racing", "farming", "city_builder",
             "roguelike", "tactics", "idle", "visual_novel", "fishing"]
-# Catalog entries registered but not yet playable (all Phase C runtimes are now live).
-SCAFFOLDED_RUNTIMES = {}
+# Catalog entries registered but not yet LLM-generatable. Classification detects
+# them and generation refuses clearly instead of silently falling back.
+# turn_based_creature_rpg ships with a dedicated React renderer
+# (renderer_pixel_creature_rpg_v1) — see services/dragon_realm.py.
+SCAFFOLDED_RUNTIMES = {"turn_based_creature_rpg": "Turn-Based Creature RPG"}
 RUNTIME_LABELS = {
     "quiz_adventure": "Quiz Adventure", "matching": "Memory Matching (pairs)",
     "sorting": "Sorting / Ordering", "memory": "Memory Cards", "rhythm": "Rhythm / Tap",
@@ -73,9 +76,11 @@ GENRE_MAP = [
     (("card battle", "card battler", "card game", "card clash", "deck build", "deckbuild", "tcg", "card duel"), "card_battle"),
     (("tower defense", "tower defence", "defend the base", "td game", "place towers", "wave defense"), "tower_defense"),
     (("match 3", "match-3", "match three", "gem swap", "tile match", "match puzzle", "bejeweled", "candy crush"), "match3"),
-    (("rpg", "jrpg", "role playing", "role-playing", "creature collect", "creature-collect", "monster catching",
-      "monster taming", "monster collector", "creature companion", "catch creatures", "catch monsters",
-      "pokemon", "monster battle adventure", "creature battle"), "rpg"),
+    (("creature collect", "creature-collect", "monster catching", "monster taming", "monster collector",
+      "creature companion", "catch creatures", "catch monsters", "pokemon", "creature battle",
+      "monster battle adventure", "dragon taming", "dragon training", "dragon collection",
+      "befriend dragons", "creature rpg", "monster training"), "turn_based_creature_rpg"),
+    (("rpg", "jrpg", "role playing", "role-playing"), "rpg"),
     (("racing", "race track", "kart", "lap race", "street race", "drift", "grand prix"), "racing"),
     (("farming", "farm sim", "farm simulator", "harvest game", "crop game", "plant and harvest"), "farming"),
     (("city builder", "city building", "build a city", "town builder", "settlement builder"), "city_builder"),
@@ -243,6 +248,7 @@ PLAYER_REPS = {
     "idle": ["idle_tycoon"],
     "visual_novel": ["story_protagonist"],
     "fishing": ["angler"],
+    "turn_based_creature_rpg": ["dragon_warden"],
 }
 
 

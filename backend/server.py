@@ -19,6 +19,7 @@ from core import seed as seed_mod
 from core.config import get_cors_origins
 from core.db import close as close_db
 from routers import auth as auth_router_mod
+from routers import dragon_realm as dragon_realm_router_mod
 from routers import friends as friends_router_mod
 from routers import messages as messages_router_mod
 from routers import profile as profile_router_mod
@@ -103,6 +104,7 @@ async def health_probe():
 
 
 app.include_router(health)
+app.include_router(dragon_realm_router_mod.router)
 app.include_router(auth_router_mod.router)
 app.include_router(profile_router_mod.router)
 app.include_router(friends_router_mod.router)

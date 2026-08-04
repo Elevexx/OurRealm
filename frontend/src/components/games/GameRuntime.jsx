@@ -123,7 +123,8 @@ function stage(){root.style.opacity=0;if(ARC[S.runtime])music(true);setTimeout((
  if(titleDone&&!CTRL.reduced_motion){const bn=el('div','','<div style="font-size:10px;letter-spacing:0.42em;color:'+ACC+'">STAGE '+(stageIdx+1)+' / '+S.stages.length+'</div><div style="font-size:21px;font-weight:800;color:'+GLOW+';text-shadow:0 0 18px '+GLOW+'77">'+(st.title||'')+'</div>');
   bn.style.cssText='position:fixed;top:18%;left:50%;z-index:55;text-align:center;pointer-events:none;animation:orbanner 2.1s ease forwards';
   document.body.appendChild(bn);setTimeout(()=>bn.remove(),2200)}
- ({quiz_adventure:qa,matching:ma,sorting:so,memory:me,rhythm:rh,top_down:td,platformer:pf,dodge_collect:dc,puzzle_room:pz,card_battle:cb,tower_defense:tdf,match3:m3,rpg:rpg,racing:rac,farming:frm,city_builder:cbl,roguelike:rgl,tactics:tac,idle:idl,visual_novel:vn,fishing:fsh})[S.runtime](st);
+ const rt=({quiz_adventure:qa,matching:ma,sorting:so,memory:me,rhythm:rh,top_down:td,platformer:pf,dodge_collect:dc,puzzle_room:pz,card_battle:cb,tower_defense:tdf,match3:m3,rpg:rpg,racing:rac,farming:frm,city_builder:cbl,roguelike:rgl,tactics:tac,idle:idl,visual_novel:vn,fishing:fsh})[S.runtime];
+ if(rt)rt(st);else root.innerHTML='<div style="text-align:center;padding:50px 20px;font-size:13px;opacity:.8">This game uses a dedicated renderer — open it from the Games hub.</div>';
  root.style.opacity=1},220)}
 
 /* ── input ──────────────────────────────────────────────────────────── */

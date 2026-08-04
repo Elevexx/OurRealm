@@ -4,6 +4,7 @@ import { Gamepad2, Search, Play, ArrowLeft, Trophy, Flag } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import GameRuntime from "@/components/games/GameRuntime";
+import DragonRealmRuntime from "@/components/games/dragonrealm/DragonRealmRuntime";
 import { GameLeaderboard, AudioSettings } from "@/components/games/GameSocial";
 
 export default function GamesHub() {
@@ -161,7 +162,7 @@ export default function GamesHub() {
             {playing.game.spec?.description} · <b>Objective:</b> {playing.game.spec?.learning_objective} ·
             <b> Controls:</b> {playing.game.spec?.controls}
           </div>
-          {fireInfo && (
+          {fireInfo && playing.game.spec?.runtime !== "turn_based_creature_rpg" && (
             <div className="rounded-xl p-2.5 mb-2 text-[11px]" data-testid="game-fire-info"
               style={{ background: "rgba(255,138,90,0.07)", border: "1px solid rgba(255,138,90,0.3)" }}>
               {fireInfo.enabled ? (
@@ -181,10 +182,14 @@ export default function GamesHub() {
               )}
             </div>
           )}
+          {playing.game.spec?.runtime === "turn_based_creature_rpg" ? (
+            <DragonRealmRuntime />
+          ) : (<>
           <GameRuntime spec={playing.game.spec} onScore={onScore} height={520} gameId={playing.game.id}
             controls={playing.game.controls} />
           <div className="flex justify-end mt-1"><AudioSettings /></div>
           <GameLeaderboard gameId={playing.game.id} />
+          </>)}
         </div>
       )}
     </div>
