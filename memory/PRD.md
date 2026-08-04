@@ -1,12 +1,23 @@
 # OurRealm — Product Requirements Document (PRD)
 
-## PRODUCTION VERIFICATION — "Hit a snag" Redeploy Check (Aug 4, 2026) ⚠️ BLOCKED ON USER DEPLOY CLICK
-- Preview VERIFIED perfect: /api/health/version → build `2026-08-04-ts-p0-cors500`; ORAi chat 200 with exact reply "production matches preview." via DIRECT openai/gpt-5-mini-2025-08-07, fallback=None.
-- Production (https://ourrealm.social) still runs the OLD backend: /api/health/version → 401 Not authenticated (endpoint made public only in new build); ORAi chat → 500 Internal Server Error (old ctx.page bug). Polled ~12 min, no change.
-- ROOT CAUSE: previous session's "deployment trigger" was only the static deployment_agent readiness check (status: pass, zero blockers) — it does NOT deploy. Actual redeploy requires the USER to press Deploy → Update existing deployment in the Emergent UI (~10-15 min, no cost, custom domain unaffected).
-- Production login with temp password stealth/Abc123$ WORKS (200, token issued). Keep the temp password until production verification completes.
-- REMAINING after user redeploys: re-run version check (expect 200 + new build), prod ORAi chat 200 test, Complexity-1/AI-Power-3 text-only planning smoke test, frontend screenshot (no duplicate chat prompt), then tell user to revert password.
-- ZERO COST RULE still active: no media generation, no Dragon Realm build. P1-P11 tasks NOT started (blocked until prod matches preview).
+## PRODUCTION VERIFICATION — "Hit a snag" P0 ✅ RESOLVED & FULLY VERIFIED (Aug 4, 2026)
+### ROOT CAUSE (production-only 500 on ORAi chat)
+- Production deployment's `OPENAI_API_KEY` env var contained a corrupted character: Cyrillic "Т" (U+0422) at position 15 instead of Latin "T" (paste artifact). httpx raised `UnicodeEncodeError` while building the Authorization header — BEFORE any HTTP request — and that exception type escaped `except httpx.HTTPError`, hitting the global 500 handler. Preview's key was clean → preview always worked. Production env vars are managed separately in deployment settings (NOT copied from workspace .env).
+- Discovery path: global 500 handler now persists tracebacks to `unhandled_errors` collection; founder-only `GET /api/admin/system/errors?request_id=` returns them. This is how the prod traceback was captured remotely.
+
+### Fixes shipped (build `2026-08-04-openai-key-hardening`, live on prod)
+- `services/chat_conversations.py` `call_openai_chat`: `_clean_key()` strips + rejects non-ASCII keys with a precise log (position + codepoint); corrupted primary key → graceful Emergent fallback instead of 500. Attempt-1 also catches generic `Exception` → falls through to fallback. Covers ORAi chat AND llm_router (planning) since router routes via call_openai_chat.
+- `server.py`: `/api/health/version` now reports `openai_key_clean` / `emergent_key_clean` booleans (remote env validation, no secrets); unhandled-error traceback store + founder errors endpoint.
+- User re-pasted a clean OPENAI_API_KEY into deployment env settings + redeployed.
+
+### FINAL PRODUCTION VERIFICATION (all PASSED Aug 4, 2026)
+- /api/health/version → build `2026-08-04-openai-key-hardening`, openai_key_clean=true
+- ORAi chat: HTTP 200, exact reply "production matches preview.", provider=openai, model=gpt-5-mini-2025-08-07, fallback_used=False
+- Planning smoke test (Complexity 1, AI Power 3, text-only): blueprint "Arena of the Apprentice" (top_down, 26 asset requirements, valid_with_warnings, pending_founder_approval), asset library search ran (prod library empty — expected), build/status = draft/no game, NO media generated, NO build started. Draft left on prod (harmless).
+- Desktop 1920px + mobile 390px production UI: user message renders ONCE, reply ONCE, no "hit a snag", Project Summary NOT auto-filled, no horizontal overflow.
+- KNOWN QUIRK (cosmetic, first load after each deploy): service worker `controllerchange` reload can abort an in-flight login (`asset-fail reason: controllerchange`) — a page reload fixes it; consider deferring SW-triggered reloads while a form submit is in flight (backlog P2).
+- Production now MATCHES preview. User told it is SAFE to revert the temporary stealth password.
+- ZERO COST RULE held: no media, no Dragon Realm build. P1-P11 NOT started (next up: P1 Founder Moderation Cockpit).
 
 ## AAA SHOWCASE QUALITY PASS — Complete 10-Game Library (Aug 3, 2026) ✅ COMPLETE — tested (iteration_115, 100%)
 ### The 10 Founder Showcase games (all published, unique runtime/mode/rep, cover art + genre, demo reward 100 🔥)
