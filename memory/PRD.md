@@ -3592,4 +3592,12 @@ User approved 4-phase plan: P1 ORAi text chat (DONE) → P2 Voice Mode (record�
 
 ## 2026-06 — Dragon Realm: The Fire Quest (vertical slice COMPLETE, awaiting founder verification)
 - Phase 1 audit + contract and Phase 2 Enchanted Forest slice done per user directive: no FP burning, rewards 25/10/100 founder-only admin-configurable, real Fire Vault ledger, idempotent/replay-proof claims.
-- Pending (user-gated): Phase 3 regions 2-6 + 40 dragons, Phase 4 multi-dragon Dragon King, Phase 5 polish (region music, admin UI panel), Phase 6 beta validation. Do NOT start until founder verifies the slice.
+
+## 2026-06 (later) — Dragon Realm FULL WORLD BUILD (Phases 3 & 4) COMPLETE + VERIFIED
+- 6 regions / 36 dragons / 6 bosses served from backend content (services/dragon_realm.py); region_order gating server-enforced.
+- Multi-phase LEGENDARY DRAGON KING: P1 two support heads (multi-target UI) → P2 King joins → P3 transform +80HP + ULTIMATE CATACLYSM channel (interrupt with 18+ dmg or Defend) → P4 FINAL WARDEN STRIKE finisher overlay.
+- Bugs fixed this session: (1) engine.act() early-return blocked the P4 finisher (fight was unwinnable) — fixed; (2) REGION_ORDER was imported by DragonRealmRuntime but never exported from engine.js — added; (3) Games Admin Panel had NO Dragon Realm section — added DragonRealmAdminPanel.jsx (enabled, access_mode, all 8 reward amounts, per-user progress reset w/ reason+audit) wired to GET/PUT /api/dragon-realm/admin/config + POST /admin/reset-progress; (4) game was status 'approved' not 'published' → not in /games hub — published (id dragonrealm-firequest-v1); (5) stale stored game_version → 0.2.0-full-world.
+- Testing: iteration_119 — backend 12/12 pytest (locking, rate-limit 4s, king gate, claim idempotency vault +100 exact then 400 'Already claimed' no double credit, claim-all, admin config, reset), frontend 100% on tested surface. Manual browser E2E: all 6 region explores + all 5 region bosses screenshotted; full in-browser Dragon King fight through all 4 phases, finisher click won, WARDEN overlay, boss_dragon_king claim moved vault 906 → 1,156 (+250 exact).
+- Per-region chiptune music (WebAudio, per-region key/tempo) plays in explore only; options toggles persist.
+- NOTE: founder's current save has an E2E test wizard (Lv20, boosted stats) and ~830🔥 of unclaimed rewards left to enjoy; Admin → Dragon Realm → Reset Progress gives a fresh authentic playthrough (new epoch, rewards re-earnable).
+- Pending (user-gated): Phase 5 polish (flame particles, accessibility pass), Phase 6 beta validation, Fire Power burning (explicitly ON HOLD until instructed).

@@ -280,3 +280,7 @@ KNOWN (pre-existing, by design): bottom mobile nav renders on desktop too — us
 - Game record: db.games id dragonrealm-firequest-v1 (approved, founder-visible only, NOT in public hub).
 - Tested: iteration_118 — backend 10/10 pytest (tests/test_dragon_realm.py), frontend 100% full playthrough incl. real +10 FP claim (741→751 exact), persistence, mobile D-pad, hub regression. Applied post-review fix: claim stamps 'claimed' immediately after ledger credit; vault move best-effort.
 - Founder progress state: emberling defeated + claimed by testing agent; use POST /api/dragon-realm/admin/reset-progress to start fresh (epoch keeps claims replay-proof across resets).
+
+## 2026-06 — Dragon Realm Full World Build verified (fork session)
+- Fixed finale finisher block in engine.act(), missing REGION_ORDER export, added DragonRealmAdminPanel (rewards/access/reset), published dragonrealm-firequest-v1 to /games.
+- testing_agent iteration_119: backend 12/12, frontend pass. Manual browser E2E: all 6 regions, 6 bosses, 4-phase Dragon King, finisher win, real +250 FP claim (906→1156), idempotent replay rejected.
