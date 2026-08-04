@@ -62,6 +62,7 @@ const CourseEditor = React.lazy(() => import("@/pages/CourseEditor"));
 const CoursePlayer = React.lazy(() => import("@/pages/CoursePlayer"));
 const RcIntelligence = React.lazy(() => import("@/pages/RcIntelligence"));
 const AdminOraiControl = React.lazy(() => import("@/pages/AdminOraiControl"));
+const OraiProjects = React.lazy(() => import("@/pages/OraiProjects"));
 const RcRoutines = React.lazy(() => import("@/pages/RcRoutines"));
 const AdminAccessControl = React.lazy(() => import("@/pages/AdminAccessControl"));
 const ParentDashboard = React.lazy(() => import("@/pages/ParentDashboard"));
@@ -207,7 +208,9 @@ function App() {
             <Route path="/admin/WebsiteMedia" element={<ShellRoute><AdminWebsiteMedia /></ShellRoute>} />
             <Route path="/admin/widgets" element={<ShellRoute><AdminWidgets /></ShellRoute>} />
             <Route path="/admin/orion-logs" element={<ShellRoute><AdminOrionLogs /></ShellRoute>} />
-            <Route path="/admin/orai" element={<ShellRoute><AdminOrion /></ShellRoute>} />
+            <Route path="/admin/orai" element={<ShellRoute><Lazy><OraiProjects /></Lazy></ShellRoute>} />
+            <Route path="/admin/orai-projects" element={<Navigate to="/admin/orai" replace />} />
+            <Route path="/admin/orai/dashboard" element={<ShellRoute><AdminOrion /></ShellRoute>} />
             <Route path="/admin/orion" element={<Navigate to="/admin/orai" replace />} />
             <Route path="/admin/providers" element={<ShellRoute><AdminProviders /></ShellRoute>} />
             <Route path="/admin/analytics" element={<ShellRoute><AdminAnalytics /></ShellRoute>} />

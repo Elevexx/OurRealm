@@ -190,6 +190,8 @@ app.include_router(games_router_mod.admin)
 app.include_router(games_router_mod.public)
 from routers import orai_builds as orai_builds_router_mod  # noqa: E402
 app.include_router(orai_builds_router_mod.router)
+from routers import orai_projects as orai_projects_router_mod  # noqa: E402
+app.include_router(orai_projects_router_mod.router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
