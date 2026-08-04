@@ -28,12 +28,12 @@ RUNTIMES = ["quiz_adventure", "matching", "sorting", "memory", "rhythm",
             "top_down", "platformer", "dodge_collect", "puzzle_room",
             "card_battle", "tower_defense", "match3",
             "rpg", "racing", "farming", "city_builder",
-            "roguelike", "tactics", "idle", "visual_novel", "fishing"]
-# Catalog entries registered but not yet LLM-generatable. Classification detects
-# them and generation refuses clearly instead of silently falling back.
-# turn_based_creature_rpg ships with a dedicated React renderer
-# (renderer_pixel_creature_rpg_v1) — see services/dragon_realm.py.
-SCAFFOLDED_RUNTIMES = {"turn_based_creature_rpg": "Turn-Based Creature RPG"}
+            "roguelike", "tactics", "idle", "visual_novel", "fishing",
+            "turn_based_creature_rpg"]
+# Catalog entries registered but not yet LLM-generatable. (turn_based_creature_rpg
+# was promoted to a first-class runtime — runtime_turn_based_creature_rpg_v1,
+# tpl_turn_based_creature_rpg_v1 — reusing the vetted rpg engine machinery.)
+SCAFFOLDED_RUNTIMES = {}
 RUNTIME_LABELS = {
     "quiz_adventure": "Quiz Adventure", "matching": "Memory Matching (pairs)",
     "sorting": "Sorting / Ordering", "memory": "Memory Cards", "rhythm": "Rhythm / Tap",
@@ -43,6 +43,7 @@ RUNTIME_LABELS = {
     "rpg": "RPG Adventure", "racing": "Racing", "farming": "Farming", "city_builder": "City Builder",
     "roguelike": "Roguelike", "tactics": "Tactical Strategy", "idle": "Idle / Incremental",
     "visual_novel": "Visual Novel", "fishing": "Fishing",
+    "turn_based_creature_rpg": "Turn-Based Creature RPG",
     **SCAFFOLDED_RUNTIMES,
 }
 # Template registry — every catalog family maps to exactly one vetted template.
@@ -52,6 +53,8 @@ WIN_LOSS = {
     "tower_defense": ("survive every wave with the base standing", "base HP reaches 0"),
     "match3": ("complete the stage objective within the move limit", "moves run out before the objective"),
     "rpg": ("complete the quest and reach the exit", "HP reaches 0 in combat"),
+    "turn_based_creature_rpg": ("complete the quest, grow your creature party and reach the exit",
+                                "HP reaches 0 in a creature battle"),
     "racing": ("finish all laps in 1st-3rd place", "finish last / miss checkpoints"),
     "farming": ("reach the coin goal before the season ends", "season ends short of the goal"),
     "city_builder": ("grow the city to the population target", "treasury and food collapse"),
@@ -81,8 +84,11 @@ GENRE_MAP = [
       "monster battle adventure", "dragon taming", "dragon training", "dragon collection",
       "befriend dragons", "creature rpg", "monster training",
       "dragon realm", "fire quest", "battle dragons", "dragon battles", "collect dragons",
-      "dragon rpg", "wild dragons", "dragon warden", "creature collection"), "turn_based_creature_rpg"),
-    (("rpg", "jrpg", "role playing", "role-playing"), "rpg"),
+      "dragon rpg", "wild dragons", "dragon warden", "creature collection",
+      "jrpg", "turn-based creature", "turn based creature", "party combat",
+      "creature roster", "tame monsters", "wizard rpg", "dragon collecting",
+      "collect and battle", "creature battles"), "turn_based_creature_rpg"),
+    (("rpg", "role playing", "role-playing"), "rpg"),
     (("racing", "race track", "kart", "lap race", "street race", "drift", "grand prix"), "racing"),
     (("farming", "farm sim", "farm simulator", "harvest game", "crop game", "plant and harvest"), "farming"),
     (("city builder", "city building", "build a city", "town builder", "settlement builder"), "city_builder"),
@@ -130,6 +136,10 @@ RUNTIME_MECHANICS = {
     "idle": ["passive generation", "automation", "upgrades", "prestige"],
     "visual_novel": ["branching dialogue", "portraits", "choices", "multiple endings"],
     "fishing": ["casting", "timing catch", "bait", "fish rarity", "collection"],
+    "turn_based_creature_rpg": ["world exploration", "NPC dialogue", "quests", "quest objectives",
+                                "inventory", "party system", "creature roster", "turn-based combat",
+                                "capture mechanic", "creature taming", "tame & befriend wild creature",
+                                "XP & leveling", "save/load", "starter creature", "village & region maps"],
 }
 COMPLEXITY_FEATURES = {
     1: ["single mechanic", "one stage", "simple scoring", "win/lose screen"],
@@ -289,6 +299,11 @@ IDENTITY_BASE = {
     "rpg": ("tap/click a tile to step toward it; combat via action buttons", "top-down overworld grid",
             "explore, talk to NPCs, take quests, loot chests, equip gear, fight monsters, level up",
             "explore → quest → fight → loot & level → unlock exit"),
+    "turn_based_creature_rpg": ("tap/click a tile to step toward it; turn-based battle action buttons",
+                                "top-down region grid",
+                                "explore regions, talk to NPCs, take quests, battle wild creatures turn-by-turn, "
+                                "CATCH creatures into your party, level up your roster",
+                                "explore → encounter → turn-based battle → catch or defeat → level party → quest exit"),
     "racing": ("←/→ steer · space drift · touch steering buttons", "top-down chase camera on a circuit",
                "steer through checkpoints, drift corners, grab boosts, beat AI racers across laps",
                "race lap → hit checkpoints → overtake AI → finish placement"),
@@ -445,7 +460,7 @@ async def showcase_similarity_for(ident: dict, exclude_id: str = None) -> dict:
 EST_SYSTEM = """You are ORAi's game designer. Turn a game request into a short build plan.
 Reply ONLY valid JSON:
 {"title": "game name", "concept": "2-3 sentence pitch",
- "runtime": "quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room|card_battle|tower_defense|match3|rpg|racing|farming|city_builder|roguelike|tactics|idle|visual_novel|fishing",
+ "runtime": "quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room|card_battle|tower_defense|match3|rpg|racing|farming|city_builder|roguelike|tactics|idle|visual_novel|fishing|turn_based_creature_rpg",
  "features": ["4-7 short planned features"],
  "mechanics": ["gameplay mechanics this game will include"],
  "unsupported_mechanics": ["requested mechanics the chosen runtime cannot do, [] if none"],
@@ -454,7 +469,7 @@ Reply ONLY valid JSON:
  "presentation_mode": "for dodge_collect pick: road_3d|lane_runner|vertical|space_flight|arena_360|tunnel (action/racing/runner -> road_3d or lane_runner)",
  "visual_style_summary": "1-2 sentences: art direction, palette, atmosphere",
  "player_appearance": "e.g. neon hover vehicle",
- "player_representation": "REQUIRED — pick ONE that fits the theme. dodge_collect: hovercraft|spaceship|hover_bike|runner|rolling_orb · top_down: explorer|stealth_operative|robot|knight|wizard|rolling_orb · platformer: platform_hero|explorer|knight|robot|wizard · puzzle_room: puzzle_cursor · rhythm: rhythm_notes · memory/matching/sorting: cards · quiz_adventure: puzzle_cursor. NEVER default to spaceship unless the game is actually set in space.",
+ "player_representation": "REQUIRED — pick ONE that fits the theme. dodge_collect: hovercraft|spaceship|hover_bike|runner|rolling_orb · top_down: explorer|stealth_operative|robot|knight|wizard|rolling_orb · platformer: platform_hero|explorer|knight|robot|wizard · puzzle_room: puzzle_cursor · rhythm: rhythm_notes · memory/matching/sorting: cards · quiz_adventure: puzzle_cursor · turn_based_creature_rpg: dragon_warden. NEVER default to spaceship unless the game is actually set in space.",
  "environment_themes": ["planned stage environments e.g. cyber_city, space, sunset, crystal"],
  "hazard_types_planned": 3, "pickup_types_planned": 2, "stage_visual_groups": 4,
  "est_play_minutes": "e.g. 10-20",
@@ -466,7 +481,8 @@ RUNTIME ROUTING — pick the runtime whose GAMEPLAY matches the request:
 - card battler/deck builder/TCG/turn-based card combat -> card_battle
 - tower defense/wave defense/place towers -> tower_defense
 - match-3/gem swap/tile matching puzzle -> match3
-- RPG/JRPG/quests+NPCs+leveling -> rpg
+- RPG/quests+NPCs+leveling (no creature catching) -> rpg
+- creature collection/monster taming/catch & battle creatures/JRPG party combat/wizard RPG with companions -> turn_based_creature_rpg
 - racing/karts/laps -> racing
 - farming/planting/harvest -> farming
 - city building/settlement economy -> city_builder
@@ -611,6 +627,7 @@ async def create_estimate(body: dict, current: dict) -> dict:
               "tower_defense": "click tower type, then a build spot · click towers to upgrade/sell",
               "match3": "click a tile, then an adjacent tile to swap",
               "rpg": "click a tile to walk · combat action buttons",
+              "turn_based_creature_rpg": "click a tile to walk · turn-based battle buttons (Attack/Creature/Catch/Swap)",
               "racing": "←/→ steer · Space drift",
               "farming": "click plots to plant/water/harvest · craft & sell buttons",
               "city_builder": "click a building type, then a free tile",
@@ -625,6 +642,7 @@ async def create_estimate(body: dict, current: dict) -> dict:
               "card_battle": "tap cards + End Turn button", "tower_defense": "tap tower type, tap build spot",
               "match3": "tap two adjacent tiles to swap",
               "rpg": "tap tiles to walk + action buttons", "racing": "left/right/drift buttons",
+              "turn_based_creature_rpg": "tap tiles to walk + battle buttons",
               "farming": "tap plots + craft buttons", "city_builder": "tap building, tap tile",
               "roguelike": "tap tiles to step & fight", "tactics": "tap unit, tile, then target",
               "idle": "tap to generate", "visual_novel": "tap choices",
@@ -713,6 +731,10 @@ rpg: {"stages":[{"title":"Region name","zone":"overworld|town|dungeon","grid_w":
   "chests":[{"x":6,"y":2,"loot":{"kind":"weapon","name":"Iron Sword","power":3}},
             {"x":7,"y":5,"loot":{"kind":"quest_item","name":"Amulet"}}],
   "exit":{"x":8,"y":6}}]}
+turn_based_creature_rpg: SAME schema as rpg with creature focus REQUIRED per region:
+  "creatures" 1-3 wild catchable creatures (catchable:true), "starter_creature" REQUIRED,
+  "monsters" 0-2 optional non-catchable foes; quest/npcs/chests/exit exactly as rpg.
+  Turn-based battles, CATCH into a party (max 3), party swaps and XP/leveling are engine features.
   (loot.kind: weapon|armor|potion|quest_item; exit unlocks when quest item is returned to the giver;
    stages form the world map: mix town/dungeon/overworld zones; creatures join the party when caught,
    fight in turn-based battles, level up and can evolve)
@@ -868,7 +890,7 @@ def validate_spec(spec: dict, complexity: int = 1, expected_runtime: str | None 
             for banned in ("target_cores", "platforms", "cores", "deck"):
                 if st.get(banned):
                     errs.append(f"stage {i+1}: tower_defense must not contain '{banned}' (no player character/collectibles)")
-        elif r == "rpg":
+        elif r in ("rpg", "turn_based_creature_rpg"):
             if not st.get("grid_w") or not st.get("grid_h"):
                 errs.append(f"stage {i+1}: rpg needs grid_w/grid_h")
             if not (st.get("quest") or {}).get("item"):
@@ -881,6 +903,11 @@ def validate_spec(spec: dict, complexity: int = 1, expected_runtime: str | None 
                 errs.append(f"stage {i+1}: rpg needs chests (loot + quest item)")
             if not st.get("exit"):
                 errs.append(f"stage {i+1}: rpg needs an exit tile")
+            if r == "turn_based_creature_rpg":
+                if not any(c.get("catchable") for c in (st.get("creatures") or [])):
+                    errs.append(f"stage {i+1}: turn_based_creature_rpg needs 1+ catchable wild creature")
+                if i == 0 and not (spec.get("stages")[0].get("starter_creature") or {}).get("name"):
+                    errs.append("stage 1: turn_based_creature_rpg needs a starter_creature")
         elif r == "racing":
             if not st.get("laps"):
                 errs.append(f"stage {i+1}: racing needs laps")
@@ -1021,10 +1048,14 @@ async def _run_build(game_id: str):
         await _log(game_id, "generating_spec", "Writing game specification in the isolated build workspace")
         raw = await call_llm(SPEC_SYSTEM, user_msg, power=game["ai_power"], json_mode=True)
         cost += t["est_cost_per_pass"]
-        spec = json.loads(raw)
+        try:
+            spec = json.loads(raw)
+        except Exception:  # noqa: BLE001 — empty/invalid first pass → refinement retries
+            await _log(game_id, "refining", "First spec pass returned no valid JSON — retrying")
+            spec = {}
         errs = validate_spec(spec, game["complexity"], expected_runtime=game.get("runtime"))
         # refinement passes: fix validation errors / review quality
-        for p in range(t["passes"] - 1):
+        for p in range(max(t["passes"] - 1, 1 if errs else 0)):
             if not errs and p > 0:
                 break
             await _log(game_id, "refining", f"Review pass {p+1}" + (f" — fixing: {errs[:2]}" if errs else " — quality/accessibility review"))

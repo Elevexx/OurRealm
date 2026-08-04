@@ -144,6 +144,10 @@ EDIT_SECTIONS = {
     "ai": "blueprint.gameplay.enemies",
     "ui": "blueprint.systems.ui_hud",
     "progression": "blueprint.gameplay.progression",
+    "creatures": "blueprint.gameplay.enemies",
+    "npcs": "blueprint.gameplay.npcs",
+    "battles": "blueprint.gameplay.bosses",
+    "regions": "blueprint.gameplay.worlds",
 }
 
 EDIT_SYSTEM = """You are ORAi's game blueprint editor. You receive ONE section of a game

@@ -1,5 +1,15 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## P0 — TURN-BASED CREATURE RPG RUNTIME v1 (Aug 4 2026) ✅ COMPLETE — minimal-credit build, all checks verified
+- Promoted `turn_based_creature_rpg` from scaffolded to a FIRST-CLASS generatable runtime (`runtime_turn_based_creature_rpg_v1`, `tpl_turn_based_creature_rpg_v1`) reusing the vetted rpg engine machinery (renderer alias in GameRuntime.jsx `turn_based_creature_rpg: rpg` — party/catch/turn-based combat/quests/XP already engine features).
+- game_studio.py: RUNTIMES + labels + WIN_LOSS + RUNTIME_MECHANICS (15 systems) + IDENTITY_BASE + controls maps + EST/SPEC prompts + spec schema (creatures 1-3 catchable REQUIRED, starter_creature REQUIRED) + validate_spec creature rules. SCAFFOLDED_RUNTIMES now empty. GENRE_MAP: jrpg/party combat/tame monsters/wizard rpg/dragon collecting/creature battles → tbcr ("rpg" alone still → rpg).
+- Platform registry: family updated (engine tbcr, runtime_id/template_id v1, extension_points: advanced_evolution, multiplayer_battles, procedural_regions, crafting, advanced_battle_ai); creature_collector family → tbcr engine. Capability recommend verified.
+- mechanics_support FIX (all runtimes): LLM-flagged unsupported mechanics now override token-overlap (never fake support); tbcr vocabulary enriched. Verified: taming/village quest/party combat supported; online trading honestly unsupported.
+- BUILD ENGINE FIX (all runtimes): first spec pass returning empty/invalid JSON no longer kills the build — logged + retried in the refinement loop (root cause of one failed build during testing).
+- Universal Editor: new sections creatures/npcs/battles/regions (aliases into blueprint gameplay paths). Verified live edit ("Moonlit Owl Spirit") + version bump.
+- Fire Power: reused existing infra — FIRE_ECON_DEFAULTS auto-attach on build; founder-editable via PATCH /api/admin/games/{id}/fire-economy (verified 12); claims stay ledger-backed/idempotent. No redesign.
+- E2E verified (preview): platform plan → family+engine tbcr, blocked-report for unsupported → approve → build (c1/p3, ~$0.06 total) → game "Ranger of the Woodland Spirits (Simple)" tests-passed, PLAYABLE (Elder's Village grid, HP/Lv/XP HUD, quest, NPCs, catchable creatures, party slot). Game left in pending_approval for founder; blueprint "Whisperwood Bonds" draft. No media generated, nothing published, Dragon Realm untouched.
+
 ## ORAi PROJECT CREATOR — FOUNDATIONAL PLATFORM UPGRADE (P0, Aug 4 2026) ✅ COMPLETE — tested (self 35/35 + iteration_121 18/18, zero action items)
 ### Architecture: registry-based reusable game platform (`services/game_platform/` + `routers/game_platform.py`, all additive — zero contract changes)
 - `registry_core.py` — ONE generic versioned Registry engine (collection `platform_registries`): code-seeded defaults + DB overrides/additions (new entries = DB insert, no core-code change), version bump + 15-entry history + rollback + enable/disable, 15s cache.

@@ -60,7 +60,7 @@ Reply ONLY valid JSON:
  "cinematic_requirements":["..."], "promotional_media_requirements":["cover art etc"],
  "accessibility_requirements":["..."],
  "requested_mechanics":["mechanics the request explicitly asks for"],
- "runtime":"pick the closest gameplay family from: quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room|card_battle|tower_defense|match3|rpg|racing|farming|city_builder|roguelike|tactics|idle|visual_novel|fishing — exploration/adventure worlds -> top_down, action/runner/collecting -> dodge_collect",
+ "runtime":"pick the closest gameplay family from: quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room|card_battle|tower_defense|match3|rpg|racing|farming|city_builder|roguelike|tactics|idle|visual_novel|fishing|turn_based_creature_rpg — exploration/adventure worlds -> top_down, action/runner/collecting -> dodge_collect, creature collecting/monster taming/JRPG party combat -> turn_based_creature_rpg",
  "est_play_minutes":"e.g. 5-10"}
 RULES:
 - Only fill sections that genuinely apply to THIS game family. A card/board/match-3/quiz
@@ -120,10 +120,19 @@ def recommend_runtime(request_text: str, llm_hint: str, requested_mechanics: lis
 
 def mechanics_support(selected_rt: str, requested: list, llm_unsupported: list) -> dict:
     rt_tok = _tokens(" ".join(RUNTIME_MECHANICS.get(selected_rt, [])))
+    llm_unsup = _slist(llm_unsupported, 8, 120)
+    llm_unsup_tok = [_tokens(m) for m in llm_unsup]
     supported, unsupported = [], []
     for m in _slist(requested, 15, 100):
-        (supported if _tokens(m) & rt_tok else unsupported).append(m)
-    for m in _slist(llm_unsupported, 8, 120):
+        mt = _tokens(m)
+        # LLM explicitly flagged it unsupported → never fake support via token overlap
+        if any(mt == ut or (mt and ut and len(mt & ut) / len(mt | ut) >= 0.6) for ut in llm_unsup_tok):
+            unsupported.append(m)
+        elif mt & rt_tok:
+            supported.append(m)
+        else:
+            unsupported.append(m)
+    for m in llm_unsup:
         if m not in unsupported:
             unsupported.append(m)
     return {"supported": supported, "unsupported": unsupported,

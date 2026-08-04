@@ -140,7 +140,7 @@ function stage(){root.style.opacity=0;if(ARC[S.runtime])music(true);setTimeout((
  if(titleDone&&!CTRL.reduced_motion){const bn=el('div','','<div style="font-size:10px;letter-spacing:0.42em;color:'+ACC+'">STAGE '+(stageIdx+1)+' / '+S.stages.length+'</div><div style="font-size:21px;font-weight:800;color:'+GLOW+';text-shadow:0 0 18px '+GLOW+'77">'+(st.title||'')+'</div>');
   bn.style.cssText='position:fixed;top:18%;left:50%;z-index:55;text-align:center;pointer-events:none;animation:orbanner 2.1s ease forwards';
   document.body.appendChild(bn);setTimeout(()=>bn.remove(),2200)}
- const rt=({quiz_adventure:qa,matching:ma,sorting:so,memory:me,rhythm:rh,top_down:td,platformer:pf,dodge_collect:dc,puzzle_room:pz,card_battle:cb,tower_defense:tdf,match3:m3,rpg:rpg,racing:rac,farming:frm,city_builder:cbl,roguelike:rgl,tactics:tac,idle:idl,visual_novel:vn,fishing:fsh})[S.runtime];
+ const rt=({quiz_adventure:qa,matching:ma,sorting:so,memory:me,rhythm:rh,top_down:td,platformer:pf,dodge_collect:dc,puzzle_room:pz,card_battle:cb,tower_defense:tdf,match3:m3,rpg:rpg,turn_based_creature_rpg:rpg,racing:rac,farming:frm,city_builder:cbl,roguelike:rgl,tactics:tac,idle:idl,visual_novel:vn,fishing:fsh})[S.runtime];
  if(rt)rt(st);else root.innerHTML='<div style="text-align:center;padding:50px 20px;font-size:13px;opacity:.8">This game uses a dedicated renderer — open it from the Games hub.</div>';
  root.style.opacity=1},220)}
 
@@ -159,7 +159,7 @@ function ctrlGuide(){if(guideShown||CTRL.show_guide===false)return;guideShown=tr
   else p.push((akeys('up')[0]||'\u2191')+'/'+(akeys('down')[0]||'\u2193')+' '+(S.runtime==='top_down'?'move':'fly'));
   p.push('P pause \u00b7 R restart');L.push('\u2328 '+p.join(' \u00b7 '))}
  else if(DESK)L.push('\u2328 Mouse \u2014 click to interact');
- if(MOB)L.push('\uD83D\uDC46 '+({dodge_collect:'Drag to steer',platformer:'On-screen buttons',top_down:'Drag to move',card_battle:'Tap cards to play \u00b7 End Turn',tower_defense:'Tap tower, then a build spot',match3:'Tap two adjacent tiles to swap',rpg:'Tap tiles to walk',racing:'Steer & drift buttons',farming:'Tap plots to farm',city_builder:'Tap building, tap tile',roguelike:'Tap tiles to step & fight',tactics:'Tap unit, tile, then target',idle:'Tap to generate',visual_novel:'Tap choices',fishing:'Tap Cast, then Hook on time'}[S.runtime]||'Tap to play'));
+ if(MOB)L.push('\uD83D\uDC46 '+({dodge_collect:'Drag to steer',platformer:'On-screen buttons',top_down:'Drag to move',card_battle:'Tap cards to play \u00b7 End Turn',tower_defense:'Tap tower, then a build spot',match3:'Tap two adjacent tiles to swap',rpg:'Tap tiles to walk',turn_based_creature_rpg:'Tap tiles to walk · battle buttons',racing:'Steer & drift buttons',farming:'Tap plots to farm',city_builder:'Tap building, tap tile',roguelike:'Tap tiles to step & fight',tactics:'Tap unit, tile, then target',idle:'Tap to generate',visual_novel:'Tap choices',fishing:'Tap Cast, then Hook on time'}[S.runtime]||'Tap to play'));
  if(!L.length)return;const gd=el('div','',L.join('<br>'));
  gd.style.cssText='position:fixed;left:50%;bottom:76px;transform:translateX(-50%);background:rgba(4,8,20,0.92);border:1px solid '+GLOW+'55;padding:9px 16px;border-radius:12px;font-size:12px;z-index:60;text-align:center;max-width:92%';
  document.body.appendChild(gd);setTimeout(()=>{gd.style.transition='opacity .5s';gd.style.opacity=0;setTimeout(()=>gd.remove(),600)},3400)}
