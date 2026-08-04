@@ -284,3 +284,11 @@ KNOWN (pre-existing, by design): bottom mobile nav renders on desktop too — us
 ## 2026-06 — Dragon Realm Full World Build verified (fork session)
 - Fixed finale finisher block in engine.act(), missing REGION_ORDER export, added DragonRealmAdminPanel (rewards/access/reset), published dragonrealm-firequest-v1 to /games.
 - testing_agent iteration_119: backend 12/12, frontend pass. Manual browser E2E: all 6 regions, 6 bosses, 4-phase Dragon King, finisher win, real +250 FP claim (906→1156), idempotent replay rejected.
+
+## 2026-06 — ORAi Multi-Tool Project Creator (fork session, Phases A–F complete)
+- NEW: /admin/orai = ORAi Projects (primary landing); old dashboard kept at /admin/orai/dashboard.
+- Backend: services/orai_projects.py + routers/orai_projects.py (founder-only). Capabilities/suggest/estimate/sounds-eligible/draft/validate/approve(idempotent, rate-limited)/detail/cancel/retry/duplicate/archive/history/library. Collections: orai_projects, orai_assets, orai_project_audit.
+- Reuses: orai_assistant chat, llm_router AI-Power tiers, orai_images, orai_voice TTS, audio/image/video stores, sound_permissions, game_studio estimate+build, rc_courses Course Maker, sora price table.
+- Frontend: pages/OraiProjects.jsx + 11 components in components/oraiprojects/ (chat-first layout desktop+mobile, colorful tool cards, provider connect states, 3 smart suggestions, Complexity+AI Power sliders, dynamic settings, sound picker, debounced estimate, review/approve gate, live progress w/ refresh recovery, history).
+- Providers registered but NOT connected (no keys): ElevenLabs, Runway, Pika, Stability, Replicate — disabled with reason, never suggested.
+- Testing: iteration_120 — backend 15/15, frontend 100%; real tiny text project generated end-to-end (~$0.02); double-approve idempotency verified; mobile 390px no overflow. Post-test hardening: moderation filter on all eligible sounds, multi-word library search, retry audit action, count=0 estimate fix, video no-provider suggestion note (regression 13/13 pass).

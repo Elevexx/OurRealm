@@ -3601,3 +3601,11 @@ User approved 4-phase plan: P1 ORAi text chat (DONE) → P2 Voice Mode (record�
 - Per-region chiptune music (WebAudio, per-region key/tempo) plays in explore only; options toggles persist.
 - NOTE: founder's current save has an E2E test wizard (Lv20, boosted stats) and ~830🔥 of unclaimed rewards left to enjoy; Admin → Dragon Realm → Reset Progress gives a fresh authentic playthrough (new epoch, rewards re-earnable).
 - Pending (user-gated): Phase 5 polish (flame particles, accessibility pass), Phase 6 beta validation, Fire Power burning (explicitly ON HOLD until instructed).
+
+## 2026-06 — ORAi Multi-Tool Project Creator (COMPLETE, verified iteration_120)
+- Founder-only Project Creator at /admin/orai (primary ORAi landing; old dashboard at /admin/orai/dashboard).
+- Workflow: ORAi Chat (reuses assistant endpoints, chat-first desktop+mobile) → Tools → Providers (connected via Emergent key; ElevenLabs/Runway/Pika/Stability/Replicate registered but disabled 'Not connected') → 3 Smart Suggestions → Complexity + AI Power sliders → dynamic per-tool settings + Existing Sound picker (server-side eligibility) → debounced real-time estimate (labeled internal estimate / provider price table) → Review + Validation + explicit Approve → idempotent async background job with persisted stages, live outputs, refresh recovery, cancel/retry → Complete page (estimate vs actual usage) → History (duplicate/archive, paginated).
+- Permanent library: orai_assets records + images into Media Library, narration into private Sounds tracks (playable_only default), games via Game Studio, courses via Course Maker (needs a Responsibility Center — founder currently has none, tool disabled with reason).
+- Key endpoints: /api/orai/projects/{capabilities,suggest,estimate,sounds/eligible,draft,library} + /{id}/{validate,approve,cancel,retry,duplicate,archive}.
+- NOT executed by design: Sora video + full game/course generation in tests (expensive); video estimates use the sora price table; suggestions never pick disconnected providers.
+- Pending backlog: P1 preset saving from a finished project; P1 library admin controls page (search/retag/feature); P2 duplicate-detection (hash) on generated assets; P2 provider health probes for creative providers.

@@ -158,9 +158,8 @@ def estimate_project(p: dict) -> dict:
             f"{sections} section(s)")
     if "image" in tools:
         img = s.get("image") or {}
-        n = min(max(int(img.get("count") or 4), 1), 20)
-        if img.get("reference_asset_id") and n == 0:
-            n = 0
+        raw_n = img.get("count")
+        n = 4 if raw_n is None else max(0, min(int(raw_n), 20))
         add(f"Images × {n}", IMG_COST * n, "configured_internal_estimate", "nano-banana / gpt-image")
     if "audio" in tools:
         a = s.get("audio") or {}
@@ -225,6 +224,8 @@ def build_suggestions(p: dict) -> list:
         if "video" in tools:
             if "openai_video" in up:
                 roles.append({"provider": "openai_video", "role": "Video generation"})
+            else:
+                roles.append({"provider": "none", "role": "Video generation — no connected video provider"})
         if "game" in tools:
             roles.append({"provider": "game_studio", "role": "Game build"})
         if "course" in tools:

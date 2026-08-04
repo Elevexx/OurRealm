@@ -1,5 +1,6 @@
 """ORAi Multi-Tool Project Creator — API routes (founder only)."""
 import asyncio
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -62,16 +63,16 @@ async def suggest(body: dict, current: CurrentUser):
     clean = _validate_body(body)
     # library reuse candidates (search before generating)
     q = (clean["prompt"] or clean["name"]).strip()[:80]
+    words = [w for w in q.split()[:4] if len(w) > 2]
     candidates = []
-    if q and clean["tools"]:
-        rx = {"$regex": q.split()[0][:30], "$options": "i"} if q.split() else None
-        if rx:
-            cur = db.orai_assets.find(
-                {"type": {"$in": clean["tools"]}, "archived": {"$ne": True},
-                 "creator_id": current["id"], "$or": [{"title": rx}, {"prompt": rx}]},
-                {"_id": 0, "id": 1, "type": 1, "title": 1, "refs": 1, "created_at": 1}
-            ).sort("created_at", -1).limit(4)
-            candidates = await cur.to_list(4)
+    if words and clean["tools"]:
+        rx = {"$regex": "|".join(re.escape(w)[:30] for w in words), "$options": "i"}
+        cur = db.orai_assets.find(
+            {"type": {"$in": clean["tools"]}, "archived": {"$ne": True},
+             "creator_id": current["id"], "$or": [{"title": rx}, {"prompt": rx}]},
+            {"_id": 0, "id": 1, "type": 1, "title": 1, "refs": 1, "created_at": 1}
+        ).sort("created_at", -1).limit(4)
+        candidates = await cur.to_list(4)
     return {"suggestions": op.build_suggestions(clean), "reuse_candidates": candidates}
 
 
@@ -93,14 +94,14 @@ async def eligible_sounds(current: CurrentUser, q: str = ""):
     rows = await db.tracks.find(flt, {"_id": 0}).sort("created_at", -1).to_list(120)
     out = []
     for tr in rows:
+        if tr.get("moderation_status") in ("rejected", "hidden", "removed", "suspended"):
+            continue
         mine = tr.get("user_id") == current["id"]
         if not mine:
             if tr.get("visibility") != "public":
                 continue
             if not (can_reuse(tr, "video_posts") or can_reuse(tr, "image_posts")):
                 continue
-        elif tr.get("moderation_status") in ("rejected", "hidden", "removed", "suspended"):
-            continue
         out.append({"id": tr["id"], "title": tr.get("title"), "creator": tr.get("username"),
                     "duration": tr.get("duration_seconds"), "cover_url": tr.get("cover_url"),
                     "file_url": tr.get("file_url"), "own": mine,
@@ -293,6 +294,7 @@ async def retry(pid: str, body: dict, current: CurrentUser):
         raise HTTPException(status_code=400, detail="Project is still running")
     if p["status"] == "generating":  # stalled (e.g. server restart)
         await db.orai_projects.update_one({"id": pid}, {"$set": {"status": "failed", "error": "Interrupted"}})
+    await op.audit(current, "project_retried", pid)
     return await approve(pid, {"idempotency_key": uuid.uuid4().hex}, current)
 
 
