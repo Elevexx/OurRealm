@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.db import db
@@ -303,18 +304,48 @@ async def assistant_chat(body: ChatBody, user: CurrentUser):
         await orai_audit(user, "chat_session_started", detail=f"session={session_id[:12]}")
     messages = ([{"role": "system", "content": system}]
                 + history[-14:] + [{"role": "user", "content": message}])
-    result = await call_openai_chat(messages, temperature=0.6, max_tokens=900)
-    raw = (result.get("content") or "").strip() or "Let's try that again."
-    reply, actions = op.extract_actions(raw, allowed)
+    request_id = uuid.uuid4().hex
+    log.info("orai chat: request received rid=%s session=%s page=%s msg_len=%s",
+             request_id[:8], session_id[:8], ctx.path or "?", len(message))
+    try:
+        result = await call_openai_chat(messages, temperature=0.6, max_tokens=900)
+    except HTTPException as e:
+        log.warning("orai chat: LLM failure rid=%s status=%s detail=%s",
+                    request_id[:8], e.status_code, str(e.detail)[:200])
+        return JSONResponse(status_code=e.status_code, content={
+            "success": False,
+            "error_code": "llm_provider_failed" if e.status_code == 503 else f"http_{e.status_code}",
+            "message": str(e.detail)[:300] if get_admin_role(user) else
+                       "ORAi couldn't reach its AI provider — please try again shortly.",
+            "request_id": request_id, "session_id": session_id})
+    try:
+        raw = (result.get("content") or "").strip() or "Let's try that again."
+        log.info("orai chat: rid=%s provider=%s model=%s content_len=%s finish=%s",
+                 request_id[:8], result.get("provider"), result.get("model"),
+                 len(raw), result.get("finish_reason"))
+        await db.orai_routing_events.insert_one({
+            "id": uuid.uuid4().hex, "kind": "assistant_chat",
+            "request_id": request_id, "user_id": user["id"],
+            "provider": result.get("provider"), "model": result.get("model"),
+            "fallback_used": result.get("provider") != "openai", "at": _iso()})
+        reply, actions = op.extract_actions(raw, allowed)
 
-    now = _iso()
-    await db.orai_assistant_messages.insert_many([
-        {"id": uuid.uuid4().hex, "session_id": session_id, "user_id": user["id"],
-         "role": "user", "content": message, "created_at": now},
-        {"id": uuid.uuid4().hex, "session_id": session_id, "user_id": user["id"],
-         "role": "assistant", "content": reply, "actions": actions, "card": edu_card, "created_at": now},
-    ])
-    return {"session_id": session_id, "reply": reply, "actions": actions, "card": edu_card}
+        now = _iso()
+        await db.orai_assistant_messages.insert_many([
+            {"id": uuid.uuid4().hex, "session_id": session_id, "user_id": user["id"],
+             "role": "user", "content": message, "created_at": now},
+            {"id": uuid.uuid4().hex, "session_id": session_id, "user_id": user["id"],
+             "role": "assistant", "content": reply, "actions": actions, "card": edu_card, "created_at": now},
+        ])
+        return {"success": True, "session_id": session_id, "reply": reply, "actions": actions,
+                "card": edu_card, "request_id": request_id,
+                "provider": result.get("provider"), "model": result.get("model")}
+    except Exception:  # noqa: BLE001
+        log.exception("orai chat: post-LLM failure rid=%s", request_id[:8])
+        return JSONResponse(status_code=500, content={
+            "success": False, "error_code": "internal_error",
+            "message": "ORAi processed the reply but hit an internal error — try again.",
+            "request_id": request_id, "session_id": session_id})
 
 
 @router.get("/history")

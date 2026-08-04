@@ -37,9 +37,11 @@ export const OraiProjectChat = ({ onUsePrompt }) => {
       sessionRef.current = data.session_id;
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
     } catch (e) {
-      const d = e?.response?.data?.detail;
-      setMessages((m) => [...m, { role: "assistant", error: true,
-        content: (typeof d === "string" ? d : d?.message) || "ORAi hit a snag — try again." }]);
+      const body = e?.response?.data;
+      const d = body?.detail;
+      const msg = (typeof d === "string" ? d : d?.message) || body?.message || "ORAi hit a snag — try again.";
+      const ref = body?.request_id ? ` (ref ${body.request_id.slice(0, 8)})` : "";
+      setMessages((m) => [...m, { role: "assistant", error: true, content: msg + ref }]);
     } finally { setBusy(false); }
   }, [input, busy, onUsePrompt]);
 

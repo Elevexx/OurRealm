@@ -13,6 +13,7 @@ import CostEstimatePanel from "@/components/oraiprojects/CostEstimatePanel";
 import EstimateReview from "@/components/oraiprojects/EstimateReview";
 import GenerationProgress from "@/components/oraiprojects/GenerationProgress";
 import ProjectHistory from "@/components/oraiprojects/ProjectHistory";
+import BlueprintPlanner from "@/components/oraiprojects/BlueprintPlanner";
 
 const ACTIVE_KEY = "orai_active_project";
 
@@ -24,6 +25,8 @@ export default function OraiProjects() {
   const [activeId, setActiveId] = useState(null);
   const [reviewProject, setReviewProject] = useState(null);
   const [historyKey, setHistoryKey] = useState(0);
+  const [blueprint, setBlueprint] = useState(null);
+  const [bpLoading, setBpLoading] = useState(false);
 
   const [proj, setProj] = useState({
     id: null, name: "", prompt: "", tools: [], providers: [],
@@ -96,6 +99,20 @@ export default function OraiProjects() {
     if (!opts.silent) toast.success("Prompt applied to Project Summary");
   }, []);
 
+  const planBlueprint = async () => {
+    if (!proj.prompt.trim()) { toast.error("Describe the game first (chat or prompt box)"); return; }
+    setBpLoading(true);
+    try {
+      const { data } = await apiClient.post("/orai/projects/blueprints/plan", {
+        request: proj.prompt, name: proj.name, complexity: proj.complexity, ai_power: proj.ai_power,
+      });
+      setBlueprint(data.blueprint);
+      setView("blueprint");
+      toast.success("Game blueprint planned — review before approval");
+    } catch (e) { toast.error(e?.response?.data?.detail || "Blueprint planning failed"); }
+    finally { setBpLoading(false); }
+  };
+
   const goReview = async () => {
     if (!proj.tools.length) { toast.error("Select at least one tool"); return; }
     if (!proj.prompt.trim()) { toast.error("Describe your project first (chat or prompt box)"); return; }
@@ -155,6 +172,10 @@ export default function OraiProjects() {
         <EstimateReview project={reviewProject} providerNames={providerNames}
           onBack={() => setView("create")} onApproved={onApproved} />
       )}
+      {view === "blueprint" && blueprint && (
+        <BlueprintPlanner bp={blueprint} onUpdate={setBlueprint}
+          onExit={() => { setBlueprint(null); setView("create"); }} />
+      )}
       {view === "progress" && activeId && (
         <GenerationProgress projectId={activeId}
           onExit={() => { setView("create"); setHistoryKey((k) => k + 1); localStorage.removeItem(ACTIVE_KEY); }} />
@@ -189,6 +210,20 @@ export default function OraiProjects() {
             disabledMap={{ course: (caps.course_centers || []).length ? null : "Needs a Responsibility Center",
                            video: caps.providers.find((p) => p.id === "openai_video")?.connected ? null : "OpenAI Video not connected" }} />
             : <div className="text-xs" style={{ color: "var(--text-muted)" }}>Loading tools…</div>}
+
+          {proj.tools.includes("game") && (
+            <div className="or-surface p-2.5 mt-2 flex flex-wrap items-center gap-2" data-testid="blueprint-cta">
+              <div className="text-[10px] flex-1" style={{ color: "var(--text-muted)" }}>
+                <b style={{ color: "#F4A73B" }}>AAA Game Blueprint:</b> plan the full game design, runtime
+                recommendation and asset reuse before anything generates.
+              </div>
+              <button className="or-btn text-[10.5px] font-bold" disabled={bpLoading}
+                style={{ background: "linear-gradient(90deg,#F4A73B,#C26BFF)", color: "#fff" }}
+                onClick={planBlueprint} data-testid="plan-blueprint-btn">
+                {bpLoading ? "Planning…" : "Plan Game Blueprint"}
+              </button>
+            </div>
+          )}
 
           {proj.tools.length > 0 && (
             <>

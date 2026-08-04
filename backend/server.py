@@ -190,6 +190,10 @@ app.include_router(games_router_mod.admin)
 app.include_router(games_router_mod.public)
 from routers import orai_builds as orai_builds_router_mod  # noqa: E402
 app.include_router(orai_builds_router_mod.router)
+from routers import game_blueprints as game_blueprints_router_mod  # noqa: E402
+app.include_router(game_blueprints_router_mod.router)  # before orai_projects — literal /blueprints must beat /{pid}
+from routers import game_editor as game_editor_router_mod  # noqa: E402
+app.include_router(game_editor_router_mod.router)  # before orai_projects — literal /editor|/remix|/release beat /{pid}
 from routers import orai_projects as orai_projects_router_mod  # noqa: E402
 app.include_router(orai_projects_router_mod.router)
 from routers import game_assets as game_assets_router_mod  # noqa: E402

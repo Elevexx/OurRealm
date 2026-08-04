@@ -282,8 +282,14 @@ async def games_hub(current: CurrentUser, q: str = "", subject: str = ""):
                                        "plays": 1, "published_at": 1, "spec.description": 1,
                                        "spec.subject": 1, "spec.grade_level": 1, "spec.stages": 1,
                                        "cover_url": 1, "genre": 1, "showcase": 1, "fire_economy": 1,
-                                       "spec.achievements": 1,
+                                       "spec.achievements": 1, "release": 1,
                                        "spec.learning_objective": 1}).sort("published_at", -1).to_list(60)
+    from services.game_editor import release_allows
+    from core.permissions import get_admin_role
+    _is_founder = get_admin_role(current) == "founder"
+    rows = [r for r in rows if release_allows(r, current, is_founder=_is_founder)]
+    for r in rows:
+        r.pop("release", None)
     from routers.games_plus import fire_econ, econ_preview
     for r in rows:
         econ = fire_econ(r)
