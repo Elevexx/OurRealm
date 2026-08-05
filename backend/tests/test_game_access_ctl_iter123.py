@@ -134,7 +134,8 @@ class TestBadgeAccess:
         assert (deny.json().get("detail") or {}).get("reason") == "required_badge_missing"
 
     def test_all(self, founder_h, tftwo_h):
-        r = _put_access(founder_h, {"mode": "badge_access", "badges": ["og", "vip"],
+        # tftwo has 'og' and 'vip' but NOT 'founder' — ALL must deny
+        r = _put_access(founder_h, {"mode": "badge_access", "badges": ["og", "founder"],
                                     "badge_match": "all"})
         assert r.status_code == 200
         deny = requests.get(f"{BASE}/api/games/{GAME_ID}", headers=tftwo_h, timeout=10)

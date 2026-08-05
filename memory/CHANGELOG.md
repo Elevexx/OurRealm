@@ -402,3 +402,19 @@ AFTER NEXT DEPLOY: production boots → startup_import inserts all 27 published 
 - Overlap fix already in place: body.or-game-playing hides bottom nav + ORAi FAB during play (App.css/index.css).
 - Ground contact verified visually: sprite bottom padding 0.19 vs draw offset 0.303·HERO → feet flush on tile tops.
 - TESTED at iPhone viewport 390x844 with REAL CDP touch events: all 4 buttons fire; multi-touch run+jump, run+melee, run+spell all work; hazard fall respawns correctly; wizard grounded (no hover).
+
+## P0 — Game Access & Visibility Controls for /admin/games (Aug 5, 2026) ✅
+### Backend
+- NEW services/game_access_ctl.py: 9 access modes (founder_only, custom_users, badge_access, progression_access, view_only, preview, public_preview, published, maintenance), evaluate() with per-mode flags (fire/keys/saves/leaderboard/reports), layered eligibility filters (badges ANY/ALL, min/max level, min Fire, account age, teen/adult audience), founder/admin bypass, legacy release migration (read-only, never persisted), summary_text, audit_change.
+- NEW routers/game_access_ctl.py: /api/admin/games/access/registry (dynamic badge_registry + published progression_levels), /access/user-search, /{gid}/access GET/PUT (username resolution: commas, @, trim, dedupe, 400 invalid_users), /access/audit, /access/rollback, /access/simulate (safe, no impersonation), /access/preview-link POST(regenerates+revokes old)/DELETE, PUBLIC /api/public/game-preview/{token} (no auth, whitelisted in server.py global_auth_guard, 40 req/min/IP rate limit, sanitized game payload, rewards hard-disabled).
+- ENFORCEMENT: games.py (hub filter + play 403 {reason,message} + save), games_plus.py (submit_score gates leaderboard/saves/achievements/fire pool by flags; leaderboard GET; fire-info), fire.py collect_key (keys flag).
+- Platform games_play invite-only gate reconciled: explicit per-game access config OVERRIDES the platform gate; legacy games (no access config) keep the platform gate. Hub 403 now structured {reason,message}.
+- Flags for view_only/public_preview are HARD-LOCKED to all-off in normalize_config (Public Preview can never grant rewards).
+- Collections: game_access_audit (versions + rollback), game_preview_links, preview_ratelimit.
+### Frontend
+- NEW components/admin/GameAccessPanel.jsx mounted in AdminGames detail: mode dropdown, custom users field w/ autocomplete, badge checklist + Select/Clear All + ANY/ALL, progression checklist + min/max, reward toggles, eligibility filters, effective access summary, Save (audited reason prompt)/Reset, Copy/Revoke public preview link, Test as User / Test as Guest (simulation), audit history + per-entry Rollback.
+- NEW pages/PublicGamePreview.jsx at /preview/game/:token (no login): disclaimer before play + Public Preview badge + guest GameRuntime (guest prop skips key-collect API + localStorage saves).
+- GamesHub: access label chips in hub cards, access message banner, view-only input-blocking overlay, structured blocked panel for 403s.
+### Testing
+- 18/18 pytest (tests/test_game_access_ctl_iter123.py) covering all 9 modes, ANY/ALL badges, progression min, preview toggles, public preview E2E (no auth), link revoke/regenerate, audit+rollback, founder bypass, Dragon Realm legacy migration regression. Screenshot-verified: admin panel, tftwo hub chips + view-only overlay, guest preview page.
+- NOTE: Dragon Realm demo (94f0…) had legacy release.mode=founder_only → migrates to Founder Only (identical to previous behavior, not changed automatically).

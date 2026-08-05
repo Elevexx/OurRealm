@@ -276,8 +276,7 @@ async def game_action(game_id: str, body: dict, current: CurrentUser):
 async def games_hub(current: CurrentUser, q: str = "", subject: str = ""):
     from services.access_policy import check_access
     pol = await check_access("games_play", current, consume=False)
-    if not pol["allowed"]:
-        raise HTTPException(status_code=403, detail=pol["reason"])
+    platform_blocked = not pol["allowed"]  # explicit per-game access configs override this gate
     query = {"status": "published"}
     if q:
         query["title"] = {"$regex": q[:60], "$options": "i"}
@@ -293,7 +292,10 @@ async def games_hub(current: CurrentUser, q: str = "", subject: str = ""):
     _ctx = await load_user_ctx(current)
     visible_rows = []
     for r in rows:
+        has_explicit = isinstance(r.get("access"), dict)
         acc = await evaluate(r, current, _ctx)
+        if platform_blocked and not (has_explicit and (acc["allowed"] or acc["visible"])):
+            continue  # platform is invite-only; only founder-configured games pass through
         if not (acc["allowed"] or acc["visible"]):
             continue
         r["access"] = {"mode": acc["mode"], "label": acc["label"], "allowed": acc["allowed"],
@@ -301,6 +303,8 @@ async def games_hub(current: CurrentUser, q: str = "", subject: str = ""):
         r.pop("release", None)
         visible_rows.append(r)
     rows = visible_rows
+    if platform_blocked and not rows:
+        raise HTTPException(status_code=403, detail={"reason": "platform_restricted", "message": pol["reason"]})
     from routers.games_plus import fire_econ, econ_preview
     for r in rows:
         econ = fire_econ(r)
@@ -317,10 +321,6 @@ async def games_hub(current: CurrentUser, q: str = "", subject: str = ""):
 
 @public.get("/{game_id}")
 async def play_game(game_id: str, current: CurrentUser):
-    from services.access_policy import check_access
-    pol = await check_access("games_play", current, consume=False)
-    if not pol["allowed"]:
-        raise HTTPException(status_code=403, detail=pol["reason"])
     g = await db.games.find_one({"id": game_id, "status": "published"},
                                 {"_id": 0, "build_log": 0, "request": 0})
     if not g:
@@ -336,6 +336,13 @@ async def play_game(game_id: str, current: CurrentUser):
                                     {"_id": 0, "build_log": 0, "request": 0})
         if not g:
             raise HTTPException(status_code=404, detail="Game not found")
+    if not isinstance(g.get("access"), dict):
+        # legacy game with no explicit per-game config — platform-wide gate applies
+        from services.access_policy import check_access
+        pol = await check_access("games_play", current, consume=False)
+        if not pol["allowed"]:
+            raise HTTPException(status_code=403, detail={"reason": "platform_restricted",
+                                                         "message": pol["reason"]})
     from services.game_access_ctl import evaluate
     acc = await evaluate(g, current)
     if not acc["allowed"]:

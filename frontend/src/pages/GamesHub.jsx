@@ -19,7 +19,10 @@ export default function GamesHub() {
   const load = useCallback(() => {
     apiClient.get(`/games`, { params: { q } })
       .then((r) => { setData(r.data); setDenied(null); })
-      .catch((e) => setDenied(e?.response?.data?.detail || "Games are not available for you yet"));
+      .catch((e) => {
+        const d = e?.response?.data?.detail;
+        setDenied((typeof d === "object" ? (d.message || d.reason) : d) || "Games are not available for you yet");
+      });
   }, [q]);
   useEffect(() => { load(); }, [load]);
 
