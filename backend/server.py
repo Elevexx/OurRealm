@@ -248,6 +248,8 @@ app.include_router(game_assets_router_mod.router)
 from routers import project_media as project_media_router_mod  # noqa: E402
 app.include_router(project_media_router_mod.router)
 app.include_router(project_media_router_mod.public_media)
+from routers import game_promotion as game_promotion_router_mod  # noqa: E402
+app.include_router(game_promotion_router_mod.router)
 app.include_router(game_assets_router_mod.public_router)
 
 
@@ -584,6 +586,11 @@ async def on_startup():
 
 async def _safe_startup():
     import asyncio
+    try:
+        from services.game_promotion import startup_import
+        asyncio.create_task(startup_import())
+    except Exception as e:
+        logger.error(f"[promotion] startup seed task failed to arm: {e}")
     try:
         await _deferred_startup()
     except asyncio.CancelledError:

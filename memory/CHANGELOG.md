@@ -376,3 +376,14 @@ Session AI cost: $0.10 total (icon_set+ui_frame job earlier). Cumulative game to
 - project_media now S3-aware (adapter put on upload, redirect fallback on serve) — production-safe.
 - VALIDATION (scripted playtests): icons/chest/key render from founder sheet ✓, FP economy popups ✓, key→wallet E2E ✓, boss visible/phases/portrait/breath/arena ✓, checkpoint respawn ✓, stage transitions + per-level assets ✓ (proven earlier same runtime), boss kill→rewards→portal→complete→Fire award ✓ (proven earlier).
 - PUBLISHED: status=published, live in /games list. AI cost this final phase: $0.00 (founder-supplied art reused). Cumulative: $0.89.
+
+## P0 — Preview→Production Game Publishing FIX (Aug 5, 2026) ✅
+ROOT CAUSE: preview (DB test_database @ localhost) and production run SEPARATE MongoDB databases; deploys ship code only — published game records never reached production. Media itself is in SHARED R2 storage (media.ourrealm.social), so only DB records were missing.
+SOLUTION — seed-bundle promotion system:
+- services/game_promotion.py: build_bundle (game doc + referenced orai_assets records + R2 existence check w/ self-heal upload), import_bundle (idempotent; insert-if-missing; force-mode backs up existing to game_promotion_backups + never overwrites newer prod records + preserves prod play counters), startup_import (boot-time import of repo-shipped bundles — armed unconditionally in _safe_startup, runs on production at every deploy), verify_game (env-local record+status+asset checks).
+- routers/game_promotion.py (founder-only): /api/admin/games/promotion/{status,seed,export/{gid},import,unpublish/{gid},verify/{gid},history}. Every action audited in db.game_promotions.
+- backend/seed_bundles/: 27 bundles written (ALL published games; 3 RTTEST internal test records auto-skipped). Ships with deploy (not gitignored). Dragon Realm bundle: 16 asset records, 0 missing.
+- frontend components/admin/ProductionPromotion.jsx on /admin/games: env-aware panel (PREVIEW vs PRODUCTION banner), Write Seed Bundles, Import Bundle (file), per-game Export/Verify/Unpublish, Promotion History.
+- Cover URLs already production-safe (/api/media/* is a stateless R2 presigned proxy); spec asset URLs stay /api/public/game-assets/* and work because bundles carry the orai_assets records.
+TESTED: seed write (27 written/3 skipped), idempotent re-import (skipped: already present), fresh-import simulation (imported + appears in /api/games + verify all-green), startup boot pass, audit history, UI panel screenshot. Test import record cleaned up.
+AFTER NEXT DEPLOY: production boots → startup_import inserts all 27 published games → they appear on production /games automatically.

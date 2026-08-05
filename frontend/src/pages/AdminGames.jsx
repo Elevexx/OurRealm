@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Gamepad2, Loader2, Lock, Rocket, CheckCircle2, XCircle, Trash2, RefreshCcw, Play, Eye, Archive, Sparkles, Flame } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
+import ProductionPromotion from "@/components/admin/ProductionPromotion";
 import GameRuntime from "@/components/games/GameRuntime";
 import GameBlueprint from "@/components/games/GameBlueprint";
 import GameFireEconomy from "@/components/games/GameFireEconomy";
@@ -208,6 +209,7 @@ export default function AdminGames() {
         </div>
       ) : (
       <>
+      <ProductionPromotion />
       <div className="flex items-center gap-2 mb-1 flex-wrap">
         <button className="or-btn or-btn-ghost text-xs" onClick={() => navigate("/admin")} data-testid="games-back">
           <ArrowLeft size={13} /> Admin Hub</button>
