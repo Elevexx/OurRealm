@@ -98,3 +98,8 @@ Remaining backlog: Public course sharing (marked 'future' in UI), invite-picker 
 
 ## STATUS UPDATE (Aug 2026) — Phase 6 Production Hardening DONE (iter-107)
 Readiness 100/100. Remaining backlog unchanged: public course sharing, invite-picker UI, AdminOrion.jsx split, membership birthday field UI. Optional: hide bottom nav on desktop (user has said don't redesign — ask first).
+
+## After Aug 5, 2026 (arpg runtime shipped)
+- P0 (founder decision): approve/decline the 2.5D Runtime Proof in Founder Review; optionally resume Dragon Realm batch v2 (state file resumable, now can include an action_rpg_2_5d variant)
+- P1: Founder Moderation Cockpit UI; P2 Voice moderation; P3 Appeal Center; P8 Game Creator Founder Cockpit UI (blueprints/rollbacks/builds)
+- arpg engine upgrades: animation frame-strips for hero/boss (anim slot generation), PHASE 2+ boss content tuning, minimap, spell bar with multiple spells

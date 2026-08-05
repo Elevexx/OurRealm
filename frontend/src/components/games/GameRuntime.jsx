@@ -191,9 +191,11 @@ function touchRow(defs){if(!MOB)return null;const row=el('div','');
  if(CTRL.left_handed)defs=defs.slice().reverse();
  row.style.cssText='display:flex;justify-content:'+(CTRL.button_position==='left'?'flex-start':CTRL.button_position==='right'?'flex-end':'center')+';gap:10px;padding:6px;opacity:'+(CTRL.touch_opacity!==undefined?CTRL.touch_opacity:0.85);
  defs.forEach(d=>{const b=el('button','',d.label);
+  if(d.testid)b.setAttribute('data-testid',d.testid);
   b.style.cssText='width:'+bw+'px;height:'+bs+'px;border-radius:12px;border:1px solid '+GLOW+'55;background:'+GLOW+'18;color:'+T.text+';font-size:20px;touch-action:none;user-select:none';
   const on=e=>{e.preventDefault();lastInput='touch';keys[d.key]=true},off=e=>{e.preventDefault();keys[d.key]=false};
   b.addEventListener('pointerdown',on);b.addEventListener('pointerup',off);b.addEventListener('pointerleave',off);b.addEventListener('pointercancel',off);
+  b.addEventListener('click',()=>{keys[d.key]=true;setTimeout(()=>keys[d.key]=false,120)});
   row.appendChild(b)});root.appendChild(row);return row}
 function refreshHud(){const h=root.querySelector('div');if(h)h.replaceWith(hud())}
 function hz(n){n=Math.sin(n*127.1)*43758.5;return n-Math.floor(n)}
@@ -1173,14 +1175,20 @@ function arpg(st){const c=mkCanvas(MOB?70:8),g=c.getContext('2d'),W=c.width,H=c.
    dlg.remove();dlg=null;busy=false;setSt('idle')};
   dlg.appendChild(b);document.body.appendChild(dlg)}
  /* touch: left-half virtual joystick + action buttons */
+ const latch={};
+ document.addEventListener('keydown',e=>{['attack','spell','dodge','interact'].forEach(a=>{if(akeys(a).includes(e.key))latch[a]=true})});
+ function tap(a){if(latch[a]){latch[a]=false;return true}return act(a)}
  let joy={on:false,cx:0,cy:0,dx:0,dy:0};
  if(MOB){c.addEventListener('pointerdown',e=>{const r=c.getBoundingClientRect(),x=e.clientX-r.left;
    if(x<W*0.45){joy.on=true;joy.cx=x;joy.cy=e.clientY-r.top;joy.dx=0;joy.dy=0;lastInput='touch'}});
   c.addEventListener('pointermove',e=>{if(!joy.on)return;const r=c.getBoundingClientRect();
    joy.dx=(e.clientX-r.left-joy.cx)/40;joy.dy=(e.clientY-r.top-joy.cy)/40});
   c.addEventListener('pointerup',()=>{joy.on=false;joy.dx=0;joy.dy=0});
-  touchRow([{label:'\u2694',key:akeys('attack')[0]||'j'},{label:'\u2728',key:akeys('spell')[0]||'k'},
-            {label:'\uD83D\uDCA8',key:akeys('dodge')[0]||'l'},{label:'\uD83D\uDCAC',key:akeys('interact')[0]||'e'}])}
+  touchRow([{label:'\u2694',key:akeys('attack')[0]||'j',testid:'arpg-touch-attack'},{label:'\u2728',key:akeys('spell')[0]||'k',testid:'arpg-touch-spell'},
+            {label:'\uD83D\uDCA8',key:akeys('dodge')[0]||'l',testid:'arpg-touch-dodge'},{label:'\uD83D\uDCAC',key:akeys('interact')[0]||'e',testid:'arpg-touch-talk'}])}
+ c.addEventListener('pointerup',e=>{const r2=c.getBoundingClientRect(),wx=e.clientX-r2.left+cam,wy=e.clientY-r2.top;
+  const n=npcs.find(n=>Math.abs(n.x-wx)<46&&Math.abs(n.y-wy)<56&&Math.abs(n.x-P.x)<80&&Math.abs(n.y-P.y)<70);
+  if(n&&!dlg&&!busy)openDlg(n)});
  let last=0;
  function loop(ts){if(doneFlag)return;raf=requestAnimationFrame(loop);
   const dt=Math.min(0.05,(ts-(last||ts))/1000);last=ts;const t=ts/1000;
@@ -1203,10 +1211,10 @@ function arpg(st){const c=mkCanvas(MOB?70:8),g=c.getContext('2d'),W=c.width,H=c.
    if(P.st!=='attack'&&P.st!=='cast'&&P.st!=='dodge'||P.stT>0.35){
     if(mag>0.6)setSt('run');else if(mag>0.05)setSt('walk');else if(!['attack','cast','dodge','hurt','death','interact'].includes(P.st)||P.stT>0.4)setSt('idle')}
    tryMove(P,P.vx*dt,P.vy*dt,9);
-   if(act('attack')&&P.atkCd<=0){clr('attack');meleeHit()}
-   if(act('spell')&&P.splCd<=0){clr('spell');castSpell()}
-   if(act('dodge')&&P.dgCd<=0){clr('dodge');doDodge()}
-   if(act('interact')){clr('interact');const n=npcs.find(n=>Math.abs(n.x-P.x)<60&&Math.abs(n.y-P.y)<50);
+   if(tap('attack')&&P.atkCd<=0){clr('attack');meleeHit()}
+   if(tap('spell')&&P.splCd<=0){clr('spell');castSpell()}
+   if(tap('dodge')&&P.dgCd<=0){clr('dodge');doDodge()}
+   if(tap('interact')){clr('interact');const n=npcs.find(n=>Math.abs(n.x-P.x)<60&&Math.abs(n.y-P.y)<50);
     if(n)openDlg(n);else if(AX.potions>0&&pHp<pMax){AX.potions--;pHp=Math.min(pMax,pHp+12);sfx('collect');say('Potion used (+12)');savePt()}}
    if(MOB&&!joy.on){const n=npcs.find(n=>Math.abs(n.x-P.x)<60&&Math.abs(n.y-P.y)<50);if(n&&keys[akeys('interact')[0]||'e'])openDlg(n)}
   }

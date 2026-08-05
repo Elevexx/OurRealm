@@ -3730,3 +3730,9 @@ FIXES (in preview, ship on redeploy):
 - Public no-secret `GET /api/health/version` (in PUBLIC_API_PATHS): build marker + feature booleans (ctx_path_fix, structured contract, CORS-500 handler, routing, temp strip, build engine, T&S) + env presence booleans (openai_key_set, emergent_key_set, cors_origins_count, db_name_set). Lets anyone verify WHICH build production runs and whether prod env has LLM keys.
 - Chat success contract already includes success/assistant_reply/reply/request_id/provider/model/conversation_id/session_id/fallback_used — re-verified with exact phrase "Reply with only: production matches preview." → 200, openai/gpt-5-mini-2025-08-07, fallback false.
 POST-REDEPLOY CHECKLIST (user): 1) open https://ourrealm.social/api/health/version — must show backend_build 2026-08-04-ts-p0-cors500 and openai_key_set:true (if false → env var missing in prod, contact Emergent support). 2) ORAi Projects chat: "Reply with only: production matches preview." 3) wizard-arena planning smoke. Mobile Safari + desktop.
+
+## 2.5D Action RPG Runtime + Asset Wiring Pipeline (Aug 5, 2026) ✅ COMPLETE — see CHANGELOG.md for full detail
+- Asset Wiring Pipeline (library-first reuse → generate missing only → spec.assets → runtime slot adapters → renderer), publish gated on required assets, art presets (fantasy_hd default for arpg).
+- action_rpg_2_5d: permanent first-class real-time runtime (runtime_action_rpg_2_5d_v1), fully registered across planner/registry/contracts/editor/controls/asset slots.
+- Proof game 254523a78f694547ac36a6845e037e92 in FOUNDER REVIEW (unpublished) — awaiting founder approval.
+- Dragon Realm batch v2 HALTED with v1–v3 built+wired UNPUBLISHED (/tmp/dragon_v2_state.json resumable) — do not restart unless founder asks.
