@@ -126,6 +126,11 @@ async def _save_upload(f: UploadFile, current: dict, name: str, tags: list,
     fname = f"{uuid.uuid4().hex}.{ext or 'bin'}"
     path = MEDIA_ROOT / fname
     path.write_bytes(data)
+    try:
+        from services.storage_adapter import get_storage_adapter
+        get_storage_adapter().put("project_media", fname, path)
+    except Exception:
+        pass
     an = _analyze(path, ext, len(data))
     file_tokens = [t for t in (f.filename or "").replace(".", " ").replace("_", " ").replace("-", " ").split() if len(t) > 2][:8]
     rec = await asset_library.register_asset(
@@ -287,6 +292,14 @@ async def serve(name: str):
         raise HTTPException(status_code=404, detail="Not found")
     path = MEDIA_ROOT / name
     if not path.exists():
+        try:
+            from services.storage_adapter import get_storage_adapter
+            ad = get_storage_adapter()
+            if ad.exists("project_media", name):
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(ad.get_url("project_media", name), status_code=307)
+        except Exception:
+            pass
         raise HTTPException(status_code=404, detail="File missing")
     from fastapi.responses import FileResponse
     return FileResponse(str(path), media_type=(a.get("storage_ref") or {}).get("mime")

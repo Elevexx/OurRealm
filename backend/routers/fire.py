@@ -464,3 +464,28 @@ async def admin_reverse_reaction(reaction_id: str, body: ReasonBody, current: Cu
     report = await fv.reverse_reaction(current, reaction_id, body.reason.strip())
     await _audit(current, "fire_reverse_reaction", {"report": report})
     return {"ok": True, **report}
+
+
+@router.post("/keys/collect")
+async def collect_key(current: CurrentUser, body: dict):
+    """Golden Keys — permanent Fire Vault Key Wallet (idempotent per key_id)."""
+    key_id = str(body.get("key_id") or "").strip()[:120]
+    if not key_id:
+        raise HTTPException(status_code=400, detail="key_id required")
+    from datetime import datetime, timezone
+    r = await db.fire_keys.update_one(
+        {"user_id": current["id"], "key_id": key_id},
+        {"$setOnInsert": {"user_id": current["id"], "key_id": key_id,
+                          "game_id": str(body.get("game_id") or "")[:64],
+                          "stage": int(body.get("stage") or 0),
+                          "collected_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True)
+    total = await db.fire_keys.count_documents({"user_id": current["id"]})
+    return {"ok": True, "new": bool(r.upserted_id), "total_keys": total}
+
+
+@router.get("/keys")
+async def key_wallet(current: CurrentUser):
+    rows = await db.fire_keys.find({"user_id": current["id"]}, {"_id": 0}).sort("collected_at", -1).to_list(200)
+    return {"keys": rows, "total": len(rows),
+            "future_uses": ["Portals", "Games", "Realms", "Nexus", "AR", "VR", "XR"]}

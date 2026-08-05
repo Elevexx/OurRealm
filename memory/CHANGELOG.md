@@ -363,3 +363,16 @@ NEW OPC FEATURE — Project Media (reusable for ALL future projects incl. Unity/
 - Tested via curl E2E: upload→analysis (4-frame sheet detected from 512x128)→search→replace(v2)→versions→restore(v3)→approve→limits; GLB typed model_3d/unity; public serve 200; test assets archived after.
 Known quirk: GameRuntime.jsx suffered two duplicate-tail write artifacts this session (stale fragments after component end causing compile errors + one lost edit) — both fixed; verify file tail if editing again.
 Session AI cost: $0.10 total (icon_set+ui_frame job earlier). Cumulative game total $0.89.
+
+## Dragon Realm V1 — FINAL COMPLETION & PUBLISH (Aug 5, 2026) ✅ PUBLISHED to /games
+- Founder Reference #3 collectible sheet WIRED as official icon_set (fetched from founder upload, transparent 1408x768 4x2 grid, pushed through S3 storage adapter — fixed 307-redirect/broken-image issue caused by local-only file copy).
+- CRITICAL FIX: 'dt is not defined' crash in drawWorld boss ember line (killed hero/HUD/boss rendering each frame once boss engaged) → fixed-rate spawn. Hardened all direct drawImage calls with naturalWidth guards (broken image can no longer crash the render loop).
+- Collectible economy: coin +10🔥, diamond +50🔥, fire +100🔥 (+dmg buff), star +500🔥 (+surge), red potion 50% HP, blue potion FULL restore, enemy kills +3-10🔥, dragons +1000🔥; in-game FP counter in HUD.
+- GOLDEN KEYS: 1 hidden per level → permanent Fire Vault Key Wallet. Backend: POST /api/fire/keys/collect (idempotent), GET /api/fire/keys (wallet + future uses: Portals/Games/Realms/Nexus/AR/VR/XR). GameRuntime component forwards iframe 'game_key' postMessage → API. VERIFIED: real key persisted for stealth during playtest.
+- Treasure chest: exactly ONE per level after brute encounter, randomized rewards (2 coins + gem/potion/fire/star).
+- Enemies ~2x size (walker/spitter 88k, bat 68k, brute 116k) w/ corrected feet/collision/hp-bar geometry; player feet-contact fix (draw center -0.24·HERO).
+- Levels halved & densified: 3600/3900/4200px, 13/15/17 enemies, 3 checkpoints incl. pre-boss, 2 plateau routes, 2 hidden chains, waterfall secrets, 1 star + 1 key hidden per level.
+- Combat juice: screen shake on all hits, +N🔥 kill popups, bigger impact bursts.
+- project_media now S3-aware (adapter put on upload, redirect fallback on serve) — production-safe.
+- VALIDATION (scripted playtests): icons/chest/key render from founder sheet ✓, FP economy popups ✓, key→wallet E2E ✓, boss visible/phases/portrait/breath/arena ✓, checkpoint respawn ✓, stage transitions + per-level assets ✓ (proven earlier same runtime), boss kill→rewards→portal→complete→Fire award ✓ (proven earlier).
+- PUBLISHED: status=published, live in /games list. AI cost this final phase: $0.00 (founder-supplied art reused). Cumulative: $0.89.
