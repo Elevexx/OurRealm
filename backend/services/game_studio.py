@@ -29,7 +29,7 @@ RUNTIMES = ["quiz_adventure", "matching", "sorting", "memory", "rhythm",
             "card_battle", "tower_defense", "match3",
             "rpg", "racing", "farming", "city_builder",
             "roguelike", "tactics", "idle", "visual_novel", "fishing",
-            "turn_based_creature_rpg"]
+            "turn_based_creature_rpg", "action_rpg_2_5d"]
 # Catalog entries registered but not yet LLM-generatable. (turn_based_creature_rpg
 # was promoted to a first-class runtime — runtime_turn_based_creature_rpg_v1,
 # tpl_turn_based_creature_rpg_v1 — reusing the vetted rpg engine machinery.)
@@ -44,6 +44,7 @@ RUNTIME_LABELS = {
     "roguelike": "Roguelike", "tactics": "Tactical Strategy", "idle": "Idle / Incremental",
     "visual_novel": "Visual Novel", "fishing": "Fishing",
     "turn_based_creature_rpg": "Turn-Based Creature RPG",
+    "action_rpg_2_5d": "2.5D Action RPG",
     **SCAFFOLDED_RUNTIMES,
 }
 # Template registry — every catalog family maps to exactly one vetted template.
@@ -55,6 +56,8 @@ WIN_LOSS = {
     "rpg": ("complete the quest and reach the exit", "HP reaches 0 in combat"),
     "turn_based_creature_rpg": ("complete the quest, grow your creature party and reach the exit",
                                 "HP reaches 0 in a creature battle"),
+    "action_rpg_2_5d": ("complete the region quest, defeat the boss and pass the exit portal",
+                        "all lives lost (respawn at checkpoints until then)"),
     "racing": ("finish all laps in 1st-3rd place", "finish last / miss checkpoints"),
     "farming": ("reach the coin goal before the season ends", "season ends short of the goal"),
     "city_builder": ("grow the city to the population target", "treasury and food collapse"),
@@ -79,6 +82,9 @@ GENRE_MAP = [
     (("card battle", "card battler", "card game", "card clash", "deck build", "deckbuild", "tcg", "card duel"), "card_battle"),
     (("tower defense", "tower defence", "defend the base", "td game", "place towers", "wave defense"), "tower_defense"),
     (("match 3", "match-3", "match three", "gem swap", "tile match", "match puzzle", "bejeweled", "candy crush"), "match3"),
+    (("action rpg", "action-rpg", "2.5d", "zelda", "diablo", "real-time combat", "real time combat",
+      "hack and slash", "hack-and-slash", "dodge roll", "action adventure rpg", "wizard action",
+      "melee and spell", "real-time fantasy combat", "souls-like", "arpg"), "action_rpg_2_5d"),
     (("creature collect", "creature-collect", "monster catching", "monster taming", "monster collector",
       "creature companion", "catch creatures", "catch monsters", "pokemon", "creature battle",
       "monster battle adventure", "dragon taming", "dragon training", "dragon collection",
@@ -136,6 +142,14 @@ RUNTIME_MECHANICS = {
     "idle": ["passive generation", "automation", "upgrades", "prestige"],
     "visual_novel": ["branching dialogue", "portraits", "choices", "multiple endings"],
     "fishing": ["casting", "timing catch", "bait", "fish rarity", "collection"],
+    "action_rpg_2_5d": ["continuous 8-direction movement", "camera follow + look-ahead + shake",
+                        "layered 2.5D parallax presentation", "melee combat", "projectile spells",
+                        "dodge roll with i-frames", "stamina & mana", "cooldowns", "knockback & crits",
+                        "burn status effect", "enemy AI profiles (patrol/chase/retreat/ranged/caster)",
+                        "attack telegraphs", "multi-phase boss with arena lock & enrage", "loot drops",
+                        "NPC dialogue", "quests (defeat/collect)", "inventory & potions", "equipment",
+                        "XP & leveling", "checkpoints & respawn", "region transitions", "save/load",
+                        "trigger volumes", "gamepad support", "mobile virtual joystick"],
     "turn_based_creature_rpg": ["world exploration", "NPC dialogue", "quests", "quest objectives",
                                 "inventory", "party system", "creature roster", "turn-based combat",
                                 "capture mechanic", "creature taming", "tame & befriend wild creature",
@@ -261,6 +275,7 @@ PLAYER_REPS = {
     "visual_novel": ["story_protagonist"],
     "fishing": ["angler"],
     "turn_based_creature_rpg": ["dragon_warden"],
+    "action_rpg_2_5d": ["wizard", "knight", "archer", "rogue", "dragon_rider", "mage"],
 }
 
 
@@ -304,6 +319,12 @@ IDENTITY_BASE = {
                                 "explore regions, talk to NPCs, take quests, battle wild creatures turn-by-turn, "
                                 "CATCH creatures into your party, level up your roster",
                                 "explore → encounter → turn-based battle → catch or defeat → level party → quest exit"),
+    "action_rpg_2_5d": ("WASD/arrows 8-dir movement · J/Space melee · K spell · L/Shift dodge · E interact "
+                        "· gamepad · mobile joystick + action buttons", "smooth side-following 2.5D camera "
+                        "with look-ahead, arena lock and shake",
+                        "move freely in real time, melee and spell-cast enemies, dodge telegraphed attacks, "
+                        "talk to NPCs, complete quests, loot gear, defeat a multi-phase boss",
+                        "explore region → fight AI enemies in real time → quest → checkpoint → boss phases → exit portal"),
     "racing": ("←/→ steer · space drift · touch steering buttons", "top-down chase camera on a circuit",
                "steer through checkpoints, drift corners, grab boosts, beat AI racers across laps",
                "race lap → hit checkpoints → overtake AI → finish placement"),
@@ -738,6 +759,20 @@ turn_based_creature_rpg: SAME schema as rpg with creature focus REQUIRED per reg
   (loot.kind: weapon|armor|potion|quest_item; exit unlocks when quest item is returned to the giver;
    stages form the world map: mix town/dungeon/overworld zones; creatures join the party when caught,
    fight in turn-based battles, level up and can evolve)
+action_rpg_2_5d: {"stages":[{"title":"Region name","zone":"forest|ruins|caves|village|lava|ice|swamp|castle","width":1700 (world px 1200-2400),
+  "player_hp":30,"player_mana":12,"player_stamina":100,
+  "obstacles":[{"x":430,"y":250,"w":70,"h":36}] (3-8 rects in world px; y between 170-330),
+  "npcs":[{"name":"Elder Rowan","x":220,"y":230,"dialog":"Please rid the woods of drakes!"}] (1-2),
+  "quest":{"giver":"Elder Rowan","text":"Defeat 3 ember drakes","type":"defeat|collect","target":3,"item":"Ember Sigil","xp":20},
+  "enemies":[{"name":"Ember Drake","type":"melee|ranged|caster","x":700,"y":240,"hp":14,"attack":4,"speed":60,"xp":10}] (3-6, use 2-3 different types),
+  "loot":[{"x":520,"y":280,"kind":"equipment","name":"Staff of Cinders","power":3},
+          {"x":940,"y":260,"kind":"potion"}] (1-3; for collect quests include one {"kind":"quest_item","name":<quest.item>}),
+  "checkpoint":{"x":820,"y":240},
+  "boss":{"name":"Pyrewing","x":1400,"y":230,"hp":60,"attack":7,"phases":2,"enrage_pct":0.25,"xp":40,"summons":true} (final stage REQUIRED, earlier stages optional),
+  "exit":{"x":1600,"y":230}}]}
+  (REAL-TIME action: 8-dir movement, melee + spell + dodge are engine features; quest.type "defeat" counts
+   enemy kills to target, "collect" needs the quest_item looted then returned to the giver NPC;
+   exit unlocks when the quest is done AND the region boss (if any) is dead; enemy x from 300 to width-250)
 racing: {"stages":[{"title":"Circuit name","laps":3,"ai_racers":3,"track":"oval|figure8",
   "boosts":2,"car_speed":150,"ai_speed":135}]}
   (player steers + drifts; checkpoints are generated from the track shape)
@@ -849,6 +884,19 @@ def validate_spec(spec: dict, complexity: int = 1, expected_runtime: str | None 
         elif r == "top_down":
             if not st.get("cores"):
                 errs.append(f"stage {i+1}: needs cores count")
+        elif r == "action_rpg_2_5d":
+            if not (st.get("enemies") or []):
+                errs.append(f"stage {i+1}: action RPG region needs enemies")
+            if not st.get("quest"):
+                errs.append(f"stage {i+1}: needs a quest")
+            elif st["quest"].get("type") == "collect" and not any(
+                    (l.get("kind") == "quest_item") for l in (st.get("loot") or [])):
+                errs.append(f"stage {i+1}: collect quest needs a quest_item in loot")
+            if i == len(stages) - 1 and not st.get("boss"):
+                errs.append("final region needs a boss")
+            for e in (st.get("enemies") or []):
+                if e.get("type") not in (None, "melee", "ranged", "caster"):
+                    errs.append(f"stage {i+1}: unknown enemy type '{e.get('type')}'")
         elif r == "platformer":
             plats = st.get("platforms") or []
             if plats and not all(isinstance(p, dict) and all(k in p for k in ("x", "y", "w")) for p in plats):
@@ -1123,3 +1171,4 @@ async def _run_build(game_id: str):
             "status": "failed", "stage": "failed", "error": str(e)[:400],
             "actual_cost": round(cost, 3), "updated_at": _iso()}})
         await audit(None, "game_build_failed", game_id, detail=str(e)[:200], cost=round(cost, 3))
+

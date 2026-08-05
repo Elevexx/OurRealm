@@ -731,9 +731,15 @@ RUNTIME_KEY_ACTIONS = {
     "top_down": {"left": ["ArrowLeft", "a"], "right": ["ArrowRight", "d"],
                  "up": ["ArrowUp", "w"], "down": ["ArrowDown", "s"],
                  "pause": ["p"], "restart": ["r"]},
+    "action_rpg_2_5d": {"left": ["ArrowLeft", "a"], "right": ["ArrowRight", "d"],
+                        "up": ["ArrowUp", "w"], "down": ["ArrowDown", "s"],
+                        "attack": ["j", " "], "spell": ["k"], "dodge": ["l", "Shift"],
+                        "interact": ["e", "Enter"], "pause": ["p"], "restart": ["r"]},
 }
 TOUCH_LAYOUTS = {"dodge_collect": "drag steering (+ lane taps)", "platformer": "left / right / jump buttons",
-                 "top_down": "drag joystick movement", "puzzle_room": "tap, type & inspect",
+                 "top_down": "drag joystick movement",
+                 "action_rpg_2_5d": "virtual joystick + attack/spell/dodge/talk buttons",
+                 "puzzle_room": "tap, type & inspect",
                  "rhythm": "tap the beat pad", "memory": "tap cards", "matching": "tap pairs",
                  "sorting": "tap categories", "quiz_adventure": "tap answers"}
 CONTROLS_DEFAULTS = {

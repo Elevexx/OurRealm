@@ -26,6 +26,42 @@ ART_QUALITY = {
     3: {"label": "Premium", "cost": 0.07, "suffix": "premium AAA-quality game art, intricate detail, dramatic lighting"},
 }
 
+# Founder-switchable visual presets. fantasy_hd is the DEFAULT for action_rpg_2_5d.
+ART_PRESETS = {
+    "fantasy_hd": {"label": "Fantasy HD (default for 2.5D Action RPG)", "min_quality": 3,
+                   "style": "premium HD hand-painted fantasy game art, rich vibrant color, painterly "
+                            "detail, dramatic lighting, AAA production value"},
+    "pixel": {"label": "Pixel", "min_quality": 1,
+              "style": "crisp 16-bit pixel art, limited palette, clean sprite work"},
+    "stylized": {"label": "Stylized", "min_quality": 2,
+                 "style": "bold stylized game art, clean shapes, cel shading"},
+    "cartoon": {"label": "Cartoon", "min_quality": 2,
+                "style": "vibrant cartoon game art, thick outlines, playful energy"},
+    "realistic": {"label": "Realistic", "min_quality": 3,
+                  "style": "semi-realistic painted game art, cinematic lighting, detailed textures"},
+}
+RUNTIME_DEFAULT_PRESET = {"action_rpg_2_5d": "fantasy_hd"}
+
+# runtime-baked slot emphasis so every action-RPG game inherits the benchmark presentation
+ARPG_SLOT_EMPHASIS = {
+    "player_sprite": "large detailed expressive fantasy hero, full body, readable silhouette",
+    "enemy_sprite": "large detailed visually memorable fantasy enemy, full body",
+    "boss_sprite": "very large detailed dragon boss with spread wings, glowing eyes and a unique "
+                   "silhouette, boss-quality presentation, never tiny",
+    "npc_sprite": "large detailed expressive fantasy NPC, full body",
+    "background": "large rich layered fantasy panorama filling the whole frame: waterfalls, rivers, "
+                  "forests, mountains and a distant castle, strong depth layers for parallax, no empty space",
+    "effect_fx": "high-quality magical spell burst with sparks and embers",
+    "projectile_sprite": "high-quality glowing spell projectile with a trailing ember ribbon",
+    "icon_set": "premium detailed fantasy item icons: potion, treasure chest, coin, gem, key, crystal, "
+                "spell book, sword — instantly recognizable, no generic squares",
+    "character_portrait": "premium detailed fantasy character portrait bust, expressive face",
+}
+
+
+def art_preset_for(game: dict) -> str:
+    return game.get("art_preset") or RUNTIME_DEFAULT_PRESET.get(game.get("runtime")) or ""
+
 CANVAS_ARCADE = ["top_down", "platformer", "dodge_collect"]
 
 SLOTS = {
@@ -53,6 +89,18 @@ SLOTS = {
                   "hint": "glowing energy burst spell effect"},
     "character_portrait": {"label": "Character Portrait", "kind": "sprite", "transparent": False, "required": False,
                            "hint": "character portrait bust"},
+    "creature_sprite": {"label": "Creature Sprite", "kind": "sprite", "transparent": True, "required": False,
+                        "hint": "friendly catchable creature companion sprite"},
+    "card_face": {"label": "Card Frame Art", "kind": "ui", "transparent": False, "required": False,
+                  "hint": "ornate fantasy playing-card front frame artwork, decorative border, "
+                          "empty darker center panel for text"},
+    "tower_sprite": {"label": "Tower Sprite", "kind": "sprite", "transparent": True, "required": False,
+                     "hint": "defensive tower turret structure sprite"},
+    "projectile_sprite": {"label": "Projectile Sprite", "kind": "sprite", "transparent": True, "required": False,
+                          "hint": "small glowing magical projectile bolt sprite"},
+    "music_theme": {"label": "Music Theme", "kind": "audio", "transparent": False, "required": False,
+                    "hint": "looping background music (no generation provider — library reuse only, "
+                            "runtime synth fallback)"},
 }
 
 PROFILES = {
@@ -89,20 +137,22 @@ def profile_for(runtime: str) -> str:
 
 
 def build_manifest(game: dict) -> dict:
-    prof = profile_for(game.get("runtime"))
+    from services.game_platform.asset_wiring import image_slot_defs
+    defs = image_slot_defs(game.get("runtime"))
+    prof = "runtime_adapter"
     state = (game.get("asset_manifest") or {}).get("slots") or {}
     slots = []
-    for key in PROFILES[prof]:
+    for key, required in defs:
         d = SLOTS[key]
         st = state.get(key) or {}
-        # required slots block "polished" status; canvas_arcade renderer consumes these live
+        # every listed slot is genuinely consumed by this runtime's renderer
         slots.append({
             "key": key, "label": d["label"], "kind": d["kind"],
-            "transparent": d["transparent"], "required_for_polished": d["required"],
+            "transparent": d["transparent"], "required_for_polished": required,
             "anim": d.get("anim"), "tile": d.get("tile"),
             "status": st.get("status") or "placeholder",
             "current": st.get("current"), "versions": st.get("versions") or [],
-            "renderer_integrated": prof == "canvas_arcade" or key in ("background", "ui_frame"),
+            "renderer_integrated": True,
         })
     required = [s for s in slots if s["required_for_polished"]]
     ready = [s for s in required if s["status"] == "ready"]
@@ -114,22 +164,11 @@ def build_manifest(game: dict) -> dict:
             "required_ready": len(ready), "required_total": len(required)}
 
 
-def suggest_prompt(game: dict, slot_key: str) -> str:
+def _slot_conventions(slot_key: str) -> list:
+    """Non-negotiable technical conventions appended to EVERY prompt (custom or
+    suggested) so chroma-key / tiling / animation post-processing always works."""
     d = SLOTS.get(slot_key) or {}
-    spec = game.get("spec") or {}
-    theme = (spec.get("visual_theme") or {})
-    env = theme.get("environment") or spec.get("environment") or ""
-    genre = game.get("genre") or ""
-    style = theme.get("art_style") or "vibrant 2D game art"
-    bits = [d.get("hint", slot_key), f"for the game '{game.get('title')}'"]
-    if genre:
-        bits.append(f"genre: {genre}")
-    if env:
-        bits.append(f"setting: {env}")
-    desc = (game.get("description") or "")[:160]
-    if desc:
-        bits.append(f"game premise: {desc}")
-    bits.append(f"style: {style}")
+    bits = []
     if d.get("transparent"):
         bits.append("isolated on a pure solid magenta #FF00FF background, no shadow, no ground")
     if d.get("kind") == "tileset":
@@ -139,6 +178,30 @@ def suggest_prompt(game: dict, slot_key: str) -> str:
     if d.get("anim"):
         bits.append(f"exactly {d['anim']['frames']} equal animation frames side by side in one horizontal strip, "
                     "same character in a walk/idle cycle, consistent size per frame")
+    return bits
+
+
+def suggest_prompt(game: dict, slot_key: str) -> str:
+    d = SLOTS.get(slot_key) or {}
+    spec = game.get("spec") or {}
+    theme = (spec.get("visual_theme") or {})
+    env = theme.get("environment") or spec.get("environment") or ""
+    genre = game.get("genre") or ""
+    preset = ART_PRESETS.get(art_preset_for(game))
+    style = theme.get("art_style") or (preset["style"] if preset else "vibrant 2D game art")
+    bits = [d.get("hint", slot_key)]
+    if game.get("runtime") == "action_rpg_2_5d" and slot_key in ARPG_SLOT_EMPHASIS:
+        bits.append(ARPG_SLOT_EMPHASIS[slot_key])
+    bits.append(f"for the game '{game.get('title')}'")
+    if genre:
+        bits.append(f"genre: {genre}")
+    if env:
+        bits.append(f"setting: {env}")
+    desc = (game.get("description") or "")[:160]
+    if desc:
+        bits.append(f"game premise: {desc}")
+    bits.append(f"style: {style}")
+    bits += _slot_conventions(slot_key)
     return ", ".join(bits)
 
 
@@ -274,9 +337,14 @@ async def create_job(game: dict, slot_keys: list, art_quality: int, cost_ceiling
     dup = await db.game_asset_jobs.find_one({"idempotency_key": idempotency_key}, {"_id": 0})
     if dup:
         return {**dup, "already_running": dup["status"] in ("queued", "running")}
+    preset = ART_PRESETS.get(art_preset_for(game))
+    if preset:
+        art_quality = max(int(art_quality or 1), preset["min_quality"])
     est = estimate_pack(game, slot_keys, art_quality)
     job = {"id": uuid.uuid4().hex, "game_id": game["id"], "idempotency_key": idempotency_key,
-           "slots": [{"key": k, "status": "queued", "prompt": (prompts.get(k) or suggest_prompt(game, k))[:900]}
+           "slots": [{"key": k, "status": "queued",
+                      "prompt": ((", ".join([prompts[k]] + _slot_conventions(k)))
+                                 if prompts.get(k) else suggest_prompt(game, k))[:900]}
                      for k in slot_keys if k in {i["slot"] for i in est["items"]}],
            "art_quality": min(max(int(art_quality or 1), 1), 3),
            "cost_ceiling": float(cost_ceiling), "estimate": est, "spent": 0.0,

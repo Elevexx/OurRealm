@@ -159,6 +159,18 @@ EDIT_SECTIONS = {
     "difficulty": "blueprint.extensions.difficulty",
     "accessibility": "blueprint.media.accessibility",
     "fire_power": "blueprint.systems.fire_power_integrations",
+    "player_controls": "blueprint.gameplay.player_mechanics",
+    "player_stats": "blueprint.gameplay.progression",
+    "abilities": "blueprint.extensions.abilities",
+    "spells": "blueprint.extensions.spells",
+    "boss_phases": "blueprint.gameplay.bosses",
+    "collision": "blueprint.gameplay.maps",
+    "triggers": "blueprint.extensions.triggers",
+    "equipment": "blueprint.extensions.equipment",
+    "camera": "blueprint.extensions.camera",
+    "parallax": "blueprint.media.artwork",
+    "particles": "blueprint.extensions.particles",
+    "hud": "blueprint.systems.ui_hud",
 }
 
 EDIT_SYSTEM = """You are ORAi's game blueprint editor. You receive ONE section of a game

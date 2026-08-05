@@ -140,6 +140,23 @@ export const GameAssetStudio = ({ game, onChanged }) => {
     } catch (e) { toast.error(e?.response?.data?.detail || "Reuse failed"); }
   };
 
+  const wire = async (mode) => {
+    try {
+      const { data } = await apiClient.post(`/admin/games/${game.id}/assets/wire`,
+        { mode, art_quality: quality, cost_ceiling: 2.0 });
+      toast.success(`Wired: ${data.reused.length} reused from library${data.generation_job ? `, generating ${data.generation_job.slots.length}` : ""} · placeholder ${data.placeholder_pct}%`);
+      if (data.generation_job) {
+        setJob({ id: data.generation_job.id, status: data.generation_job.status, spent: 0, cost_ceiling: 2.0, slots: data.generation_job.slots.map((k) => ({ key: k, status: "queued" })) });
+        pollRef.current = setInterval(async () => {
+          const rr = await apiClient.get(`/admin/games/assets/jobs/${data.generation_job.id}`).catch(() => null);
+          if (!rr) return;
+          setJob(rr.data.job);
+          if (!["queued", "running"].includes(rr.data.job.status)) { clearInterval(pollRef.current); load(); onChanged?.(); }
+        }, 3000);
+      } else { load(); onChanged?.(); }
+    } catch (e) { toast.error(e?.response?.data?.detail || "Wiring failed"); }
+  };
+
   return (
     <div className="or-surface p-3 mb-3" data-testid="game-asset-studio">
       <button className="w-full flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
@@ -168,6 +185,12 @@ export const GameAssetStudio = ({ game, onChanged }) => {
                 onPromptChange={(k, v) => setPrompts({ ...prompts, [k]: v })}
                 onUpload={upload} onRollback={rollback} onLibrary={openLibrary} />
             ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[9px] uppercase tracking-wider font-bold" style={{ color: "#2EE6FF" }}>Auto-Wire</span>
+            <button className="or-btn text-[10px]" onClick={() => wire("reuse_only")} data-testid="asset-wire-suggested">Use Suggested (library only, $0)</button>
+            <button className="or-btn text-[10px]" onClick={() => wire("generate_required_only")} data-testid="asset-wire-required">Generate Required Only</button>
+            <button className="or-btn text-[10px]" onClick={() => wire("generate_missing")} data-testid="asset-wire-missing">Generate Missing</button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-[10px] flex items-center gap-1.5" style={{ color: "var(--text-muted)" }}>

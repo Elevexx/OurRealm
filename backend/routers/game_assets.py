@@ -136,6 +136,43 @@ async def generate(gid: str, body: dict, current: CurrentUser):
     return {"job": job, "estimate": est}
 
 
+@router.post("/{gid}/assets/wire")
+async def wire(gid: str, body: dict, current: CurrentUser):
+    """Asset Wiring Pipeline pass: library reuse first, generate missing only.
+    Modes: reuse_only | generate_required_only | generate_missing."""
+    require_founder(current)
+    g = await _game(gid)
+    from services.game_platform.asset_wiring import wire_assets
+    mode = body.get("mode") or "generate_missing"
+    if mode not in ("reuse_only", "generate_required_only", "generate_missing", "generate_all"):
+        raise HTTPException(status_code=400, detail="Unknown wiring mode")
+    return await wire_assets(g, current, mode=mode,
+                             art_quality=int(body.get("art_quality") or 1),
+                             cost_ceiling=body.get("cost_ceiling"),
+                             prompts=body.get("prompts") or {})
+
+
+@router.post("/{gid}/assets/art-preset")
+async def set_art_preset(gid: str, body: dict, current: CurrentUser):
+    """Founder control: switch the game's visual preset (fantasy_hd is the
+    action_rpg_2_5d default)."""
+    require_founder(current)
+    await _game(gid)
+    preset = str(body.get("preset") or "")
+    if preset not in ga.ART_PRESETS:
+        raise HTTPException(status_code=400, detail=f"preset must be one of {list(ga.ART_PRESETS)}")
+    await db.games.update_one({"id": gid}, {"$set": {"art_preset": preset}})
+    return {"game_id": gid, "art_preset": preset, "presets": {k: v["label"] for k, v in ga.ART_PRESETS.items()}}
+
+
+@router.get("/{gid}/assets/wiring-report")
+async def wiring_report(gid: str, current: CurrentUser):
+    require_founder(current)
+    g = await _game(gid)
+    from services.game_platform.asset_wiring import validate_wiring
+    return {"game_id": gid, "runtime": g.get("runtime"), "validation": validate_wiring(g)}
+
+
 @router.post("/{gid}/assets/{slot}/upload")
 async def upload(gid: str, slot: str, body: dict, current: CurrentUser):
     require_founder(current)

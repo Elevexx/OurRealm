@@ -237,6 +237,11 @@ async def game_action(game_id: str, body: dict, current: CurrentUser):
         cerrs = validate_controls(game_controls(g), g.get("runtime"))
         if cerrs:
             raise HTTPException(status_code=400, detail="Controls validation blocks publishing: " + "; ".join(cerrs[:3]))
+        from services.game_platform.asset_wiring import validate_wiring
+        vw = validate_wiring(g)
+        if vw["publish_blockers"] and not body.get("allow_placeholder_art"):
+            raise HTTPException(status_code=400, detail="Required assets missing — publishing blocked: "
+                                + ", ".join(vw["publish_blockers"][:6]))
         await db.games.update_one({"id": game_id}, {"$set": {
             "status": "published", "published_at": _iso(),
             "review": {"decided_by": current.get("username"), "at": _iso()}, "updated_at": _iso()}})

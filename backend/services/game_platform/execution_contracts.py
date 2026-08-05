@@ -17,6 +17,7 @@ IMPLEMENTATION = {
     "card_battle": "cb", "tower_defense": "tdf", "match3": "m3", "rpg": "rpg",
     "turn_based_creature_rpg": "rpg", "racing": "rac", "farming": "frm", "city_builder": "cbl",
     "roguelike": "rgl", "tactics": "tac", "idle": "idl", "visual_novel": "vn", "fishing": "fsh",
+    "action_rpg_2_5d": "arpg",
 }
 SHARED_FOUNDATION = {  # justified implementation reuse (must be disclosed, counts as shared impl)
     "turn_based_creature_rpg": ("rpg", "creature-RPG mode of the rpg engine: exploration, party, "
@@ -34,6 +35,8 @@ CONTROL_MODEL = {
     "idle": "click generators/upgrades", "visual_novel": "click choices", "rhythm": "tap on beat",
     "quiz_adventure": "click answers", "matching": "flip cards", "memory": "flip cards",
     "sorting": "click in order", "puzzle_room": "click objects/answers", "fishing": "timed cast/reel",
+    "action_rpg_2_5d": "continuous 8-dir movement + melee/spell/dodge/interact "
+                       "(keyboard, gamepad, mobile joystick + buttons)",
 }
 CAMERA = {"platformer": "side-scrolling", "dodge_collect": "vertical scroll", "racing": "chase/top",
           "top_down": "top-down grid", "rpg": "top-down grid + battle overlay",
@@ -42,7 +45,9 @@ CAMERA = {"platformer": "side-scrolling", "dodge_collect": "vertical scroll", "r
           "tactics": "fixed grid", "city_builder": "fixed board", "roguelike": "top-down dungeon",
           "farming": "fixed plots", "idle": "panel", "visual_novel": "scene panel",
           "rhythm": "lane highway", "quiz_adventure": "panel", "matching": "board", "memory": "board",
-          "sorting": "board", "puzzle_room": "panel", "fishing": "side water view"}
+          "sorting": "board", "puzzle_room": "panel", "fishing": "side water view",
+          "action_rpg_2_5d": "smooth follow camera with look-ahead, bounds, arena lock and shake "
+                             "over a layered 2.5D parallax world"}
 
 
 def execution_contract(rt: str) -> dict:
@@ -54,7 +59,8 @@ def execution_contract(rt: str) -> dict:
         "executable_implementation": f"GameRuntime.{impl}" if impl else None,
         "shared_foundation": ({"with": shared[0], "justification": shared[1]} if shared else None),
         "template_implementation": f"tpl_{rt}_v1",
-        "renderers": ["canvas_2d"] if impl not in ("qa", "vn") else ["dom_ui"],
+        "renderers": (["action_rpg_2_5d_layered"] if rt == "action_rpg_2_5d"
+                      else ["canvas_2d"] if impl not in ("qa", "vn") else ["dom_ui"]),
         "scene_schema": f"validate_spec[{rt}]",
         "gameplay_systems": RUNTIME_MECHANICS.get(rt, []),
         "control_model": CONTROL_MODEL.get(rt),
@@ -82,8 +88,8 @@ def validate_execution(rt: str) -> dict:
 
 
 def _placeholder_pct(game: dict) -> int:
-    slots_wired = len(((game.get("spec") or {}).get("assets")) or {})
-    return 100 if not slots_wired else max(0, 100 - slots_wired * 20)
+    from services.game_platform.asset_wiring import placeholder_pct
+    return placeholder_pct(game)
 
 
 async def diversity_report(game_ids: list) -> dict:

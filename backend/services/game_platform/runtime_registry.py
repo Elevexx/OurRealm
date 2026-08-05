@@ -42,9 +42,20 @@ RUNTIME_FAMILY_SEED = {
                                  "procedural_regions", "crafting", "battle_ai"],
         "extension_registry": "creature_rpg_extensions",
         "extension_points": []},
-    "action_rpg": _fam("Action RPG", "top_down", "partial",
+    "action_rpg_2_5d": _fam(
+        "2.5D Action RPG", "action_rpg_2_5d", "generatable",
+        ["real-time combat", "melee", "spells", "dodge", "boss phases", "exploration", "quests",
+         "npcs", "inventory", "equipment", "leveling", "checkpoints", "parallax 2.5D", "gamepad"],
+        subs=[]) | {
+        "runtime_id": "runtime_action_rpg_2_5d_v1",
+        "template_id": "tpl_action_rpg_2_5d_v1",
+        "renderer_id": "renderer_action_rpg_2_5d_v1",
+        "default_art_preset": "fantasy_hd",
+        "art_presets": ["fantasy_hd", "pixel", "stylized", "cartoon", "realistic"],
+        "runtime_version": 1},
+    "action_rpg": _fam("Action RPG", "action_rpg_2_5d", "generatable",
                        ["real-time combat", "loot", "abilities", "dungeons", "leveling"],
-                       subs=["real-time combat approximated with hazard/contact combat on the top-down engine"]),
+                       subs=[]),
     "tactical_rpg": _fam("Tactical RPG", "tactics", "generatable",
                          ["grid", "tactics", "turn order", "abilities", "squad", "cover"]),
     "open_world_rpg": _fam("Open World RPG", "rpg", "partial",
@@ -128,6 +139,13 @@ RENDERER_SEED = {
                "notes": "card, quiz, story and novel presentations — text/UI first"},
     "hybrid_canvas_dom": {"label": "Hybrid Canvas + DOM", "status": "implemented_with_placeholder_assets",
                           "notes": "canvas playfield with DOM HUD overlays"},
+    "action_rpg_2_5d_layered": {"label": "2.5D Layered Action Canvas (renderer_action_rpg_2_5d_v1)",
+                                "status": "implemented_with_placeholder_assets",
+                                "notes": "real-time canvas engine: parallax background layers, y-sorted "
+                                         "depth ordering, depth-scaled sprites, soft shadows, lighting + "
+                                         "fog overlays, particles, camera follow/look-ahead/shake. "
+                                         "HD hand-painted quality comes from wired assets. "
+                                         "NOT 3D, NOT WebGL, NOT volumetric lighting."},
     "webgl_light": {"label": "WebGL Light 3D", "status": "unsupported",
                     "notes": "metadata-only — no executable 3D runtime exists"},
 }
