@@ -447,3 +447,10 @@ AFTER NEXT DEPLOY: production boots → startup_import inserts all 27 published 
 - OPC center scoping: orai_projects create accepts center_id; OraiProjects.jsx reads ?center= param → project docs carry the owning center.
 - BUGFIX during pass: stray duplicated JSX at file end of ResponsibilityCenterDashboard.jsx (from a bad earlier replace) — removed.
 - Widget system: existing RcWidgetBoard already covers add/remove/move/collapse/reset/shared(center-default)+personal layouts/versioning; rename/duplicate/lock/role-visibility NOT added (limitation, deferred).
+
+## BUG FIX — Platform-wide game cover images on public pages (Aug 5, 2026) ✅
+- ROOT CAUSE: /api/media/images/* was blocked by global_auth_guard; <img> tags send no auth headers → logged-out visitors got 401 → broken image icons on /preview/game/{token} and /games/{parent}/{slug}. (Authed hub worked via session cookie.)
+- FIX: auth guard now allows READ-ONLY GET on /api/media/images/ and /api/images/ (CDN-style; writes still guarded; media proxy still rejects private .orig. files). Verified: GET no-auth 307→signed URL, POST still 401.
+- Shared resolver: services/game_access_ctl.resolve_cover(g) (cover→thumbnail→spec cover→None) used by both public endpoints (game_urls._public_meta + public_preview). No new image storage/fields.
+- Shared component: components/games/GameCover.jsx (resolveCover + fixed aspect ratio → zero layout shift, loading=lazy, alt=title, onError→platform placeholder w/ gamepad icon) — now used by GamesHub cards, GamePublicPage (16/9), PublicGamePreview (16/9). Future games inherit automatically.
+- Verified: hub 18 covers 0 broken (cards visually unchanged), logged-out custom URL shows placeholder not broken icon, mobile responsive.

@@ -5,6 +5,7 @@ import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 import GameRuntime from "@/components/games/GameRuntime";
+import { GameCover } from "@/components/games/GameCover";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 const GUEST_MSG = "Guest Preview — create an OurRealm account to save progress and receive Fire Power, Keys and account rewards.";
@@ -83,7 +84,7 @@ export default function GamePublicPage() {
 
         {meta && !guestPlay && (
           <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(46,230,255,0.25)", background: "#0b1220" }}>
-            {meta.cover_url && <img src={meta.cover_url} alt={meta.title} className="w-full max-h-72 object-cover" />}
+            <GameCover game={meta} aspect="16/9" />
             <div className="p-5">
               <p className="text-xs mb-4" style={{ color: "rgba(234,242,255,0.7)" }}>{meta.description}</p>
               {meta.guest_allowed && (

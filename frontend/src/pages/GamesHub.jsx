@@ -4,6 +4,7 @@ import { Gamepad2, Search, Play, ArrowLeft, Trophy, Flag } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import GameRuntime from "@/components/games/GameRuntime";
+import { GameCover, resolveCover } from "@/components/games/GameCover";
 import DragonRealmRuntime from "@/components/games/dragonrealm/DragonRealmRuntime";
 import { GameLeaderboard, AudioSettings } from "@/components/games/GameSocial";
 
@@ -101,11 +102,8 @@ export default function GamesHub() {
               <button key={g.id} className="text-left group relative overflow-hidden rounded-2xl transition-transform duration-200 hover:-translate-y-1"
                 style={{ border: "1px solid var(--border-col)", background: "var(--bgc)" }}
                 onClick={() => setParams({ play: g.id })} data-testid={`games-card-${g.id}`}>
-                {g.cover_url ? (
-                  <div className="relative w-full overflow-hidden" style={{ aspectRatio: "4/5" }}>
-                    <img src={g.cover_url} alt={g.title} loading="lazy"
-                      onError={(e) => { e.currentTarget.style.display = "none"; }}
-                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                {resolveCover(g) ? (
+                  <GameCover game={g} aspect="4/5" imgClassName="transition-transform duration-500 group-hover:scale-105">
                     <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, transparent 35%, rgba(4,8,18,0.55) 68%, rgba(4,8,18,0.96) 100%)" }} />
                     {g.genre && (
                       <span className="absolute top-2 left-2 text-[8.5px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
@@ -128,7 +126,7 @@ export default function GamesHub() {
                         </span>
                       </div>
                     </div>
-                  </div>
+                  </GameCover>
                 ) : (
                   <div className="p-4">
                     <div className="flex items-center gap-2">

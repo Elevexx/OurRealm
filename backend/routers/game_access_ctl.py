@@ -214,7 +214,7 @@ async def public_preview(token: str, request: Request):
             "message": "This game is not currently in Public Preview mode."})
     from routers.games_plus import game_controls
     safe = {"id": g["id"], "title": g.get("title"), "runtime": g.get("runtime"),
-            "cover_url": g.get("cover_url"), "spec": g.get("spec"),
+            "cover_url": gac.resolve_cover(g), "spec": g.get("spec"),
             "controls": game_controls(g), "lives": g.get("lives")}
     return {"game": safe, "message": gac.PUBLIC_PREVIEW_MESSAGE,
             "flags": gac.default_flags("public_preview")}

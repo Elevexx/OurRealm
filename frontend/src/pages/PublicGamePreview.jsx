@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { Gamepad2, Play, Loader2 } from "lucide-react";
 import axios from "axios";
 import GameRuntime from "@/components/games/GameRuntime";
+import { GameCover } from "@/components/games/GameCover";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -50,8 +51,7 @@ export default function PublicGamePreview() {
             </div>
             {!started ? (
               <div className="rounded-xl p-8 text-center" style={{ border: "1px solid rgba(46,230,255,0.25)", background: "#0b1220" }}>
-                {data.game.cover_url && (
-                  <img src={data.game.cover_url} alt="" className="mx-auto mb-4 rounded-xl max-h-52 object-cover" />)}
+                <GameCover game={data.game} aspect="16/9" className="rounded-xl mb-4" />
                 <p className="text-xs mb-4" style={{ color: "rgba(234,242,255,0.65)" }}>
                   {data.game.spec?.description}
                 </p>

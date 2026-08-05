@@ -267,6 +267,13 @@ async def evaluate(game: dict, user: dict | None, ctx: dict | None = None) -> di
     return _out(True, "allowed", mode, flags=flags, trace=trace)
 
 
+def resolve_cover(g: dict) -> str | None:
+    """Shared cover resolver: cover → thumbnail → generated/spec cover → None."""
+    spec = g.get("spec") or {}
+    return (g.get("cover_url") or g.get("thumbnail_url") or g.get("thumbnail")
+            or spec.get("cover_url") or spec.get("thumbnail") or None)
+
+
 def summary_text(cfg: dict) -> str:
     mode = cfg.get("mode", "published")
     parts = [MODE_LABELS.get(mode, mode)]

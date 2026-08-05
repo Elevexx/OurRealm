@@ -54,7 +54,7 @@ async def _availability(parent: str, slug: str, game_id: str) -> dict:
 
 def _public_meta(g: dict, acc: dict, canonical: str | None, *, include_spec: bool) -> dict:
     spec = g.get("spec") or {}
-    meta = {"id": g["id"], "title": g.get("title"), "cover_url": g.get("cover_url"),
+    meta = {"id": g["id"], "title": g.get("title"), "cover_url": gac.resolve_cover(g),
             "description": spec.get("description"), "genre": g.get("genre"),
             "canonical": canonical or f"/games?play={g['id']}",
             "access_mode": acc["mode"], "access_label": acc["label"],
