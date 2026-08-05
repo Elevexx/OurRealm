@@ -472,6 +472,20 @@ async def collect_key(current: CurrentUser, body: dict):
     key_id = str(body.get("key_id") or "").strip()[:120]
     if not key_id:
         raise HTTPException(status_code=400, detail="key_id required")
+    gid = str(body.get("game_id") or "")[:64]
+    if gid:
+        g = await db.games.find_one({"id": gid}, {"_id": 0, "id": 1, "access": 1, "release": 1})
+        if g:
+            from services.game_access_ctl import evaluate
+            acc = await evaluate(g, current)
+            if not acc["allowed"]:
+                raise HTTPException(status_code=403, detail={"reason": acc["reason"], "message": acc["message"]})
+            if not acc["flags"]["keys"]:
+                reason = {"preview": "preview_rewards_disabled",
+                          "public_preview": "public_preview_rewards_disabled",
+                          "view_only": "view_only"}.get(acc["mode"], "keys_disabled")
+                raise HTTPException(status_code=403, detail={
+                    "reason": reason, "message": acc["message"] or "Key rewards are disabled for this game"})
     from datetime import datetime, timezone
     r = await db.fire_keys.update_one(
         {"user_id": current["id"], "key_id": key_id},

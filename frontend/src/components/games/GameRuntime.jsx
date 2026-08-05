@@ -2227,7 +2227,7 @@ function buildSrcdoc(spec, save, audio, controls) {
 <script>${RUNTIME_JS}<\/script></body></html>`;
 }
 
-export default function GameRuntime({ spec, onScore, height = 460, gameId, controls }) {
+export default function GameRuntime({ spec, onScore, height = 460, gameId, controls, guest }) {
   const ref = useRef(null);
   const srcdoc = useMemo(() => {
     if (!spec) return "";
@@ -2241,17 +2241,17 @@ export default function GameRuntime({ spec, onScore, height = 460, gameId, contr
   useEffect(() => {
     const h = (e) => {
       if (e?.data?.type === "game_score" && onScore) onScore(e.data);
-      if (e?.data?.type === "game_key" && gameId) {
+      if (e?.data?.type === "game_key" && gameId && !guest) {
         apiClient.post("/fire/keys/collect", { game_id: gameId, stage: e.data.stage,
           key_id: `${gameId}-${e.data.key_id}` }).catch(() => {});
       }
-      if (e?.data?.type === "game_save" && gameId) {
+      if (e?.data?.type === "game_save" && gameId && !guest) {
         try { localStorage.setItem(`or-game-save-${gameId}`, JSON.stringify(e.data.save || {})); } catch { /* full */ }
       }
     };
     window.addEventListener("message", h);
     return () => window.removeEventListener("message", h);
-  }, [onScore, gameId]);
+  }, [onScore, gameId, guest]);
   if (!spec) return null;
   return (
     <iframe ref={ref} title={spec.title || "game"} srcDoc={srcdoc} sandbox="allow-scripts"

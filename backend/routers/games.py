@@ -287,14 +287,20 @@ async def games_hub(current: CurrentUser, q: str = "", subject: str = ""):
                                        "plays": 1, "published_at": 1, "spec.description": 1,
                                        "spec.subject": 1, "spec.grade_level": 1, "spec.stages": 1,
                                        "cover_url": 1, "genre": 1, "showcase": 1, "fire_economy": 1,
-                                       "spec.achievements": 1, "release": 1,
+                                       "spec.achievements": 1, "release": 1, "access": 1,
                                        "spec.learning_objective": 1}).sort("published_at", -1).to_list(60)
-    from services.game_editor import release_allows
-    from core.permissions import get_admin_role
-    _is_founder = get_admin_role(current) == "founder"
-    rows = [r for r in rows if release_allows(r, current, is_founder=_is_founder)]
+    from services.game_access_ctl import evaluate, load_user_ctx
+    _ctx = await load_user_ctx(current)
+    visible_rows = []
     for r in rows:
+        acc = await evaluate(r, current, _ctx)
+        if not (acc["allowed"] or acc["visible"]):
+            continue
+        r["access"] = {"mode": acc["mode"], "label": acc["label"], "allowed": acc["allowed"],
+                       "view_only": acc["view_only"], "message": acc["message"]}
         r.pop("release", None)
+        visible_rows.append(r)
+    rows = visible_rows
     from routers.games_plus import fire_econ, econ_preview
     for r in rows:
         econ = fire_econ(r)
@@ -330,17 +336,32 @@ async def play_game(game_id: str, current: CurrentUser):
                                     {"_id": 0, "build_log": 0, "request": 0})
         if not g:
             raise HTTPException(status_code=404, detail="Game not found")
+    from services.game_access_ctl import evaluate
+    acc = await evaluate(g, current)
+    if not acc["allowed"]:
+        raise HTTPException(status_code=403, detail={"reason": acc["reason"],
+                                                     "message": acc["message"] or "You don't have access to this game"})
     prog = await db.game_progress.find_one({"game_id": game_id, "user_id": current["id"]}, {"_id": 0})
     from routers.games_plus import game_controls
     g["controls"] = game_controls(g)
-    return {"game": g, "progress": prog}
+    return {"game": g, "progress": prog,
+            "access": {"mode": acc["mode"], "label": acc["label"], "view_only": acc["view_only"],
+                       "flags": acc["flags"], "message": acc["message"]}}
 
 
 @public.post("/{game_id}/progress")
 async def save_progress(game_id: str, body: dict, current: CurrentUser):
-    g = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "status": 1})
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "status": 1, "access": 1, "release": 1})
     if not g:
         raise HTTPException(status_code=404, detail="Game not found")
+    from services.game_access_ctl import evaluate
+    acc = await evaluate(g, current)
+    if not acc["allowed"]:
+        raise HTTPException(status_code=403, detail={"reason": acc["reason"], "message": acc["message"]})
+    if acc["view_only"] or not acc["flags"]["saves"]:
+        raise HTTPException(status_code=403, detail={
+            "reason": "view_only" if acc["view_only"] else "saves_disabled",
+            "message": acc["message"] or "Saves are disabled for this game"})
     score = max(0, int(body.get("score") or 0))
     completed = bool(body.get("completed"))
     prev = await db.game_progress.find_one({"game_id": game_id, "user_id": current["id"]}, {"_id": 0})

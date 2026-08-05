@@ -1,0 +1,53 @@
+{
+  "summary": "Tested Game Access & Visibility Controls (P0). Backend: 9/18 tests pass — public preview E2E, audit+rollback, registry, simulate, invalid-username validation, founder bypass, preview flag toggles, and Dragon Realm legacy migration to founder_only all work. However, 8 tests fail with the SAME root cause: a pre-existing platform-wide `games_play` ai_access_policy (invite_only=true, restricted=true) short-circuits ALL non-founder access to /api/games and /api/games/{gid} BEFORE the new per-game access_ctl runs. This makes Custom Users / Badge Access / Progression / View Only / Preview / Maintenance modes unreachable for real users (tftwo/auditcheckreal are 403'd upstream with a plain-string detail). Frontend admin panel (GameAccessPanel) renders and works; public /preview/game/{token} route renders with disclaimer + play button + runtime iframe as a guest.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/games and GET /api/games/{game_id}",
+        "issue": "Platform-wide check_access('games_play') gate in routers/games.py lines 278/320 blocks ALL non-founders (restricted=true, invite_only=true in ai_access_policies collection) BEFORE the new per-game access_ctl runs. Result: Custom Users, Badge Access, Progression, View Only, Preview, and Maintenance modes cannot grant any real user access; every non-founder gets 403 with `detail: 'OurRealm Games are in founder testing — access opens soon!'` regardless of what the founder configures in the new Access & Visibility panel. This defeats the P0 feature.",
+        "priority": "CRITICAL"
+      },
+      {
+        "endpoint": "GET /api/games/{game_id} (upstream 403 shape)",
+        "issue": "When check_access denies, `raise HTTPException(status_code=403, detail=pol['reason'])` returns detail as a PLAIN STRING. The new access_ctl and the frontend blocked-panel expect a structured `{reason, message}` object. Inconsistent error shape between the two enforcement layers.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Normal user opens a game that's configured for their access mode (custom_users / badge_access / progression / view_only / preview)",
+        "issue": "Backend upstream 403 (games_play policy) means the frontend GamesHub blocked panel / view-only overlay / access banner will never receive an access_ctl payload for non-founders — they'll see the generic 'founder testing' 403 message instead. Cannot be verified end-to-end until the backend blocker is fixed.",
+        "affected_selectors": ["game-play-blocked", "game-access-message", "game-viewonly-overlay"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_game_access_ctl_iter123.py",
+    "/app/test_reports/pytest/iter123.xml"
+  ],
+  "action_items": [
+    "Reconcile the pre-existing platform-wide `games_play` ai_access_policy with the new per-game access_ctl. Recommended: in routers/games.py games_hub and play_game, skip/downgrade the check_access('games_play') gate when the game has an explicit `access` config that would allow the user, OR auto-add resolved usernames to games_play.allow_usernames when a founder saves a per-game access config, OR relax the games_play platform policy so per-game access_ctl becomes the effective gate.",
+    "Normalize the 403 detail shape across both enforcement layers — always return {reason, message} object so the frontend can render access_ctl-aware messaging.",
+    "Once the outer gate is unblocked, re-run test_game_access_ctl_iter123.py; the 8 currently failing assertions should all flip to green with no test-code changes needed."
+  ],
+  "critical_code_review_comments": [
+    "Two overlapping enforcement systems (services/access_policy.py::check_access and services/game_access_ctl.py::evaluate) both gate the same endpoints. This is fragile and confusing — pick one authoritative gate for games or make the outer one a pre-filter that defers to per-game config when present.",
+    "game_access_ctl.evaluate() is well-structured (mode → filter → flags) and includes founder_bypass + trace; the code itself looks solid. Audit history includes `env_db` which is good for cross-env forensics.",
+    "public_preview route correctly disables all rewards, is properly whitelisted in global_auth_guard, and rate-limits per-IP at 40/min — nice.",
+    "normalize_config hard-locks flags to default_flags for view_only + public_preview even if the founder posts overrides — safety net working as spec (Public Preview MUST NEVER grant rewards).",
+    "put_access resolves usernames case-insensitively and rejects invalid ones with 400 — good validation. Deduping and @-stripping works."
+  ],
+  "updated_files": ["/app/backend/tests/test_game_access_ctl_iter123.py"],
+  "success_rate": {"backend": "50% (9/18) — all failures share ONE upstream root cause", "frontend": "smoke-tested OK for founder admin panel + guest public preview page"},
+  "test_credentials": "stealth/Password1$ (founder), tftwo/pass1234 (has 'og' badge), auditcheckreal/Password1$ (no badges) — all logged in successfully.",
+  "seed_data_creation": "None. All mutations on RTTEST game 4559297f1ff54f789e4fb6fae9122473; cleanup fixture restored it to {mode:'published'} and revoked any preview link. Dragon Realm (94f0…) was NOT modified.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The test file /app/backend/tests/test_game_access_ctl_iter123.py is complete and comprehensive (18 cases across all 9 modes + audit/rollback/simulate/public preview + Dragon Realm legacy regression). Re-run after main agent addresses the games_play policy conflict. The 8 currently failing tests should pass without modification. Founder-only + public preview + regen-invalidates-old-token + revoke-→-404 + rollback all verified working. Frontend admin panel GameAccessPanel is functional (verified). Public /preview/game/{token} guest route is functional (verified).",
+  "rca of the issue": "ROOT CAUSE: services/access_policy.py has a `games_play` feature entry, and the ai_access_policies MongoDB collection has {_id:'games_play', restricted:true, invite_only:true, message:'OurRealm Games are in founder testing — access opens soon!'}. routers/games.py `games_hub` (line ~278) and `play_game` (line ~320) call `check_access('games_play', current, consume=False)` BEFORE consulting services/game_access_ctl.py::evaluate(). Because tftwo/auditcheckreal are not on the platform-wide allow_usernames list and have no grants, they get 403 with a string detail every time, bypassing the entire new per-game access system. REPRODUCTION: as tftwo, GET /api/games/4559297f1ff54f789e4fb6fae9122473 → 403 with body {\"detail\":\"OurRealm Games are in founder testing — access opens soon!\"} regardless of whether the founder has set that game to custom_users:[tftwo] / view_only / preview / etc. MITIGATION options: (a) In games_hub/play_game, if game has explicit `access` config, call access_ctl.evaluate() FIRST and only fall back to check_access when it's a legacy game with no access config; (b) Auto-mutate games_play.allow_usernames when access_ctl grants a specific user; (c) Relax the platform games_play default. Simplest fix: swap the two gates or gate `check_access` behind `if not game.get('access')`."
+}

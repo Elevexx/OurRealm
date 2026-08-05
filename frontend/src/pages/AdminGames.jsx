@@ -4,6 +4,7 @@ import { ArrowLeft, Gamepad2, Loader2, Lock, Rocket, CheckCircle2, XCircle, Tras
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import ProductionPromotion from "@/components/admin/ProductionPromotion";
+import GameAccessPanel from "@/components/admin/GameAccessPanel";
 import GameRuntime from "@/components/games/GameRuntime";
 import GameBlueprint from "@/components/games/GameBlueprint";
 import GameFireEconomy from "@/components/games/GameFireEconomy";
@@ -694,6 +695,7 @@ export default function AdminGames() {
               <GameOraiEdit gameId={detail.id} onChanged={() => loadDetail(detail.id)} />
               <GameControlsPanel gameId={detail.id} onChanged={() => loadDetail(detail.id)} />
               <GameFireEconomy gameId={detail.id} />
+              <GameAccessPanel gameId={detail.id} />
               <GameBlueprint game={detail} onChanged={() => { loadDetail(detail.id); load(); }} />
             </div>
           )}

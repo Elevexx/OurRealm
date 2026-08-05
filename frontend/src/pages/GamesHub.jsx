@@ -31,7 +31,10 @@ export default function GamesHub() {
   useEffect(() => {
     if (!playId) { setPlaying(null); setFireInfo(null); return; }
     apiClient.get(`/games/${playId}`).then((r) => setPlaying(r.data))
-      .catch((e) => toast.error(e?.response?.data?.detail || "Game not found"));
+      .catch((e) => {
+        const d = e?.response?.data?.detail;
+        setPlaying({ blocked: true, message: (typeof d === "object" ? (d.message || d.reason) : d) || "Game not available" });
+      });
     apiClient.get(`/games/${playId}/fire-info`).then((r) => setFireInfo(r.data)).catch(() => setFireInfo(null));
   }, [playId]);
 
@@ -128,6 +131,10 @@ export default function GamesHub() {
                     <div className="flex items-center gap-2">
                       <Gamepad2 size={16} style={{ color: "#C26BFF" }} />
                       <b className="text-sm flex-1">{g.title}</b>
+                      {g.access?.mode && g.access.mode !== "published" && (
+                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase" data-testid={`game-card-access-${g.id}`}
+                          style={{ background: "rgba(244,167,59,0.15)", color: "#F4A73B" }}>{g.access.label}</span>
+                      )}
                       {prog.get(g.id) && <Trophy size={13} style={{ color: "#F4A73B" }} />}
                     </div>
                     <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>{g.spec?.description}</p>
@@ -147,12 +154,26 @@ export default function GamesHub() {
         </>
       )}
 
-      {playId && playing && (
+      {playId && playing?.blocked && (
+        <div className="or-surface p-8 text-center" data-testid="game-play-blocked">
+          <Gamepad2 size={32} className="mx-auto mb-3" style={{ color: "#FF8A5A" }} />
+          <p className="text-sm mb-4" data-testid="game-play-blocked-message">{playing.message}</p>
+          <button className="or-btn or-btn-ghost text-xs" onClick={() => setParams({})} data-testid="game-blocked-back">
+            <ArrowLeft size={13} /> All games</button>
+        </div>
+      )}
+
+      {playId && playing && !playing.blocked && (
         <div data-testid="game-play-view">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             <button className="or-btn or-btn-ghost text-xs" onClick={() => setParams({})} data-testid="game-play-back">
               <ArrowLeft size={13} /> All games</button>
             <b className="text-sm flex-1">{playing.game.title}</b>
+            {playing.access?.label && playing.access.mode !== "published" && (
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider" data-testid="game-access-label"
+                style={{ background: "rgba(244,167,59,0.15)", color: "#F4A73B", border: "1px solid rgba(244,167,59,0.45)" }}>
+                {playing.access.label}</span>
+            )}
             {playing.progress && (
               <span className="text-[10px]" style={{ color: "#F4A73B" }} data-testid="game-best-score">
                 <Trophy size={11} className="inline mr-0.5" />Best: {playing.progress.best_score}
@@ -167,6 +188,12 @@ export default function GamesHub() {
             {playing.game.spec?.description} · <b>Objective:</b> {playing.game.spec?.learning_objective} ·
             <b> Controls:</b> {playing.game.spec?.controls}
           </div>
+          {playing.access?.message && (
+            <div className="rounded-xl p-2.5 mb-2 text-[11px]" data-testid="game-access-message"
+              style={{ background: "rgba(244,167,59,0.08)", border: "1px solid rgba(244,167,59,0.4)", color: "#F4A73B" }}>
+              {playing.access.message}
+            </div>
+          )}
           {fireInfo && playing.game.spec?.runtime !== "turn_based_creature_rpg" && (
             <div className="rounded-xl p-2.5 mb-2 text-[11px]" data-testid="game-fire-info"
               style={{ background: "rgba(255,138,90,0.07)", border: "1px solid rgba(255,138,90,0.3)" }}>
@@ -190,8 +217,17 @@ export default function GamesHub() {
           {playing.game.spec?.runtime === "turn_based_creature_rpg" ? (
             <DragonRealmRuntime />
           ) : (<>
-          <GameRuntime spec={playing.game.spec} onScore={onScore} height={520} gameId={playing.game.id}
-            controls={playing.game.controls} />
+          <div className="relative">
+            <GameRuntime spec={playing.game.spec} onScore={onScore} height={520} gameId={playing.game.id}
+              controls={playing.game.controls} />
+            {playing.access?.view_only && (
+              <div className="absolute inset-0 z-10 flex items-end justify-center pb-4" data-testid="game-viewonly-overlay"
+                style={{ cursor: "not-allowed" }}>
+                <span className="text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider"
+                  style={{ background: "rgba(255,138,90,0.92)", color: "#0a0a0a" }}>View Only — input disabled</span>
+              </div>
+            )}
+          </div>
           <div className="flex justify-end mt-1"><AudioSettings /></div>
           <GameLeaderboard gameId={playing.game.id} />
           </>)}

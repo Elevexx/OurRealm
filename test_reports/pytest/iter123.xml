@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="9" skipped="0" tests="18" time="6.086" timestamp="2026-08-05T11:14:14.410153+00:00" hostname="agent-env-202f2836-c5ea-402c-ad2b-a32e7c42aed9"><testcase classname="backend.tests.test_game_access_ctl_iter123.TestRegistry" name="test_registry" time="0.637" /><testcase classname="backend.tests.test_game_access_ctl_iter123.TestRegistry" name="test_founder_guard" time="0.446" /><testcase classname="backend.tests.test_game_access_ctl_iter123.TestFounderOnly" name="test_blocks_normal_user" time="0.205"><failure message="AssertionError: assert '' == 'founder_only'&#10;  &#10;  - founder_only">backend/tests/test_game_access_ctl_iter123.py:88: in test_blocks_normal_user
+    assert (d.get("reason") if isinstance(d, dict) else "") == "founder_only"
+E   AssertionError: assert '' == 'founder_only'
+E     
+E     - founder_only</failure></testcase><testcase classname="backend.tests.test_game_access_ctl_iter123.TestCustomUsers" name="test_allow_and_deny" time="0.524"><failure message="assert 403 == 200&#10; +  where 403 = &lt;Response [403]&gt;.status_code">backend/tests/test_game_access_ctl_iter123.py:109: in test_allow_and_deny
+    assert ok.status_code == 200
+E   assert 403 == 200
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="backend.tests.test_game_access_ctl_iter123.TestCustomUsers" name="test_invalid_username" time="0.106" /><testcase classname="backend.tests.test_game_access_ctl_iter123.TestBadgeAccess" name="test_any" time="0.195"><failure message="AssertionError: tftwo should have og badge: {&quot;detail&quot;:&quot;OurRealm Games are in founder testing — access opens soon!&quot;}&#10;assert 403 == 200&#10; +  where 403 = &lt;Response [403]&gt;.status_code">backend/tests/test_game_access_ctl_iter123.py:131: in test_any
+    assert ok.status_code == 200, f"tftwo should have og badge: {ok.text[:200]}"
+E   AssertionError: tftwo should have og badge: {"detail":"OurRealm Games are in founder testing — access opens soon!"}
+E   assert 403 == 200
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="backend.tests.test_game_access_ctl_iter123.TestBadgeAccess" name="test_all" time="0.209"><failure message="AttributeError: 'str' object has no attribute 'get'">backend/tests/test_game_access_ctl_iter123.py:142: in test_all
+    assert (deny.json().get("detail") or {}).get("reason") == "required_badge_missing"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'str' object has no attribute 'get'</failure></testcase><testcase classname="backend.tests.test_game_access_ctl_iter123.TestProgression" name="test_too_low" time="0.195"><failure message="AttributeError: 'str' object has no attribute 'get'">backend/tests/test_game_access_ctl_iter123.py:152: in test_too_low
+    assert (d.json().get("detail") or {}).get("reason") == "progression_too_low"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'str' object has no attribute 'get'</failure></testcase><testcase classname="backend.tests.test_game_access_ctl_iter123.TestProgression" name="test_allowed" time="0.214"><failure message="assert 403 == 200&#10; +  where 403 = &lt;Response [403]&gt;.status_code">backend/tests/test_game_access_ctl_iter123.py:158: in test_allowed
+    assert ok.status_code == 200
+E   assert 403 == 200
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="backend.tests.test_game_access_ctl_iter123.TestViewOnly" name="test_view_only" time="0.196"><failure message="assert 403 == 200&#10; +  where 403 = &lt;Response [403]&gt;.status_code">backend/tests/test_game_access_ctl_iter123.py:167: in test_view_only
+    assert g.status_code == 200
+E   assert 403 == 200
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="backend.tests.test_game_access_ctl_iter123.TestPreview" name="test_preview_defaults_off" time="0.224"><failure message="assert 403 == 200&#10; +  where 403 = &lt;Response [403]&gt;.status_code">backend/tests/test_game_access_ctl_iter123.py:193: in test_preview_defaults_off
+    assert g.status_code == 200
+E   assert 403 == 200
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="backend.tests.test_game_access_ctl_iter123.TestPreview" name="test_preview_flags_on" time="0.311" /><testcase classname="backend.tests.test_game_access_ctl_iter123.TestPublicPreview" name="test_public_preview_flow" time="0.887" /><testcase classname="backend.tests.test_game_access_ctl_iter123.TestMaintenance" name="test_maintenance" time="0.200"><failure message="AttributeError: 'str' object has no attribute 'get'">backend/tests/test_game_access_ctl_iter123.py:273: in test_maintenance
+    assert det.get("reason") == "maintenance_mode"
+           ^^^^^^^
+E   AttributeError: 'str' object has no attribute 'get'</failure></testcase><testcase classname="backend.tests.test_game_access_ctl_iter123.TestSimulate" name="test_simulate_user_and_guest" time="0.289" /><testcase classname="backend.tests.test_game_access_ctl_iter123.TestSimulate" name="test_normal_user_admin_guard" time="0.097" /><testcase classname="backend.tests.test_game_access_ctl_iter123.TestAuditRollback" name="test_audit_and_rollback" time="0.550" /><testcase classname="backend.tests.test_game_access_ctl_iter123.TestLegacyRegression" name="test_dragon_realm_migrates_to_founder_only" time="0.455" /></testsuite></testsuites>

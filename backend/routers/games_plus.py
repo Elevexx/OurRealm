@@ -124,6 +124,12 @@ async def my_stats(current: CurrentUser):
 
 @public2.get("/{game_id}/leaderboard")
 async def leaderboard(game_id: str, current: CurrentUser, window: str = "all", scope: str = "global"):
+    _g = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "access": 1, "release": 1})
+    if _g:
+        from services.game_access_ctl import evaluate
+        acc = await evaluate(_g, current)
+        if not acc["allowed"]:
+            raise HTTPException(status_code=403, detail={"reason": acc["reason"], "message": acc["message"]})
     q = {"game_id": game_id, "hidden": {"$ne": True}}
     days = {"daily": 1, "weekly": 7, "monthly": 30}.get(window)
     if days:
@@ -158,9 +164,17 @@ async def my_achievements(game_id: str, current: CurrentUser):
 
 @public2.post("/{game_id}/score")
 async def submit_score(game_id: str, body: dict, current: CurrentUser):
-    g = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "runtime": 1, "title": 1, "spec.title": 1})
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "runtime": 1, "title": 1,
+                                                  "spec.title": 1, "access": 1, "release": 1})
     if not g:
         raise HTTPException(status_code=404, detail="Game not found")
+    from services.game_access_ctl import evaluate
+    acc = await evaluate(g, current)
+    if not acc["allowed"]:
+        raise HTTPException(status_code=403, detail={"reason": acc["reason"], "message": acc["message"]})
+    if acc["view_only"]:
+        raise HTTPException(status_code=403, detail={"reason": "view_only", "message": acc["message"]})
+    _fl = acc["flags"]
     score = max(0, int(body.get("score") or 0))
     completed = bool(body.get("completed"))
     time_s = max(0, min(36000, int(body.get("time_s") or 0)))
@@ -168,31 +182,33 @@ async def submit_score(game_id: str, body: dict, current: CurrentUser):
     achievements = [str(a)[:80] for a in (body.get("achievements") or [])][:12]
     prev = await db.game_progress.find_one({"game_id": game_id, "user_id": current["id"]}, {"_id": 0})
     prev_best = (prev or {}).get("best_score") or 0
-    await db.game_scores.insert_one({
-        "id": uuid.uuid4().hex, "game_id": game_id, "user_id": current["id"],
-        "username": current.get("username"), "avatar": current.get("avatar_url") or current.get("avatar"),
-        "score": score, "time_s": time_s, "stage_reached": stage, "completed": completed,
-        "runtime": g.get("runtime"), "game_version": int(body.get("game_version") or 1),
-        "no_damage": bool(body.get("no_damage")), "max_combo": float(body.get("max_combo") or 1),
-        "hidden": False, "created_at": _iso()})
-    await db.game_progress.update_one(
-        {"game_id": game_id, "user_id": current["id"]},
-        {"$set": {"username": current.get("username"), "last_score": score,
-                  "best_score": max(score, prev_best), "runtime": g.get("runtime"),
-                  "stage_reached": max(stage, (prev or {}).get("stage_reached") or 0),
-                  "last_played": _iso(), "game_title": g.get("title")},
-         "$inc": {"completions": 1 if completed else 0, "time_played_s": time_s}}, upsert=True)
+    if _fl["leaderboard"]:
+        await db.game_scores.insert_one({
+            "id": uuid.uuid4().hex, "game_id": game_id, "user_id": current["id"],
+            "username": current.get("username"), "avatar": current.get("avatar_url") or current.get("avatar"),
+            "score": score, "time_s": time_s, "stage_reached": stage, "completed": completed,
+            "runtime": g.get("runtime"), "game_version": int(body.get("game_version") or 1),
+            "no_damage": bool(body.get("no_damage")), "max_combo": float(body.get("max_combo") or 1),
+            "hidden": False, "created_at": _iso()})
     new_ach = []
-    for a in achievements:
-        r = await db.game_achievements.update_one(
-            {"game_id": game_id, "user_id": current["id"], "label": a},
-            {"$setOnInsert": {"id": uuid.uuid4().hex, "earned_at": _iso(), "username": current.get("username")}},
-            upsert=True)
-        if r.upserted_id:
-            new_ach.append(a)
+    if _fl["saves"]:
+        await db.game_progress.update_one(
+            {"game_id": game_id, "user_id": current["id"]},
+            {"$set": {"username": current.get("username"), "last_score": score,
+                      "best_score": max(score, prev_best), "runtime": g.get("runtime"),
+                      "stage_reached": max(stage, (prev or {}).get("stage_reached") or 0),
+                      "last_played": _iso(), "game_title": g.get("title")},
+             "$inc": {"completions": 1 if completed else 0, "time_played_s": time_s}}, upsert=True)
+        for a in achievements:
+            r = await db.game_achievements.update_one(
+                {"game_id": game_id, "user_id": current["id"], "label": a},
+                {"$setOnInsert": {"id": uuid.uuid4().hex, "earned_at": _iso(), "username": current.get("username")}},
+                upsert=True)
+            if r.upserted_id:
+                new_ach.append(a)
     granted = []
     rs = await reward_settings()
-    if rs["enabled"]:
+    if rs["enabled"] and _fl["fire"]:
         if completed and not ((prev or {}).get("completions") or 0):
             await _grant(current["id"], game_id, f"gr:first:{game_id}:{current['id']}",
                          rs["first_completion"], granted, "First completion")
@@ -210,7 +226,7 @@ async def submit_score(game_id: str, body: dict, current: CurrentUser):
     g_full = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "fire_economy": 1,
                                                        "spec.stages": 1, "spec.achievements": 1})
     econ = fire_econ(g_full)
-    if econ["enabled"] and not econ["paused"]:
+    if econ["enabled"] and not econ["paused"] and _fl["fire"]:
         await db.games.update_one({"id": game_id, "fire_economy": {"$exists": False}},
                                   {"$set": {"fire_economy": {**econ}}})
         rw, uid = econ["rewards"], current["id"]
@@ -243,7 +259,8 @@ async def submit_score(game_id: str, body: dict, current: CurrentUser):
                 await _pool_grant(game_id, uid, f"gfp:weekly:{game_id}:{uid}:{wk}",
                                   rw["weekly"], granted, "Weekly bonus", cap, cd)
     return {"ok": True, "best_score": max(score, prev_best), "new_achievements": new_ach,
-            "fire_rewards": granted, "claim_hint": "Claimable in your Fire Vault" if granted else None}
+            "fire_rewards": granted, "access_flags": _fl,
+            "claim_hint": "Claimable in your Fire Vault" if granted else None}
 
 
 # ─── Founder tools ───────────────────────────────────────────────────────
@@ -399,9 +416,17 @@ async def patch_fire_economy(game_id: str, body: dict, current: CurrentUser):
 
 @public2.get("/{game_id}/fire-info")
 async def game_fire_info(game_id: str, current: CurrentUser):
-    g = await db.games.find_one({"id": game_id}, {"_id": 0, "fire_economy": 1, "spec.stages": 1, "spec.achievements": 1})
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "fire_economy": 1, "spec.stages": 1,
+                                                  "spec.achievements": 1, "access": 1, "release": 1, "id": 1})
     if not g:
         raise HTTPException(status_code=404, detail="Game not found")
+    from services.game_access_ctl import evaluate
+    acc = await evaluate(g, current)
+    if not acc["allowed"]:
+        raise HTTPException(status_code=403, detail={"reason": acc["reason"], "message": acc["message"]})
+    if not acc["flags"]["fire"]:
+        return {"enabled": False, "message": acc["message"] or "Fire Rewards are disabled by this game's access mode",
+                "access_reason": acc["reason"]}
     econ = fire_econ(g)
     if not econ["enabled"] or econ["paused"]:
         return {"enabled": False, "message": "Fire Rewards Currently Disabled"}
