@@ -418,3 +418,22 @@ AFTER NEXT DEPLOY: production boots → startup_import inserts all 27 published 
 ### Testing
 - 18/18 pytest (tests/test_game_access_ctl_iter123.py) covering all 9 modes, ANY/ALL badges, progression min, preview toggles, public preview E2E (no auth), link revoke/regenerate, audit+rollback, founder bypass, Dragon Realm legacy migration regression. Screenshot-verified: admin panel, tftwo hub chips + view-only overlay, guest preview page.
 - NOTE: Dragon Realm demo (94f0…) had legacy release.mode=founder_only → migrates to Founder Only (identical to previous behavior, not changed automatically).
+
+## MASTER BUILD — Public Game URLs + Visitor Conversion + Universal Center Foundation (Aug 5, 2026) ✅
+### Part B — Editable Public Game URLs
+- NEW routers/game_urls.py: admin PUT/GET/DELETE /api/admin/games/{gid}/url, /url/restore, /url-availability; public no-auth /api/public/game-path/{parent}/{slug} + /id/{game_id}. Slugify (lowercase/hyphens/strip unsafe), reserved paths, dup prevention, version history, old-path redirects to newest canonical, ID→canonical. Indexed (full_path, game_id, parent+slug). Audited via game_access_audit (action url_changed/url_disabled). Metadata respects Access & Visibility: only published/public_preview/preview/view_only expose meta; spec ONLY for public_preview; restricted modes → 404.
+- NEW components/admin/GameUrlPanel.jsx in AdminGames (slug inputs, availability, preview, save, copy, open, history+restore, disable).
+- Dragon Realm assigned /games/dragonrealm/firequest (still founder_only → public 404 until founder flips mode).
+### Part C — Visitor Conversion Flow
+- NEW pages/GamePublicPage.jsx at /games/:parent/:slug and /games/:parent (ID→canonical redirect). Guest sees cover/title/desc + "Join OurRealm to Save Your Progress" modal (Create Account / Continue with Google / Continue as Guest — guest only when mode allows), session-dismissable. OG meta client-side. Authed users auto-route to /games?play={id}.
+- Return path: /signup?next= (existing validated logic reused); GoogleSignInButton gained `next` prop → sessionStorage or.auth.next; AuthCallback.completeLogin navigates to validated stored path instead of /feed. SignIn/SignUp pass next through.
+- Guest restrictions: server-side blocks already enforced by access system; visible "Guest Preview—…" message before play + in HUD.
+### Part A — Universal Center foundation
+- NEW services/center_registry.py: center_type_registry (11 types: education/family/business/creator/community/gaming/team/event/organization/personal/custom) w/ terminology (member/work/group), default_modules, creator_tools; center_module_registry (29 modules); idempotent seed ($setOnInsert — founder edits never overwritten); LEGACY_TYPE_MAP (household→family, church→community, sports→team, volunteer→community, other→custom); get_center_config merges per-center module_config overrides; untyped/legacy → everything enabled.
+- NEW routers/center_registry.py: GET /api/centers/registry, GET /api/centers/{id}/config (member), PATCH /api/centers/{id}/modules (owner/admin, core modules protected), PATCH /api/admin/centers/registry/{type_key} (founder, audited → center_registry_audit).
+- rc CENTER_TYPES extended (+creator, gaming, event, custom). Create Center wizard shows registry-driven Universal Engine preview (terminology + default modules).
+- IMPORTANT: module gating is registry+API only; nothing consumes it in existing Center UI yet → zero behavior change for existing Centers. Education Center untouched.
+### Testing
+- Curl: registry (11/29), center config legacy mapping, URL set/resolve/dup/reserved/redirect/ID-canonical/restore, restricted-game 404. Screenshots: mobile 390 guest flow (prompt, guest allowed only in public_preview, return path /signup?next=... preserved, guest HUD, runtime plays), desktop public page, wizard registry preview. Google round trip implemented but not live-tested (external service).
+### Deferred Part A (next run)
+- Widget layout versioning/history, Founder Admin Control Center visual expansion, Mini-OPC scoped UI in every center, AI Power/Creation Depth registry UI, ORAi center-context expansion, module gating wired into Center navigation UI.

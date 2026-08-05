@@ -118,7 +118,7 @@ export default function SignUp() {
           <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
             Live. Connect. Experience. — claim your handle in seconds.
           </p>
-          <GoogleSignInButton label="Sign up with Google" divider="below" />
+          <GoogleSignInButton label="Sign up with Google" divider="below" next={nextPath} />
           {!signupsOpen ? (
             <div className="space-y-3" data-testid="signup-paused-screen">
               <div className="text-sm px-3 py-2" style={{ background: "rgba(46,160,255,0.08)", border: "1px solid rgba(46,160,255,0.3)", borderRadius: "var(--radius)" }}>

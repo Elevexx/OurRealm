@@ -29,7 +29,9 @@ export default function AuthCallback() {
   const completeLogin = async (data) => {
     try { if (data.access_token) localStorage.setItem("ourrealm.access", data.access_token); } catch { /* ignore */ }
     await refreshMe();
-    navigate("/feed", { replace: true });
+    let next = "";
+    try { next = sessionStorage.getItem("or.auth.next") || ""; sessionStorage.removeItem("or.auth.next"); } catch { /* ignore */ }
+    navigate(next && next.startsWith("/") && !next.startsWith("//") ? next : "/feed", { replace: true });
   };
 
   useEffect(() => {

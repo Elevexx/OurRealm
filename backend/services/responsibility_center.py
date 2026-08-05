@@ -94,7 +94,8 @@ def invalidate_rc_settings_cache() -> None:
     _settings_cache["doc"] = None
 
 CENTER_TYPES = ["personal", "family", "household", "education", "business", "team",
-                "organization", "church", "sports", "community", "volunteer", "other"]
+                "organization", "church", "sports", "community", "volunteer", "other",
+                "creator", "gaming", "event", "custom"]
 
 ROLES = ["owner", "admin", "manager", "member"]
 ROLE_RANK = {"owner": 4, "admin": 3, "manager": 2, "member": 1}

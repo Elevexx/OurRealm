@@ -125,7 +125,7 @@ export default function SignIn() {
               >
                 Use a one-time code instead
               </button>
-              <GoogleSignInButton label="Sign in with Google" />
+              <GoogleSignInButton label="Sign in with Google" next={nextRaw ? nextPath : ""} />
             </form>
           )}
 

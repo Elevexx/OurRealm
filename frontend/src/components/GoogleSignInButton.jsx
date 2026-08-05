@@ -6,8 +6,12 @@
  */
 import React from "react";
 
-export default function GoogleSignInButton({ label = "Continue with Google", divider = "above" }) {
+export default function GoogleSignInButton({ label = "Continue with Google", divider = "above", next = "" }) {
   const start = () => {
+    // Preserve a validated internal return path across the Google round trip.
+    try {
+      if (next && next.startsWith("/") && !next.startsWith("//")) sessionStorage.setItem("or.auth.next", next);
+    } catch { /* ignore */ }
     // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT
     // URLS, THIS BREAKS THE AUTH — derive strictly from the live origin.
     const redirectUrl = window.location.origin + "/feed";

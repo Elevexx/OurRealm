@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import apiClient from "@/api/client";
 import ProductionPromotion from "@/components/admin/ProductionPromotion";
 import GameAccessPanel from "@/components/admin/GameAccessPanel";
+import GameUrlPanel from "@/components/admin/GameUrlPanel";
 import GameRuntime from "@/components/games/GameRuntime";
 import GameBlueprint from "@/components/games/GameBlueprint";
 import GameFireEconomy from "@/components/games/GameFireEconomy";
@@ -696,6 +697,7 @@ export default function AdminGames() {
               <GameControlsPanel gameId={detail.id} onChanged={() => loadDetail(detail.id)} />
               <GameFireEconomy gameId={detail.id} />
               <GameAccessPanel gameId={detail.id} />
+              <GameUrlPanel gameId={detail.id} />
               <GameBlueprint game={detail} onChanged={() => { loadDetail(detail.id); load(); }} />
             </div>
           )}

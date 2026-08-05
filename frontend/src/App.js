@@ -53,6 +53,7 @@ const EduPlans = React.lazy(() => import("@/pages/EduPlans"));
 const AdminGames = React.lazy(() => import("@/pages/AdminGames"));
 const GamesHub = React.lazy(() => import("@/pages/GamesHub"));
 const PublicGamePreview = React.lazy(() => import("@/pages/PublicGamePreview"));
+const GamePublicPage = React.lazy(() => import("@/pages/GamePublicPage"));
 import ResponsibilityCenterHub from "@/pages/ResponsibilityCenterHub";
 import ResponsibilityCenterCreate from "@/pages/ResponsibilityCenterCreate";
 import ResponsibilityCenterDashboard from "@/pages/ResponsibilityCenterDashboard";
@@ -203,6 +204,8 @@ function App() {
             <Route path="/signin" element={<SignIn />} />
             <Route path="/login" element={<SignIn />} />
             <Route path="/preview/game/:token" element={<Lazy><PublicGamePreview /></Lazy>} />
+            <Route path="/games/:parent/:slug" element={<Lazy><GamePublicPage /></Lazy>} />
+            <Route path="/games/:parent" element={<Lazy><GamePublicPage /></Lazy>} />
             <Route path="/home" element={<ShellRoute><HomeDashboard /></ShellRoute>} />
             <Route path="/home/legacy" element={<ShellRoute><Home /></ShellRoute>} />
             <Route path="/interests" element={<ShellRoute><Home /></ShellRoute>} />

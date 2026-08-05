@@ -40,12 +40,18 @@ export default function ResponsibilityCenterCreate() {
   const [excludedUnits, setExcludedUnits] = useState([]);
   const [busy, setBusy] = useState(false);
   const [retryCenterId, setRetryCenterId] = useState(null);
+  const [registry, setRegistry] = useState(null);
   const clientToken = useMemo(() => uuid(), []);
+  const LEGACY_MAP = { household: "family", church: "community", sports: "team", volunteer: "community", other: "custom" };
+  const typeCfg = registry && centerType
+    ? registry.types.find((t) => t.key === (LEGACY_MAP[centerType] || centerType)) : null;
+  const moduleLabel = (k) => registry?.modules.find((m) => m.key === k)?.label || k;
 
   useEffect(() => {
     apiClient.get("/responsibility-center/config")
       .then((r) => setConfig(r.data))
       .catch(() => toast.error("Could not load Center configuration"));
+    apiClient.get("/centers/registry").then((r) => setRegistry(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -159,6 +165,23 @@ export default function ResponsibilityCenterCreate() {
               </button>
             ))}
           </div>
+          {typeCfg && (
+            <div className="or-surface p-4 mt-3" data-testid="rc-universal-preview">
+              <b className="text-[10px] uppercase tracking-widest" style={{ color: "#2EE6FF" }}>
+                Universal Center Engine — {typeCfg.label}</b>
+              <div className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
+                Members are called <b style={{ color: "var(--text-main)" }}>{typeCfg.terminology?.member}s</b>, work items
+                are <b style={{ color: "var(--text-main)" }}>{typeCfg.terminology?.work}s</b>, groups
+                are <b style={{ color: "var(--text-main)" }}>{typeCfg.terminology?.group}s</b>.
+              </div>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {(typeCfg.default_modules || []).map((m) => (
+                  <span key={m} className="text-[9px] px-1.5 py-0.5 rounded-full"
+                    style={{ background: "rgba(46,230,255,0.08)", border: "1px solid rgba(46,230,255,0.3)" }}>
+                    {moduleLabel(m)}</span>))}
+              </div>
+            </div>
+          )}
           <div className="flex justify-end mt-4">
             <button className="or-btn" disabled={!centerType} onClick={() => setStep(2)} data-testid="rc-create-next-1">
               Continue

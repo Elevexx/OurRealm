@@ -253,6 +253,12 @@ app.include_router(game_promotion_router_mod.router)
 from routers import game_access_ctl as game_access_router_mod  # noqa: E402
 app.include_router(game_access_router_mod.router)
 app.include_router(game_access_router_mod.public_router)
+from routers import game_urls as game_urls_router_mod  # noqa: E402
+app.include_router(game_urls_router_mod.router)
+app.include_router(game_urls_router_mod.public_router)
+from routers import center_registry as center_registry_router_mod  # noqa: E402
+app.include_router(center_registry_router_mod.router)
+app.include_router(center_registry_router_mod.admin_router)
 app.include_router(game_assets_router_mod.public_router)
 
 
@@ -410,6 +416,7 @@ async def global_auth_guard(request, call_next):
             or path in PUBLIC_API_PATHS
             or path.startswith("/api/public/game-assets/")
             or path.startswith("/api/public/game-preview/")
+            or path.startswith("/api/public/game-path/")
             or path.startswith("/api/public/project-media/")):
         return await call_next(request)
     from core.deps import get_current_user
