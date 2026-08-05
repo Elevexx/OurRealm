@@ -98,7 +98,7 @@ _M = {
     "fishing": {"s": {"fishing"}, "a": {"inventory_loot"}},
     "action_rpg_2_5d": {"s": {"real_time_movement", "action_combat", "boss_battles", "quests",
                               "dialogue_npcs", "inventory_loot", "leveling_xp", "cooldown_abilities",
-                              "top_down_exploration"},
+                              "top_down_exploration", "platforming"},
                         "a": {"survival", "shooting", "stealth"}},
     "turn_based_creature_rpg": {"s": {"turn_based_combat", "creature_capture", "quests",
                                       "dialogue_npcs", "inventory_loot", "leveling_xp",

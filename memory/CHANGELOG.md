@@ -317,3 +317,31 @@ KNOWN (pre-existing, by design): bottom mobile nav renders on desktop too — us
 - ART PRESETS (game_assets.py): fantasy_hd (DEFAULT for action_rpg_2_5d, quality-3 uplift) | pixel | stylized | cartoon | realistic; ARPG_SLOT_EMPHASIS bakes the founder reference-image benchmark into every future arpg game. Founder switch: POST .../assets/art-preset.
 - Proof game "Dragon Realm: The Fire Quest — 2.5D Runtime Proof" (id 254523a78f694547ac36a6845e037e92, pending_approval): built via OPC plan→build, 9 premium assets ($1.05 incl 6 regenerated after chroma-key fix), 0% placeholder. Verified live: planner routing both ways, contracts, movement+camera, melee/spell/dodge, enemy AI, NPC dialog, quest completion, equipment pickup, checkpoint, boss PHASE 1 engagement + arena lock + boss bar, fire claim + duplicate 409, save row, mobile 390px, regression on other runtimes (testing agent iteration_122 + manual screenshots). PHASE 1→2 transition verified in code only (automation couldn't out-DPS the boss).
 - Known honest limits: no 3D/WebGL; environment animation = ambient particles/fog/parallax (painted backgrounds are static); sprite anim = frame-strip capable but generated assets are single-frame; canvas HUD not DOM.
+
+## 2.5D Dragon Realm Demo — Full Runtime Upgrade v2 (Aug 5, 2026) ✅ FOUNDER REVIEW (NOT published)
+Game: "Dragon Realm: The Fire Quest — 2.5D Demo" id=94f0cbaec37c4f08bd1a0a11627040ad, status=approved (founder-playable via /games?play=..., hidden from public hub until published).
+Engine (runtime_action_rpg_2_5d_v1, arpgSS in GameRuntime.jsx — full rewrite):
+- Levels 3–3.5× longer: 7,200 / 7,800 / 8,400 px (was 2,400–2,600). Flat-test-level debug hack REMOVED, real geometry restored + regenerated.
+- Camera: smooth lerp w/ velocity lookahead + hard clamps (player always within 18–64% of screen — can never be outrun).
+- Wizard 2×: 100·k sprite (~28% of scene height, matches reference), soft shadow, staff glow when Fire-buffed.
+- Animation blending: per-state pose targets (idle/walk/run/jump/fall/attack/cast/dodge/hurt/death) lerp-blended each frame + landing squash, attack arc slash, cast ring, death fall+fade.
+- Layered parallax: bg image (0.18) + procedural mid silhouettes per zone (castle+tree lines / stalactites+crystal glow / volcano+ridges) + zone ambient particles (fireflies/sparkles/embers).
+- Terrain: natural elevation steps (y 240–300), river/lava gaps, wooden bridges (arched, planked), waterfalls w/ spray, floating platforms (moving in Caverns), crumbling ledges (Volcano), cave mouths, tree/crystal/rock props.
+- Hidden paths: 3 upper platform chains per level (gems + Fire pickup at top) + lower ledge under first bridge.
+- Checkpoints: 3 per level (flags, green when passed, +6HP/full mana). Hazard fall = -1 life + respawn at last checkpoint WITHOUT world reset; combat death = level reset at checkpoint.
+- Enemies: walker/spitter/bat + new brute (slow heavy hitter), 19–24 per level, platform-bound patrol/chase AI, telegraphs, hp bars.
+- Bosses: multi-phase w/ phase pips on HP bar, homing altitude (drops into melee reach), volley/swoop + NEW fire-breath sweep (phase 2+), enrage, death anim (fall+bursts+loot drop). Ember(55hp/2ph) / Crystal Shadow(70/2) / Infernal(85/3).
+- Fire Power: pickups grant 8s +50% dmg buff + HUD meter; completion awards land in Fire Vault (verified server-side: +5 toast, pool 1,000,000→999,890).
+- HUD: panel w/ hearts, HP(numbers)/MP/XP bars, Lv, coins/gems/fire, Fire-buff timer, stage label top-right, boss bar w/ phases, objective line.
+- Coyote time (0.12s), jump buffer via latched keys, gamepad + mobile joystick retained.
+Data: spec.stages regenerated via /tmp/dr25d_upgrade.py (25/31/27 platforms, 19/20/24 enemies, 55/56/63 pickups per level). Controls/description text corrected (J attack, K spell, L dodge).
+Testing: scripted Playwright playtests — boss kill loop E2E (engage→phases→breath→death→portal→DEMO COMPLETE→Fire award), full L1 traversal (checkpoint respawn verified), 3-stage transition run w/ per-level assets (_l2/_l3) confirmed, final Score 404 completion screen. Internal boss-test clone deleted after use.
+Costs: $0.00 OpenAI this session — 15/15 asset slots reused from existing ORAi library (100% reuse, 0 generated).
+
+## 2.5D Demo — Media Quality Upgrade v3 (Aug 5, 2026) ✅ FOUNDER REVIEW (NOT published)
+- Polish iteration 2 (code, $0): movement-synced sprite animation speed, run dust puffs, forest god rays + drifting clouds, lava bubbles, cavern water drips, gem/fire sparkle twinkles, enemy projectile trails, cinematic camera (stronger facing lookahead, softer lerp, hard never-outrun clamps), hero 104·k, alternate elevated ROUTES (2 long plateaus/level w/ step platforms, own enemies+gems), waterfall SECRETS (gems + fire behind first 2 falls), pre-boss checkpoint added (4 per level).
+- Media generated via ORAi pipeline (job dr25d_media_v3, $0.10): icon_set (perfect 4x2 grid: coin/gem/potion/fire/mana/star/chest/key — wired, renderer map {coin:0,gem:1,potion:2,fire:3,mana:4}) + ui_frame (generated but UNWIRED — border-image slicing broke DOM HUD; kept in library). icon_set + ui_frame added as optional slots for action_rpg_2_5d in asset_wiring.py.
+- Boss portrait in canvas HUD ($0): circular clipped boss_sprite beside boss HP bar, enrage-colored ring.
+- Verified via scripted playtests: icons in-world, plateau routes, god rays, checkpoint respawn, boss portrait + phases + breath. Wizard sheet confirmed HD 4-frame walk cycle (reuse, no regen needed).
+- Cumulative AI cost for this game: $0.89 (build $0.04 + art v1 $0.75 + media v3 $0.10). Session spend: $0.10 of approved $25.
+- Honest limitations: no music provider connected (synth fallback; music_theme slot ready), per-state drawn animation frames not supported (procedural pose blending instead), no NPC/dialogue mechanic, stepped terrain (no true slopes), ui_frame DOM styling incompatible with arbitrary generated frames.

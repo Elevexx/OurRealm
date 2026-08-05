@@ -18,7 +18,7 @@ RUNTIME_SLOTS = {
     "action_rpg_2_5d": [("player_sprite", True), ("enemy_sprite", True), ("boss_sprite", True),
                         ("npc_sprite", False), ("background", True), ("tileset", False),
                         ("projectile_sprite", False), ("effect_fx", False),
-                        ("character_portrait", False)],
+                        ("character_portrait", False), ("icon_set", False), ("ui_frame", False)],
     "rpg": [("player_sprite", True), ("enemy_sprite", True), ("creature_sprite", False),
             ("npc_sprite", False), ("background", True), ("battle_scene", False)],
     "turn_based_creature_rpg": [("player_sprite", True), ("creature_sprite", True),
@@ -43,17 +43,25 @@ DEFAULT_SLOTS = [("background", False)]
 AUDIO_SLOTS = [("music_theme", False)]  # every runtime can play it; never generated
 
 
-def slot_defs(runtime: str) -> list:
-    return RUNTIME_SLOTS.get(runtime or "", DEFAULT_SLOTS) + AUDIO_SLOTS
+def slot_defs(runtime: str, game: dict = None) -> list:
+    base = RUNTIME_SLOTS.get(runtime or "", DEFAULT_SLOTS) + AUDIO_SLOTS
+    if game and runtime == "action_rpg_2_5d":
+        stages = ((game.get("spec") or {}).get("stages")) or []
+        if any((s or {}).get("mode") == "side_scroll" for s in stages):
+            for lvl in (2, 3):
+                if len(stages) >= lvl:
+                    base = base + [(f"{b}_l{lvl}", False)
+                                   for b in ("background", "tileset", "enemy_sprite", "boss_sprite")]
+    return base
 
 
-def image_slot_defs(runtime: str) -> list:
-    return [(k, r) for k, r in slot_defs(runtime) if ga.SLOTS[k]["kind"] != "audio"]
+def image_slot_defs(runtime: str, game: dict = None) -> list:
+    return [(k, r) for k, r in slot_defs(runtime, game) if ga.SLOTS[k]["kind"] != "audio"]
 
 
 def placeholder_pct(game: dict) -> int:
     """Placeholder percentage from ACTUAL renderer slot usage (required 2x weight)."""
-    defs = image_slot_defs((game or {}).get("runtime"))
+    defs = image_slot_defs((game or {}).get("runtime"), game)
     assets = (((game or {}).get("spec") or {}).get("assets")) or {}
     total = wired = 0
     for k, req in defs:
@@ -69,7 +77,7 @@ def validate_wiring(game: dict) -> dict:
     Broken assets are safe — the renderer falls back to painted primitives."""
     assets = (((game or {}).get("spec") or {}).get("assets")) or {}
     rows, blockers, warnings = [], [], []
-    for k, req in image_slot_defs(game.get("runtime")):
+    for k, req in image_slot_defs(game.get("runtime"), game):
         cur = assets.get(k) or {}
         url = cur.get("url") or ""
         if not url:
@@ -120,7 +128,7 @@ async def wire_assets(game: dict, actor: dict, *, mode: str = "generate_missing"
     is still missing (mode: reuse_only | generate_required_only | generate_missing)."""
     assets = ((game.get("spec") or {}).get("assets")) or {}
     reused, missing, skipped = [], [], []
-    for k, req in slot_defs(game.get("runtime")):
+    for k, req in slot_defs(game.get("runtime"), game):
         if (assets.get(k) or {}).get("url"):
             skipped.append({"slot": k, "status": "already_wired"})
             continue

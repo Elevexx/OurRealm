@@ -149,7 +149,9 @@ RUNTIME_MECHANICS = {
                         "attack telegraphs", "multi-phase boss with arena lock & enrage", "loot drops",
                         "NPC dialogue", "quests (defeat/collect)", "inventory & potions", "equipment",
                         "XP & leveling", "checkpoints & respawn", "region transitions", "save/load",
-                        "trigger volumes", "gamepad support", "mobile virtual joystick"],
+                        "trigger volumes", "gamepad support", "mobile virtual joystick",
+                        "side-scroll gravity mode (jump, one-way/moving/crumbling platforms, "
+                        "biome hazards, countdown, restart-level-on-death)"],
     "turn_based_creature_rpg": ["world exploration", "NPC dialogue", "quests", "quest objectives",
                                 "inventory", "party system", "creature roster", "turn-based combat",
                                 "capture mechanic", "creature taming", "tame & befriend wild creature",
@@ -885,6 +887,14 @@ def validate_spec(spec: dict, complexity: int = 1, expected_runtime: str | None 
             if not st.get("cores"):
                 errs.append(f"stage {i+1}: needs cores count")
         elif r == "action_rpg_2_5d":
+            if st.get("mode") == "side_scroll":
+                if not (st.get("platforms") or []):
+                    errs.append(f"stage {i+1}: side_scroll level needs platforms")
+                if not (st.get("enemies") or []):
+                    errs.append(f"stage {i+1}: needs enemies")
+                if not st.get("boss"):
+                    errs.append(f"stage {i+1}: each side_scroll level needs a dragon boss")
+                continue
             if not (st.get("enemies") or []):
                 errs.append(f"stage {i+1}: action RPG region needs enemies")
             if not st.get("quest"):

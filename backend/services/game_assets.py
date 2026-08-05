@@ -102,6 +102,9 @@ SLOTS = {
                     "hint": "looping background music (no generation provider — library reuse only, "
                             "runtime synth fallback)"},
 }
+for _lvl in (2, 3):
+    for _base in ("background", "tileset", "enemy_sprite", "boss_sprite"):
+        SLOTS[f"{_base}_l{_lvl}"] = {**SLOTS[_base], "label": SLOTS[_base]["label"] + f" (Level {_lvl})"}
 
 PROFILES = {
     "canvas_arcade": ["player_sprite", "enemy_sprite", "boss_sprite", "tileset",
@@ -138,7 +141,7 @@ def profile_for(runtime: str) -> str:
 
 def build_manifest(game: dict) -> dict:
     from services.game_platform.asset_wiring import image_slot_defs
-    defs = image_slot_defs(game.get("runtime"))
+    defs = image_slot_defs(game.get("runtime"), game)
     prof = "runtime_adapter"
     state = (game.get("asset_manifest") or {}).get("slots") or {}
     slots = []
