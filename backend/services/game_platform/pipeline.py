@@ -148,6 +148,17 @@ EDIT_SECTIONS = {
     "npcs": "blueprint.gameplay.npcs",
     "battles": "blueprint.gameplay.bosses",
     "regions": "blueprint.gameplay.worlds",
+    "evolution_rules": "blueprint.extensions.evolution",
+    "parties": "blueprint.extensions.parties",
+    "ai_profiles": "blueprint.extensions.battle_ai",
+    "multiplayer_rules": "blueprint.extensions.multiplayer",
+    "trades": "blueprint.extensions.trading",
+    "procedural_settings": "blueprint.extensions.procedural_regions",
+    "recipes": "blueprint.extensions.crafting",
+    "items": "blueprint.extensions.items",
+    "difficulty": "blueprint.extensions.difficulty",
+    "accessibility": "blueprint.media.accessibility",
+    "fire_power": "blueprint.systems.fire_power_integrations",
 }
 
 EDIT_SYSTEM = """You are ORAi's game blueprint editor. You receive ONE section of a game

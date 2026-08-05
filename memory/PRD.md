@@ -1,5 +1,34 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## P0 — COMPLETE ORAi PROJECT CREATOR PLATFORM UPGRADE (Aug 5 2026) ✅ ALL 6 PHASES DONE — 29/29 targeted checks + desktop/mobile UI verified
+### Phase 1 — Runtime Selection Accuracy (finished the in-flight patch)
+- `services/runtime_selection.py`: 36-mechanic deterministic taxonomy (regex patterns incl. real-time movement, action combat, cooldown abilities, top-down exploration, platforming, puzzle solving, boss battles, survival, tower defense, card battles, evolution), 22-runtime capability matrix (supported vs honest approximation), CORE-mechanic gating, ranked walk-down, deterministic pick ALWAYS beats the LLM hint.
+- `gb.plan_blueprint` runs selection BEFORE the LLM call → incompatible requests get HTTP 422 with report {requested_mechanics, closest_matching_runtime, compatibility_score, supported_mechanics, unsupported_mechanics, missing_runtime_capabilities, blocking_reason, recommendations} — ZERO LLM cost, no blueprint ever created. Doc gains additive `runtime_selection` + `runtime_recommendation.mechanics_selection`.
+- Platform planner only realigns to family engine when that engine is in `compatible_runtimes`.
+- Frontend OraiProjects.jsx: `compatReport` state + panel (data-testid compat-report/-requested/-closest/-supported/-unsupported/-recommendations/-dismiss); cleared at every plan start (no stale data); loading always ends (finally). Verified desktop + mobile (no overflow).
+- Verified: action prompt→top_down (never tbcr); creature prompt→tbcr; plain rpg→rpg; RTS→422 stop.
+### Phase 2 — Diagnostics & Founder Visibility (`services/game_platform/diagnostics.py`)
+- 14-category Founder Validation Report (runtime_contract…platform_compatibility) each with status/rule/exact error/affected/suggested_fix; GET /api/orai/platform/blueprints/{bid}/report returns report+timeline+summary+history (copy/download-ready JSON).
+- Deterministic Auto Fix (POST …/autofix, NO LLM): dedupe req_ids, reset broken asset links, relink registry family, declare save hooks, insert missing NPC/quest-giver + catchable creature in built specs, attach default fire economy (disabled). History in `autofix_history`.
+- 10-stage live timeline (Planning→Publish) with waiting/running/passed/auto-fixed/failed; completion summary (runtime, compat score, assets reused/deferred, validations, auto-fixes, warnings, est vs actual AI usage, build time); build history (last 10 games per blueprint). Actions: Retry Validation=/validate, Auto Fix=/autofix, Retry Build=/build (duplicate-proof+stale-resume).
+### Phase 3 — Creature RPG V2 extensions (`services/game_platform/creature_ext.py`, registry `creature_rpg_extensions`, all optional/versioned/rollback-safe)
+- evolution (level/item/quest/condition triggers, branching, stat/ability changes, v1 save migration via evolution_stage) — POST /creature/evolution/apply
+- multiplayer_foundation (lobby create/join/leave/reconnect, invite codes, max_party, single-player fallback; NOT MMO) — /creature/sessions/{action}, collection `game_sessions`
+- trading (two-party confirm, atomic find_one_and_update status transition, duplicate accept→409, cancel/timeout, history, no real money) — /creature/trades/{action}, collection `creature_trades`
+- procedural_regions (sha256-seeded deterministic tiles/encounters/landmark/objective; same seed → identical region) — /creature/regions/generate
+- crafting (single guarded $inc update = atomic consume+produce; missing_ingredients 422) — /creature/craft
+- battle_ai (profiles aggressive/defensive/boss_phase, lowest_hp/highest_attack targeting, elemental fire>grass>water>fire, status awareness, phase multipliers, difficulty scaling, deterministic fallback) — /creature/battle-ai/decide
+### Phase 4 — Editor + assets
+- Universal Editor sections added: evolution_rules, parties, ai_profiles, multiplayer_rules, trades, procedural_settings, recipes, items, difficulty, accessibility, fire_power (→ blueprint.extensions.*).
+- Asset priority classification on every requirement: required_to_play / optional_gameplay / polish / marketing (music/sfx/voice=polish, promotional/cinematic=marketing). Prototypes never blocked by optional media.
+### Phase 5 — Fire Power creature rewards (registry data, zero hardcoded amounts)
+- economy registry fire_power gains `creature_rewards` table (creature_victory 5, boss_victory 30, capture 10, evolution 15, quest 20, achievement 10, region 12, multiplayer 8, event 25, daily 15, seasonal 40, difficulty_bonus_pct) + policy flags (burn confirmation, never required for story, no monetary value). Founder edits via registry upsert (versioned/rollback).
+- POST /creature/rewards/claim: atomic claimed-marker guard + idempotent fire_vault credit_fire (gfp:* key), duplicate→409, ledger rollback on credit failure. VERIFIED claim + duplicate rejection.
+### Known bugs fixed during verification
+- claim duplicate-check used projection {"id":1} → empty-dict falsy → duplicates paid; fixed with {_id:1} + `is not None`.
+- battle AI elemental table was inverted (fire beat water); fixed to fire>grass>water>fire.
+### Test artifacts: /tmp/test_phase_all.py (29 checks). V1 game afd7f93… + blueprint ef83944… intact.
+
 ## P0 — TURN-BASED CREATURE RPG RUNTIME v1 (Aug 4 2026) ✅ COMPLETE — minimal-credit build, all checks verified
 - Promoted `turn_based_creature_rpg` from scaffolded to a FIRST-CLASS generatable runtime (`runtime_turn_based_creature_rpg_v1`, `tpl_turn_based_creature_rpg_v1`) reusing the vetted rpg engine machinery (renderer alias in GameRuntime.jsx `turn_based_creature_rpg: rpg` — party/catch/turn-based combat/quests/XP already engine features).
 - game_studio.py: RUNTIMES + labels + WIN_LOSS + RUNTIME_MECHANICS (15 systems) + IDENTITY_BASE + controls maps + EST/SPEC prompts + spec schema (creatures 1-3 catchable REQUIRED, starter_creature REQUIRED) + validate_spec creature rules. SCAFFOLDED_RUNTIMES now empty. GENRE_MAP: jrpg/party combat/tame monsters/wizard rpg/dragon collecting/creature battles → tbcr ("rpg" alone still → rpg).

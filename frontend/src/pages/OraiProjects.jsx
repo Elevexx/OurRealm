@@ -27,6 +27,7 @@ export default function OraiProjects() {
   const [historyKey, setHistoryKey] = useState(0);
   const [blueprint, setBlueprint] = useState(null);
   const [bpLoading, setBpLoading] = useState(false);
+  const [compatReport, setCompatReport] = useState(null);
 
   const [proj, setProj] = useState({
     id: null, name: "", prompt: "", tools: [], providers: [],
@@ -102,6 +103,7 @@ export default function OraiProjects() {
   const planBlueprint = async () => {
     if (!proj.prompt.trim()) { toast.error("Describe the game first (chat or prompt box)"); return; }
     setBpLoading(true);
+    setCompatReport(null);
     try {
       const { data } = await apiClient.post("/orai/projects/blueprints/plan", {
         request: proj.prompt, name: proj.name, complexity: proj.complexity, ai_power: proj.ai_power,
@@ -109,7 +111,15 @@ export default function OraiProjects() {
       setBlueprint(data.blueprint);
       setView("blueprint");
       toast.success("Game blueprint planned — review before approval");
-    } catch (e) { toast.error(e?.response?.data?.detail || "Blueprint planning failed"); }
+    } catch (e) {
+      const d = e?.response?.data?.detail;
+      if (d && d.error_code === "no_compatible_runtime") {
+        setCompatReport(d);
+        toast.error("No compatible runtime — see the compatibility report");
+      } else {
+        toast.error(typeof d === "string" ? d : "Blueprint planning failed");
+      }
+    }
     finally { setBpLoading(false); }
   };
 
@@ -222,6 +232,36 @@ export default function OraiProjects() {
                 onClick={planBlueprint} data-testid="plan-blueprint-btn">
                 {bpLoading ? "Planning…" : "Plan Game Blueprint"}
               </button>
+            </div>
+          )}
+
+          {compatReport && (
+            <div className="or-surface p-3 mt-2 space-y-1.5" data-testid="compat-report"
+              style={{ border: "1px solid #FF5A6E66", background: "#FF5A6E0d" }}>
+              <div className="text-[11px] font-bold" style={{ color: "#FF5A6E" }}>
+                ⚠ No compatible runtime — blueprint generation stopped
+              </div>
+              <div className="text-[10.5px]" style={{ color: "var(--text-muted)" }} data-testid="compat-report-message">
+                {compatReport.message}
+              </div>
+              <div className="text-[10px] grid sm:grid-cols-2 gap-x-4 gap-y-1">
+                <div data-testid="compat-requested"><b style={{ color: "#F4A73B" }}>Requested:</b>{" "}
+                  {(compatReport.requested_mechanics || []).join(", ") || "—"}</div>
+                <div data-testid="compat-closest"><b style={{ color: "#2EE6FF" }}>Closest runtime:</b>{" "}
+                  {compatReport.closest_matching_runtime} (score {compatReport.compatibility_score})</div>
+                <div data-testid="compat-supported"><b style={{ color: "#10E670" }}>Supported:</b>{" "}
+                  {(compatReport.supported_mechanics || []).join(", ") || "none"}</div>
+                <div data-testid="compat-unsupported"><b style={{ color: "#FF5A6E" }}>Unsupported:</b>{" "}
+                  {(compatReport.unsupported_mechanics || []).join(", ") || "none"}</div>
+              </div>
+              {(compatReport.recommendations || []).length > 0 && (
+                <ul className="text-[10px] list-disc pl-4" style={{ color: "var(--text-muted)" }}
+                  data-testid="compat-recommendations">
+                  {compatReport.recommendations.map((r, i) => <li key={i}>{r}</li>)}
+                </ul>
+              )}
+              <button className="or-btn text-[10px]" onClick={() => setCompatReport(null)}
+                data-testid="compat-report-dismiss">Dismiss</button>
             </div>
           )}
 

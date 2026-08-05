@@ -18,7 +18,10 @@ from services.game_platform.system_registry import (
     system_registry, economy_registry, fire_hook_registry, plugin_registry)
 from services.game_platform.validation_registry import validation_registry, run_validation
 from services.game_platform.capability_registry import capability_registry, capability_status
-from services.game_platform import planner, pipeline
+from services.game_platform import planner, pipeline, diagnostics
+from services.game_platform.creature_ext import (
+    creature_ext_registry, apply_evolution, session_action, trade_action,
+    generate_region, craft, battle_decide, claim_creature_reward)
 from utils.sliding_window_rate_limit import rate_limit
 
 log = logging.getLogger("ourrealm.game_platform.api")
@@ -29,7 +32,7 @@ REGISTRIES: dict[str, Registry] = {
     "templates": template_registry, "gameplay_systems": system_registry,
     "economy": economy_registry, "fire_hooks": fire_hook_registry,
     "ai_capabilities": capability_registry, "validators": validation_registry,
-    "plugins": plugin_registry,
+    "plugins": plugin_registry, "creature_rpg_extensions": creature_ext_registry,
 }
 
 
@@ -241,3 +244,75 @@ async def project_registry(current: CurrentUser):
              "blueprint_id": 1, "published": 1}).sort("created_at", -1).to_list(100)
     return {"blueprints": bps, "games": games,
             "counts": {"blueprints": len(bps), "games": len(games)}}
+
+
+# ── Phase 2: diagnostics, founder report, auto-fix, timeline, history ─
+@router.get("/blueprints/{bid}/report")
+async def founder_build_report(bid: str, current: CurrentUser):
+    """Founder Validation Report + live timeline + completion summary.
+    JSON is copy/download-ready."""
+    require_founder(current)
+    bp = await _own_bp(bid, current)
+    return {"blueprint_id": bid, "name": bp.get("name"),
+            "report": await diagnostics.founder_report(bp),
+            "timeline": await diagnostics.build_timeline(bp),
+            "summary": await diagnostics.completion_summary(bp),
+            "history": await diagnostics.build_history(bp)}
+
+
+@router.post("/blueprints/{bid}/autofix")
+async def blueprint_autofix(bid: str, current: CurrentUser):
+    """Deterministic Auto Fix & Retry — safe repairs only, never an LLM."""
+    require_founder(current)
+    bp = await _own_bp(bid, current)
+    res = await diagnostics.auto_fix(bp)
+    bp = await _own_bp(bid, current)
+    report = await diagnostics.founder_report(bp)
+    await audit(current, "blueprint_autofix", bid, f"{res['count']} fix(es)")
+    return {**res, "report": report}
+
+
+# ── Phase 3: Turn-Based Creature RPG V2 extensions ────────────────────
+@router.get("/creature/extensions")
+async def creature_extensions(current: CurrentUser):
+    return {"extensions": await creature_ext_registry.all()}
+
+
+@router.post("/creature/evolution/apply")
+async def creature_evolution(body: dict, current: CurrentUser):
+    return await apply_evolution(current, str(body.get("game_id") or "")[:64],
+                                 str(body.get("creature") or "")[:80], body.get("context") or {})
+
+
+@router.post("/creature/sessions/{action}")
+async def creature_sessions(action: str, body: dict, current: CurrentUser):
+    if action not in ("create", "join", "leave", "reconnect"):
+        raise HTTPException(status_code=400, detail="Unknown session action")
+    return await session_action(current, action, body)
+
+
+@router.post("/creature/trades/{action}")
+async def creature_trades(action: str, body: dict, current: CurrentUser):
+    return await trade_action(current, action, body)
+
+
+@router.post("/creature/regions/generate")
+async def creature_region(body: dict, current: CurrentUser):
+    return await generate_region(body)
+
+
+@router.post("/creature/craft")
+async def creature_craft(body: dict, current: CurrentUser):
+    return await craft(current, str(body.get("game_id") or "")[:64],
+                       str(body.get("recipe_id") or "")[:60])
+
+
+@router.post("/creature/battle-ai/decide")
+async def creature_battle_ai(body: dict, current: CurrentUser):
+    return await battle_decide(body)
+
+
+@router.post("/creature/rewards/claim")
+async def creature_reward_claim(body: dict, current: CurrentUser):
+    return await claim_creature_reward(current, str(body.get("game_id") or "")[:64],
+                                       str(body.get("kind") or ""), body.get("ref"))

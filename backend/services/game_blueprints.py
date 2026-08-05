@@ -9,8 +9,10 @@ import uuid
 from datetime import datetime, timezone
 
 from core.db import db
+from fastapi import HTTPException
 from services.llm_router import tier
 from services.chat_conversations import call_openai_chat
+from services.runtime_selection import select_best_runtime
 from services.game_studio import (RUNTIMES, RUNTIME_LABELS, RUNTIME_MECHANICS,
                                   SCAFFOLDED_RUNTIMES, route_runtime, detect_unsupported)
 from services.game_assets import SLOTS, PROFILES, profile_for, ART_QUALITY
@@ -140,6 +142,16 @@ def mechanics_support(selected_rt: str, requested: list, llm_unsupported: list) 
 
 
 # ── Asset requirement derivation + library matching ─────────────────
+PRIORITY_BY_CATEGORY = {"promotional": "marketing", "cinematic": "marketing",
+                        "music": "polish", "sound_effect": "polish", "voice": "polish"}
+
+
+def asset_priority(category: str, required: bool) -> str:
+    """Required to Play / Optional Gameplay / Polish / Marketing.
+    Prototypes are NEVER blocked by optional media."""
+    return PRIORITY_BY_CATEGORY.get(category) or ("required_to_play" if required else "optional_gameplay")
+
+
 def derive_asset_requirements(rt: str, bp: dict, complexity: int) -> list:
     style = ", ".join(_slist((bp.get("media") or {}).get("artwork"), 2, 90)) or \
         f"{bp['identity'].get('genre') or 'game'} art, {bp['identity'].get('visual_dimension') or '2d'}"
@@ -157,6 +169,7 @@ def derive_asset_requirements(rt: str, bp: dict, complexity: int) -> list:
                 "visual_style": style,
                 "dimensions_or_format": "PNG 1024×1024" + (" transparent" if d["transparent"] else ""),
                 "target_runtime": rt, "required": d["required"],
+                "priority": asset_priority(SLOT_CATEGORY.get(key, "prop"), d["required"]),
                 "est_generation_cost": ART_QUALITY[1]["cost"],
                 "est_source": "configured_internal_estimate",
             })
@@ -177,6 +190,7 @@ def derive_asset_requirements(rt: str, bp: dict, complexity: int) -> list:
                                                   "voice": "mp3", "cinematic": "mp4",
                                                   "cover_art": "PNG 1024×1024"}[cat],
                          "target_runtime": rt, "required": False,
+                         "priority": asset_priority(cat, False),
                          "est_generation_cost": cost, "est_source": note})
     return reqs[:30]
 
@@ -295,6 +309,14 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
     request_text = str(body.get("request") or (existing or {}).get("request") or "")[:2000]
     complexity = min(max(int(body.get("complexity") or (existing or {}).get("complexity") or 1), 1), 10)
     power = min(max(int(body.get("ai_power") or (existing or {}).get("ai_power") or 3), 1), 10)
+    # Capability-matrix runtime selection BEFORE any generation. Incompatible
+    # requests are refused here — no blueprint is ever generated for them.
+    sel = select_best_runtime(request_text)
+    if sel["no_compatible_runtime"] and not (existing or {}).get("selected_runtime"):
+        raise HTTPException(status_code=422, detail={
+            "error_code": "no_compatible_runtime", **sel["report"],
+            "ranked": [{k: r[k] for k in ("runtime", "label", "score", "compatible")}
+                       for r in sel["ranked"][:3]]})
     t = tier(min(power, 5))
     request_id = uuid.uuid4().hex
     import time
@@ -314,7 +336,13 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
     rec = recommend_runtime(request_text, str(plan.get("runtime") or ""),
                             plan.get("requested_mechanics") or sections["gameplay"]["player_mechanics"])
     selected = (existing or {}).get("selected_runtime") if existing else None
-    selected = selected or rec["recommended"]
+    mech_pick = (sel.get("selected") or {}).get("runtime")
+    if mech_pick:
+        rec["mechanics_selection"] = {"selected": mech_pick,
+                                      "score": sel["selected"]["score"],
+                                      "detected_mechanics": sel["detected_mechanics"],
+                                      "method": sel["method"]}
+    selected = selected or mech_pick or rec["recommended"]
     sections["runtime"]["runtime_id"] = selected
     sections["runtime"]["family"] = RUNTIME_LABELS.get(selected) if selected else None
     ms = mechanics_support(selected, plan.get("requested_mechanics") or sections["gameplay"]["player_mechanics"],
@@ -347,6 +375,9 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
         "complexity": complexity, "ai_power": power,
         "blueprint": sections,
         "runtime_recommendation": rec,
+        "runtime_selection": {k: sel[k] for k in ("detected_mechanics", "core_mechanics",
+                                                  "compatible_runtimes", "method")
+                              if k in sel} | {"ranked": sel.get("ranked") or []},
         "selected_runtime": selected,
         "selected_runtime_label": RUNTIME_LABELS.get(selected) if selected else None,
         "mechanics_support": ms,
