@@ -6,6 +6,7 @@ import apiClient from "@/api/client";
 import ProductionPromotion from "@/components/admin/ProductionPromotion";
 import GameAccessPanel from "@/components/admin/GameAccessPanel";
 import GameUrlPanel from "@/components/admin/GameUrlPanel";
+import { GameCoverTool } from "@/components/admin/GameCoverTool";
 import GameRuntime from "@/components/games/GameRuntime";
 import GameBlueprint from "@/components/games/GameBlueprint";
 import GameFireEconomy from "@/components/games/GameFireEconomy";
@@ -698,6 +699,7 @@ export default function AdminGames() {
               <GameFireEconomy gameId={detail.id} />
               <GameAccessPanel gameId={detail.id} />
               <GameUrlPanel gameId={detail.id} />
+              <GameCoverTool game={detail} />
               <GameBlueprint game={detail} onChanged={() => { loadDetail(detail.id); load(); }} />
             </div>
           )}

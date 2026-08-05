@@ -12,6 +12,8 @@ export default function PublicGamePreview() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [started, setStarted] = useState(false);
+  const [finalScore, setFinalScore] = useState(null);
+  const [convDismissed, setConvDismissed] = useState(false);
 
   useEffect(() => {
     axios.get(`${API}/api/public/game-preview/${token}`)
@@ -62,7 +64,27 @@ export default function PublicGamePreview() {
               </div>
             ) : (
               <GameRuntime spec={data.game.spec} height={540} gameId={data.game.id}
-                controls={data.game.controls} guest />
+                controls={data.game.controls} guest
+                onScore={(ev) => { if (!convDismissed) setFinalScore(ev); }} />
+            )}
+            {finalScore && !convDismissed && (
+              <div className="fixed inset-0 z-[95] flex items-center justify-center px-4"
+                style={{ background: "rgba(4,8,18,0.82)", backdropFilter: "blur(6px)" }} data-testid="guest-score-modal">
+                <div className="w-full max-w-sm rounded-2xl p-5 text-center"
+                  style={{ background: "#0d1526", border: "1px solid rgba(16,230,112,0.4)" }}>
+                  <div className="text-3xl font-black mb-1" style={{ color: "#10E670" }}
+                    data-testid="guest-final-score">{Number(finalScore.score || 0).toLocaleString()}</div>
+                  <b className="text-sm block mb-1.5">{finalScore.completed ? "You beat it as a guest!" : "Nice run, guest!"}</b>
+                  <p className="text-[11.5px] mb-4" style={{ color: "rgba(234,242,255,0.65)" }}>
+                    Create a free OurRealm account and runs like this will earn Fire Power,
+                    Keys, leaderboard spots and saved progress.
+                  </p>
+                  <a className="or-btn w-full mb-2 font-bold block" style={{ background: "#10E670", color: "#0a0a0a" }}
+                    href="/signup" data-testid="guest-score-signup">Create Account &amp; Keep Earning</a>
+                  <button className="or-btn or-btn-ghost w-full text-xs" data-testid="guest-score-dismiss"
+                    onClick={() => { setConvDismissed(true); setFinalScore(null); }}>Keep playing as guest</button>
+                </div>
+              </div>
             )}
             <div className="text-center text-[10px] mt-4" style={{ color: "rgba(234,242,255,0.45)" }}>
               Want Fire Power, Keys and saved progress? <a href="/signup" style={{ color: "#2EE6FF" }}>Join OurRealm free</a>.

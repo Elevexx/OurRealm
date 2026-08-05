@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ArrowUp, ArrowDown, X, Plus, RotateCcw, Pencil, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowUp, ArrowDown, X, Plus, RotateCcw, Pencil, ChevronDown, ChevronRight, Lock, Unlock, Users, CopyPlus } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 
@@ -26,7 +26,10 @@ export const RcWidgetBoard = ({ centerId }) => {
       load();
     }
   };
-  const layout = board.widgets.map((w) => ({ widget_key: w.widget_key, collapsed: w.collapsed }));
+  const layout = board.widgets.map((w) => ({ widget_key: w.widget_key, collapsed: w.collapsed,
+    instance_id: w.instance_id, title: w.title !== w.name ? w.title : undefined,
+    locked: w.locked, roles: w.roles }));
+  const canManage = !!board.can_set_center_default;
   const move = (i, dir) => {
     const next = [...layout];
     const [it] = next.splice(i, 1);
@@ -36,6 +39,19 @@ export const RcWidgetBoard = ({ centerId }) => {
   const remove = (i) => save(layout.filter((_, x) => x !== i));
   const add = (key) => save([...layout, { widget_key: key }]);
   const collapse = (i) => save(layout.map((s, x) => (x === i ? { ...s, collapsed: !s.collapsed } : s)));
+  const rename = (i) => {
+    const t = window.prompt("Widget name:", board.widgets[i].title || board.widgets[i].name);
+    if (t !== null) save(layout.map((s, x) => (x === i ? { ...s, title: t.trim() || undefined } : s)));
+  };
+  const duplicate = (i) => save([...layout.slice(0, i + 1), { ...layout[i], instance_id: undefined,
+    title: (board.widgets[i].title || board.widgets[i].name) + " copy" }, ...layout.slice(i + 1)]);
+  const toggleLock = (i) => save(layout.map((s, x) => (x === i ? { ...s, locked: !s.locked } : s)));
+  const cycleRoles = (i) => {
+    const opts = [[], ["owner", "admin"], ["owner", "admin", "manager"], ["member"]];
+    const cur = JSON.stringify(layout[i].roles || []);
+    const idx = opts.findIndex((o) => JSON.stringify(o) === cur);
+    save(layout.map((s, x) => (x === i ? { ...s, roles: opts[(idx + 1) % opts.length] } : s)));
+  };
   const reset = async () => {
     await apiClient.delete(`/responsibility-center/${centerId}/widget-layout?scope=user`);
     toast.success("Layout reset to the Center default");
@@ -86,17 +102,28 @@ export const RcWidgetBoard = ({ centerId }) => {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         {board.widgets.map((w, i) => (
-          <div key={w.widget_key} className="or-surface p-3" data-testid={`rc-widget-${w.widget_key}`}>
+          <div key={w.instance_id || `${w.widget_key}-${i}`} className="or-surface p-3" data-testid={`rc-widget-${w.widget_key}`}>
             <div className="flex items-center justify-between mb-1">
               <button className="text-xs font-semibold uppercase tracking-wide flex items-center gap-1"
                 onClick={() => collapse(i)} data-testid={`rc-widget-collapse-${w.widget_key}`}>
-                {w.collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}{w.name}
+                {w.collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}{w.title || w.name}
+                {w.locked && <Lock size={9} style={{ color: "var(--text-muted)" }} />}
+                {(w.roles || []).length > 0 && <span className="text-[8px] px-1 rounded" style={{ background: "rgba(194,107,255,0.15)", color: "#C26BFF" }}>{w.roles.join("/")}</span>}
               </button>
               {editing && (
                 <span className="flex items-center gap-0.5">
-                  <button className="p-0.5" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up" data-testid={`rc-widget-up-${w.widget_key}`}><ArrowUp size={12} /></button>
-                  <button className="p-0.5" onClick={() => move(i, 1)} disabled={i === board.widgets.length - 1} aria-label="Move down" data-testid={`rc-widget-down-${w.widget_key}`}><ArrowDown size={12} /></button>
-                  <button className="p-0.5" onClick={() => remove(i)} aria-label="Remove" data-testid={`rc-widget-remove-${w.widget_key}`}><X size={12} /></button>
+                  {(!w.locked || canManage) && (<>
+                    <button className="p-0.5" onClick={() => rename(i)} aria-label="Rename" title="Rename" data-testid={`rc-widget-rename-${w.widget_key}`}><Pencil size={11} /></button>
+                    <button className="p-0.5" onClick={() => duplicate(i)} aria-label="Duplicate" title="Duplicate" data-testid={`rc-widget-duplicate-${w.widget_key}`}><CopyPlus size={11} /></button>
+                    <button className="p-0.5" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up" data-testid={`rc-widget-up-${w.widget_key}`}><ArrowUp size={12} /></button>
+                    <button className="p-0.5" onClick={() => move(i, 1)} disabled={i === board.widgets.length - 1} aria-label="Move down" data-testid={`rc-widget-down-${w.widget_key}`}><ArrowDown size={12} /></button>
+                    <button className="p-0.5" onClick={() => remove(i)} aria-label="Remove" data-testid={`rc-widget-remove-${w.widget_key}`}><X size={12} /></button>
+                  </>)}
+                  {canManage && (<>
+                    <button className="p-0.5" onClick={() => toggleLock(i)} aria-label="Lock" title={w.locked ? "Unlock" : "Lock"} data-testid={`rc-widget-lock-${w.widget_key}`}>
+                      {w.locked ? <Unlock size={11} /> : <Lock size={11} />}</button>
+                    <button className="p-0.5" onClick={() => cycleRoles(i)} aria-label="Role visibility" title="Cycle role visibility (everyone → owners/admins → managers+ → members)" data-testid={`rc-widget-roles-${w.widget_key}`}><Users size={11} /></button>
+                  </>)}
                 </span>
               )}
             </div>

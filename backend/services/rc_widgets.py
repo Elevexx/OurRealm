@@ -138,6 +138,7 @@ async def dashboard(user: dict, center_id: str) -> dict:
     center, membership, perms = await _ctx(center_id, user, "", write=False)
     layout_doc = await _resolve_layout(center_id, user["id"])
     widgets = []
+    my_role = (membership or {}).get("role")
     for slot in layout_doc.get("layout") or []:
         key = slot.get("widget_key")
         meta = WIDGETS.get(key)
@@ -145,11 +146,17 @@ async def dashboard(user: dict, center_id: str) -> dict:
             continue
         if meta["perm"] and meta["perm"] not in perms:
             continue  # unauthorized widgets are hidden, never errored
+        roles = slot.get("roles") or []
+        if roles and my_role not in roles and "edit_center" not in perms:
+            continue  # per-role widget visibility (managers always see everything)
         try:
             data = await _widget_data(key, center, user, perms)
         except Exception:  # noqa: BLE001
             data = {"error": True}
         widgets.append({"widget_key": key, "name": meta["name"],
+                        "title": slot.get("title") or meta["name"],
+                        "instance_id": slot.get("instance_id"),
+                        "locked": bool(slot.get("locked")), "roles": roles,
                         "collapsed": bool(slot.get("collapsed")), "data": data})
     available = [{"widget_key": k, "name": m["name"]} for k, m in WIDGETS.items()
                  if not m["perm"] or m["perm"] in perms]
@@ -169,11 +176,23 @@ async def save_layout(user: dict, center_id: str, body: dict) -> dict:
     if len(layout) > 20:
         raise HTTPException(status_code=400, detail="Too many widgets (max 20)")
     clean, seen = [], set()
+    import uuid as _uuid
     for slot in layout:
         key = slot.get("widget_key")
-        if key in WIDGETS and key not in seen:
-            seen.add(key)
-            clean.append({"widget_key": key, "collapsed": bool(slot.get("collapsed"))})
+        if key not in WIDGETS:
+            continue
+        iid = str(slot.get("instance_id") or "")[:32] or _uuid.uuid4().hex[:12]
+        if iid in seen:
+            continue
+        seen.add(iid)
+        item = {"widget_key": key, "instance_id": iid,
+                "collapsed": bool(slot.get("collapsed")), "locked": bool(slot.get("locked"))}
+        if slot.get("title"):
+            item["title"] = str(slot["title"])[:60]
+        roles = [r for r in (slot.get("roles") or []) if r in ("owner", "admin", "manager", "member")][:4]
+        if roles:
+            item["roles"] = roles
+        clean.append(item)
     q = {"center_id": center_id, "layout_scope": scope}
     if scope == "user":
         q["user_id"] = user["id"]

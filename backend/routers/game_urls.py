@@ -133,6 +133,30 @@ async def disable_url(game_id: str, current: CurrentUser):
     return {"ok": True, "disabled": r.modified_count}
 
 
+# ─── ORAi cover generator (reuses OPC image engine + image store) ──────────
+@router.post("/{game_id}/generate-cover")
+async def generate_cover(game_id: str, current: CurrentUser):
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "title": 1, "spec": 1, "genre": 1})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    from services.orai_images import generate_orai_image
+    from services import image_store
+    spec = g.get("spec") or {}
+    prompt = (f"Video game cover art for '{g['title']}' ({g.get('genre') or spec.get('subject') or 'adventure'} game): "
+              f"{(spec.get('description') or '')[:280]} — epic, vibrant, highly detailed digital painting, "
+              "dramatic lighting, portrait composition, no text or lettering")
+    try:
+        raw, model = await generate_orai_image(prompt[:900], None)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Cover generation failed: {e}")
+    rec = await image_store.save_bytes(raw, current["id"])
+    await db.games.update_one({"id": game_id}, {"$set": {"cover_url": rec.original_url, "updated_at": _iso()}})
+    await gac.audit_change(game_id, current, {}, {"mode": "cover_generated"},
+                           f"ORAi cover generated ({model})", action="cover_generated")
+    return {"cover_url": rec.original_url, "model": model}
+
+
 # ─── Public resolution (no account required; access-gated metadata) ────────
 @public_router.get("/id/{game_id}")
 async def canonical_for_id(game_id: str):
