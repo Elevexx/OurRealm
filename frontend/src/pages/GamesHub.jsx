@@ -24,6 +24,11 @@ export default function GamesHub() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
+    document.body.classList.toggle("or-game-playing", !!(playId && playing));
+    return () => document.body.classList.remove("or-game-playing");
+  }, [playId, playing]);
+
+  useEffect(() => {
     if (!playId) { setPlaying(null); setFireInfo(null); return; }
     apiClient.get(`/games/${playId}`).then((r) => setPlaying(r.data))
       .catch((e) => toast.error(e?.response?.data?.detail || "Game not found"));

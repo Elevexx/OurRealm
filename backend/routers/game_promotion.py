@@ -40,7 +40,25 @@ async def write_seeds(current: CurrentUser, body: dict):
         if title.startswith("RTTEST") and not ids:
             skipped.append({"id": g["id"], "title": title, "reason": "internal test record"})
             continue
+        # deterministic promotion_version: bumps only when portable content actually changed
+        import hashlib
+        VOLATILE = ("_id", "plays", "stats", "saves", "promotion_version", "updated_at", "fire_economy")
+        probe = {k: v for k, v in g.items() if k not in VOLATILE}
+        digest = hashlib.sha256(json.dumps(probe, default=str, sort_keys=True).encode()).hexdigest()[:16]
+        seed_path = gp.SEED_DIR / f"{g['id']}.json"
+        oldv = int(g.get("promotion_version") or 1)
+        old_digest = None
+        if seed_path.exists():
+            try:
+                old_digest = json.loads(seed_path.read_text()).get("content_digest")
+            except Exception:
+                pass
+            if old_digest != digest:
+                newv = oldv + 1
+                await db.games.update_one({"id": g["id"]}, {"$set": {"promotion_version": newv}})
+                g["promotion_version"] = newv
         bundle = await gp.build_bundle(g)
+        bundle["content_digest"] = digest
         if bundle["missing_assets"]:
             skipped.append({"id": g["id"], "title": title,
                             "reason": f"broken assets: {bundle['missing_assets']}"})

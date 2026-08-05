@@ -387,3 +387,18 @@ SOLUTION — seed-bundle promotion system:
 - Cover URLs already production-safe (/api/media/* is a stateless R2 presigned proxy); spec asset URLs stay /api/public/game-assets/* and work because bundles carry the orai_assets records.
 TESTED: seed write (27 written/3 skipped), idempotent re-import (skipped: already present), fresh-import simulation (imported + appears in /api/games + verify all-green), startup boot pass, audit history, UI panel screenshot. Test import record cleaned up.
 AFTER NEXT DEPLOY: production boots → startup_import inserts all 27 published games → they appear on production /games automatically.
+
+## P0 — promotion_version Upgrade Path + Mobile Playability Hotfix (Aug 5, 2026) ✅
+### Backend — versioned production upgrades (services/game_promotion.py, routers/game_promotion.py)
+- import_bundle now version-aware: upgrades in place ONLY when bundle promotion_version > existing (never downgrades, never duplicates); forced replace w/o version bump keeps the updated_at recency safety net.
+- Production-state preservation on upgrade: plays, saves, stats, created_at + fire_economy.pool/distributed merged into the new config (Fire never re-issued/wiped). Full pre-upgrade backup → game_promotion_backups.
+- startup_import simplified: one code path via import_bundle; logs imported/upgraded.
+- Deterministic digest for version bumping now excludes volatile fields (plays, stats, saves, updated_at, fire_economy).
+- Dragon Realm bundle REGENERATED: promotion_version 2, 17 assets, 0 missing. Production (record at v1/None) will upgrade in place on next deploy.
+- TESTED: /tmp/test_promotion_upgrade.py against isolated fake-production DB — 19/19 pass (fresh import, idempotent skip, downgrade rejected, upgrade preserves plays/saves/stats/created_at/fire pool, backup written, startup idempotent).
+### Frontend — mobile 2.5D controls (components/games/GameRuntime.jsx, arpgSS)
+- Joystick: pointerId-tracked + setPointerCapture (drag continues off-canvas; a 2nd finger can't hijack it).
+- Jump/Melee/Spell/Dodge buttons: pointerdown/pointerup + setPointerCapture + touch-action:none + -webkit-touch-callout:none; latch-buffered (350ms) into the game loop.
+- Overlap fix already in place: body.or-game-playing hides bottom nav + ORAi FAB during play (App.css/index.css).
+- Ground contact verified visually: sprite bottom padding 0.19 vs draw offset 0.303·HERO → feet flush on tile tops.
+- TESTED at iPhone viewport 390x844 with REAL CDP touch events: all 4 buttons fire; multi-touch run+jump, run+melee, run+spell all work; hazard fall respawns correctly; wizard grounded (no hover).

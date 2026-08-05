@@ -1,2 +1,8 @@
 /* OurRealm — global app styles handled in index.css */
 
+
+/* Hide site chrome while a game is being played so it never intercepts game controls */
+.or-game-playing .or-hide-while-gaming,
+.or-game-playing [data-testid="orai-assistant-fab"] {
+  display: none !important;
+}

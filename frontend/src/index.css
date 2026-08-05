@@ -1044,3 +1044,9 @@ html[data-mode="business"] .rcx-scope .or-surface {
   .rc-dash-actions::-webkit-scrollbar { display: none; }
   .rc-dash-actions > * { flex: 0 0 auto; white-space: nowrap; }
 }
+
+/* Hide site chrome while a game is being played so it never intercepts game controls */
+.or-game-playing .or-hide-while-gaming,
+.or-game-playing [data-testid="orai-assistant-fab"] {
+  display: none !important;
+}

@@ -313,7 +313,8 @@ export default function BottomNav() {
   return (
     <>
       <nav
-        className="fixed left-0 right-0 bottom-0 z-40"
+        data-bottom-nav="true"
+        className="fixed left-0 right-0 bottom-0 z-40 or-hide-while-gaming"
         style={{
           background: "color-mix(in srgb, var(--bgc) 90%, transparent)",
           backdropFilter: "blur(20px)",

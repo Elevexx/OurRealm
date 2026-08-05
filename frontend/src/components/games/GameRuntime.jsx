@@ -1406,7 +1406,7 @@ function arpgSS(st){const c=mkCanvas(MOB?70:8),g=c.getContext('2d'),W=c.width,H=
   const po=P.pose,bl=Math.min(1,dt*13);
   po.rot+=(tgt.rot-po.rot)*bl;po.sx+=(tgt.sx-po.sx)*bl;po.sy+=(tgt.sy-po.sy)*bl;
   po.oy+=(tgt.oy-po.oy)*bl;po.ox+=((tgt.ox||0)-po.ox)*bl;
-  const hx=P.x-cam+po.ox,hy=P.y-HERO*0.24+po.oy;
+  const hx=P.x-cam+po.ox,hy=P.y+FO-HERO*0.303+po.oy;
   g.save();g.globalAlpha=0.32;g.fillStyle='#000';g.beginPath();g.ellipse(P.x-cam,P.y+FO,20*k,5*k,0,0,7);g.fill();g.restore();
   if(fireBuff>0){const fg2=g.createRadialGradient(hx,hy,4,hx,hy,54*k);
    fg2.addColorStop(0,'rgba(255,140,60,0.28)');fg2.addColorStop(1,'rgba(255,140,60,0)');
@@ -1629,6 +1629,16 @@ function arpgSS(st){const c=mkCanvas(MOB?70:8),g=c.getContext('2d'),W=c.width,H=
    g.globalAlpha=0.3;g.fillStyle=ec;g.beginPath();g.arc(p.x-cam-p.vx*0.03,p.y-(p.vy||0)*0.03,3,0,7);g.fill();g.globalAlpha=1;
    g.fillStyle=ec;g.shadowColor=ec;g.shadowBlur=9;
    g.beginPath();g.arc(p.x-cam,p.y,4.5,0,7);g.fill();g.shadowBlur=0});
+  if(S.debug_collision){g.save();g.lineWidth=1.5;
+   PLATS.forEach((p,i)=>{if(p.crumble&&crumb[i]&&crumb[i].gone>0)return;const pt=pTop(p,t);
+    g.strokeStyle='#00ff88';g.strokeRect(p.x-cam,pt,p.w,4)});
+   g.strokeStyle='#ff3355';g.strokeRect(0,H-26*k,W,26*k);
+   g.strokeStyle='#00ccff';g.strokeRect(P.x-cam-10,P.y-30*k,20,30*k+FO);
+   g.fillStyle='#ffff00';g.beginPath();g.arc(P.x-cam,P.y+FO,3,0,7);g.fill();
+   CPX.forEach(cx2=>{g.strokeStyle='#10E670';g.strokeRect(cx2-cam-2,groundYAt(cx2)-60*k,4,60*k)});
+   g.fillStyle='#fff';g.font='9px monospace';
+   g.fillText('px:'+Math.round(P.x)+' py:'+Math.round(P.y)+' feet:'+Math.round(P.y+FO)+' onG:'+P.onG,W-210,H-8);
+   g.restore()}
   const lg2=g.createRadialGradient(P.x-cam,P.y-14*k,50,P.x-cam,P.y-14*k,Math.max(W,H)*0.8);
   lg2.addColorStop(0,'rgba(0,0,0,0)');lg2.addColorStop(1,'rgba(2,4,12,'+(ZONE==='caves'?0.5:0.4)+')');
   g.fillStyle=lg2;g.fillRect(0,0,W,H)}
@@ -1678,16 +1688,43 @@ function arpgSS(st){const c=mkCanvas(MOB?70:8),g=c.getContext('2d'),W=c.width,H=
    g.fillStyle=T.text;g.textAlign='center';g.fillText(msg,W/2,H-83);g.textAlign='left'}
   if(cd3>0&&cd3<3.5){const n=Math.ceil(cd3);g.font='bold 64px system-ui';g.textAlign='center';
    g.save();g.shadowColor=LG;g.shadowBlur=24;g.fillStyle=LG;g.fillText(n>3?'':String(n),W/2,H/2-20);g.restore();g.textAlign='left'}}
- const latch={};
- document.addEventListener('keydown',e=>{['attack','spell','dodge','jump'].forEach(a=>{if(akeys(a).includes(e.key))latch[a]=true}) });
- function tapA(a){if(latch[a]){latch[a]=false;return true}return false}
- let joy={on:false,cx:0,dx:0};
+ const latch={},latchT={};
+ document.addEventListener('keydown',e=>{['attack','spell','dodge','jump'].forEach(a=>{if(akeys(a).includes(e.key)){latch[a]=true;latchT[a]=performance.now()}}) });
+ function tapA(a){if(latch[a]&&performance.now()-(latchT[a]||0)<350){latch[a]=false;return true}latch[a]=false;return false}
+ let joy={on:false,cx:0,dx:0,pid:null};
  if(MOB){c.addEventListener('pointerdown',e=>{const r=c.getBoundingClientRect(),x=e.clientX-r.left;
-   if(x<W*0.42){joy.on=true;joy.cx=x;joy.dx=0;lastInput='touch'}});
-  c.addEventListener('pointermove',e=>{if(!joy.on)return;const r=c.getBoundingClientRect();joy.dx=(e.clientX-r.left-joy.cx)/36});
-  c.addEventListener('pointerup',()=>{joy.on=false;joy.dx=0});
-  touchRow([{label:'\u2B06',key:akeys('jump')[0]||'w',testid:'ss-touch-jump'},{label:'\u2694',key:'j',testid:'ss-touch-attack'},
-            {label:'\u2728',key:akeys('spell')[0]||'k',testid:'ss-touch-spell'},{label:'\uD83D\uDCA8',key:akeys('dodge')[0]||'l',testid:'ss-touch-dodge'}])}
+   if(x<W*0.42&&joy.pid===null){joy.on=true;joy.pid=e.pointerId;joy.cx=x;joy.dx=0;lastInput='touch';
+    try{c.setPointerCapture(e.pointerId)}catch(err){}}});
+  c.addEventListener('pointermove',e=>{if(!joy.on||e.pointerId!==joy.pid)return;const r=c.getBoundingClientRect();joy.dx=(e.clientX-r.left-joy.cx)/36});
+  const joyEnd=e=>{if(joy.pid!==null&&e.pointerId!==joy.pid)return;joy.on=false;joy.dx=0;joy.pid=null};
+  c.addEventListener('pointerup',joyEnd);
+  c.addEventListener('pointercancel',joyEnd);
+  const cu=aurl('ui_controls');
+  const crow=el('div','');
+  crow.style.cssText='display:flex;justify-content:flex-end;gap:14px;padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));touch-action:none';
+  const btns={};
+  [['jump',0],['attack',1],['spell',2],['dodge',3]].forEach(cfg=>{const a=cfg[0],i=cfg[1];
+   const b=el('button','');
+   b.setAttribute('data-testid','dr-touch-'+a);
+   b.style.cssText='width:60px;height:60px;flex:0 0 60px;border-radius:16px;border:2px solid '+GLOW+'66;'+
+    (cu?"background-image:url('"+cu+"');background-size:400% 100%;background-position:"+(i*33.3334)+'% 50%;':'background:'+GLOW+'22;')+
+    'background-color:rgba(6,12,28,0.78);box-shadow:0 0 14px '+GLOW+'44;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;'+
+    'transition:transform .08s,box-shadow .08s,opacity .12s;padding:0';
+   const dn=e=>{e.preventDefault();e.stopPropagation();lastInput='touch';latch[a]=true;latchT[a]=performance.now();
+    try{b.setPointerCapture(e.pointerId)}catch(err){}
+    b.style.transform='scale(0.88)';b.style.boxShadow='0 0 24px '+GLOW+'cc'};
+   const up=e=>{if(e&&e.preventDefault)e.preventDefault();b.style.transform='';b.style.boxShadow='0 0 14px '+GLOW+'44'};
+   b.addEventListener('pointerdown',dn);b.addEventListener('pointerup',up);
+   b.addEventListener('pointercancel',up);b.addEventListener('lostpointercapture',up);
+   b.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
+   b.addEventListener('contextmenu',e=>e.preventDefault());
+   crow.appendChild(b);btns[a]=b});
+  root.appendChild(crow);
+  setInterval(()=>{if(!P)return;
+   const cds={jump:0,attack:Math.max(0,P.atkCd),spell:Math.max(0,P.splCd),dodge:Math.max(0,P.dgCd)};
+   [['jump'],['attack'],['spell'],['dodge']].forEach(x=>{const a=x[0];
+    const off=cds[a]>0.05||(a==='spell'&&mana<(rapid>0?1:3));
+    btns[a].style.opacity=off?'0.45':'1';btns[a].style.filter=off?'grayscale(0.6)':''})},120)}
  let last=0;
  function loop(ts){if(doneFlag)return;raf=requestAnimationFrame(loop);
   const dt=Math.min(0.045,(ts-(last||ts))/1000);last=ts;const t=ts/1000;
@@ -1707,14 +1744,14 @@ function arpgSS(st){const c=mkCanvas(MOB?70:8),g=c.getContext('2d'),W=c.width,H=
   if(!busy){let ix=(act('right')?1:0)-(act('left')?1:0);
    if(joy.on)ix+=Math.max(-1,Math.min(1,joy.dx));
    try{const gp=navigator.getGamepads&&navigator.getGamepads()[0];
-    if(gp){if(Math.abs(gp.axes[0])>0.25)ix+=gp.axes[0];if(gp.buttons[0]&&gp.buttons[0].pressed)latch.jump=true;
-     if(gp.buttons[2]&&gp.buttons[2].pressed)latch.attack=true;if(gp.buttons[1]&&gp.buttons[1].pressed)latch.dodge=true;
-     if(gp.buttons[3]&&gp.buttons[3].pressed)latch.spell=true}}catch(e){}
+    if(gp){if(Math.abs(gp.axes[0])>0.25)ix+=gp.axes[0];if(gp.buttons[0]&&gp.buttons[0].pressed){latch.jump=true;latchT.jump=performance.now()}
+     if(gp.buttons[2]&&gp.buttons[2].pressed){latch.attack=true;latchT.attack=performance.now()}if(gp.buttons[1]&&gp.buttons[1].pressed){latch.dodge=true;latchT.dodge=performance.now()}
+     if(gp.buttons[3]&&gp.buttons[3].pressed){latch.spell=true;latchT.spell=performance.now()}}}catch(e){}
    ix=Math.max(-1,Math.min(1,ix));
    const SPD=205*SENS;P.vx+=(ix*SPD-P.vx)*Math.min(1,dt*8);
    if(ix)P.face=ix>0?1:-1;
    const canJump=P.onG||P.coyote>0;
-   if((tapA('jump')||(!MOB&&act('jump')&&canJump))&&canJump){P.vy=-520*k;P.onG=false;P.coyote=0;setSt('jump');sfx('jump');
+   if(canJump&&(tapA('jump')||(!MOB&&act('jump')))){P.vy=-520*k;P.onG=false;P.coyote=0;setSt('jump');sfx('jump');
     burst(P.x-cam,P.y+FO,'#ffffff44',5,60)}
    if(tapA('attack')&&P.atkCd<=0)meleeHit();
    if(tapA('spell')&&P.splCd<=0)castSpell();

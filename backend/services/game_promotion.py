@@ -33,6 +33,7 @@ async def _audit(action: str, gid: str, title: str, actor: str, detail: str = ""
 async def build_bundle(game: dict) -> dict:
     """Portable bundle: game doc + the orai_assets records its spec references."""
     g = {k: v for k, v in game.items() if k != "_id"}
+    g["promotion_version"] = int(g.get("promotion_version") or 1)
     asset_records, missing = [], []
     fnames = set()
     for slot in (g.get("spec", {}).get("assets") or {}).values():
@@ -64,6 +65,10 @@ async def build_bundle(game: dict) -> dict:
             "missing_assets": missing}
 
 
+# Production-only state that a bundle must NEVER clobber on upgrade
+PRESERVE_FIELDS = ("plays", "saves", "stats", "created_at")
+
+
 async def import_bundle(bundle: dict, actor: str = "startup", force: bool = False) -> dict:
     g = bundle.get("game") or {}
     gid, title = g.get("id"), g.get("title", "")
@@ -71,46 +76,70 @@ async def import_bundle(bundle: dict, actor: str = "startup", force: bool = Fals
         return {"action": "rejected", "reason": "not a published game bundle", "game_id": gid}
     existing = await db.games.find_one({"id": gid})
     if existing:
-        if not force:
-            return {"action": "skipped", "reason": "already present", "game_id": gid}
-        newer = (existing.get("updated_at") or existing.get("published_at") or "")
-        if newer and newer > (bundle.get("exported_at") or ""):
-            await _audit("skip_newer", gid, title, actor, f"production updated_at {newer}")
-            return {"action": "skipped", "reason": "production record is newer", "game_id": gid}
+        new_pv = int(g.get("promotion_version") or 1)
+        old_pv = int(existing.get("promotion_version") or 1)
+        ver_upgrade = new_pv > old_pv
+        if not (force or ver_upgrade):
+            return {"action": "skipped", "game_id": gid,
+                    "reason": f"already present (promotion_version {old_pv} >= bundle {new_pv})"}
+        if not ver_upgrade:  # forced replace without a version bump keeps the recency safety net
+            newer = (existing.get("updated_at") or existing.get("published_at") or "")
+            if newer and newer > (bundle.get("exported_at") or ""):
+                await _audit("skip_newer", gid, title, actor, f"production updated_at {newer}")
+                return {"action": "skipped", "reason": "production record is newer", "game_id": gid}
         bak = {k: v for k, v in existing.items() if k != "_id"}
         await db.game_promotion_backups.insert_one({"game_id": gid, "backup": bak, "at": _iso(), "actor": actor})
-        g["plays"] = existing.get("plays", g.get("plays", 0))  # keep prod counters
+        for keep in PRESERVE_FIELDS:
+            if existing.get(keep) is not None:
+                g[keep] = existing[keep]
+        # Fire economy: take new reward config, but keep the live pool/distributed
+        # counters so already-awarded Fire Power is never re-issued or wiped.
+        ex_fe, new_fe = existing.get("fire_economy"), g.get("fire_economy")
+        if isinstance(ex_fe, dict) and isinstance(new_fe, dict):
+            merged = dict(new_fe)
+            for cnt in ("pool", "distributed"):
+                if ex_fe.get(cnt) is not None:
+                    merged[cnt] = ex_fe[cnt]
+            g["fire_economy"] = merged
+        elif ex_fe is not None:
+            g["fire_economy"] = ex_fe
         await db.games.replace_one({"id": gid}, g)
-        action = "replaced"
+        action = "upgraded" if ver_upgrade else "replaced"
+        detail = f"promotion_version {old_pv} -> {new_pv}" if ver_upgrade else "forced replace"
     else:
         await db.games.insert_one(dict(g))
         action = "imported"
+        detail = f"promotion_version {int(g.get('promotion_version') or 1)}"
     n_assets = 0
     for rec in bundle.get("asset_records") or []:
         r = await db.orai_assets.update_one(
             {"file_name": rec.get("file_name")}, {"$setOnInsert": rec}, upsert=True)
         if r.upserted_id:
             n_assets += 1
-    await _audit(action, gid, title, actor, f"assets_added={n_assets}")
+    await _audit(action, gid, title, actor, f"{detail}; assets_added={n_assets}")
     return {"action": action, "game_id": gid, "title": title, "assets_added": n_assets}
 
 
 async def startup_import():
-    """Idempotent boot-time import of repo-shipped bundles (never overwrites)."""
+    """Idempotent boot-time import of repo-shipped bundles.
+
+    New games are inserted; existing games are upgraded in place ONLY when the
+    bundle carries a strictly higher promotion_version (production analytics,
+    plays, saves and Fire pool state are preserved by import_bundle)."""
     if not SEED_DIR.is_dir():
         return
     results = []
     for f in sorted(SEED_DIR.glob("*.json")):
         try:
             bundle = json.loads(f.read_text())
-            r = await import_bundle(bundle, actor="startup-seed", force=False)
+            r = await import_bundle(bundle, actor="startup-seed")
             results.append((f.name, r["action"]))
         except Exception as e:
             log.error(f"[promotion] seed {f.name} failed: {e}")
-    imported = [n for n, a in results if a == "imported"]
-    if imported:
-        log.info(f"[promotion] seeded games into this environment: {imported}")
-    log.info(f"[promotion] startup seed pass done: {len(results)} bundles, {len(imported)} imported")
+    changed = [f"{n}:{a}" for n, a in results if a in ("imported", "upgraded")]
+    if changed:
+        log.info(f"[promotion] seeded/upgraded games in this environment: {changed}")
+    log.info(f"[promotion] startup seed pass done: {len(results)} bundles, {len(changed)} imported/upgraded")
 
 
 async def verify_game(gid: str) -> dict:
