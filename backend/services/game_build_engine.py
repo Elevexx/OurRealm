@@ -198,6 +198,15 @@ async def build_review(bp: dict, owner_id: str) -> dict:
 
 # ── Build Engine — runs only after explicit founder approval ─────────
 async def start_blueprint_build(bp: dict, current: dict) -> dict:
+    # Execution-contract gate: stop BEFORE any AI generation if the selected
+    # runtime lacks a real executable implementation or required component.
+    from services.game_platform.execution_contracts import validate_execution
+    exec_check = validate_execution(bp.get("selected_runtime") or "")
+    if not exec_check["ok"]:
+        return {"started": False, "validation": {
+            "passed": False, "status": exec_check["status"],
+            "blocking": [f"missing executable component: {m}" for m in exec_check["missing_components"]],
+            "warnings": [], "execution_contract": exec_check["contract"]}}
     scenes = scene_graph(bp)
     resolution = await resolve_assets(bp, current["id"])
     validation = runtime_validation(bp, scenes, resolution)

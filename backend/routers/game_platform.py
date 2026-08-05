@@ -316,3 +316,28 @@ async def creature_battle_ai(body: dict, current: CurrentUser):
 async def creature_reward_claim(body: dict, current: CurrentUser):
     return await claim_creature_reward(current, str(body.get("game_id") or "")[:64],
                                        str(body.get("kind") or ""), body.get("ref"))
+
+
+# ── Runtime execution contracts + batch diversity gate ────────────────
+@router.get("/runtimes/contracts")
+async def runtime_contracts(current: CurrentUser):
+    """Truth table: which registered runtimes are truly executable."""
+    require_founder(current)
+    from services.game_studio import RUNTIMES as _RT
+    from services.game_platform.execution_contracts import execution_contract
+    rows = [execution_contract(rt) for rt in _RT]
+    return {"contracts": rows,
+            "executable": [r["runtime"] for r in rows if r["status"] == "executable"],
+            "registered_not_executable": [r["runtime"] for r in rows
+                                          if r["status"] != "executable"]}
+
+
+@router.post("/batch/diversity")
+async def batch_diversity(body: dict, current: CurrentUser):
+    """Diversity & quality gate — compare batch versions before publishing."""
+    require_founder(current)
+    from services.game_platform.execution_contracts import diversity_report
+    ids = [str(x)[:64] for x in (body.get("game_ids") or [])]
+    if not ids:
+        raise HTTPException(status_code=400, detail="Provide game_ids")
+    return await diversity_report(ids)

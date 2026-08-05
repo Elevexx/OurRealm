@@ -120,14 +120,16 @@ RUNTIME_FAMILY_SEED = {
 }
 
 RENDERER_SEED = {
-    "canvas_2d": {"label": "Canvas 2D (vetted sandbox)", "status": "available",
-                  "notes": "GameRuntime.jsx iframe sandbox — all vetted engine runtimes"},
-    "dom_ui": {"label": "DOM / UI-driven", "status": "available",
-               "notes": "card, quiz, story and novel presentations"},
-    "hybrid_canvas_dom": {"label": "Hybrid Canvas + DOM", "status": "available",
+    "canvas_2d": {"label": "Canvas 2D (vetted sandbox)", "status": "implemented_with_placeholder_assets",
+                  "notes": "GameRuntime.jsx iframe sandbox — painted-primitive presentation by default; "
+                           "real sprites render ONLY when spec.assets slots are wired from the asset "
+                           "library / Asset Studio. NOT 3D, NOT photorealistic, NOT cinematic."},
+    "dom_ui": {"label": "DOM / UI-driven", "status": "implemented_with_placeholder_assets",
+               "notes": "card, quiz, story and novel presentations — text/UI first"},
+    "hybrid_canvas_dom": {"label": "Hybrid Canvas + DOM", "status": "implemented_with_placeholder_assets",
                           "notes": "canvas playfield with DOM HUD overlays"},
-    "webgl_light": {"label": "WebGL Light 3D", "status": "foundation",
-                    "notes": "registered — no vetted 3D runtime yet"},
+    "webgl_light": {"label": "WebGL Light 3D", "status": "unsupported",
+                    "notes": "metadata-only — no executable 3D runtime exists"},
 }
 
 TEMPLATE_SEED = {f"tpl_{rt}_v1": {"label": f"{RUNTIME_LABELS.get(rt, rt)} template",
