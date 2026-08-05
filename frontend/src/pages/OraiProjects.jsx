@@ -14,6 +14,7 @@ import EstimateReview from "@/components/oraiprojects/EstimateReview";
 import GenerationProgress from "@/components/oraiprojects/GenerationProgress";
 import ProjectHistory from "@/components/oraiprojects/ProjectHistory";
 import BlueprintPlanner from "@/components/oraiprojects/BlueprintPlanner";
+import ProjectMedia from "@/components/oraiprojects/ProjectMedia";
 
 const ACTIVE_KEY = "orai_active_project";
 
@@ -195,6 +196,9 @@ export default function OraiProjects() {
         <>
           {/* 1. ORAi Chat — always first */}
           <OraiProjectChat onUsePrompt={usePrompt} />
+
+          {/* Project Media — reusable import library */}
+          <ProjectMedia />
 
           {/* Prompt + name */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">

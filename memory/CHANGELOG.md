@@ -345,3 +345,21 @@ Costs: $0.00 OpenAI this session — 15/15 asset slots reused from existing ORAi
 - Verified via scripted playtests: icons in-world, plateau routes, god rays, checkpoint respawn, boss portrait + phases + breath. Wizard sheet confirmed HD 4-frame walk cycle (reuse, no regen needed).
 - Cumulative AI cost for this game: $0.89 (build $0.04 + art v1 $0.75 + media v3 $0.10). Session spend: $0.10 of approved $25.
 - Honest limitations: no music provider connected (synth fallback; music_theme slot ready), per-state drawn animation frames not supported (procedural pose blending instead), no NPC/dialogue mechanic, stepped terrain (no true slopes), ui_frame DOM styling incompatible with arbitrary generated frames.
+
+## Media Quality v4 + OPC Project Media Import (Aug 5, 2026) ✅ FOUNDER REVIEW (NOT published)
+Dragon Realm polish (code, $0 API):
+- Ground rework: tileset surface caps + zone-tinted earth-gradient body w/ sparse embedded detail (no more repeated flat tiles), per-tile shade variance, edge AO.
+- Trees: layered dark-canopy painter w/ per-tree color variance + sun highlight, moved to back paint pass (behind platforms).
+- Destructible props: treasure chests (icon_set chest sprite) — melee breaks them → coins + gem/potion burst. 3/level (behind waterfall, plateau, pre-boss).
+- Spell pickup: 'star' = ARCANE SURGE (6s rapid casting: 1 mana, 0.28s cd) + full mana; 2/level, HUD SURGE timer.
+- Desktop canvas ability toolbar (bottom-center, ref #2 style): melee/spell/dodge slots w/ cooldown sweep + key labels (mobile keeps touch row). Msg line moved up to avoid overlap.
+- Boss ambient ember particles while engaged. Icon map now includes star:5.
+- Stage data regenerated (same seed → same layout) + props/stars + pre-boss checkpoint in generator (/tmp/dr25d_upgrade.py).
+NEW OPC FEATURE — Project Media (reusable for ALL future projects incl. Unity/VR/AR):
+- backend/routers/project_media.py: POST /api/orai/media/upload (multipart; images/sheets/audio/video/GIF/GLB/FBX/OBJ/Blender/Unity packages/prefabs/materials/HDRI/Unreal(stored)/PDF/ZIP), auto ANALYSIS (PIL dims, transparency, sprite-sheet frame detection, audio duration via mutagen, zip entries), auto-tagging, runtime-usage mapping; GET /api/orai/media (search); replace w/ VERSIONING + restore + versions compare; founder approve/reject moderation; DELETE archive; GET/POST /limits (founder unlimited, users configurable — default 50 files/250MB, set to 75/300).
+- Uploads register into game_asset_library → instantly searchable by blueprint matching + AssetLibrarySearch + OPC generation reuse.
+- Public serving /api/public/project-media/{name} (whitelisted in server.py global auth guard) for runtime/iframe use.
+- Frontend: components/oraiprojects/ProjectMedia.jsx (drag&drop, search, preview grid, replace/restore/approve/reject/archive) mounted on OPC page under ORAi Chat.
+- Tested via curl E2E: upload→analysis (4-frame sheet detected from 512x128)→search→replace(v2)→versions→restore(v3)→approve→limits; GLB typed model_3d/unity; public serve 200; test assets archived after.
+Known quirk: GameRuntime.jsx suffered two duplicate-tail write artifacts this session (stale fragments after component end causing compile errors + one lost edit) — both fixed; verify file tail if editing again.
+Session AI cost: $0.10 total (icon_set+ui_frame job earlier). Cumulative game total $0.89.
