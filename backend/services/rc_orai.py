@@ -35,6 +35,24 @@ async def _center_context(user: dict, center, membership, perms: set) -> str:
     if center.get("description"):
         lines.append(f"Description: {center['description'][:200]}")
 
+    # Universal Center Engine awareness — type, terminology, modules, creator tools
+    try:
+        from services.center_registry import get_center_config
+        ucfg = await get_center_config(center)
+        if not ucfg.get("legacy"):
+            term = ucfg.get("terminology") or {}
+            enabled = sorted(k for k, v in (ucfg.get("modules") or {}).items()
+                             if v in ("enabled", "required"))
+            lines.append(f"Center engine: {ucfg.get('type_label')} — members are called "
+                         f"'{term.get('member')}s', work items '{term.get('work')}s', "
+                         f"groups '{term.get('group')}s'.")
+            lines.append(f"Enabled modules: {', '.join(enabled)}")
+            if ucfg.get("creator_tools"):
+                lines.append(f"Creator tools available: {', '.join(ucfg['creator_tools'])} "
+                             "(each inherits AI Power and Creation Depth controls)")
+    except Exception:
+        pass
+
     if "view_vault" in perms:
         lines.append(f"Fire Power Vault: {int(center.get('vault_balance') or 0)} 🔥 "
                      "(engagement resource only — never money)")

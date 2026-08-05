@@ -437,3 +437,13 @@ AFTER NEXT DEPLOY: production boots → startup_import inserts all 27 published 
 - Curl: registry (11/29), center config legacy mapping, URL set/resolve/dup/reserved/redirect/ID-canonical/restore, restricted-game 404. Screenshots: mobile 390 guest flow (prompt, guest allowed only in public_preview, return path /signup?next=... preserved, guest HUD, runtime plays), desktop public page, wizard registry preview. Google round trip implemented but not live-tested (external service).
 ### Deferred Part A (next run)
 - Widget layout versioning/history, Founder Admin Control Center visual expansion, Mini-OPC scoped UI in every center, AI Power/Creation Depth registry UI, ORAi center-context expansion, module gating wired into Center navigation UI.
+
+## UNIVERSAL CENTER — FINAL COMPLETION PASS (Aug 5, 2026) ✅
+- NEW pages/AdminCenterRegistry.jsx (/admin/center-registry, linked from Admin RC header): visual founder editor for center types — terminology, default modules (core protected), creator tools, enable toggle → audited PATCH.
+- NEW components/rc/RcCreatorTools.jsx: registry-driven "Tools & Creators" panel on every Center overview; shows only type-enabled tools, role/permission gated (admin tools owner/admin only); links reuse OPC (/admin/orai?center=), Course Maker (/responsibility-center/{id}/course-maker), calendar/reports tabs.
+- Center nav module gating in ResponsibilityCenterDashboard: tabs hidden per module config ONLY when the center has explicit module_config overrides (has_overrides) — existing centers 100% unchanged. Owner PATCH /api/centers/{id}/modules verified (vault hidden → restored).
+- ORAi center context (services/rc_orai.py): now includes Universal Engine type label, terminology, enabled modules, creator tools (verified live: ORAi answered with the community-type tools). Never bypasses permissions (context built from server-side config).
+- Templates (services/rc_templates.py): template docs may carry module_config — applied only when the center has none (never overwrites).
+- OPC center scoping: orai_projects create accepts center_id; OraiProjects.jsx reads ?center= param → project docs carry the owning center.
+- BUGFIX during pass: stray duplicated JSX at file end of ResponsibilityCenterDashboard.jsx (from a bad earlier replace) — removed.
+- Widget system: existing RcWidgetBoard already covers add/remove/move/collapse/reset/shared(center-default)+personal layouts/versioning; rename/duplicate/lock/role-visibility NOT added (limitation, deferred).

@@ -30,9 +30,12 @@ export default function OraiProjects() {
   const [bpLoading, setBpLoading] = useState(false);
   const [compatReport, setCompatReport] = useState(null);
 
-  const [proj, setProj] = useState({
-    id: null, name: "", prompt: "", tools: [], providers: [],
-    complexity: 5, ai_power: 5, settings: {}, suggestion_used: "",
+  const [proj, setProj] = useState(() => {
+    // Mini Project Creator: scope generated content to the Center that opened OPC
+    let centerId = null;
+    try { centerId = new URLSearchParams(window.location.search).get("center") || null; } catch { /* ok */ }
+    return { id: null, name: "", prompt: "", tools: [], providers: [],
+      complexity: 5, ai_power: 5, settings: {}, suggestion_used: "", center_id: centerId };
   });
   const [estimate, setEstimate] = useState(null);
   const [estLoading, setEstLoading] = useState(false);

@@ -54,6 +54,7 @@ const AdminGames = React.lazy(() => import("@/pages/AdminGames"));
 const GamesHub = React.lazy(() => import("@/pages/GamesHub"));
 const PublicGamePreview = React.lazy(() => import("@/pages/PublicGamePreview"));
 const GamePublicPage = React.lazy(() => import("@/pages/GamePublicPage"));
+const AdminCenterRegistry = React.lazy(() => import("@/pages/AdminCenterRegistry"));
 import ResponsibilityCenterHub from "@/pages/ResponsibilityCenterHub";
 import ResponsibilityCenterCreate from "@/pages/ResponsibilityCenterCreate";
 import ResponsibilityCenterDashboard from "@/pages/ResponsibilityCenterDashboard";
@@ -252,6 +253,7 @@ function App() {
             <Route path="/responsibility-center" element={<ShellRoute><AccessGate feature="responsibility_center"><ResponsibilityCenterHub /></AccessGate></ShellRoute>} />
             <Route path="/admin/responsibility-center" element={<ShellRoute><AdminResponsibilityCenter /></ShellRoute>} />
             <Route path="/admin/media/responsibility-center" element={<ShellRoute><AdminRcMedia /></ShellRoute>} />
+            <Route path="/admin/center-registry" element={<ShellRoute><Lazy><AdminCenterRegistry /></Lazy></ShellRoute>} />
             <Route path="/admin/ai-video" element={<ShellRoute><Lazy><AdminAiVideo /></Lazy></ShellRoute>} />
             <Route path="/admin/previews/:buildId" element={<ShellRoute><Lazy><AdminPreview /></Lazy></ShellRoute>} />
             <Route path="/admin/ai-policies" element={<ShellRoute><Lazy><AdminAiPolicies /></Lazy></ShellRoute>} />

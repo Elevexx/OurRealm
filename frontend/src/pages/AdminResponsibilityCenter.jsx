@@ -64,6 +64,9 @@ export default function AdminResponsibilityCenter() {
           <button className="or-btn or-btn-ghost" onClick={() => navigate("/admin/responsibility-center/templates")} data-testid="rc-admin-templates-link">
             Templates
           </button>
+          <button className="or-btn or-btn-ghost" onClick={() => navigate("/admin/center-registry")} data-testid="rc-admin-registry-link">
+            Universal Registry
+          </button>
           <button className="or-btn or-btn-ghost" onClick={() => navigate("/admin/media/responsibility-center")} data-testid="rc-admin-media-link">
             Media
           </button>

@@ -139,4 +139,5 @@ async def get_center_config(center: dict) -> dict:
     return {"center_type": tkey, "type_label": tdoc["label"],
             "terminology": tdoc.get("terminology") or {},
             "modules": modules,
+            "has_overrides": bool(center.get("module_config")),
             "creator_tools": tdoc.get("creator_tools") or [], "legacy": False}

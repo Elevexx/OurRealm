@@ -179,6 +179,15 @@ async def apply_template(user: dict, center_id: str, body: dict) -> dict:
     if not t:
         raise HTTPException(status_code=404, detail="Unknown template")
     mode = body.get("mode") or "recommended"
+    # Universal engine: templates may carry a module_config — applied ONLY when
+    # the Center has none yet (never overwrites an existing configuration).
+    if isinstance(t.get("module_config"), dict) and not center.get("module_config"):
+        from services.center_registry import ALL_MODULE_KEYS
+        mc = {k: v for k, v in t["module_config"].items()
+              if k in ALL_MODULE_KEYS and v in ("enabled", "disabled", "hidden", "required")}
+        if mc:
+            await db.responsibility_centers.update_one(
+                {"id": center_id}, {"$set": {"module_config": mc}})
     if mode not in ("recommended", "simple", "skip"):
         raise HTTPException(status_code=400, detail="Invalid setup mode")
     app_id = f"tpl:{center_id}:{key}:v{t['version']}"

@@ -14,6 +14,7 @@ import { RcReportsTab } from "@/components/rc/RcReportsTab";
 import { RcBirthdayPanel } from "@/components/rc/RcBirthdayPanel";
 import { RcWidgetBoard } from "@/components/rc/RcWidgetBoard";
 import { RcSearchPanel } from "@/components/rc/RcSearchPanel";
+import { RcCreatorTools } from "@/components/rc/RcCreatorTools";
 import ReportModal from "@/components/ReportModal";
 import { RcOraiPanel } from "@/components/rc/RcOraiPanel";
 
@@ -50,6 +51,7 @@ export default function ResponsibilityCenterDashboard() {
   const [error, setError] = useState("");
   const [reportOpen, setReportOpen] = useState(false);
   const [oraiOpen, setOraiOpen] = useState(() => searchParams.get("orai") === "1");
+  const [centerCfg, setCenterCfg] = useState(null);
 
   useEffect(() => {
     const t = searchParams.get("tab");
@@ -63,6 +65,7 @@ export default function ResponsibilityCenterDashboard() {
       const r = await apiClient.get(`/responsibility-center/${id}`);
       setData(r.data);
       setError("");
+      apiClient.get(`/centers/${id}/config`).then((c) => setCenterCfg(c.data)).catch(() => setCenterCfg(null));
     } catch (e) {
       setError(e?.response?.data?.detail || "Could not load this Center");
     }
@@ -194,14 +197,26 @@ export default function ResponsibilityCenterDashboard() {
       </div>
 
       <div className="flex items-center gap-2 mb-4 overflow-x-auto no-scrollbar">
-        {TABS.filter(({ id: tid }) => tid !== "reports" || perms.has("view_reports")).map(({ id: tid, label, Icon }) => (
+        {TABS.filter(({ id: tid }) => {
+          if (tid === "reports" && !perms.has("view_reports")) return false;
+          // Universal engine: module gating applies ONLY when this Center has an
+          // explicit module configuration (existing Centers stay unchanged)
+          const mod = { work: "work", units: "members", calendar: "calendar",
+                        reports: "reports", members: "members", vault: "vault" }[tid];
+          if (mod && centerCfg?.has_overrides
+              && ["disabled", "hidden"].includes(centerCfg.modules?.[mod])) return false;
+          return true;
+        }).map(({ id: tid, label, Icon }) => (
           <button key={tid} className="or-chip shrink-0" data-active={tab === tid} onClick={() => setTab(tid)} data-testid={`rc-dash-tab-${tid}`}>
             <Icon size={12} /> {label}
           </button>
         ))}
       </div>
 
-      {tab === "overview" && <OverviewTab data={data} reload={load} centerId={id} goVault={() => setTab("vault")} />}
+      {tab === "overview" && (<>
+        <RcCreatorTools centerId={id} cfg={centerCfg} role={me.role} perms={perms} />
+        <OverviewTab data={data} reload={load} centerId={id} goVault={() => setTab("vault")} />
+      </>)}
       {tab === "work" && (
         <RcWorkTab centerId={id} data={data} initialItemId={deepItem}
           onItemOpenChange={(iid) => {
