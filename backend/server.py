@@ -260,6 +260,10 @@ from routers import center_registry as center_registry_router_mod  # noqa: E402
 app.include_router(center_registry_router_mod.router)
 app.include_router(center_registry_router_mod.admin_router)
 app.include_router(game_assets_router_mod.public_router)
+from routers import account_privacy as account_privacy_router_mod
+from routers import admin_privacy as admin_privacy_router_mod
+app.include_router(account_privacy_router_mod.router)
+app.include_router(admin_privacy_router_mod.router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
@@ -640,6 +644,11 @@ async def _deferred_startup():
         except Exception as e:
             logger.warning(f"[purge_cron] startup failed: {e}")
         try:
+            from services.account_deletion import start_deletion_worker
+            start_deletion_worker()
+        except Exception as e:
+            logger.warning(f"[deletion-worker] startup failed: {e}")
+        try:
             from services.rc_renewals import start_renewal_scheduler
             start_renewal_scheduler()
         except Exception as e:
@@ -847,6 +856,14 @@ async def _deferred_startup():
         start_purge_scheduler()
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[purge_cron] startup failed: {e}")
+
+    # AccountDeletionService — staged permanent-erasure worker +
+    # deletion-suppression re-apply pass (backup restore protection).
+    try:
+        from services.account_deletion import start_deletion_worker
+        start_deletion_worker()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[deletion-worker] startup failed: {e}")
 
     # Responsibility Center — 30-Day Active Period renewal scheduler
     # (Bundle A). Idempotent, claim-locked, emergency-pause aware.

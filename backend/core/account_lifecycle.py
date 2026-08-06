@@ -323,11 +323,21 @@ async def run_purge_pass(limit: int = 200) -> dict[str, int]:
     failed  = 0
     async for u in cursor:
         try:
-            res = await purge_user(u)
-            if res.get("account_status") == STATUS_PURGED:
-                purged += 1
-            else:
-                skipped += 1
+            # June 2026 — expiry now routes through the staged
+            # AccountDeletionService pipeline (full-footprint erasure:
+            # social refs, content, media, suppression ledger) instead
+            # of the row-only purge_user() above (kept for reference /
+            # emergency use).
+            from services.account_deletion import (
+                remove_public_access, enqueue_erasure_job,
+                STATUS_ERASURE_IN_PROGRESS,
+            )
+            await remove_public_access(
+                u["id"], account_status=STATUS_ERASURE_IN_PROGRESS,
+                reason="recoverable closure window expired")
+            await enqueue_erasure_job(u, source="closure_expired",
+                                      requested_by="system")
+            purged += 1
         except Exception:  # noqa: BLE001 — each row is independent
             failed += 1
     return {"purged": purged, "skipped": skipped, "failed": failed}

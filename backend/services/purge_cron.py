@@ -39,6 +39,36 @@ ERROR_BACKOFF_SECONDS = 5 * 60
 _task: Optional[asyncio.Task] = None
 
 
+async def _closure_expiry_warnings():
+    """Notify users whose recoverable-closure window ends within 7 days
+    (once per account)."""
+    from datetime import datetime, timedelta, timezone
+    from core.db import db
+    now = datetime.now(timezone.utc)
+    soon = (now + timedelta(days=7)).isoformat()
+    async for u in db.users.find(
+            {"account_status": "deleted_pending_restore",
+             "purge_after": {"$lte": soon, "$gt": now.isoformat()},
+             "closure_expiry_warned": {"$ne": True}},
+            {"_id": 0, "id": 1, "email": 1, "purge_after": 1}).limit(100):
+        try:
+            from routers.notifications import emit_notification
+            await emit_notification(u["id"], "account_closure_expiring",
+                                    actor_username="system",
+                                    payload={"purge_after": u.get("purge_after")})
+            from services.mailer import send_email
+            await send_email(
+                u.get("email") or "",
+                "Your closed OurRealm account will be permanently deleted soon",
+                "Your recovery window ends soon. Sign back in before "
+                f"{(u.get('purge_after') or '')[:10]} if you want to keep your account.",
+                kind="closure_expiring", user_id=u["id"])
+            await db.users.update_one({"id": u["id"]},
+                                      {"$set": {"closure_expiry_warned": True}})
+        except Exception:  # noqa: BLE001
+            log.exception("[purge-cron] expiry warning failed for %s", u.get("id"))
+
+
 async def _loop():
     log.info("[purge-cron] worker started (interval=%ds)", INTERVAL_SECONDS)
     # Short initial delay so we don't run during the noisy startup
@@ -48,6 +78,23 @@ async def _loop():
     while True:
         try:
             summary = await run_purge_pass()
+            # Companion hourly passes (each independent + best-effort):
+            # privacy-deadline escalation reminders, expiring-closure
+            # warnings, data-export file expiry.
+            try:
+                from services.privacy_requests import run_reminder_pass
+                await run_reminder_pass()
+            except Exception:  # noqa: BLE001
+                log.exception("[purge-cron] reminder pass failed")
+            try:
+                await _closure_expiry_warnings()
+            except Exception:  # noqa: BLE001
+                log.exception("[purge-cron] expiry-warning pass failed")
+            try:
+                from services.data_export import run_export_expiry_pass
+                await run_export_expiry_pass()
+            except Exception:  # noqa: BLE001
+                log.exception("[purge-cron] export expiry pass failed")
             if summary["purged"] or summary["failed"]:
                 # Only log when something happened — keeps the log
                 # quiet during the long stretches when no rows are

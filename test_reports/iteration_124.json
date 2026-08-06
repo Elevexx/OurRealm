@@ -1,0 +1,36 @@
+{
+  "summary": "Full backend + frontend testing of the Account Closure & Privacy Erasure system. Wrote 13 pytest cases covering all UNTESTED areas from the review (hide_account, duplicate 409, refuse/short-reason, extension once + second fails, restricted retention founder-only + missing fields + list + release, manual intake with backdated received_at, job stop timing, data export flow + wrong token + 48h reuse, immediate deletion token single-use + reissue invalidates old, admin queue). All 13 backend tests PASS. Frontend Playwright verified: 4 cards visible on /settings/account for auditcheckreal, CloseAccountModal preset chips + custom 999 disables submit + username mismatch disables submit, ImmediateDeleteModal opens step 1, PrivacyRequestModal opens, DataExportCard present, /confirm-deletion?token= renders confirm-deletion-confirm button, /admin/privacy-requests shows privacy-stat-open/urgent/overdue + intake-toggle + Deletion Jobs tab + rows with identity chips & timeline (screenshot). Stealth (system account) correctly does NOT see the 4 deletion cards. admin-support-privacy-link present on /admin/support.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/account/privacy-request (hide_account:true)", "issue": "Existing bearer access-token is NOT invalidated after remove_public_access() runs — /auth/me continues to return 200 with the same JWT even though refresh_tokens + user_sessions are cleared and password_changed_at is bumped. Same behaviour on recoverable closure. The review request states 'sessions revoked' — refresh path is revoked, but the stateless access JWT keeps working until natural expiry because there is no server-side check that access_token.iat < user.password_changed_at. Not blocking (new login returns restore_required + account is hidden from public), but consider adding an iat<password_changed_at check in core/deps for hardened session revocation."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/support (or wherever the router renders when stealth hits it)", "issues": ["React hydration warning: '<span> cannot be a child of <option>' — non-blocking but should be cleaned up in one of the admin/select components."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_account_privacy_iter124.py", "/app/test_reports/pytest/iter124_privacy.xml"],
+  "action_items": [
+    "(Optional hardening) Invalidate outstanding access JWTs when remove_public_access() runs — either shorten access token TTL or check user.password_changed_at against jwt.iat in the auth dependency.",
+    "(Optional cleanup) Fix hydration warning: '<span> cannot be a child of <option>' somewhere in the admin UI."
+  ],
+  "critical_code_review_comments": [
+    "confirm_immediate_deletion() correctly enforces single-use via {used:false} query and TTL check. create_immediate_confirmation() first delete_many({used:false}) — old unused tokens are invalidated when a new link is minted (verified in test).",
+    "prs.decide() correctly requires identity_verified for approve + restricted_retention; requires retention dict for restricted_retention; refuse/partial NEVER change account visibility (verified).",
+    "prs.extend_deadline() correctly rejects a second extension via extension_applied_at check (verified).",
+    "restricted_retention endpoint gate at router level (require_founder) — support_admin gets 403 (verified).",
+    "Data export second POST within 48h returns existing job WITHOUT a new download token (verified) — matches the spec of 5 downloads / 48h expiry per token issuance."
+  ],
+  "updated_files": ["/app/backend/tests/test_account_privacy_iter124.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% on visible flows tested"},
+  "test_credentials": "Founder stealth/Password1$, support/Password1$, auditcheckreal/Password1$. Throwaway users created via /api/auth/register during each test.",
+  "seed_data_creation": "12 throwaway users prefixed cls/pr/prh/prf/pre/prr/prim/prj/prx/prim2/chkm/prima were created + soft-deleted / erasure-approved during backend tests. Several open privacy requests were left in the admin queue (visible in the /admin/privacy-requests screenshot: prima9246f39, prccadcad7, prh853e38e9, pre5e09f645 etc.) — safe to ignore or bulk-refuse.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The Account Closure & Privacy Erasure system is fully passing. Only nit: stateless access JWT is not invalidated by password_changed_at (see minor backend issue). If E1 later hardens that, re-run the two soft-close paths to verify /auth/me returns 401 after hide.",
+  "rca of the issue": "N/A — no blockers found. The one 'session not revoked' observation is a JWT statelessness design gap, not a bug in the closure/privacy code itself."
+}

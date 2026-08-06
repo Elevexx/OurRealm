@@ -42,6 +42,7 @@ import WidgetLibrary from "@/pages/WidgetLibrary";
 import Profile from "@/pages/Profile";
 import Settings from "@/pages/Settings";
 import AccountSettings from "@/pages/AccountSettings";
+import ConfirmDeletion from "@/pages/ConfirmDeletion";
 import AdminResponsibilityCenter from "@/pages/AdminResponsibilityCenter";
 import AdminRcTemplates from "@/pages/AdminRcTemplates";
 import AdminResponsibilityCenterDetail from "@/pages/AdminResponsibilityCenterDetail";
@@ -78,6 +79,7 @@ import OraiAssistantPanel from "@/components/orai/OraiAssistantPanel";
 const Lazy = ({ children }) => <React.Suspense fallback={null}>{children}</React.Suspense>;
 import Support from "@/pages/Support";
 import AdminSupport from "@/pages/AdminSupport";
+import AdminPrivacyRequests from "@/pages/AdminPrivacyRequests";
 import AdminFAQ from "@/pages/AdminFAQ";
 import AdminLevelBuilder from "@/pages/AdminLevelBuilder";
 import AdminFirePower from "@/pages/AdminFirePower";
@@ -250,6 +252,7 @@ function App() {
             <Route path="/profile" element={<ShellRoute><Profile /></ShellRoute>} />
             <Route path="/settings" element={<ShellRoute><Settings /></ShellRoute>} />
             <Route path="/settings/account" element={<ShellRoute><AccountSettings /></ShellRoute>} />
+            <Route path="/confirm-deletion" element={<ShellRoute><ConfirmDeletion /></ShellRoute>} />
             <Route path="/responsibility-center" element={<ShellRoute><AccessGate feature="responsibility_center"><ResponsibilityCenterHub /></AccessGate></ShellRoute>} />
             <Route path="/admin/responsibility-center" element={<ShellRoute><AdminResponsibilityCenter /></ShellRoute>} />
             <Route path="/admin/media/responsibility-center" element={<ShellRoute><AdminRcMedia /></ShellRoute>} />
@@ -282,6 +285,7 @@ function App() {
             <Route path="/my-limits" element={<ShellRoute><Lazy><MyLimits /></Lazy></ShellRoute>} />
             <Route path="/profile/support" element={<ShellRoute><Support /></ShellRoute>} />
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
+            <Route path="/admin/privacy-requests" element={<ShellRoute><AdminPrivacyRequests /></ShellRoute>} />
             <Route path="/admin/faq" element={<ShellRoute><AdminFAQ /></ShellRoute>} />
             <Route path="/admin/level-builder" element={<ShellRoute><AdminLevelBuilder /></ShellRoute>} />
             <Route path="/admin/fire-power" element={<ShellRoute><AdminFirePower /></ShellRoute>} />
