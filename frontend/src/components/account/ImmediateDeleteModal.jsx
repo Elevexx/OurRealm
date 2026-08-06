@@ -10,7 +10,7 @@ import { AlertTriangle, Loader2, MailCheck, Trash2, X } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 
-export default function ImmediateDeleteModal({ open, onClose }) {
+export default function ImmediateDeleteModal({ open, onClose, dataMap }) {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [password, setPassword] = useState("");
@@ -70,6 +70,12 @@ export default function ImmediateDeleteModal({ open, onClose }) {
               all sessions are revoked, and permanent erasure of your data begins
               right away. Consider downloading your data first.
             </p>
+            {dataMap && (
+              <div className="text-[11px] p-2 rounded mb-3" style={{ border: "1px solid #FF808055", color: "var(--text-muted)" }} data-testid="immediate-delete-preview">
+                This will permanently remove:{" "}
+                {dataMap.filter((c) => c.count > 0).map((c) => `${c.count} ${c.label.toLowerCase()}`).join(" · ")}
+              </div>
+            )}
             <label className="text-xs uppercase tracking-widest block mb-1" style={{ color: "var(--text-muted)" }}>Current password</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               className="or-input mb-2" placeholder="Password" data-testid="immediate-delete-password" />

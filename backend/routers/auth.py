@@ -362,6 +362,16 @@ async def login(payload: LoginPayload, request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Invalid email/username or password")
 
     await clear_attempts(rate_key)
+    # Privacy Center — record real login events (last 90 days, swept by
+    # the purge cron). Only what the platform actually sees: time, IP,
+    # user agent. Never invented device names or locations.
+    try:
+        await db.login_history.insert_one({
+            "user_id": user["id"], "at": datetime.now(timezone.utc).isoformat(),
+            "ip": ip, "user_agent": (request.headers.get("user-agent") or "")[:300],
+        })
+    except Exception:  # noqa: BLE001
+        pass
     access = create_access_token(user["id"], user.get("email", ""))
     refresh = create_refresh_token(user["id"])
     set_auth_cookies(response, access, refresh)

@@ -95,6 +95,13 @@ async def _loop():
                 await run_export_expiry_pass()
             except Exception:  # noqa: BLE001
                 log.exception("[purge-cron] export expiry pass failed")
+            try:
+                from datetime import datetime, timedelta, timezone
+                from core.db import db as _db
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+                await _db.login_history.delete_many({"at": {"$lt": cutoff}})
+            except Exception:  # noqa: BLE001
+                log.exception("[purge-cron] login-history sweep failed")
             if summary["purged"] or summary["failed"]:
                 # Only log when something happened — keeps the log
                 # quiet during the long stretches when no rows are

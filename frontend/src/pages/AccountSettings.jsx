@@ -9,10 +9,7 @@ import VipBadge from "@/components/VipBadge";
 import ImageUploadPicker, { absoluteImageUrl } from "@/components/ImageUploadPicker";
 import { usePresence } from "@/contexts/PresenceContext";
 import { isAdmin } from "@/lib/isAdmin";
-import CloseAccountModal from "@/components/account/CloseAccountModal";
-import ImmediateDeleteModal from "@/components/account/ImmediateDeleteModal";
-import PrivacyRequestModal from "@/components/account/PrivacyRequestModal";
-import DataExportCard from "@/components/account/DataExportCard";
+import PrivacyCenter from "@/components/account/PrivacyCenter";
 import AdminSettingsTab from "@/components/AdminSettingsTab";
 import { RcWorkDigestCard } from "@/components/rc/RcWorkDigestCard";
 
@@ -42,28 +39,6 @@ export default function AccountSettings() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("account");
   const [avatarPicker, setAvatarPicker] = useState(false);
-  const [closeOpen, setCloseOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [privacyOpen, setPrivacyOpen] = useState(false);
-  const [overview, setOverview] = useState(null);
-
-  const loadOverview = async () => {
-    try {
-      const { data } = await apiClient.get("/account/deletion-overview");
-      setOverview(data);
-    } catch (e) { /* non-critical */ }
-  };
-  useEffect(() => { loadOverview(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const withdrawRequest = async (id) => {
-    try {
-      await apiClient.post(`/account/privacy-requests/${id}/withdraw`);
-      toast.success("Request withdrawn");
-      loadOverview();
-    } catch (e) {
-      toast.error(e?.response?.data?.detail || "Could not withdraw");
-    }
-  };
   // Founder + support see an extra "Admin" tab. Backend enforces every
   // action — the tab visibility is convenience only.
   const TABS = isAdmin(user)
@@ -370,73 +345,17 @@ export default function AccountSettings() {
 
           <StatusSelectorCard />
 
-          {/* Data & Privacy zone — export, recoverable closure, formal
-              erasure requests, and immediate permanent deletion. System
-              accounts (@stealth / @support) never see these; the backend
-              also rejects with 403 as defence-in-depth. */}
-          {(user.username || "").toLowerCase() !== "stealth" && (user.username || "").toLowerCase() !== "support" && (
-            <>
-              <DataExportCard exports={overview?.exports || []} onRefresh={loadOverview} />
-
-              {overview?.open_privacy_request && (
-                <div className="or-surface p-4" style={{ borderColor: "rgba(77,210,255,0.35)" }} data-testid="account-privacy-status">
-                  <h3 className="text-sm font-semibold mb-1" style={{ color: "#4DD2FF" }}>Data Erasure Request — {overview.open_privacy_request.status.replace(/_/g, " ")}</h3>
-                  <p className="text-[12px] mb-2" style={{ color: "var(--text-muted)" }}>
-                    Received {String(overview.open_privacy_request.received_at).slice(0, 10)} · response due{" "}
-                    {String(overview.open_privacy_request.extended_due_at || overview.open_privacy_request.response_due_at).slice(0, 10)}
-                  </p>
-                  {["received", "identity_pending", "under_review"].includes(overview.open_privacy_request.status) && (
-                    <button type="button" className="or-chip text-xs"
-                      onClick={() => withdrawRequest(overview.open_privacy_request.id)}
-                      data-testid="account-privacy-withdraw">Withdraw request</button>
-                  )}
-                </div>
-              )}
-
-              <div className="or-surface p-4" style={{ borderColor: "rgba(255,209,102,0.35)" }} data-testid="account-close-section">
-                <h3 className="text-sm font-semibold mb-1" style={{ color: "#FFD166" }}>Close Account (recoverable)</h3>
-                <p className="text-[12px] mb-3" style={{ color: "var(--text-muted)" }}>
-                  Hides your account from public view immediately and signs out all
-                  sessions. Restore anytime by signing back in during your chosen
-                  recovery window (30 days – 1 year). Permanently deleted after that.
-                </p>
-                <button type="button" onClick={() => setCloseOpen(true)} className="or-btn"
-                  style={{ background: "#B8860B", color: "#fff" }} data-testid="account-close-open">
-                  Close Account
-                </button>
-              </div>
-
-              <div className="or-surface p-4" style={{ borderColor: "rgba(77,210,255,0.35)" }} data-testid="account-privacy-section">
-                <h3 className="text-sm font-semibold mb-1" style={{ color: "#4DD2FF" }}>Privacy / Data Erasure Request</h3>
-                <p className="text-[12px] mb-3" style={{ color: "var(--text-muted)" }}>
-                  Formally request permanent erasure of your personal data. Reviewed
-                  by our team within the legal response window. You choose whether to
-                  keep using your account during the review.
-                </p>
-                <button type="button" onClick={() => setPrivacyOpen(true)} className="or-btn"
-                  style={{ background: "#0E7490", color: "#fff" }} data-testid="account-privacy-open"
-                  disabled={!!overview?.open_privacy_request}>
-                  Request Data Erasure
-                </button>
-              </div>
-
-              <div className="or-surface p-4" style={{ borderColor: "rgba(255,128,128,0.35)" }} data-testid="account-delete-section">
-                <div className="flex items-center gap-2 mb-2">
-                  <Trash2 size={14} style={{ color: "#FF8080" }} />
-                  <h3 className="text-sm font-semibold" style={{ color: "#FF8080" }}>Permanently Delete Account</h3>
-                </div>
-                <p className="text-[12px] mb-3" style={{ color: "var(--text-muted)" }}>
-                  This permanently deletes your account and cannot be undone. No
-                  recovery period. Requires your password, username confirmation and
-                  a confirmation link (expires in 30 minutes).
-                </p>
-                <button type="button" onClick={() => setDeleteOpen(true)} className="or-btn"
-                  style={{ background: "#FF4444", color: "#fff" }} data-testid="account-delete-open">
-                  <Trash2 size={14} /> Permanently Delete
-                </button>
-              </div>
-            </>
-          )}
+          {/* Data & Privacy moved to the unified Privacy Center
+              (Settings > Privacy). Keep a pointer for discoverability. */}
+          <div className="or-surface p-4" data-testid="account-privacy-pointer">
+            <h3 className="text-sm font-semibold mb-1">Data &amp; Privacy</h3>
+            <p className="text-[12px] mb-2" style={{ color: "var(--text-muted)" }}>
+              Download your data, close or permanently delete your account, and
+              manage privacy requests from the Privacy Center.
+            </p>
+            <button type="button" className="or-chip text-xs" onClick={() => setTab("privacy")}
+              data-testid="account-open-privacy-center">Open Privacy Center</button>
+          </div>
         </div>
       )}
 
@@ -497,6 +416,12 @@ export default function AccountSettings() {
             </button>
           ))}
           {visMsg && <div className="text-xs mt-1" data-testid="settings-visibility-msg" style={{ color: "var(--text-muted)" }}>{visMsg}{visBusy ? " (saving)" : ""}</div>}
+
+          {/* Privacy Center — unified dashboard: data map, exports,
+              sessions, connected accounts, closure/erasure/deletion. */}
+          <div className="pt-2">
+            <PrivacyCenter />
+          </div>
         </div>
       )}
 
@@ -549,9 +474,6 @@ export default function AccountSettings() {
         title="Change profile image"
         testid="account-avatar-picker"
       />
-      <CloseAccountModal open={closeOpen} onClose={() => setCloseOpen(false)} />
-      <ImmediateDeleteModal open={deleteOpen} onClose={() => setDeleteOpen(false)} />
-      <PrivacyRequestModal open={privacyOpen} onClose={() => setPrivacyOpen(false)} onSubmitted={loadOverview} />
     </div>
   );
 }

@@ -16,7 +16,7 @@ import { Link } from "react-router-dom";
 import {
   BarChart3, Zap, Hash, Headphones, HelpCircle, LifeBuoy,
   Crown, ShieldCheck, ShieldAlert, ChevronRight, Loader2, Sparkles, LayoutGrid, Database,
-  Image as ImageIcon, Trophy, Flame, Landmark, Clapperboard, Gamepad2,
+  Image as ImageIcon, Trophy, Flame, Landmark, Clapperboard, Gamepad2, ScrollText,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -105,6 +105,26 @@ const CARDS = [
     badge: null,
     roles: ["founder", "admin"],
     statKey: "openTickets",
+  },
+  {
+    id: "privacy",
+    to: "/admin/privacy-requests",
+    title: "Privacy Requests",
+    description: "Erasure queue, deadlines, deletion jobs, restricted retention.",
+    Icon: ShieldCheck,
+    accent: "#4DD2FF",
+    badge: null,
+    roles: ["founder", "admin"],
+  },
+  {
+    id: "legal",
+    to: "/admin/legal",
+    title: "Legal Center",
+    description: "Terms, policies, versions, ORAi drafting, user notices.",
+    Icon: ScrollText,
+    accent: "#C084FC",
+    badge: "Founder",
+    roles: ["founder"],
   },
   {
     id: "faq",

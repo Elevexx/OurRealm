@@ -262,8 +262,11 @@ app.include_router(center_registry_router_mod.admin_router)
 app.include_router(game_assets_router_mod.public_router)
 from routers import account_privacy as account_privacy_router_mod
 from routers import admin_privacy as admin_privacy_router_mod
+from routers import legal as legal_router_mod
 app.include_router(account_privacy_router_mod.router)
 app.include_router(admin_privacy_router_mod.router)
+app.include_router(legal_router_mod.router)
+app.include_router(legal_router_mod.public_router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
@@ -368,6 +371,14 @@ PUBLIC_API_PATHS = {
 }
 
 
+def _is_public_legal_get(method: str, path: str) -> bool:
+    """Published legal documents are readable without auth (linked from
+    signup/signin). Notices endpoints stay authenticated."""
+    return (method == "GET" and (path == "/api/legal/documents"
+                                 or (path.startswith("/api/legal/documents/")
+                                     and "/notices" not in path)))
+
+
 # ─── Site Access Modes (Live/Beta/Preview/Maintenance) — server-side.
 @app.middleware("http")
 async def site_access_guard(request, call_next):
@@ -418,6 +429,7 @@ async def global_auth_guard(request, call_next):
     path = (request.scope.get("path", "") or "").rstrip("/") or "/"
     if (request.method == "OPTIONS" or not path.startswith("/api")
             or path in PUBLIC_API_PATHS
+            or _is_public_legal_get(request.method, path)
             or path.startswith("/api/public/game-assets/")
             or path.startswith("/api/public/game-preview/")
             or path.startswith("/api/public/game-path/")
@@ -649,6 +661,11 @@ async def _deferred_startup():
         except Exception as e:
             logger.warning(f"[deletion-worker] startup failed: {e}")
         try:
+            from services.legal_docs import seed_documents
+            await seed_documents()
+        except Exception as e:
+            logger.warning(f"[legal] seed failed: {e}")
+        try:
             from services.rc_renewals import start_renewal_scheduler
             start_renewal_scheduler()
         except Exception as e:
@@ -864,6 +881,16 @@ async def _deferred_startup():
         start_deletion_worker()
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[deletion-worker] startup failed: {e}")
+
+    # Legal Center — idempotent seed: imports existing published legal
+    # wording as v1, creates unpublished skeleton drafts for the rest.
+    try:
+        from services.legal_docs import seed_documents
+        created = await seed_documents()
+        if created:
+            logger.info(f"[legal] seeded {created} documents")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[legal] seed failed: {e}")
 
     # Responsibility Center — 30-Day Active Period renewal scheduler
     # (Bundle A). Idempotent, claim-locked, emergency-pause aware.

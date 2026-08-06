@@ -16,7 +16,7 @@ const PRESETS = [
   { days: 365, label: "1 year" },
 ];
 
-export default function CloseAccountModal({ open, onClose }) {
+export default function CloseAccountModal({ open, onClose, dataMap }) {
   const { user, logout } = useAuth();
   const [days, setDays] = useState(30);
   const [custom, setCustom] = useState(false);
@@ -77,6 +77,12 @@ export default function CloseAccountModal({ open, onClose }) {
           as it was by signing back in within your recovery window. After the
           window ends, your account is <strong>permanently deleted</strong>.
         </p>
+        {dataMap && (
+          <div className="text-[11px] p-2 rounded mb-3" style={{ border: "1px solid rgba(255,209,102,0.35)", color: "var(--text-muted)" }} data-testid="close-account-preview">
+            After the recovery window, deletion will remove:{" "}
+            {dataMap.filter((c) => c.count > 0).map((c) => `${c.count} ${c.label.toLowerCase()}`).join(" · ")}
+          </div>
+        )}
 
         <label className="text-xs uppercase tracking-widest block mb-1" style={{ color: "var(--text-muted)" }}>Recovery window</label>
         <div className="flex flex-wrap gap-1 mb-2">

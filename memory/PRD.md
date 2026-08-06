@@ -1,5 +1,25 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## REUSE-FIRST ADMIN, PRIVACY & LEGAL UPGRADE (Aug 6 2026) ✅ COMPLETE — smoke-tested per user's minimal-testing directive
+### Part 1-5: Privacy Center / Recovery / Founder Stats / Data Map / Delete Preview (all extend the Aug 5 closure/erasure/export system)
+- Settings>Privacy = unified Privacy Center (`components/account/PrivacyCenter.jsx`, one aggregate endpoint GET /api/account/privacy-center): Data Map (12 real categories with live counts from existing collections), per-category export (data_export.py `_collect(categories)`, reuse keyed by categories_sig), Download My Data, sessions/login-history/devices (NEW `login_history` collection written on login in auth.py, 90-day sweep in purge cron; devices = distinct real user-agents, NO invented data), Sign-out-everywhere (password-gated, reuses password_changed_at revocation), Connected accounts (google_auth) + third-party processor list, Fire Power summary (fire_vault.wallet_for), closure/erasure/permanent-delete cards MOVED here from Account tab (pointer card left behind).
+- Recovery card: countdown, scheduled date, reason, Restore, Extend window (POST /api/account/closure/extend, capped 365d total from deleted_at).
+- Delete Preview: dataMap prop in CloseAccountModal + ImmediateDeleteModal shows exact per-category removal counts.
+- Founder stats: GET /api/admin/privacy/stats rendered as stat grid on the existing /admin/privacy-requests page (pending/overdue requests, pending/completed deletions, closed accounts, restricted retention, avg completion days).
+### Part 6: Legal Center
+- Backend: `services/legal_docs.py` + `services/legal_seed_content.py` (auto-extracted EXACT wording of the 8 pre-existing static legal pages → seeded as PUBLISHED v1; 4 standard docs seeded as UNPUBLISHED skeleton drafts: acceptable-use, fire-power, responsibility-center, orai; custom pages supported). `routers/legal.py`: /api/admin/legal/* (founder-only) + /api/legal/* public (allow-listed GET in server.py global auth guard).
+- Lifecycle: draft/published/archived, immutable `legal_document_versions`, rollback = republish-as-new-version, change summary + effective date required, founder PASSWORD REAUTH on publish/rollback/notices, server-side sanitization (script/iframe/on*/javascript: stripped).
+- ORAi section patches: reuses chat_conversations.call_openai_chat (gpt-5-mini), edits ONLY selected '## ' section, minimal diff, before/after, explicit Apply→draft, publish always separate, patches stored in `legal_patches` (doc/section/original/proposed/instruction/model/approver/publication_version) with sha256 duplicate prevention, labeled "Founder Draft (AI-assisted)".
+- Notices: `legal_notices` + `legal_notice_acks` (server-side per-user dedupe across devices), modes one_time / ack_required, shown via `components/LegalNoticeGate.jsx` in the authenticated shell.
+- Frontend: `/admin/legal` (`pages/AdminLegal.jsx`: doc list, markdown editor, desktop/mobile preview, draft-vs-published compare, history+restore, ORAi panel, publish modal w/ notice composer, custom page creation), public `/legal` + `/legal/:slug` (`pages/LegalCenter.jsx`, published-only, TOC anchors, effective/last-updated). Old routes /terms /privacy /terms-conditions /community /dmca /copyright /safety /cookies /account-deletion now alias into the DB-served pages (LegalPages.jsx static components no longer routed). AdminHub cards added: Privacy Requests (admins) + Legal Center (founder-only).
+- NOTE: static /app/frontend/src/pages/LegalPages.jsx retained on disk as wording reference but unrouted.
+### Smoke tests run (all pass)
+build ✓, founder 403 for non-founder ✓, privacy center aggregate ✓, category export ✓, sanitization ✓, publish reauth (wrong pwd 401) ✓, v1→v2→rollback→v3 immutable history ✓, ORAi patch + dedupe + apply ✓, notice pending→ack→gone ✓, public archive 404 ✓, UI renders (Privacy Center, /legal/terms, /admin/legal editor+ORAi panel, founder stats) ✓.
+### Limitations
+- Email delivery still MOCKED (no RESEND_API_KEY) — links delivered in-app.
+- ORAi legal editing uses the existing OpenAI key per user approval; founder is unrestricted by existing AI policy engine (no per-founder cap system exists → nothing to raise).
+- Legal notices "affected users" audience currently behaves as "all users" (no per-doc acceptance tracking predates this feature).
+
 ## P0 — ACCOUNT CLOSURE & PRIVACY ERASURE REQUEST SYSTEM (Aug 5 2026) ✅ COMPLETE — tested (iteration_124: backend 13/13, frontend 100%, zero blockers; session-revocation hardening self-verified after)
 ### User decisions honoured
 - Immediate deletion = truly permanent, NO hidden 7-day buffer. Protection = password reauth + exact username confirm + single-use 30-min email confirmation link (in-app notification fallback when no email provider) + all sessions revoked. Founder can stop a running job ONLY before irreversible erasure.

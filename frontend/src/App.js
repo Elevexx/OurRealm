@@ -93,7 +93,9 @@ import AuthCallback from "@/pages/AuthCallback";
 import UsernameOnboardingModal from "@/components/UsernameOnboardingModal";
 import HashtagFeed from "@/pages/HashtagFeed";
 import TrendingHashtagsPage from "@/pages/TrendingHashtagsPage";
-import { TermsOfServicePage, TermsConditionsPage, PrivacyPolicyPage, CommunityStandardsPage, DMCAPolicyPage, SafetyPolicyPage, CookieNoticePage, AccountDeletionPage } from "@/pages/LegalPages";
+import LegalDocPage, { LegalIndexPage } from "@/pages/LegalCenter";
+import LegalNoticeGate from "@/components/LegalNoticeGate";
+import AdminLegal from "@/pages/AdminLegal";
 import YouTubeRouteCleanup from "@/components/YouTubeRouteCleanup";
 import PostPopup from "@/components/PostPopup";
 import MiniPlayer from "@/components/MiniPlayer";
@@ -135,7 +137,7 @@ function ShellRoute({ children }) {
     const dest = encodeURIComponent(location.pathname + location.search);
     return <Navigate to={`/signup?next=${dest}`} replace />;
   }
-  return <Layout><FoundingVipPopup />{children}</Layout>;
+  return <Layout><FoundingVipPopup /><LegalNoticeGate />{children}</Layout>;
 }
 
 // Root — no public landing page. Logged-in users continue to their feed
@@ -286,21 +288,26 @@ function App() {
             <Route path="/profile/support" element={<ShellRoute><Support /></ShellRoute>} />
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
             <Route path="/admin/privacy-requests" element={<ShellRoute><AdminPrivacyRequests /></ShellRoute>} />
+            <Route path="/admin/legal" element={<ShellRoute><AdminLegal /></ShellRoute>} />
             <Route path="/admin/faq" element={<ShellRoute><AdminFAQ /></ShellRoute>} />
             <Route path="/admin/level-builder" element={<ShellRoute><AdminLevelBuilder /></ShellRoute>} />
             <Route path="/admin/fire-power" element={<ShellRoute><AdminFirePower /></ShellRoute>} />
             <Route path="/admin/leaderboards" element={<ShellRoute><AdminLeaderboardSettings /></ShellRoute>} />
             <Route path="/leaderboards" element={<ShellRoute><Leaderboards /></ShellRoute>} />
             <Route path="/faq" element={<ShellRoute><FAQPage /></ShellRoute>} />
-            <Route path="/terms" element={<TermsOfServicePage />} />
-            <Route path="/terms-conditions" element={<TermsConditionsPage />} />
-            <Route path="/privacy" element={<PrivacyPolicyPage />} />
-            <Route path="/community" element={<CommunityStandardsPage />} />
-            <Route path="/dmca" element={<DMCAPolicyPage />} />
-            <Route path="/copyright" element={<DMCAPolicyPage />} />
-            <Route path="/safety" element={<SafetyPolicyPage />} />
-            <Route path="/cookies" element={<CookieNoticePage />} />
-            <Route path="/account-deletion" element={<AccountDeletionPage />} />
+            {/* Legal Center — published documents served from the DB
+                (the old static routes now alias into it). */}
+            <Route path="/legal" element={<LegalIndexPage />} />
+            <Route path="/legal/:slug" element={<LegalDocPage />} />
+            <Route path="/terms" element={<LegalDocPage slugOverride="terms" />} />
+            <Route path="/terms-conditions" element={<LegalDocPage slugOverride="terms-conditions" />} />
+            <Route path="/privacy" element={<LegalDocPage slugOverride="privacy" />} />
+            <Route path="/community" element={<LegalDocPage slugOverride="community" />} />
+            <Route path="/dmca" element={<LegalDocPage slugOverride="dmca" />} />
+            <Route path="/copyright" element={<LegalDocPage slugOverride="dmca" />} />
+            <Route path="/safety" element={<LegalDocPage slugOverride="safety" />} />
+            <Route path="/cookies" element={<LegalDocPage slugOverride="cookies" />} />
+            <Route path="/account-deletion" element={<LegalDocPage slugOverride="account-deletion" />} />
 
             {/* Portals 1.0 — Rainforest Realm AR foundation.
                 AR/VR pages render fullscreen (no Layout) so the camera
@@ -339,3 +346,4 @@ function App() {
 }
 
 export default App;
+

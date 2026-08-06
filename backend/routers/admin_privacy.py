@@ -148,6 +148,38 @@ async def manual_intake(payload: IntakePayload, current: CurrentUser):
     return {"ok": True, "request": prs.decorate(req)}
 
 
+# ── Founder privacy statistics (rendered on the Privacy Requests page)
+@router.get("/stats")
+async def privacy_stats(current: CurrentUser):
+    require_support_access(current)
+    from datetime import datetime
+    open_statuses = prs.OPEN_STATUSES
+    reqs = [r async for r in db.privacy_erasure_requests.find({}, {"_id": 0})]
+    decorated = [prs.decorate(r) for r in reqs]
+    completed = [r for r in reqs if r.get("completed_at")]
+    durations = []
+    for r in completed:
+        try:
+            durations.append((datetime.fromisoformat(r["completed_at"])
+                              - datetime.fromisoformat(r["received_at"])).total_seconds())
+        except Exception:  # noqa: BLE001
+            pass
+    avg_days = round(sum(durations) / len(durations) / 86400, 1) if durations else None
+    return {"stats": {
+        "pending_requests": sum(1 for r in reqs if r["status"] in open_statuses),
+        "overdue_requests": sum(1 for r in decorated if r["overdue"]),
+        "pending_deletions": await db.account_deletion_jobs.count_documents(
+            {"status": {"$in": ["queued", "running", "failed"]}}),
+        "completed_deletions": await db.account_deletion_jobs.count_documents(
+            {"status": "completed"}),
+        "closed_accounts": await db.users.count_documents(
+            {"account_status": "deleted_pending_restore"}),
+        "restricted_retention": await db.restricted_retention_records.count_documents(
+            {"status": "active"}),
+        "avg_completion_days": avg_days,
+    }}
+
+
 # ── Deletion jobs ───────────────────────────────────────────────────
 @router.get("/deletion-jobs")
 async def list_jobs(current: CurrentUser, status: Optional[str] = None):

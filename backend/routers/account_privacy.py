@@ -157,10 +157,111 @@ async def deletion_overview(current: CurrentUser):
     }
 
 
+# ── Privacy Center — one aggregate endpoint for the whole dashboard.
+@router.get("/privacy-center")
+async def privacy_center(current: CurrentUser):
+    uid = current["id"]
+    open_req = await db.privacy_erasure_requests.find_one(
+        {"user_id": uid, "status": {"$in": prs.OPEN_STATUSES + ["approved"]}}, {"_id": 0})
+    exports = [e async for e in db.data_export_jobs.find(
+        {"user_id": uid}, {"_id": 0, "token_hash": 0}).sort("created_at", -1).limit(5)]
+    login_rows = [r async for r in db.login_history.find(
+        {"user_id": uid}, {"_id": 0}).sort("at", -1).limit(10)]
+    devices = await db.login_history.distinct("user_agent", {"user_id": uid})
+    closure = pending_deletion_meta(current)
+    if closure:
+        closure["reason"] = current.get("deletion_reason")
+        closure["recovery_days"] = current.get("closure_recovery_days")
+    fire = None
+    try:
+        from services import fire_vault as fv
+        w = await fv.wallet_for(current)
+        fire = {"vault_balance": w.get("vault_balance"),
+                "lifetime_fire_received": w.get("lifetime_fire_received")}
+    except Exception:  # noqa: BLE001
+        pass
+    from services.data_export import data_map, DATA_CATEGORIES
+    return {
+        "data_map": await data_map(current),
+        "categories": [{"key": k, "label": l} for k, l in DATA_CATEGORIES],
+        "pending_closure": closure,
+        "open_privacy_request": prs.decorate(open_req) if open_req else None,
+        "exports": exports,
+        "connected_accounts": {
+            "google": bool(current.get("google_auth")),
+            "email": bool(current.get("email")),
+        },
+        "third_party_processors": [
+            {"name": "Supabase (messenger delivery)", "purpose": "real-time message transport"},
+            {"name": "Cloudflare R2 (media mirror)", "purpose": "media storage/CDN"},
+        ],
+        "security": {
+            "password_changed_at": current.get("password_changed_at"),
+            "sessions_valid_since": current.get("password_changed_at"),
+        },
+        "login_history": login_rows,
+        "devices": [d for d in devices if d][:8],
+        "fire": fire,
+        "email_delivery_configured": email_configured(),
+    }
+
+
+class ExtendClosurePayload(BaseModel):
+    additional_days: int = Field(ge=1, le=365)
+
+
+@router.post("/closure/extend")
+async def extend_closure(payload: ExtendClosurePayload, current: CurrentUser):
+    """Extend the recovery window of a pending closure. Total window is
+    capped at 365 days from the original closure date."""
+    from datetime import datetime, timedelta
+    if current.get("account_status") != "deleted_pending_restore" or not current.get("purge_after"):
+        raise HTTPException(status_code=400, detail="Account is not in a recoverable closed state")
+    deleted_at = datetime.fromisoformat(current["deleted_at"])
+    cur = datetime.fromisoformat(current["purge_after"])
+    cap = deleted_at + timedelta(days=365)
+    new_purge = min(cur + timedelta(days=payload.additional_days), cap)
+    if new_purge <= cur:
+        raise HTTPException(status_code=400, detail="Recovery window is already at the 365-day maximum")
+    await db.users.update_one({"id": current["id"]}, {"$set": {
+        "purge_after": new_purge.isoformat(), "closure_expiry_warned": False}})
+    return {"ok": True, "purge_after": new_purge.isoformat()}
+
+
+class LogoutAllPayload(BaseModel):
+    password: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/security/logout-everywhere")
+async def logout_everywhere(payload: LogoutAllPayload, current: CurrentUser):
+    """Revoke EVERY session (including this one) — reuses the same
+    revocation mechanics as account closure, without hiding the account."""
+    if not verify_password(payload.password, current.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Password is incorrect")
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one({"id": current["id"]},
+                              {"$set": {"password_changed_at": now}})
+    await db.refresh_tokens.delete_many({"user_id": current["id"]})
+    await db.user_sessions.delete_many({"user_id": current["id"]})
+    return {"ok": True, "note": "All sessions revoked — sign in again."}
+
+
 # ── Download My Data ────────────────────────────────────────────────
+class ExportPayload(BaseModel):
+    categories: Optional[list[str]] = None
+
+
 @router.post("/export")
-async def create_data_export(current: CurrentUser):
-    result = await dex.create_export(current)
+async def create_data_export(current: CurrentUser, payload: Optional[ExportPayload] = None):
+    cats = (payload.categories if payload else None) or None
+    if cats:
+        from services.data_export import DATA_CATEGORIES
+        valid = {k for k, _ in DATA_CATEGORIES}
+        cats = [c for c in cats if c in valid]
+        if not cats:
+            raise HTTPException(status_code=400, detail="No valid categories selected")
+    result = await dex.create_export(current, cats)
     return {"ok": True, "export": result}
 
 

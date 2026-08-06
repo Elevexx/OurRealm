@@ -366,17 +366,20 @@ export default function AdminPrivacyRequests() {
   const [summary, setSummary] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [stages, setStages] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, j] = await Promise.all([
+      const [r, j, s] = await Promise.all([
         apiClient.get(`/admin/privacy/requests${view ? `?view=${view}` : ""}`),
         apiClient.get("/admin/privacy/deletion-jobs"),
+        apiClient.get("/admin/privacy/stats"),
       ]);
       setRequests(r.data.requests); setSummary(r.data.summary);
       setJobs(j.data.jobs); setStages(j.data.stages);
+      setStats(s.data.stats);
     } catch (e) { /* 403 for non-admins */ }
     finally { setLoading(false); }
   }, [view]);
@@ -399,6 +402,24 @@ export default function AdminPrivacyRequests() {
         approval, refusal, or restricted retention. Deadlines follow
         calendar-month rules per jurisdiction.
       </p>
+
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3" data-testid="privacy-founder-stats">
+          {[["Pending requests", stats.pending_requests, "#FFD166"],
+            ["Overdue", stats.overdue_requests, "#FF4444"],
+            ["Pending deletions", stats.pending_deletions, "#4DD2FF"],
+            ["Completed deletions", stats.completed_deletions, "#00FF66"],
+            ["Closed accounts", stats.closed_accounts, "#FFA94D"],
+            ["Restricted retention", stats.restricted_retention, "#C084FC"],
+            ["Avg completion", stats.avg_completion_days != null ? `${stats.avg_completion_days}d` : "—", "#9AE66E"],
+          ].map(([label, val, color]) => (
+            <div key={label} className="or-surface p-2.5" data-testid={`privacy-founder-stat-${label.toLowerCase().replace(/ /g, "-")}`}>
+              <div className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{label}</div>
+              <div className="text-xl" style={{ fontFamily: "var(--font-display)", color }}>{val}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {summary && (
         <div className="grid grid-cols-3 gap-3 mb-4">
