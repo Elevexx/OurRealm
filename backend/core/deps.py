@@ -9,6 +9,23 @@ from .config import JWT_ALGORITHM, get_jwt_secret, LOCKOUT_THRESHOLD, LOCKOUT_MI
 from .db import db
 
 
+def _check_token_freshness(user: dict, payload: dict) -> None:
+    """Tokens issued before `password_changed_at` are invalid — fires
+    after password reset, suspension, or account closure so every
+    pre-existing session dies immediately."""
+    pc = user.get("password_changed_at")
+    iat = payload.get("iat")
+    if pc and iat:
+        try:
+            pc_ts = datetime.fromisoformat(pc.replace("Z", "+00:00")).timestamp()
+            if int(iat) < int(pc_ts):
+                raise HTTPException(status_code=401, detail="Session invalidated")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+
 async def get_current_user(request: Request) -> dict:
     token = request.cookies.get("access_token")
     if not token:
@@ -53,7 +70,11 @@ async def get_current_user(request: Request) -> dict:
         # session so the client can show the restore prompt and call
         # /api/profile/self-restore. Every endpoint that returns user-
         # actionable data still hides them via should_hide_from_public().
+        # NOTE: tokens minted BEFORE the closure are still rejected by
+        # the password_changed_at check below — closure revokes every
+        # pre-existing session; only a fresh sign-in works.
         if user.get("account_status") == "deleted_pending_restore":
+            _check_token_freshness(user, payload)
             return user
         # Surface a friendly suspended message when applicable so the
         # client can render it verbatim.
@@ -66,17 +87,7 @@ async def get_current_user(request: Request) -> dict:
     # Phase α (admin user control): tokens issued before the user's
     # `password_changed_at` are invalid. This fires after a password
     # reset OR a forced suspension to nuke active sessions immediately.
-    pc = user.get("password_changed_at")
-    iat = payload.get("iat")
-    if pc and iat:
-        try:
-            pc_ts = datetime.fromisoformat(pc.replace("Z", "+00:00")).timestamp()
-            if int(iat) < int(pc_ts):
-                raise HTTPException(status_code=401, detail="Session invalidated")
-        except HTTPException:
-            raise
-        except Exception:
-            pass
+    _check_token_freshness(user, payload)
     return user
 
 

@@ -1,5 +1,29 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## P0 — ACCOUNT CLOSURE & PRIVACY ERASURE REQUEST SYSTEM (Aug 5 2026) ✅ COMPLETE — tested (iteration_124: backend 13/13, frontend 100%, zero blockers; session-revocation hardening self-verified after)
+### User decisions honoured
+- Immediate deletion = truly permanent, NO hidden 7-day buffer. Protection = password reauth + exact username confirm + single-use 30-min email confirmation link (in-app notification fallback when no email provider) + all sessions revoked. Founder can stop a running job ONLY before irreversible erasure.
+- Privacy erasure requests REQUIRE admin review (no auto-approve/refuse, no indefinite pending — deadline tracking + escalation + overdue + emergency view). Calendar-month GDPR deadlines (1mo, +2mo extension once w/ documented reason within original period; Feb/month-end proven).
+- Privacy request alone does NOT hide the account — requester chooses keep-active vs hide-now. Refusal/partial NEVER auto-restores visibility.
+- "Apply Restricted Retention" (not generic legal hold): categories + purpose + approver + review date + expiry; founder-only; release endpoint.
+### Backend (`services/account_deletion.py`, `privacy_requests.py`, `data_export.py`, `mailer.py`; routers `account_privacy.py` /api/account/*, `admin_privacy.py` /api/admin/privacy/*)
+- Separated concepts: Public Removal Service (`remove_public_access` — disabled+status+password_changed_at bump+refresh/user_sessions purge, synchronous), Recoverable Closure (1-365d custom, presets 30/60/90/365), Privacy Request Review, Permanent Erasure Service, Restricted Retention Records.
+- 13-stage idempotent claim-locked erasure job worker (30s loop): queued→frozen→auth revoked→public removed→core profile erased(IRREVERSIBLE)→social refs→content→messages→media→processor cleanup(visible/retryable ledger)→backup suppression ledger→integrity verify→completed+requester notified (contact snapshot w/ 90d retention). Retry w/ backoff (max 8/stage), admin retry + founder stop-before-irreversible.
+- `deletion_suppression` ledger + `run_suppression_pass()` (every ~30min) re-erases accounts resurrected by backup restore.
+- Recoverable-closure expiry now routes through the SAME job pipeline (`run_purge_pass` → enqueue, source=closure_expired). Purge cron also runs: privacy reminder pass (admin notifications urgent/overdue, 1/day/request), closure-expiry warnings (7d before, once), export expiry sweep.
+- Data export: JSON of own data only, token-gated (sha256), 48h expiry, 5 downloads, audit-logged create+access.
+- Mailer abstraction: Resend if RESEND_API_KEY set, else records to `outbound_emails` (status logged_no_provider) + in-app notification fallback for the deletion confirm link. NO EMAIL PROVIDER CONFIGURED YET.
+- SESSION REVOCATION HARDENED: `core/deps.py` pending-restore early-return now also enforces iat<password_changed_at → pre-closure access JWTs die instantly (self-verified 401).
+- Manual intake endpoint (backdated received_at + original message preserved as restricted evidence) for requests received via other channels — use for the real user's pending request via /admin/privacy-requests → "Log request received elsewhere".
+### Frontend
+- Settings>Account "Data & Privacy" zone (4 cards): DataExportCard, CloseAccountModal (presets+custom 1-365, reauth), PrivacyRequestModal (jurisdiction, keep-active vs hide-now, reauth), ImmediateDeleteModal (2-step w/ confirm link) + open-request status card w/ withdraw. Old DeleteAccountModal REMOVED.
+- `/confirm-deletion?token=` final-warning page; `/admin/privacy-requests` queue (stats, emergency/overdue views, decision panel incl. founder restricted-retention form, extension, identity actions, manual intake, Deletion Jobs tab w/ 13-stage checklist + retry/stop). Linked from /admin/support header.
+### New collections
+`privacy_erasure_requests`, `account_deletion_jobs`, `account_deletion_confirmations`, `deletion_suppression`, `restricted_retention_records`, `processor_cleanup_tasks`, `data_export_jobs`, `data_export_files`, `outbound_emails`.
+### Backlog from this task
+- P1: Configure a real email provider (Resend key) so confirmation links + lifecycle emails send for real; set PUBLIC_APP_ORIGIN for absolute links.
+- P2: Known pre-existing dev-only hydration warning (<span> in <option>, platform instrumentation) — cosmetic.
+
 ## P0 — COMPLETE ORAi PROJECT CREATOR PLATFORM UPGRADE (Aug 5 2026) ✅ ALL 6 PHASES DONE — 29/29 targeted checks + desktop/mobile UI verified
 ### Phase 1 — Runtime Selection Accuracy (finished the in-flight patch)
 - `services/runtime_selection.py`: 36-mechanic deterministic taxonomy (regex patterns incl. real-time movement, action combat, cooldown abilities, top-down exploration, platforming, puzzle solving, boss battles, survival, tower defense, card battles, evolution), 22-runtime capability matrix (supported vs honest approximation), CORE-mechanic gating, ranked walk-down, deterministic pick ALWAYS beats the LLM hint.
