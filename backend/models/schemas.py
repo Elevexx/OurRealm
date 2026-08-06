@@ -43,6 +43,9 @@ class RegisterPayload(BaseModel):
     # Teen/Adult account system — optional date of birth (YYYY-MM-DD).
     # <13 rejected; 13-17 → teen; 18+ → adult; absent → adult (back-compat).
     birth_date: Optional[str] = None
+    # Waitlist invitation token — allows registration while the global
+    # signup mode is restricted and binds the reserved username.
+    invite_token: Optional[str] = None
 
 
 class LoginPayload(BaseModel):

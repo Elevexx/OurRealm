@@ -263,10 +263,13 @@ app.include_router(game_assets_router_mod.public_router)
 from routers import account_privacy as account_privacy_router_mod
 from routers import admin_privacy as admin_privacy_router_mod
 from routers import legal as legal_router_mod
+from routers import waitlist as waitlist_router_mod
 app.include_router(account_privacy_router_mod.router)
 app.include_router(admin_privacy_router_mod.router)
 app.include_router(legal_router_mod.router)
 app.include_router(legal_router_mod.public_router)
+app.include_router(waitlist_router_mod.public_router)
+app.include_router(waitlist_router_mod.admin_router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
@@ -430,6 +433,7 @@ async def global_auth_guard(request, call_next):
     if (request.method == "OPTIONS" or not path.startswith("/api")
             or path in PUBLIC_API_PATHS
             or _is_public_legal_get(request.method, path)
+            or path.startswith("/api/waitlist/public/")
             or path.startswith("/api/public/game-assets/")
             or path.startswith("/api/public/game-preview/")
             or path.startswith("/api/public/game-path/")

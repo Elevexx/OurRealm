@@ -36,6 +36,20 @@ export default function SignUp() {
   const nextRaw = searchParams.get("next") || searchParams.get("to") || "";
   const nextPath = (nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//")) ? nextRaw : "";
 
+  // Waitlist invitation — prefill + lock the reserved username/email.
+  const inviteToken = searchParams.get("invite") || "";
+  const [invite, setInvite] = useState(null);
+  useEffect(() => {
+    if (!inviteToken) return;
+    apiClient.get(`/waitlist/public/invite/${inviteToken}`)
+      .then(({ data }) => {
+        setInvite(data);
+        setUsername(data.username);
+        setEmail(data.email);
+      })
+      .catch((e) => setError(e?.response?.data?.detail || "Invalid invitation"));
+  }, [inviteToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Debounced username availability check
   useEffect(() => {
     if (!username || username.length < 3) {
@@ -74,6 +88,7 @@ export default function SignUp() {
       age_confirmed_13: ageConfirmed,
       policy_version: "2026-02-1",
       birth_date: birthDate || undefined,
+      invite_token: inviteToken || undefined,
     });
     setLoading(false);
     if (res.ok) navigate(nextPath || "/interests");
@@ -119,29 +134,30 @@ export default function SignUp() {
             Live. Connect. Experience. — claim your handle in seconds.
           </p>
           <GoogleSignInButton label="Sign up with Google" divider="below" next={nextPath} />
-          {!signupsOpen ? (
+          {!signupsOpen && !inviteToken ? (
             <div className="space-y-3" data-testid="signup-paused-screen">
               <div className="text-sm px-3 py-2" style={{ background: "rgba(46,160,255,0.08)", border: "1px solid rgba(46,160,255,0.3)", borderRadius: "var(--radius)" }}>
-                New signups are temporarily paused. Reserve your spot and we'll hold your place.
+                New signups are currently by reservation. Lock in your username
+                on the waitlist and we'll invite you when approved.
               </div>
-              {reserved ? (
-                <div className="text-sm px-3 py-2" data-testid="signup-reserved-ok"
-                  style={{ background: "rgba(16,230,112,0.08)", border: "1px solid rgba(16,230,112,0.3)", borderRadius: "var(--radius)" }}>
-                  You're on the list! We'll welcome you as soon as signups reopen.
-                </div>
-              ) : (
-                <form onSubmit={reserve} className="space-y-3">
-                  <input type="email" placeholder="Email" required value={resEmail}
-                    onChange={(e) => setResEmail(e.target.value)} className="or-input" data-testid="signup-reserve-email" />
-                  <input type="text" placeholder="Preferred username (optional)" value={resUsername}
-                    onChange={(e) => setResUsername(e.target.value)} className="or-input" data-testid="signup-reserve-username" />
-                  {error && <div className="text-sm" style={{ color: "#ff8080" }}>{String(error)}</div>}
-                  <button type="submit" className="or-btn or-btn-primary w-full" data-testid="signup-reserve-btn">Reserve my spot</button>
-                </form>
-              )}
+              <button type="button" className="or-btn or-btn-primary w-full"
+                onClick={() => navigate("/waitlist")} data-testid="signup-goto-waitlist">
+                Reserve My Username
+              </button>
+              <button type="button" className="or-btn or-btn-ghost w-full"
+                onClick={() => navigate("/waitlist?view=status")} data-testid="signup-check-status">
+                Check My Status
+              </button>
             </div>
           ) : (
           <form onSubmit={onSubmit} className="space-y-3">
+            {invite && (
+              <div className="text-sm px-3 py-2" data-testid="signup-invite-banner"
+                style={{ background: "rgba(244,200,74,0.08)", border: "1px solid rgba(244,200,74,0.4)", borderRadius: "var(--radius)" }}>
+                🎉 Your reservation for <b>@{invite.username}</b> was approved — finish
+                creating your account below.
+              </div>
+            )}
             <input
               type="text" placeholder="Display name" required minLength={1}
               value={name} onChange={(e) => setName(e.target.value)}

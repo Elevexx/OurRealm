@@ -67,9 +67,36 @@ async def register(payload: RegisterPayload, response: Response):
             detail="You must accept the Terms of Service, Terms & Conditions, "
                    "Privacy Policy, and confirm you are at least 13 years old.",
         )
-    # ── Founder signup pause gate (server-side, immediate) ──
+    # ── Signup Access Mode gate (server-side, immediate) ──
+    from services.waitlist import get_signup_mode, validate_invite, consume_invite
+    _mode = (await get_signup_mode())["mode"]
+    _invited = None
+    if payload.invite_token:
+        try:
+            _invited = await validate_invite(payload.invite_token)
+        except ValueError as _e:
+            await record_signup_event(False, "invalid_invite", 403, email)
+            raise HTTPException(status_code=403, detail=str(_e))
+        if _invited["email"] != email:
+            await record_signup_event(False, "invite_email_mismatch", 403, email)
+            raise HTTPException(status_code=403, detail="This invitation was issued for a different email.")
+        if _invited["username"] != username:
+            raise HTTPException(status_code=403, detail={
+                "code": "invite_username", "message":
+                f"This invitation reserves @{_invited['username']} — use that username."})
+    if _mode in ("existing_only", "maintenance"):
+        await record_signup_event(False, f"signup_mode_{_mode}", 403, email)
+        raise HTTPException(status_code=403, detail={
+            "code": "signups_paused",
+            "message": "New registrations are currently disabled."})
+    if _mode in ("waitlist", "invite_only") and not _invited:
+        await record_signup_event(False, f"signup_mode_{_mode}", 403, email)
+        raise HTTPException(status_code=403, detail={
+            "code": "signups_paused",
+            "message": "New signups require a reservation. Join the waitlist to reserve your username."})
+    # Legacy pause flag (kept for back-compat with older admin toggle)
     _sg = await db.platform_settings.find_one({"id": "signup"}, {"_id": 0})
-    if _sg and _sg.get("allow_new_signups") is False:
+    if (_sg and _sg.get("allow_new_signups") is False and _mode == "open"):
         await record_signup_event(False, "signups_paused", 403, email)
         raise HTTPException(status_code=403, detail={
             "code": "signups_paused",
@@ -95,10 +122,21 @@ async def register(payload: RegisterPayload, response: Response):
     if await db.users.find_one({"username": username}):
         await record_signup_event(False, "duplicate_username", 400, email)
         raise HTTPException(status_code=400, detail="That username is unavailable. Please choose another.")
+    # Waitlist reservation protection — a username actively reserved by
+    # someone else cannot be claimed at open signup.
+    _held = await db.waitlist_reservations.find_one(
+        {"username": username,
+         "status": {"$nin": ["withdrawn", "denied", "account_created"]}},
+        {"_id": 0, "email": 1})
+    if _held and _held.get("email") != email and not _invited:
+        await record_signup_event(False, "username_reserved", 409, email)
+        raise HTTPException(status_code=409, detail="That username is reserved on the waitlist. Please choose another.")
 
     # Premium Usernames — server-side signup gate (rules + premium length + NPC seq)
     from routers.premium_usernames import signup_gate, post_signup_npc
     _pu_gate = await signup_gate(username)
+    if _pu_gate and _invited and _invited.get("premium_approved"):
+        _pu_gate = None  # Founder-approved premium unlock via invitation
     if _pu_gate:
         await record_signup_event(False, _pu_gate.get("category", "premium_locked"), 422, email)
         raise HTTPException(status_code=422, detail={
@@ -183,6 +221,21 @@ async def register(payload: RegisterPayload, response: Response):
         raise HTTPException(status_code=409, detail="This email or username was just registered. Try logging in.")
 
     try:
+        # Waitlist invitation — mark reservation completed + carry the
+        # approved verification category onto the new account.
+        if _invited:
+            try:
+                await consume_invite(payload.invite_token, user_id)
+                _vc = (_invited.get("verification") or {}).get("category")
+                _sets = {"waitlist_invited": True}
+                if (_invited.get("verification") or {}).get("status") == "approved" or \
+                        ((_invited.get("verification") or {}).get("status") == "submitted"):
+                    if _vc:
+                        _sets["waitlist_verification_category"] = _vc
+                        _sets["waitlist_verified"] = (_invited.get("verification") or {}).get("status") == "approved" or True
+                await db.users.update_one({"id": user_id}, {"$set": _sets})
+            except Exception:  # noqa: BLE001
+                pass
         # Premium Usernames — consume NPC_# sequence number now that the
         # user doc insert succeeded (numbers are never reused).
         try:
@@ -788,8 +841,9 @@ async def dismiss_username_onboarding(current: CurrentUser):
 # ── Founder signup pause — public status + reservation (June 2026) ──────
 @router.get("/signup-status")
 async def signup_status():
-    _sg = await db.platform_settings.find_one({"id": "signup"}, {"_id": 0})
-    return {"open": not (_sg and _sg.get("allow_new_signups") is False)}
+    from services.waitlist import get_signup_mode
+    _m = (await get_signup_mode())["mode"]
+    return {"open": _m == "open", "mode": _m}
 
 
 class SignupReservationPayload(_BaseModel):

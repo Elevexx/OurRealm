@@ -16,7 +16,7 @@ import { Link } from "react-router-dom";
 import {
   BarChart3, Zap, Hash, Headphones, HelpCircle, LifeBuoy,
   Crown, ShieldCheck, ShieldAlert, ChevronRight, Loader2, Sparkles, LayoutGrid, Database,
-  Image as ImageIcon, Trophy, Flame, Landmark, Clapperboard, Gamepad2, ScrollText,
+  Image as ImageIcon, Trophy, Flame, Landmark, Clapperboard, Gamepad2, ScrollText, Users,
 } from "lucide-react";
 import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -105,6 +105,16 @@ const CARDS = [
     badge: null,
     roles: ["founder", "admin"],
     statKey: "openTickets",
+  },
+  {
+    id: "waitlist",
+    to: "/admin/waitlist",
+    title: "Waitlist & Reservations",
+    description: "Username reservations, verification queue, signup access mode.",
+    Icon: Users,
+    accent: "#F4C84A",
+    badge: null,
+    roles: ["founder", "admin"],
   },
   {
     id: "privacy",

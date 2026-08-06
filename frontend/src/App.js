@@ -95,6 +95,8 @@ import HashtagFeed from "@/pages/HashtagFeed";
 import TrendingHashtagsPage from "@/pages/TrendingHashtagsPage";
 import LegalDocPage, { LegalIndexPage } from "@/pages/LegalCenter";
 import LegalNoticeGate from "@/components/LegalNoticeGate";
+import Waitlist from "@/pages/Waitlist";
+import AdminWaitlist from "@/pages/AdminWaitlist";
 import AdminLegal from "@/pages/AdminLegal";
 import YouTubeRouteCleanup from "@/components/YouTubeRouteCleanup";
 import PostPopup from "@/components/PostPopup";
@@ -135,7 +137,7 @@ function ShellRoute({ children }) {
   }
   if (!user) {
     const dest = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/signup?next=${dest}`} replace />;
+    return <Navigate to={`/waitlist?next=${dest}`} replace />;
   }
   return <Layout><FoundingVipPopup /><LegalNoticeGate />{children}</Layout>;
 }
@@ -149,7 +151,7 @@ function RootRedirect() {
   const raw = searchParams.get("next") || searchParams.get("to") || "";
   const next = raw.startsWith("/") && !raw.startsWith("//") ? raw : "";
   if (user) return <Navigate to={next || "/feed"} replace />;
-  return <Navigate to={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"} replace />;
+  return <Navigate to={next ? `/waitlist?next=${encodeURIComponent(next)}` : "/waitlist"} replace />;
 }
 
 // Pending-deletion users get the restore prompt instead of any
@@ -289,6 +291,7 @@ function App() {
             <Route path="/admin/support" element={<ShellRoute><AdminSupport /></ShellRoute>} />
             <Route path="/admin/privacy-requests" element={<ShellRoute><AdminPrivacyRequests /></ShellRoute>} />
             <Route path="/admin/legal" element={<ShellRoute><AdminLegal /></ShellRoute>} />
+            <Route path="/admin/waitlist" element={<ShellRoute><AdminWaitlist /></ShellRoute>} />
             <Route path="/admin/faq" element={<ShellRoute><AdminFAQ /></ShellRoute>} />
             <Route path="/admin/level-builder" element={<ShellRoute><AdminLevelBuilder /></ShellRoute>} />
             <Route path="/admin/fire-power" element={<ShellRoute><AdminFirePower /></ShellRoute>} />
@@ -298,6 +301,7 @@ function App() {
             {/* Legal Center — published documents served from the DB
                 (the old static routes now alias into it). */}
             <Route path="/legal" element={<LegalIndexPage />} />
+            <Route path="/waitlist" element={<Waitlist />} />
             <Route path="/legal/:slug" element={<LegalDocPage />} />
             <Route path="/terms" element={<LegalDocPage slugOverride="terms" />} />
             <Route path="/terms-conditions" element={<LegalDocPage slugOverride="terms-conditions" />} />
@@ -335,7 +339,7 @@ function App() {
               },
             }} />
           <MiniPlayer />
-          <InstallPrompt trigger="auto" />
+          {/* <InstallPrompt trigger="auto" /> */}
         </BrowserRouter>
         </PresenceProvider>
         </MessagingPopupProvider>

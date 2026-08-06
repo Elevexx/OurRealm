@@ -121,7 +121,11 @@ export default function GamePublicPage() {
               {GUEST_MSG}
             </div>
             <GameRuntime spec={meta.spec} height={540} gameId={meta.id} controls={meta.controls} guest
-              onScore={(ev) => { if (!convDismissed) setFinalScore(ev); }} />
+              onScore={(ev) => {
+  if (!convDismissed && ev?.completed === true) {
+    setFinalScore(ev);
+  }
+}} />
           </>
         )}
 

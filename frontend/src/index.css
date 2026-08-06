@@ -1050,3 +1050,25 @@ html[data-mode="business"] .rcx-scope .or-surface {
 .or-game-playing [data-testid="orai-assistant-fab"] {
   display: none !important;
 }
+
+/* Waitlist mobile search layout */
+@media (max-width: 640px) {
+  .waitlist-search-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+  }
+
+  .waitlist-search-row input {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 64px !important;
+    font-size: 18px !important;
+    padding: 0 20px !important;
+  }
+
+  .waitlist-search-row button {
+    width: 100% !important;
+    min-height: 64px !important;
+  }
+}
