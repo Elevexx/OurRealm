@@ -16,7 +16,8 @@ _ARCADE = [("player_sprite", True), ("enemy_sprite", True), ("boss_sprite", Fals
 RUNTIME_SLOTS = {
     "top_down": _ARCADE, "platformer": _ARCADE, "dodge_collect": _ARCADE,
     "action_rpg_2_5d": [("player_sprite", True), ("enemy_sprite", True), ("boss_sprite", True),
-                        ("npc_sprite", False), ("background", True), ("tileset", False),
+                        ("npc_sprite", False), ("background", True), ("background_near", False),
+                        ("foreground", False), ("tileset", False),
                         ("projectile_sprite", False), ("effect_fx", False),
                         ("character_portrait", False), ("icon_set", False), ("ui_frame", False)],
     "rpg": [("player_sprite", True), ("enemy_sprite", True), ("creature_sprite", False),
@@ -51,7 +52,8 @@ def slot_defs(runtime: str, game: dict = None) -> list:
             for lvl in (2, 3):
                 if len(stages) >= lvl:
                     base = base + [(f"{b}_l{lvl}", False)
-                                   for b in ("background", "tileset", "enemy_sprite", "boss_sprite")]
+                                   for b in ("background", "background_near", "foreground",
+                                             "tileset", "enemy_sprite", "boss_sprite")]
     return base
 
 

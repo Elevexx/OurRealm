@@ -79,6 +79,12 @@ SLOTS = {
                 "hint": "seamless 4x4 grid tile sheet with 16 equal square terrain tiles"},
     "background": {"label": "Background", "kind": "background", "transparent": False, "required": False,
                    "hint": "wide parallax game background scene"},
+    "background_near": {"label": "Midground Layer", "kind": "background", "transparent": True, "required": False,
+                        "hint": "midground parallax band of near scenery (ruins, canopy, cliffs) with "
+                                "the upper part left empty for sky show-through"},
+    "foreground": {"label": "Foreground Layer", "kind": "background", "transparent": True, "required": False,
+                   "hint": "foreground overlay strip of close vegetation/rocks framing the lower screen "
+                           "edge, mostly empty in the middle"},
     "battle_scene": {"label": "Battle Scene", "kind": "background", "transparent": False, "required": False,
                      "hint": "dramatic battle backdrop scene"},
     "ui_frame": {"label": "UI Frame / HUD", "kind": "ui", "transparent": True, "required": True,
@@ -103,7 +109,7 @@ SLOTS = {
                             "runtime synth fallback)"},
 }
 for _lvl in (2, 3):
-    for _base in ("background", "tileset", "enemy_sprite", "boss_sprite"):
+    for _base in ("background", "background_near", "foreground", "tileset", "enemy_sprite", "boss_sprite"):
         SLOTS[f"{_base}_l{_lvl}"] = {**SLOTS[_base], "label": SLOTS[_base]["label"] + f" (Level {_lvl})"}
 
 PROFILES = {
@@ -359,6 +365,26 @@ async def create_job(game: dict, slot_keys: list, art_quality: int, cost_ceiling
     return job
 
 
+def _anim_qa(png_bytes: bytes, frames: int) -> dict:
+    """Sprite-strip QA: every frame actually drawn + real pose variation."""
+    import io
+    from PIL import Image
+    im = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+    fw = max(1, im.width // frames)
+    covs, diffs, prev = [], [], None
+    for i in range(frames):
+        fr = im.crop((i * fw, 0, (i + 1) * fw, im.height))
+        alpha = list(fr.getchannel("A").resize((40, 40)).getdata())
+        covs.append(round(sum(1 for p in alpha if p > 40) / 1600.0, 3))
+        cur = list(fr.resize((40, 40)).convert("L").getdata())
+        if prev is not None:
+            diffs.append(round(sum(abs(a - b) for a, b in zip(cur, prev)) / 1600.0, 2))
+        prev = cur
+    ok = min(covs) >= 0.02 and (min(diffs) if diffs else 0) >= 3.0
+    return {"pass": ok, "frame_coverage": covs, "frame_diffs": diffs,
+            "score": round(min(covs) * 100 + (min(diffs) if diffs else 0), 2)}
+
+
 async def run_job(job_id: str, actor: dict):
     from services.orai_images import generate_orai_image
     from services import image_store
@@ -393,8 +419,25 @@ async def run_job(job_id: str, actor: dict):
                     raw = await asyncio.to_thread(_chroma_key, raw)
                 else:
                     raw = await asyncio.to_thread(_square_pad, raw, 1536)
+                anim = SLOTS[sl["key"]].get("anim")
+                qa = None
+                if anim:
+                    qa = await asyncio.to_thread(_anim_qa, raw, anim["frames"])
+                    if not qa["pass"] and spent + 2 * unit <= job["cost_ceiling"] + 1e-9:
+                        retry_p = (f"{sl['prompt']}, CRITICAL: exactly {anim['frames']} equal-width frames "
+                                   f"left to right, every frame fully drawn with a CLEARLY DIFFERENT pose, "
+                                   f"{q['suffix']}")
+                        async with GEN_SEMAPHORE:
+                            raw2, model2 = await generate_orai_image(retry_p[:980])
+                        raw2 = await asyncio.to_thread(_chroma_key, raw2)
+                        qa2 = await asyncio.to_thread(_anim_qa, raw2, anim["frames"])
+                        spent = round(spent + unit, 3)
+                        if qa2["score"] >= qa["score"]:
+                            raw, model, qa = raw2, model2, qa2
                 rec = await image_store.save_bytes(raw, actor["id"], declared_mime="image/png")
                 meta = _asset_meta(sl["key"], rec.width, rec.height)
+                if qa is not None:
+                    meta["anim_qa"] = qa
                 lib = await save_library_record(actor, game, sl["key"], rec, meta, prompt, model)
                 await set_slot_asset(game["id"], sl["key"],
                                      {"url": public_asset_url(rec.original_url), "meta": meta, "asset_id": lib["id"]},

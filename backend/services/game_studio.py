@@ -780,6 +780,24 @@ action_rpg_2_5d: {"stages":[{"title":"Region name","zone":"forest|ruins|caves|vi
   (REAL-TIME action: 8-dir movement, melee + spell + dodge are engine features; quest.type "defeat" counts
    enemy kills to target, "collect" needs the quest_item looted then returned to the giver NPC;
    exit unlocks when the quest is done AND the region boss (if any) is dead; enemy x from 300 to width-250)
+action_rpg_2_5d SIDE-SCROLL PLATFORM MODE — set per stage "mode":"side_scroll" when the request is a
+side-scrolling platform adventure. Stage schema:
+ {"title":"...","mode":"side_scroll","zone":"forest|caves|lava|nexus","width":4200 (world px 2400-5200),
+  "ambient":"bright" for daylight levels, "hero_scale":1.2-1.4, "hazard":"water|lava|crystal|void",
+  "intro":"one-line objective", "player_hp":30,
+  "platforms":[{"x":0,"y":302,"w":520},{"x":560,"y":250,"w":150},{"x":740,"y":250,"w":140,"bridge":true},
+   {"x":920,"y":210,"w":90,"move":{"amp":28,"speed":1}},{"x":1060,"y":180,"w":80,"crumble":true}]
+   (y in screen units 0-360: main ground ~302, upper routes 150-240; stepped pyramid = ascending platform
+    steps; gaps between platforms = fall hazard; floating-island levels have NO continuous ground),
+  "features":[{"type":"waterfall|cave|tree|crystal|rock","x":700,"w":60}] (environmental set dressing),
+  "checkpoints_x":[900,2100] (must sit over static platforms),
+  "pickups":[{"x":640,"y":230,"kind":"coin|gem|potion|mana|fire|star|key"}] (key gates locked exits; y ~ platform y - 30),
+  "props":[{"x":1500}] (breakable treasure chests),
+  "enemies":[{"x":800,"type":"walker|spitter|brute","hp":14,"attack":4,"speed":50,"pi":2}] (pi = index into
+   platforms for ground foes) or flying {"x":900,"type":"bat","anchor_y":150,...},
+  "boss":{...} with "arena_x" — at least ONE side_scroll level needs a boss,
+  "exit":{"x":4100,"requires_keys":1,"size":1.5} (requires_keys locks the portal until keys collected),
+  final level may end the saga: "ending":true,"ending_title":"PART 2","ending_subtitle":"COMING SOON"}
 racing: {"stages":[{"title":"Circuit name","laps":3,"ai_racers":3,"track":"oval|figure8",
   "boosts":2,"car_speed":150,"ai_speed":135}]}
   (player steers + drifts; checkpoints are generated from the track shape)
@@ -942,8 +960,8 @@ def validate_spec(spec: dict, complexity: int = 1, expected_runtime: str | None 
                     errs.append(f"stage {i+1}: side_scroll level needs platforms")
                 if not (st.get("enemies") or []):
                     errs.append(f"stage {i+1}: needs enemies")
-                if not st.get("boss"):
-                    errs.append(f"stage {i+1}: each side_scroll level needs a dragon boss")
+                if i == 0 and not any((s or {}).get("boss") for s in stages):
+                    errs.append("side_scroll game needs a boss on at least one level")
                 continue
             if not (st.get("enemies") or []):
                 errs.append(f"stage {i+1}: action RPG region needs enemies")
