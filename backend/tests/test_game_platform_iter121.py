@@ -55,12 +55,13 @@ class TestRegistries:
         assert r.status_code == 200, r.text[:200]
         regs = r.json()["registries"]
         names = {x["registry"] for x in regs}
-        # 9 seeded + assets + projects = 11
+        # 12 seeded + assets + projects = 14
         expected_seeded = {"runtimes", "renderers", "templates", "gameplay_systems", "economy",
-                          "fire_hooks", "ai_capabilities", "validators", "plugins"}
+                          "fire_hooks", "ai_capabilities", "validators", "plugins",
+                          "creature_rpg_extensions", "asset_roles", "animation_states"}
         assert expected_seeded.issubset(names), f"missing: {expected_seeded - names}"
         assert "assets" in names and "projects" in names
-        assert len(regs) == 11, f"expected 11 registries, got {len(regs)}: {names}"
+        assert len(regs) == 14, f"expected 14 registries, got {len(regs)}: {names}"
 
     def test_non_founder_forbidden(self, non_founder_headers):
         if non_founder_headers is None:

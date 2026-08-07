@@ -49,6 +49,9 @@ RUNTIME_LABELS = {
 }
 # Template registry — every catalog family maps to exactly one vetted template.
 TEMPLATE_IDS = {rt: f"tpl_{rt}_v1" for rt in RUNTIMES + list(SCAFFOLDED_RUNTIMES)}
+# Single authoritative enum string for LLM prompts — NEVER hardcode runtime
+# lists in prompt text; derive from RUNTIMES so new runtimes propagate.
+RUNTIME_ENUM = "|".join(RUNTIMES)
 WIN_LOSS = {
     "card_battle": ("defeat the enemy (enemy HP to 0)", "player HP reaches 0"),
     "tower_defense": ("survive every wave with the base standing", "base HP reaches 0"),
@@ -483,7 +486,7 @@ async def showcase_similarity_for(ident: dict, exclude_id: str = None) -> dict:
 EST_SYSTEM = """You are ORAi's game designer. Turn a game request into a short build plan.
 Reply ONLY valid JSON:
 {"title": "game name", "concept": "2-3 sentence pitch",
- "runtime": "quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room|card_battle|tower_defense|match3|rpg|racing|farming|city_builder|roguelike|tactics|idle|visual_novel|fishing|turn_based_creature_rpg",
+ "runtime": "__RUNTIME_ENUM__",
  "features": ["4-7 short planned features"],
  "mechanics": ["gameplay mechanics this game will include"],
  "unsupported_mechanics": ["requested mechanics the chosen runtime cannot do, [] if none"],
@@ -492,7 +495,7 @@ Reply ONLY valid JSON:
  "presentation_mode": "for dodge_collect pick: road_3d|lane_runner|vertical|space_flight|arena_360|tunnel (action/racing/runner -> road_3d or lane_runner)",
  "visual_style_summary": "1-2 sentences: art direction, palette, atmosphere",
  "player_appearance": "e.g. neon hover vehicle",
- "player_representation": "REQUIRED — pick ONE that fits the theme. dodge_collect: hovercraft|spaceship|hover_bike|runner|rolling_orb · top_down: explorer|stealth_operative|robot|knight|wizard|rolling_orb · platformer: platform_hero|explorer|knight|robot|wizard · puzzle_room: puzzle_cursor · rhythm: rhythm_notes · memory/matching/sorting: cards · quiz_adventure: puzzle_cursor · turn_based_creature_rpg: dragon_warden. NEVER default to spaceship unless the game is actually set in space.",
+ "player_representation": "REQUIRED — pick ONE that fits the theme. dodge_collect: hovercraft|spaceship|hover_bike|runner|rolling_orb · top_down: explorer|stealth_operative|robot|knight|wizard|rolling_orb · platformer: platform_hero|explorer|knight|robot|wizard · puzzle_room: puzzle_cursor · rhythm: rhythm_notes · memory/matching/sorting: cards · quiz_adventure: puzzle_cursor · turn_based_creature_rpg: dragon_warden · action_rpg_2_5d: wizard|knight|archer|rogue|dragon_rider|mage. NEVER default to spaceship unless the game is actually set in space.",
  "environment_themes": ["planned stage environments e.g. cyber_city, space, sunset, crystal"],
  "hazard_types_planned": 3, "pickup_types_planned": 2, "stage_visual_groups": 4,
  "est_play_minutes": "e.g. 10-20",
@@ -506,6 +509,7 @@ RUNTIME ROUTING — pick the runtime whose GAMEPLAY matches the request:
 - match-3/gem swap/tile matching puzzle -> match3
 - RPG/quests+NPCs+leveling (no creature catching) -> rpg
 - creature collection/monster taming/catch & battle creatures/JRPG party combat/wizard RPG with companions -> turn_based_creature_rpg
+- 2.5D action RPG/real-time melee+spell combat/hack-and-slash/dodge-roll/souls-like/zelda-like -> action_rpg_2_5d
 - racing/karts/laps -> racing
 - farming/planting/harvest -> farming
 - city building/settlement economy -> city_builder
@@ -523,6 +527,7 @@ RUNTIME ROUTING — pick the runtime whose GAMEPLAY matches the request:
 NEVER route an action/movement game into rhythm, quiz or matching. If the exact requested genre
 is unsupported, choose the CLOSEST supported runtime and record it in "substitutions" honestly.
 stages: 1 for complexity 1, 3-5 for complexity 2, 5+ for complexity 3."""
+EST_SYSTEM = EST_SYSTEM.replace("__RUNTIME_ENUM__", RUNTIME_ENUM)
 
 
 async def create_estimate(body: dict, current: dict) -> dict:
@@ -835,11 +840,56 @@ VISUAL SCALING (canvas runtimes: dodge_collect, top_down, platformer):
   Stages must be visually and mechanically distinct — never identical stages with only faster numbers."""
 
 
+def parse_spec_json(raw: str) -> dict:
+    """Salvage a JSON object from LLM output: direct parse -> strip code
+    fences -> extract the outermost balanced {...} block. {} on failure."""
+    txt = str(raw or "").strip()
+    if not txt:
+        return {}
+    for candidate in (txt, txt.strip("`").lstrip("json").strip()):
+        try:
+            obj = json.loads(candidate)
+            return obj if isinstance(obj, dict) else {}
+        except Exception:  # noqa: BLE001
+            pass
+    start = txt.find("{")
+    if start == -1:
+        return {}
+    depth, in_str, esc = 0, False, False
+    for i in range(start, len(txt)):
+        c = txt[i]
+        if esc:
+            esc = False
+            continue
+        if c == "\\":
+            esc = True
+        elif c == '"':
+            in_str = not in_str
+        elif not in_str:
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        obj = json.loads(txt[start:i + 1])
+                        return obj if isinstance(obj, dict) else {}
+                    except Exception:  # noqa: BLE001
+                        return {}
+    return {}
+
+
 def validate_spec(spec: dict, complexity: int = 1, expected_runtime: str | None = None) -> list:
     """Automated tests — every failure blocks approval submission."""
     errs = []
-    if spec.get("runtime") not in RUNTIMES:
-        errs.append("unknown runtime")
+    if not spec:
+        errs.append("spec generation produced no valid JSON (empty or truncated model output)")
+        return errs
+    rt = spec.get("runtime")
+    if rt not in RUNTIMES:
+        errs.append(f"spec runtime '{rt}' is not in the engine runtime registry "
+                    f"({', '.join(RUNTIMES[:6])}, …)" if rt else
+                    "spec is missing the 'runtime' field")
         return errs
     if expected_runtime and spec.get("runtime") != expected_runtime:
         errs.append(f"spec runtime '{spec.get('runtime')}' does not match the approved plan runtime "
@@ -1092,8 +1142,11 @@ async def _run_build(game_id: str):
     try:
         await _log(game_id, "designing", f"AI Power {game['ai_power']} → {t['label']} ({t['passes']} passes)")
         plan = game.get("plan") or {}
+        # Reasoning models spend most of the completion budget on internal
+        # thinking — give spec generation real headroom or JSON gets truncated.
+        spec_tokens = max(t["max_tokens"] * 3, 16000)
         user_msg = (
-            f"Request: {game['request']}\nRuntime: {game['runtime']} (MANDATORY — the spec runtime must be exactly this)\n"
+            f"Request: {str(game['request'])[:4000]}\nRuntime: {game['runtime']} (MANDATORY — the spec runtime must be exactly this)\n"
             f"Complexity: {game['complexity']} — {COMPLEXITY_LEVELS[game['complexity']]}\n"
             f"COMPLEXITY CONTRACT (must all be present in the spec): {', '.join(complexity_features(game['complexity']))}\n"
             f"Stages required: {plan.get('stages') or min_stages_for(game['complexity'])}\n"
@@ -1104,13 +1157,12 @@ async def _run_build(game_id: str):
             + "\n".join(f"{k}: {v}" for k, v in (game.get("options") or {}).items() if v)
             + (f"\nCourse context: {json.dumps(game['course_context'])[:400]}" if game.get("course_context") else ""))
         await _log(game_id, "generating_spec", "Writing game specification in the isolated build workspace")
-        raw = await call_llm(SPEC_SYSTEM, user_msg, power=game["ai_power"], json_mode=True)
+        raw = await call_llm(SPEC_SYSTEM, user_msg, power=game["ai_power"], json_mode=True,
+                             max_tokens=spec_tokens)
         cost += t["est_cost_per_pass"]
-        try:
-            spec = json.loads(raw)
-        except Exception:  # noqa: BLE001 — empty/invalid first pass → refinement retries
+        spec = parse_spec_json(raw)
+        if not spec:
             await _log(game_id, "refining", "First spec pass returned no valid JSON — retrying")
-            spec = {}
         errs = validate_spec(spec, game["complexity"], expected_runtime=game.get("runtime"))
         # refinement passes: fix validation errors / review quality
         for p in range(max(t["passes"] - 1, 1 if errs else 0)):
@@ -1122,12 +1174,13 @@ async def _run_build(game_id: str):
                 user_msg + f"\n\nPrevious spec:\n{json.dumps(spec)[:6000]}\n\n"
                 + (f"FIX these validation errors: {errs}" if errs
                    else "Review and improve: educational accuracy, difficulty curve, clarity, accessibility. Return the full improved spec."),
-                power=game["ai_power"], json_mode=True)
+                power=game["ai_power"], json_mode=True, max_tokens=spec_tokens)
             cost += t["est_cost_per_pass"]
-            try:
-                spec = json.loads(raw)
-            except Exception:  # noqa: BLE001
-                pass
+            fixed = parse_spec_json(raw)
+            if fixed:
+                if not fixed.get("runtime"):
+                    fixed["runtime"] = game["runtime"]
+                spec = fixed
             errs = validate_spec(spec, game["complexity"], expected_runtime=game.get("runtime"))
         if not errs and game["ai_power"] >= 7 and spec.get("runtime") in ("dodge_collect", "top_down", "platformer"):
             await _log(game_id, "art_direction", "AI Power 7+ — art direction, asset planning & stage-variation pass")
@@ -1138,10 +1191,10 @@ async def _run_build(game_id: str):
                     "per-stage environments/hazard_types/formations (and modes where fitting), better balance and pacing. "
                     "Keep the SAME runtime, at least the same stage count, and every complexity requirement. "
                     "Return the FULL improved spec JSON.\nCURRENT SPEC: " + json.dumps(spec)[:7000],
-                    power=game["ai_power"], json_mode=True)
+                    power=game["ai_power"], json_mode=True, max_tokens=spec_tokens)
                 cost += t["est_cost_per_pass"]
-                spec2 = json.loads(raw2)
-                if not validate_spec(spec2, game["complexity"]):
+                spec2 = parse_spec_json(raw2)
+                if spec2 and not validate_spec(spec2, game["complexity"]):
                     spec = spec2
             except Exception:  # noqa: BLE001
                 pass

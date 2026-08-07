@@ -18,6 +18,8 @@ from services.game_platform.system_registry import (
     system_registry, economy_registry, fire_hook_registry, plugin_registry)
 from services.game_platform.validation_registry import validation_registry, run_validation
 from services.game_platform.capability_registry import capability_registry, capability_status
+from services.game_platform.asset_animation_foundation import (
+    asset_role_registry, animation_state_registry, asset_profile)
 from services.game_platform import planner, pipeline, diagnostics
 from services.game_platform.creature_ext import (
     creature_ext_registry, apply_evolution, session_action, trade_action,
@@ -33,6 +35,7 @@ REGISTRIES: dict[str, Registry] = {
     "economy": economy_registry, "fire_hooks": fire_hook_registry,
     "ai_capabilities": capability_registry, "validators": validation_registry,
     "plugins": plugin_registry, "creature_rpg_extensions": creature_ext_registry,
+    "asset_roles": asset_role_registry, "animation_states": animation_state_registry,
 }
 
 
@@ -118,6 +121,12 @@ async def runtime_catalog(current: CurrentUser):
     return {"families": out,
             "counts": {m: sum(1 for f in out if f["maturity"] == m)
                        for m in ("generatable", "partial", "foundation")}}
+
+
+@router.get("/asset-profile/{family}")
+async def family_asset_profile(family: str, current: CurrentUser):
+    require_founder(current)
+    return await asset_profile(family)
 
 
 @router.post("/recommend")

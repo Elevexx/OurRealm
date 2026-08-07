@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from services.llm_router import tier
 from services.chat_conversations import call_openai_chat
 from services.runtime_selection import select_best_runtime
-from services.game_studio import (RUNTIMES, RUNTIME_LABELS, RUNTIME_MECHANICS,
+from services.game_studio import (RUNTIMES, RUNTIME_LABELS, RUNTIME_MECHANICS, RUNTIME_ENUM,
                                   SCAFFOLDED_RUNTIMES, route_runtime, detect_unsupported)
 from services.game_assets import SLOTS, PROFILES, profile_for, ART_QUALITY
 from services import asset_library
@@ -97,13 +97,14 @@ Reply ONLY valid JSON:
  "cinematic_requirements":["..."], "promotional_media_requirements":["cover art etc"],
  "accessibility_requirements":["..."],
  "requested_mechanics":["mechanics the request explicitly asks for"],
- "runtime":"pick the closest gameplay family from: quiz_adventure|matching|sorting|memory|rhythm|top_down|platformer|dodge_collect|puzzle_room|card_battle|tower_defense|match3|rpg|racing|farming|city_builder|roguelike|tactics|idle|visual_novel|fishing|turn_based_creature_rpg — exploration/adventure worlds -> top_down, action/runner/collecting -> dodge_collect, creature collecting/monster taming/JRPG party combat -> turn_based_creature_rpg",
+ "runtime":"pick the closest gameplay family from: __RUNTIME_ENUM__ — exploration/adventure worlds -> top_down, action/runner/collecting -> dodge_collect, creature collecting/monster taming/JRPG party combat -> turn_based_creature_rpg, real-time melee+spell action RPG/hack-and-slash -> action_rpg_2_5d",
  "est_play_minutes":"e.g. 5-10"}
 RULES:
 - Only fill sections that genuinely apply to THIS game family. A card/board/match-3/quiz
   game must NOT get platformer fields (levels/worlds/jumping) forced in — leave them [] or "".
 - Size everything to the given complexity (1 = one-screen minimal, 10 = deep AAA scope).
 - No prose outside the JSON."""
+PLAN_SYSTEM = PLAN_SYSTEM.replace("__RUNTIME_ENUM__", RUNTIME_ENUM)
 
 
 # ── Runtime recommendation (deterministic + LLM-informed, never silent) ─
