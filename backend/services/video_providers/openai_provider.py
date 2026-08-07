@@ -46,49 +46,189 @@ class OpenAIVideoProvider(VideoProvider):
 
     async def create_job(self, prompt, model, seconds, size):
         async with httpx.AsyncClient(timeout=60) as c:
-            r = await c.post(f"{BASE}/videos", headers=_headers(),
-                             json={"model": model, "prompt": prompt[:2000],
-                                   "seconds": str(int(seconds)), "size": size})
+            r = await c.post(
+                f"{BASE}/videos",
+                headers=_headers(),
+                json={
+                    "model": model,
+                    "prompt": prompt[:2000],
+                    "seconds": str(int(seconds)),
+                    "size": size,
+                },
+            )
+
         if r.status_code >= 400:
-            detail = (r.json().get("error", {}) or {}).get("message", "provider error")[:300]
-            raise RuntimeError(f"Video provider rejected the job: {detail}")
+            try:
+                detail = (
+                    (r.json().get("error") or {}).get("message")
+                    or "provider error"
+                )[:300]
+            except Exception:
+                detail = f"HTTP {r.status_code}: {r.text[:300]}"
+
+            raise RuntimeError(
+                f"Video provider rejected the job: {detail}"
+            )
+
         return r.json()["id"]
 
     async def poll(self, provider_job_id):
-        async with httpx.AsyncClient(timeout=30) as c:
-            r = await c.get(f"{BASE}/videos/{provider_job_id}", headers=_headers())
-        if r.status_code >= 400:
-            return {"status": "failed", "progress": 0, "error": "Could not check job status"}
-        d = r.json()
-        err = (d.get("error") or {}).get("message") if d.get("error") else None
-        return {"status": d.get("status"), "progress": int(d.get("progress") or 0), "error": err}
+        try:
+            async with httpx.AsyncClient(timeout=60) as c:
+                r = await c.get(
+                    f"{BASE}/videos/{provider_job_id}",
+                    headers=_headers(),
+                )
+
+            # Temporary provider/server/rate-limit problems should not
+            # destroy an already-running Sora render.
+            if r.status_code == 429 or r.status_code >= 500:
+                log.warning(
+                    "Sora poll temporary HTTP %s for job %s: %s",
+                    r.status_code,
+                    provider_job_id,
+                    r.text[:300],
+                )
+                return {
+                    "status": "in_progress",
+                    "progress": 0,
+                    "error": None,
+                }
+
+            # Auth/request errors are normally permanent.
+            if r.status_code >= 400:
+                try:
+                    body = r.json()
+                    detail = (
+                        (body.get("error") or {}).get("message")
+                        or f"HTTP {r.status_code}"
+                    )
+                except Exception:
+                    detail = (
+                        f"HTTP {r.status_code}: {r.text[:300]}"
+                    )
+
+                return {
+                    "status": "failed",
+                    "progress": 0,
+                    "error": f"Sora status check failed: {detail}",
+                }
+
+            d = r.json()
+
+            err = None
+            if d.get("error"):
+                err = (d.get("error") or {}).get("message")
+
+            return {
+                "status": d.get("status") or "in_progress",
+                "progress": int(d.get("progress") or 0),
+                "error": err,
+            }
+
+        except (
+            httpx.TimeoutException,
+            httpx.TransportError,
+        ) as exc:
+            log.warning(
+                "Sora poll temporary network error for job %s: %s",
+                provider_job_id,
+                exc,
+            )
+
+            return {
+                "status": "in_progress",
+                "progress": 0,
+                "error": None,
+            }
 
     async def fetch_file(self, provider_job_id):
         async with httpx.AsyncClient(timeout=300) as c:
-            r = await c.get(f"{BASE}/videos/{provider_job_id}/content", headers=_headers())
+            r = await c.get(
+                f"{BASE}/videos/{provider_job_id}/content",
+                headers=_headers(),
+            )
+
         if r.status_code >= 400:
-            raise RuntimeError("Could not download the finished video from the provider")
+            try:
+                body = r.json()
+                detail = (
+                    (body.get("error") or {}).get("message")
+                    or f"HTTP {r.status_code}"
+                )
+            except Exception:
+                detail = f"HTTP {r.status_code}: {r.text[:300]}"
+
+            raise RuntimeError(
+                f"Could not download the finished video: {detail}"
+            )
+
         return r.content
 
     async def cleanup(self, provider_job_id):
         try:
             async with httpx.AsyncClient(timeout=30) as c:
-                await c.delete(f"{BASE}/videos/{provider_job_id}", headers=_headers())
-        except Exception as e:  # noqa: BLE001 — cleanup is best-effort
+                await c.delete(
+                    f"{BASE}/videos/{provider_job_id}",
+                    headers=_headers(),
+                )
+        except Exception as e:
             log.warning("provider cleanup failed: %s", e)
 
     async def health(self):
-        """FREE probe: invalid `seconds` fails validation AFTER model access
-        is checked — no job is created, nothing is billed."""
+        """
+        Free validation probe:
+        invalid seconds should fail after model access is checked.
+        """
         if not os.environ.get("OPENAI_API_KEY"):
-            return {"ok": False, "detail": "API key not configured"}
+            return {
+                "ok": False,
+                "detail": "API key not configured",
+            }
+
         try:
             async with httpx.AsyncClient(timeout=20) as c:
-                r = await c.post(f"{BASE}/videos", headers=_headers(),
-                                 json={"model": "sora-2", "prompt": "health probe", "seconds": "999"})
-            body = r.json().get("error", {}) if r.status_code >= 400 else {}
-            if r.status_code == 400 and body.get("param") == "seconds":
-                return {"ok": True, "detail": "Model access confirmed (free validation probe)"}
-            return {"ok": False, "detail": str(body.get("message") or f"HTTP {r.status_code}")[:200]}
-        except Exception as e:  # noqa: BLE001
-            return {"ok": False, "detail": f"Connectivity error: {type(e).__name__}"}
+                r = await c.post(
+                    f"{BASE}/videos",
+                    headers=_headers(),
+                    json={
+                        "model": "sora-2",
+                        "prompt": "health probe",
+                        "seconds": "999",
+                    },
+                )
+
+            body = (
+                r.json().get("error", {})
+                if r.status_code >= 400
+                else {}
+            )
+
+            if (
+                r.status_code == 400
+                and body.get("param") == "seconds"
+            ):
+                return {
+                    "ok": True,
+                    "detail": (
+                        "Model access confirmed "
+                        "(free validation probe)"
+                    ),
+                }
+
+            return {
+                "ok": False,
+                "detail": str(
+                    body.get("message")
+                    or f"HTTP {r.status_code}"
+                )[:200],
+            }
+
+        except Exception as e:
+            return {
+                "ok": False,
+                "detail": (
+                    f"Connectivity error: "
+                    f"{type(e).__name__}"
+                ),
+            }

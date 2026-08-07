@@ -131,10 +131,15 @@ function Detail({ resId, onChanged }) {
               <input type="checkbox" checked={premium} onChange={(e) => setPremium(e.target.checked)} data-testid="detail-approve-premium" />
               unlock premium
             </label>
-            <button type="button" className="or-btn text-xs" style={{ background: "#00A550", color: "#fff" }}
-              onClick={() => act("approve_invite", { approve_premium: premium })} data-testid="detail-approve">
-              <Check size={12} />&nbsp;Approve &amp; Send Invite
-            </button>
+            <button
+  type="button"
+  className="or-btn text-xs"
+  style={{ background: "#00A550", color: "#fff" }}
+  onClick={() => act("approve", { approve_premium: premium })}
+  data-testid="detail-approve"
+>
+  <Check size={12} />&nbsp;Approve Reservation
+</button>
             <button type="button" className="or-chip text-xs" onClick={() => {
               const items = docItems.split("\n").map((i) => i.trim()).filter(Boolean);
               if (!items.length) { toast.error("List the requested documents below first"); return; }

@@ -358,25 +358,21 @@ export default function Waitlist() {
           <div className="space-y-2">
             <input className="or-input" type="email" placeholder="Reservation email" value={statusEmail}
               onChange={(e) => setStatusEmail(e.target.value)} data-testid="status-email-input" />
-            {!statusCodeSent ? (
-              <button type="button" className="or-btn w-full" style={{ background: gold, color: "#141414" }}
-                disabled={busy || !statusEmail.includes("@")} onClick={async () => {
-                  setBusy(true); setErr("");
-                  try { await apiClient.post("/waitlist/public/status/request-code", { email: statusEmail }); setStatusCodeSent(true); }
-                  catch (e) { setErr(e?.response?.data?.detail || "Failed"); } finally { setBusy(false); }
-                }} data-testid="status-request-code-btn">
-                {busy ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}&nbsp;Email Me an Access Code
-              </button>
-            ) : (
-              <>
-                <input className="or-input text-center tracking-[0.4em]" maxLength={6} placeholder="••••••" value={statusCode}
-                  onChange={(e) => setStatusCode(e.target.value.replace(/\D/g, ""))} data-testid="status-code-input" />
-                <button type="button" className="or-btn w-full" style={{ background: gold, color: "#141414" }}
-                  disabled={busy || statusCode.length !== 6} onClick={statusLogin} data-testid="status-login-btn">
-                  {busy ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}&nbsp;View My Status
-                </button>
-              </>
-            )}
+            <button
+  type="button"
+  className="or-btn w-full"
+  style={{ background: gold, color: "#141414" }}
+  disabled={busy || !statusEmail.includes("@")}
+  onClick={statusLogin}
+  data-testid="status-login-btn"
+>
+  {busy ? (
+    <Loader2 size={14} className="animate-spin" />
+  ) : (
+    <Clock size={14} />
+  )}
+  &nbsp;View My Status
+</button>
             {err && <div className="text-sm" style={{ color: "#FF8080" }} data-testid="status-error">{err}</div>}
             <button type="button" className="or-chip text-xs w-full" onClick={() => setView("landing")}>← Back</button>
           </div>

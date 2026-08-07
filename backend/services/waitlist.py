@@ -490,23 +490,28 @@ async def post_message(res: dict, text: str, *, from_admin: bool = False,
 
 # ── Invitations ─────────────────────────────────────────────────────
 async def create_invite(res: dict, actor: dict) -> dict:
-    token = secrets.token_urlsafe(24)
-    invite = {"token_hash": _hash(token), "created_at": _now_iso(),
-              "expires_at": (_now() + timedelta(days=7)).isoformat(),
-              "created_by": actor.get("username"), "used": False}
-    await db.waitlist_reservations.update_one({"id": res["id"]}, {
-        "$set": {"invite": invite, "status": "invite_sent", "updated_at": _now_iso()},
-        "$push": {"timeline": {"at": _now_iso(), "event": "invite_sent",
-                               "by": actor.get("username")}}})
-    from services.mailer import send_email
-    import os
-    origin = os.environ.get("PUBLIC_APP_ORIGIN") or ""
-    link = f"{origin}/signup?invite={token}" if origin else f"/signup?invite={token}"
-    await send_email(res["email"], "You're invited to join OurRealm!",
-                     f"Your reservation for @{res['username']} was approved. "
-                     f"Complete your signup within 7 days:\n{link}",
-                     kind="waitlist_invite")
-    return {"token": token, "expires_at": invite["expires_at"]}
+    await db.waitlist_reservations.update_one(
+        {"id": res["id"]},
+        {
+            "$set": {
+                "status": "approved",
+                "approved_at": _now_iso(),
+                "updated_at": _now_iso(),
+            },
+            "$push": {
+                "timeline": {
+                    "at": _now_iso(),
+                    "event": "approved",
+                    "by": actor.get("username"),
+                }
+            },
+        },
+    )
+
+    return {
+        "status": "approved",
+        "reservation_id": res["id"],
+    }
 
 
 async def validate_invite(token: str) -> dict:
@@ -549,14 +554,18 @@ async def admin_action(res_id: str, actor: dict, action: str,
     event = action
     out: dict = {"ok": True}
 
-    if action == "approve_invite":
+    if action in ("approve", "approve_invite"):
         if res.get("verification") and res["verification"].get("status") == "submitted":
             sets["verification.status"] = "approved"
+
         if payload.get("approve_premium"):
             sets["premium_approved"] = True
-        inv = await create_invite(res, actor)
-        out["invite_expires_at"] = inv["expires_at"]
-        sets["status"] = "invite_sent"
+
+        sets["status"] = "approved"
+        sets["approved_at"] = now
+        event = "approved"
+        out["status"] = "approved"
+
     elif action == "request_documents":
         settings = (await get_settings())["published"]
         days = int(payload.get("deadline_days") or settings.get("doc_deadline_days") or 14)

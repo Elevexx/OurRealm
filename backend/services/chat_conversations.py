@@ -33,10 +33,10 @@ logger = logging.getLogger("ourrealm.chat_conversations")
 
 MAX_HISTORY_TURNS = 40  # Cap context window — older turns get trimmed.
 MAX_MESSAGE_CHARS = 8000
-DEFAULT_MODEL = "gpt-5-mini"
+DEFAULT_MODEL = os.getenv("OPENAI_DEFAULT_MODEL", "gpt-5-mini")
 # Deep-reasoning escalation — only for the founder's ORAi chat when the
 # message is clearly a complex coding/architecture/planning task.
-REASONING_MODEL = "gpt-5.6-terra"
+REASONING_MODEL = os.getenv("OPENAI_REASONING_MODEL", "gpt-5")
 COMPLEX_TASK_RE = re.compile(
     r"\b(debug|refactor|architect(?:ure)?|stack ?trace|traceback|algorithm|"
     r"code review|write (?:the )?code|implement|optimi[sz]e|database schema|"
@@ -68,7 +68,9 @@ def pick_openai_model(cfg_model, message):
     return base
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 600
-OPENAI_TIMEOUT_SECONDS = 45.0
+OPENAI_TIMEOUT_SECONDS = float(
+    os.getenv("OPENAI_TIMEOUT_SECONDS", "180")
+)
 
 VARIABLE_PATTERN = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 
@@ -200,20 +202,7 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
                            temperature: Optional[float] = None,
                            max_tokens: Optional[int] = None,
                            json_mode: bool = False) -> Dict[str, Any]:
-    """Call OpenAI Chat Completions with the full messages array.
-    Returns {content, model, usage, finish_reason}.
-
-    Phase 3.7.3 — graceful provider failure handling:
-      • Tries the configured `OPENAI_API_KEY` directly first.
-      • On 401/403/transport failure, falls back to the Emergent
-        Universal LLM Key (`EMERGENT_LLM_KEY`) via `emergentintegrations`
-        so prod stays online even when the OpenAI key is rotated/revoked.
-      • All upstream auth / connectivity failures collapse to a single
-        sanitized 503 with detail:
-            "ORAi LLM provider is unavailable or misconfigured."
-        so the founder UI never sees raw OpenAI error shells or stalls
-        long enough for the reverse proxy to Cloudflare-502 the request.
-    """
+    """Call OpenAI first, then use Emergent as a fallback."""
     if not messages:
         raise HTTPException(status_code=400, detail="No messages to send.")
 
@@ -222,60 +211,115 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
         if not key:
             return None
         if not key.isascii():
-            bad = [f"pos {i}: U+{ord(c):04X}" for i, c in enumerate(key) if ord(c) > 127][:3]
-            logger.error("ORAi LLM: %s contains non-ASCII characters (%s) — likely a paste "
-                         "corruption in the environment variable. Key skipped.", name, "; ".join(bad))
+            logger.error(
+                "ORAi LLM: %s contains invalid characters; key skipped.",
+                name,
+            )
             return None
         return key
 
-    primary_key = _clean_key(os.environ.get("OPENAI_API_KEY"), "OPENAI_API_KEY")
-    fallback_key = _clean_key(os.environ.get("EMERGENT_LLM_KEY"), "EMERGENT_LLM_KEY")
+    primary_key = _clean_key(
+        os.environ.get("OPENAI_API_KEY"),
+        "OPENAI_API_KEY",
+    )
+    fallback_key = _clean_key(
+        os.environ.get("EMERGENT_LLM_KEY"),
+        "EMERGENT_LLM_KEY",
+    )
+
     if not primary_key and not fallback_key:
-        logger.error("ORAi LLM call: no OPENAI_API_KEY and no EMERGENT_LLM_KEY configured.")
-        raise HTTPException(status_code=503, detail="ORAi LLM provider is unavailable or misconfigured.")
+        logger.error(
+            "ORAi LLM call: no OPENAI_API_KEY or EMERGENT_LLM_KEY configured."
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="ORAi LLM provider is unavailable or misconfigured.",
+        )
 
     chosen_model = model or DEFAULT_MODEL
     if chosen_model in LEGACY_MODELS:
-        chosen_model = DEFAULT_MODEL  # legacy configs stored in DB → current default
+        chosen_model = DEFAULT_MODEL
+
     body: Dict[str, Any] = {
         "model": chosen_model,
         "messages": messages,
-        "temperature": float(temperature) if temperature is not None else DEFAULT_TEMPERATURE,
-        # gpt-5.x models reject the legacy `max_tokens` parameter.
-        "max_completion_tokens": int(max_tokens) if max_tokens is not None else DEFAULT_MAX_TOKENS,
+        "temperature": (
+            float(temperature)
+            if temperature is not None
+            else DEFAULT_TEMPERATURE
+        ),
+        "max_completion_tokens": (
+            int(max_tokens)
+            if max_tokens is not None
+            else DEFAULT_MAX_TOKENS
+        ),
     }
+
     if chosen_model.startswith("gpt-5"):
-        body.pop("temperature", None)  # gpt-5 family only supports the default temperature
+        body.pop("temperature", None)
+
     if json_mode:
         body["response_format"] = {"type": "json_object"}
-    url = "https://api.openai.com/v1/chat/completions"
 
-    # ── Attempt 1: direct OpenAI with our own key ─────────────────────
+    url = "https://api.openai.com/v1/chat/completions"
     last_error: Optional[str] = None
+
+    # Attempt 1: direct OpenAI with the user's own key.
     if primary_key:
         try:
-            async with httpx.AsyncClient(timeout=OPENAI_TIMEOUT_SECONDS) as client:
+            async with httpx.AsyncClient(
+                timeout=OPENAI_TIMEOUT_SECONDS
+            ) as client:
                 resp = await client.post(
                     url,
-                    headers={"Authorization": f"Bearer {primary_key}", "Content-Type": "application/json"},
+                    headers={
+                        "Authorization": f"Bearer {primary_key}",
+                        "Content-Type": "application/json",
+                    },
                     json=body,
                 )
+
             if resp.status_code == 429:
-                raise HTTPException(status_code=429, detail=f"OpenAI rate-limited: {resp.text[:200]}")
-            if resp.status_code in (401, 403):
-                logger.warning("ORAi LLM openai rejected auth (%s): %s — trying Emergent fallback.",
-                               resp.status_code, resp.text[:300])
+                logger.warning(
+                    "ORAi LLM OpenAI rate-limited or out of credits; "
+                    "trying Emergent fallback."
+                )
+                last_error = "openai_429"
+
+            elif resp.status_code in (401, 403):
+                logger.warning(
+                    "ORAi LLM OpenAI rejected authentication (%s): %s; "
+                    "trying Emergent fallback.",
+                    resp.status_code,
+                    resp.text[:300],
+                )
                 last_error = f"openai_{resp.status_code}"
+
             elif resp.status_code >= 400:
-                logger.warning("ORAi LLM openai returned %s: %s", resp.status_code, resp.text[:200])
+                logger.warning(
+                    "ORAi LLM OpenAI returned %s: %s; "
+                    "trying Emergent fallback.",
+                    resp.status_code,
+                    resp.text[:200],
+                )
                 last_error = f"openai_{resp.status_code}"
+
             else:
                 try:
                     data = resp.json()
                     choice = (data.get("choices") or [{}])[0]
-                    msg = (choice.get("message") or {}).get("content") or ""
-                    logger.info("ORAi routing: requested=%s returned=%s provider=openai",
-                                chosen_model, data.get("model"))
+                    msg = (
+                        (choice.get("message") or {}).get("content")
+                        or ""
+                    )
+
+                    logger.info(
+                        "ORAi routing: requested=%s returned=%s "
+                        "provider=openai",
+                        chosen_model,
+                        data.get("model"),
+                    )
+
                     return {
                         "content": msg,
                         "model": data.get("model"),
@@ -284,58 +328,108 @@ async def call_openai_chat(messages: List[Dict[str, str]], *,
                         "finish_reason": choice.get("finish_reason"),
                         "provider": "openai",
                     }
-                except Exception:  # noqa: BLE001
-                    logger.warning("ORAi LLM openai returned non-JSON")
-                    last_error = "openai_non_json"
-        except HTTPException:
-            raise
-        except httpx.HTTPError as e:
-            logger.warning("ORAi LLM openai transport error: %s", e)
-            last_error = "openai_transport"
-        except Exception as e:  # noqa: BLE001 — e.g. UnicodeEncodeError from a corrupted key
-            logger.error("ORAi LLM openai unexpected error (%s): %s — trying Emergent fallback.",
-                         type(e).__name__, str(e)[:200])
-            last_error = f"openai_{type(e).__name__}"
 
-    # ── Attempt 2: Emergent universal key via emergentintegrations ────
+                except Exception:  # noqa: BLE001
+                    logger.warning(
+                        "ORAi LLM OpenAI returned invalid/non-JSON data; "
+                        "trying Emergent fallback."
+                    )
+                    last_error = "openai_non_json"
+
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "ORAi LLM OpenAI transport error: %s; "
+                "trying Emergent fallback.",
+                exc,
+            )
+            last_error = "openai_transport"
+
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "ORAi LLM OpenAI unexpected error (%s): %s; "
+                "trying Emergent fallback.",
+                type(exc).__name__,
+                str(exc)[:200],
+            )
+            last_error = f"openai_{type(exc).__name__}"
+
+    # Attempt 2: Emergent Universal Key fallback.
     if fallback_key:
         try:
-            from emergentintegrations.llm.chat import LlmChat, UserMessage  # local import — optional dep
+            from emergentintegrations.llm.chat import (
+                LlmChat,
+                UserMessage,
+            )
+
             system_text = ""
             user_turns: List[str] = []
-            for m in messages:
-                if m.get("role") == "system":
-                    system_text += (m.get("content") or "") + "\n"
+
+            for item in messages:
+                if item.get("role") == "system":
+                    system_text += (item.get("content") or "") + "\n"
                 else:
-                    role = m.get("role") or "user"
-                    user_turns.append(f"[{role}]\n{m.get('content') or ''}")
-            combined = "\n\n".join(user_turns) or (messages[-1].get("content") or "")
+                    role = item.get("role") or "user"
+                    user_turns.append(
+                        f"[{role}]\n{item.get('content') or ''}"
+                    )
+
+            combined = "\n\n".join(user_turns)
+            if not combined:
+                combined = messages[-1].get("content") or ""
+
+            fallback_model = os.getenv(
+                "EMERGENT_FALLBACK_MODEL",
+                "gpt-5-mini",
+            )
+
             chat = LlmChat(
                 api_key=fallback_key,
-                session_id=f"orion-fallback-{abs(hash(combined)) % 10_000_000}",
-                system_message=system_text.strip() or "You are ORAi, the founder assistant for OurRealm.",
-            ).with_model("openai", "gpt-5-mini")
-            reply = await chat.send_message(UserMessage(text=combined))
+                session_id=(
+                    "orion-fallback-"
+                    f"{abs(hash(combined)) % 10_000_000}"
+                ),
+                system_message=(
+                    system_text.strip()
+                    or "You are ORAi, the founder assistant for OurRealm."
+                ),
+            ).with_model("openai", fallback_model)
+
+            reply = await chat.send_message(
+                UserMessage(text=combined)
+            )
+
             logger.info(
-    "ORAi routing: requested=%s returned=gpt-5-mini provider=emergent (FALLBACK)",
-    chosen_model,
-)
+                "ORAi routing: requested=%s returned=%s "
+                "provider=emergent (fallback)",
+                chosen_model,
+                fallback_model,
+            )
+
             return {
-                "content": reply if isinstance(reply, str) else str(reply),
-                "model": "gpt-5-mini",
+                "content": (
+                    reply if isinstance(reply, str) else str(reply)
+                ),
+                "model": fallback_model,
                 "requested_model": chosen_model,
                 "usage": {},
                 "finish_reason": "stop",
                 "provider": "emergent",
             }
-        except Exception as e:  # noqa: BLE001
-            logger.warning("ORAi LLM emergent fallback failed: %s", e)
-            last_error = f"emergent:{str(e)[:200]}"
 
-    logger.error("ORAi LLM: all providers failed (last=%s).", last_error)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "ORAi LLM Emergent fallback failed: %s",
+                exc,
+            )
+            last_error = f"emergent:{str(exc)[:200]}"
+
+    logger.error(
+        "ORAi LLM: all providers failed (last=%s).",
+        last_error,
+    )
     raise HTTPException(
         status_code=503,
-        detail=f"ORAi LLM provider failed. Diagnostic: {last_error or 'unknown_error'}",
+        detail="ORAi LLM provider is temporarily unavailable.",
     )
 
 

@@ -86,7 +86,11 @@ async def _tts_bytes(text: str, voice_id: str, speed: float) -> bytes:
         try:
             tts = OpenAITextToSpeech(api_key=key)
             return await tts.generate_speech(
-                text=text[:4000], model="tts-1", voice=voice["_engine_voice"], speed=speed)
+    text=text[:4000],
+    model="tts-1",
+    voice=voice["_engine_voice"],
+    speed=speed,
+)
         except Exception as e:  # try next key
             last_err = e
             log.warning("ORAi voice TTS failed with one key: %s", e)

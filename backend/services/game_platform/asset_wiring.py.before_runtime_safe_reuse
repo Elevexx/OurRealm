@@ -106,99 +106,20 @@ def _tok(t) -> set:
 
 
 async def find_library_match(owner_id: str, game: dict, slot: str):
-    """Reuse only assets that are genuinely compatible with this runtime/game.
-
-    Runtime identity is a hard gate. Theme/subject similarity is then scored.
-    A weak or cross-runtime match is treated as missing so generation or
-    procedural fallback can handle it instead of wiring unrelated artwork.
-    """
+    """Library search BEFORE generation — reuse cross-game assets for the same slot."""
     if ga.SLOTS[slot]["kind"] == "audio":
         return None
-
-    runtime = str(game.get("runtime") or "").strip().lower()
-    spec = game.get("spec") or {}
-    theme = spec.get("visual_theme") or {}
-
-    environment = str(
-        theme.get("environment")
-        or spec.get("environment")
-        or ""
-    ).strip().lower()
-
-    player_name = str(
-        theme.get("player_name")
-        or theme.get("player")
-        or ""
-    ).strip().lower()
-
-    art_preset = str(game.get("art_preset") or "").strip().lower()
-
     cands = await db.orai_assets.find(
-        {
-            "archived": {"$ne": True},
-            "creator_id": owner_id,
-            "type": "game_asset",
-            "settings.slot": slot,
-        },
-        {"_id": 0},
-    ).sort("created_at", -1).to_list(80)
-
-    want_general = _tok(
-        f"{game.get('title')} {game.get('genre')} "
-        f"{environment} {art_preset}"
-    )
-    want_subject = _tok(player_name)
-
-    best = None
-    best_score = 0.0
-
+        {"archived": {"$ne": True}, "creator_id": owner_id, "type": "game_asset",
+         "settings.slot": slot}, {"_id": 0}).sort("created_at", -1).to_list(80)
+    want = _tok(f"{game.get('title')} {game.get('genre')}")
+    best, bs = None, 0.0
     for a in cands:
-        tags = {str(x).strip().lower() for x in (a.get("tags") or [])}
-
-        # HARD GATE:
-        # Generated game assets are tagged with the runtime that created them.
-        # Never reuse an asset from another executable runtime.
-        if runtime and runtime not in tags:
-            continue
-
-        have_text = (
-            f"{a.get('title')} {a.get('prompt')} "
-            f"{' '.join(str(x) for x in (a.get('tags') or []))}"
-        )
-        have = _tok(have_text)
-
-        general_score = (
-            len(want_general & have) / max(1, len(want_general))
-            if want_general else 0.0
-        )
-
-        subject_score = (
-            len(want_subject & have) / max(1, len(want_subject))
-            if want_subject else 0.0
-        )
-
-        # Character/player slots require some actual subject compatibility.
-        # "same runtime + same slot" is not enough to turn a space explorer
-        # into an old wizard/dragon avatar.
-        if slot in {
-            "player_sprite",
-            "character_portrait",
-            "creature_sprite",
-            "npc_sprite",
-        }:
-            if want_subject and subject_score < 0.34:
-                continue
-            score = (general_score * 0.55) + (subject_score * 0.45)
-        else:
-            score = general_score
-
-        if score > best_score:
-            best = a
-            best_score = score
-
-    # Be intentionally conservative. Generating/falling back is safer than
-    # silently wiring unrelated art into a new game.
-    return best if best is not None and best_score >= 0.55 else None
+        have = _tok(f"{a.get('title')} {a.get('prompt')} {' '.join(str(x) for x in (a.get('tags') or []))}")
+        s = len(want & have) / max(1, len(want))
+        if s > bs:
+            best, bs = a, s
+    return best if best is not None and bs >= 0.4 else None
 
 
 async def wire_assets(game: dict, actor: dict, *, mode: str = "generate_missing",

@@ -1,0 +1,38 @@
+backend/services/llm_router.py:15:AI_POWER_TIERS = {
+backend/services/llm_router.py:31:    provider, model, passes, max_tokens, cost, label = AI_POWER_TIERS[p]
+backend/services/game_blueprints.py:3:never starts a build. Reuses game_studio's vetted runtime registry and
+backend/services/orai_projects.py:17:from services.llm_router import tier, call_llm, AI_POWER_TIERS
+backend/services/game_platform/planner.py:14:from services.game_platform.runtime_registry import recommend_capability_runtime, renderer_registry
+backend/services/game_platform/planner.py:74:    # 6: capability-driven runtime recommendation (registry, reject bad fits)
+backend/services/game_platform/planner.py:124:    doc["platform"] = {"runtime_family": rec["family_id"], "renderer": renderer,
+backend/services/game_platform/diagnostics.py:11:REPORT_CATEGORIES = ["runtime_contract", "capability_detection", "blueprint", "registry",
+backend/services/game_platform/diagnostics.py:57:    fam = (bp.get("platform") or {}).get("runtime_family")
+backend/services/game_platform/diagnostics.py:58:    from services.game_platform.runtime_registry import runtime_registry
+backend/services/game_platform/diagnostics.py:59:    fam_entry = await runtime_registry.get(fam) if fam else None
+backend/services/game_platform/diagnostics.py:60:    cats["registry"] = _c("passed", "platform.runtime_family resolves in the runtime registry") \
+backend/services/game_platform/diagnostics.py:61:        if (not fam or fam_entry) else _c("failed", "platform.runtime_family resolves in the runtime registry",
+backend/services/game_platform/diagnostics.py:62:                                          f"family '{fam}' not found", "platform.runtime_family",
+backend/services/game_platform/diagnostics.py:154:    fam = (bp.get("platform") or {}).get("runtime_family")
+backend/services/game_platform/diagnostics.py:156:        from services.game_platform.runtime_registry import runtime_registry
+backend/services/game_platform/diagnostics.py:157:        if not await runtime_registry.get(fam):
+backend/services/game_platform/diagnostics.py:158:            new_fam = next((f for f, e in (await runtime_registry.all()).items()
+backend/services/game_platform/diagnostics.py:161:                updates["platform.runtime_family"] = new_fam
+backend/services/game_platform/validation_registry.py:8:from services.game_platform.runtime_registry import runtime_registry
+backend/services/game_platform/validation_registry.py:28:    fam = bp.get("platform", {}).get("runtime_family")
+backend/services/game_platform/validation_registry.py:30:        entry = await runtime_registry.get(fam)
+backend/services/game_platform/runtime_registry.py:16:# maturity: generatable = direct vetted engine · partial = approximated with
+backend/services/game_platform/runtime_registry.py:25:RUNTIME_FAMILY_SEED = {
+backend/services/game_platform/runtime_registry.py:75:    "tower_defense": _fam("Tower Defense", "tower_defense", "generatable",
+backend/services/game_platform/runtime_registry.py:157:runtime_registry = Registry("runtimes", RUNTIME_FAMILY_SEED,
+backend/services/game_platform/runtime_registry.py:166:    families = await runtime_registry.all()
+backend/services/game_platform/runtime_registry.py:186:    scored.sort(key=lambda x: (x["score"], x["maturity"] == "generatable"), reverse=True)
+backend/services/game_platform/runtime_registry.py:188:    buildable = [s for s in compatible if s["maturity"] in ("generatable", "partial")]
+backend/services/game_studio.py:364:    return {"runtime_family": RUNTIME_LABELS[rt], "control_model": control, "camera_model": camera,
+backend/services/game_studio.py:388:    if a.get("runtime_family") == b.get("runtime_family"):
+backend/routers/game_platform.py:15:from services.game_platform.runtime_registry import (
+backend/routers/game_platform.py:16:    runtime_registry, renderer_registry, template_registry, recommend_capability_runtime)
+backend/routers/game_platform.py:31:    "runtimes": runtime_registry, "renderers": renderer_registry,
+backend/routers/game_platform.py:115:    fams = await runtime_registry.all()
+backend/routers/game_platform.py:152:                f"{doc['name']} · family={doc['platform']['runtime_family']} · "
+backend/routers/game_platform.py:241:         "platform.runtime_family": 1}).sort("updated_at", -1).to_list(100)
+backend/routers/orai_projects.py:41:            "ai_power_tiers": {k: v[5] for k, v in op.AI_POWER_TIERS.items()},

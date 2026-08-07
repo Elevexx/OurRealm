@@ -37,42 +37,7 @@ def _tokens(text) -> set:
 
 
 def _slist(v, n=20, ln=160):
-    """Normalize optional LLM fields into a clean list of strings.
-
-    A plain string is ONE item, not an iterable of characters.
-    Placeholder values such as "optional" or "none" produce no items.
-    """
-    if v is None:
-        return []
-
-    if isinstance(v, str):
-        values = [v]
-    elif isinstance(v, (list, tuple, set)):
-        values = list(v)
-    else:
-        values = [v]
-
-    placeholders = {
-        "",
-        "optional",
-        "none",
-        "n/a",
-        "na",
-        "no",
-        "skip",
-        "not applicable",
-        "not needed",
-    }
-
-    out = []
-    for x in values:
-        s = str(x or "").strip()
-        normalized = s.lower().strip(" .:-_")
-        if not s or normalized in placeholders:
-            continue
-        out.append(s[:ln])
-
-    return out[:n]
+    return [str(x)[:ln] for x in (v or []) if x][:n]
 
 
 # ── LLM planning prompt (family-agnostic) ────────────────────────────
@@ -156,114 +121,24 @@ def recommend_runtime(request_text: str, llm_hint: str, requested_mechanics: lis
 
 
 def mechanics_support(selected_rt: str, requested: list, llm_unsupported: list) -> dict:
-    runtime_mechanics = RUNTIME_MECHANICS.get(selected_rt, [])
-    rt_tok = _tokens(" ".join(runtime_mechanics))
+    rt_tok = _tokens(" ".join(RUNTIME_MECHANICS.get(selected_rt, [])))
     llm_unsup = _slist(llm_unsupported, 8, 120)
     llm_unsup_tok = [_tokens(m) for m in llm_unsup]
-
-    def deterministically_supported(mechanic: str) -> bool:
-        """Use the vetted runtime contract before trusting LLM guesses."""
-        low = str(mechanic or "").lower()
-        mt = _tokens(low)
-
-        # Normal direct overlap with the runtime's declared mechanics.
-        if mt & rt_tok:
-            return True
-
-        # Natural-language aliases for the existing Platformer Lite runtime.
-        # These do NOT invent new systems; they map wording onto capabilities
-        # already declared in RUNTIME_MECHANICS.
-        if selected_rt == "platformer":
-            # Advanced environmental-puzzle systems are NOT part of the
-            # current Platformer Lite contract. Check these before generic
-            # platform wording so "timed platforms" is not mistaken for
-            # ordinary jump/platform traversal.
-            if re.search(
-                r"\b(puzzle|puzzles|switch|switches|timed platform|timed platforms|"
-                r"door|doors|barrier|barriers)\b",
-                low,
-            ):
-                return False
-
-            if re.search(r"\b(run|running|move|movement)\b", low):
-                return "player movement" in runtime_mechanics
-
-            if re.search(
-                r"\b(jump|jumping|platform traversal|floating platforms?|platforms?)\b",
-                low,
-            ):
-                return (
-                    "jumping" in runtime_mechanics
-                    and "player movement" in runtime_mechanics
-                )
-
-            if re.search(
-                r"\b(collect|collectible|collectibles|reward|rewards|"
-                r"energy core|energy cores|shard|shards)\b",
-                low,
-            ):
-                return "collectibles" in runtime_mechanics
-
-            if re.search(
-                r"\b(portal|portals|goal|exit|finish level|complete level)\b",
-                low,
-            ):
-                return "goal flag" in runtime_mechanics
-
-            if re.search(r"\b(hazard|hazards|avoid hazards?)\b", low):
-                return "hazards" in runtime_mechanics
-
-            if re.search(r"\b(gravity|falling)\b", low):
-                return "gravity" in runtime_mechanics
-
-            if re.search(
-                r"\b(touch|mobile controls?|touch controls?)\b",
-                low,
-            ):
-                return "touch controls" in runtime_mechanics
-
-        return False
-
     supported, unsupported = [], []
-
     for m in _slist(requested, 15, 100):
         mt = _tokens(m)
-
-        # Vetted runtime capability is authoritative.
-        if deterministically_supported(m):
-            supported.append(m)
-            continue
-
-        # Only trust the LLM unsupported list when deterministic capability
-        # cannot establish support.
-        llm_says_unsupported = any(
-            mt == ut
-            or (
-                mt
-                and ut
-                and len(mt & ut) / len(mt | ut) >= 0.6
-            )
-            for ut in llm_unsup_tok
-        )
-
-        if llm_says_unsupported:
+        # LLM explicitly flagged it unsupported → never fake support via token overlap
+        if any(mt == ut or (mt and ut and len(mt & ut) / len(mt | ut) >= 0.6) for ut in llm_unsup_tok):
             unsupported.append(m)
+        elif mt & rt_tok:
+            supported.append(m)
         else:
             unsupported.append(m)
-
-    # Preserve genuinely unsupported LLM findings, but never re-add a
-    # mechanic that the runtime deterministically supports.
     for m in llm_unsup:
-        if deterministically_supported(m):
-            continue
         if m not in unsupported:
             unsupported.append(m)
-
-    return {
-        "supported": supported,
-        "unsupported": unsupported,
-        "runtime_mechanics": runtime_mechanics,
-    }
+    return {"supported": supported, "unsupported": unsupported,
+            "runtime_mechanics": RUNTIME_MECHANICS.get(selected_rt, [])}
 
 
 # ── Asset requirement derivation + library matching ─────────────────

@@ -17,8 +17,20 @@ MECHANIC_PATTERNS = {
                       r"2\.5d", r"\barpg\b"],
     "cooldown_abilities": [r"cooldown", r"ability cooldowns?", r"skill cooldowns?"],
     "top_down_exploration": [r"top[- ]?down", r"overhead (?:view|camera)", r"explore (?:a|the) (?:map|arena|world)"],
-    "platforming": [r"platform(?:er|ing)", r"jump(?:ing)? (?:between|across|over)", r"double jump",
-                    r"side[- ]?scroll", r"wall jump"],
+    "platforming": [
+    r"\bplatform(?:er|ing)\b",
+    r"\bplatform adventure\b",
+    r"\bfloating platforms?\b",
+    r"\bmoving platforms?\b",
+    r"\bdisappearing platforms?\b",
+    r"\bplatform traversal\b",
+    r"\bplatform challenges?\b",
+    r"\bjumps? (?:between|across|over)\b",
+    r"\bjumping (?:between|across|over)\b",
+    r"\bdouble jump\b",
+    r"\bside[- ]?scroll(?:er|ing)?\b",
+    r"\bwall jump\b",
+],
     "puzzle_solving": [r"puzzle", r"riddle", r"escape room", r"brain[- ]?teaser", r"logic (?:challenge|game)",
                        r"solve (?:codes|clues)"],
     "boss_battles": [r"boss(?:es)?\b", r"boss (?:battle|fight)"],
@@ -79,7 +91,10 @@ _M = {
     "rhythm": {"s": {"rhythm_timing"}, "a": set()},
     "top_down": {"s": {"top_down_exploration", "real_time_movement", "stealth", "quests"},
                  "a": {"action_combat", "survival", "shooting", "boss_battles", "inventory_loot"}},
-    "platformer": {"s": {"platforming", "real_time_movement"}, "a": {"boss_battles"}},
+    "platformer": {
+    "s": {"platforming", "real_time_movement"},
+    "a": {"boss_battles", "puzzle_solving"},
+},
     "dodge_collect": {"s": {"real_time_movement"}, "a": {"shooting", "racing"}},
     "puzzle_room": {"s": {"puzzle_solving"}, "a": {"quests"}},
     "card_battle": {"s": {"card_battles", "turn_based_combat"}, "a": {"boss_battles", "cooldown_abilities"}},
@@ -110,10 +125,29 @@ _M = {
 
 def detect_mechanics(text: str) -> list:
     low = " " + str(text or "").lower() + " "
+
+    # Remove explicit negative requirements before mechanic detection.
+    # Example:
+    #   "do not create a quiz"
+    # must NOT be interpreted as requesting quiz_learning.
+    negative_patterns = [
+        r"\bdo not (?:create|make|build|use|include|select)\b[^.\n;]*",
+        r"\bdon't (?:create|make|build|use|include|select)\b[^.\n;]*",
+        r"\bmust not (?:create|make|build|use|include|select|be)\b[^.\n;]*",
+        r"\bshould not (?:create|make|build|use|include|select|be)\b[^.\n;]*",
+        r"\bwithout\b[^.\n;]*",
+        r"\bno\b\s+(?:quiz|trivia|card game|card battle|course|lesson|multiple[- ]choice)[^.\n;]*",
+    ]
+
+    detection_text = low
+    for pat in negative_patterns:
+        detection_text = re.sub(pat, " ", detection_text)
+
     found = []
     for mech, pats in MECHANIC_PATTERNS.items():
-        if any(re.search(p, low) for p in pats):
+        if any(re.search(p, detection_text) for p in pats):
             found.append(mech)
+
     return found
 
 

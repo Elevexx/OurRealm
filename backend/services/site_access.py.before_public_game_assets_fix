@@ -66,16 +66,7 @@ def is_allowed(settings: dict, user: dict | None) -> bool:
     return any(e.get("user_id") == uid for e in settings.get("allowlist", []))
 
 
-WHITELIST = (
-    "/api/auth",
-    "/api/site-access",
-    "/api/admin",
-    "/api/access-control",
-    # Public game assets must remain readable by the sandboxed game runtime.
-    # The iframe intentionally has no auth/cookies, so blocking this path
-    # causes generated sprites/backgrounds/tiles to fall back to primitives.
-    "/api/public/game-assets",
-)
+WHITELIST = ("/api/auth", "/api/site-access", "/api/admin", "/api/access-control")
 
 
 async def enforce_request(request):
