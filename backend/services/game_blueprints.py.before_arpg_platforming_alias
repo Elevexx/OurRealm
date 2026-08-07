@@ -170,33 +170,6 @@ def mechanics_support(selected_rt: str, requested: list, llm_unsupported: list) 
         if mt & rt_tok:
             return True
 
-        # Natural-language aliases for the existing 2.5D Action RPG.
-        # These map canonical request wording onto capabilities already
-        # implemented by the runtime contract.
-        if selected_rt == "action_rpg_2_5d":
-            if re.search(
-                r"\b(platform|platformer|platforming|side[- ]?scroll|jump|jumping|"
-                r"double jump|moving platforms?|crumbling platforms?)\b",
-                low,
-            ):
-                return any(
-                    "side-scroll gravity mode" in str(x).lower()
-                    for x in runtime_mechanics
-                )
-
-            if re.search(r"\b(action combat|melee combat|real[- ]?time combat)\b", low):
-                return "melee combat" in runtime_mechanics
-
-            if re.search(r"\b(quest|quests)\b", low):
-                return any("quests" in str(x).lower() for x in runtime_mechanics)
-
-            if re.search(r"\b(inventory|loot|equipment)\b", low):
-                return (
-                    "inventory & potions" in runtime_mechanics
-                    or "equipment" in runtime_mechanics
-                    or "loot drops" in runtime_mechanics
-                )
-
         # Natural-language aliases for the existing Platformer Lite runtime.
         # These do NOT invent new systems; they map wording onto capabilities
         # already declared in RUNTIME_MECHANICS.

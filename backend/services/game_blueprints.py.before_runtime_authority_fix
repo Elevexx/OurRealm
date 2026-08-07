@@ -170,33 +170,6 @@ def mechanics_support(selected_rt: str, requested: list, llm_unsupported: list) 
         if mt & rt_tok:
             return True
 
-        # Natural-language aliases for the existing 2.5D Action RPG.
-        # These map canonical request wording onto capabilities already
-        # implemented by the runtime contract.
-        if selected_rt == "action_rpg_2_5d":
-            if re.search(
-                r"\b(platform|platformer|platforming|side[- ]?scroll|jump|jumping|"
-                r"double jump|moving platforms?|crumbling platforms?)\b",
-                low,
-            ):
-                return any(
-                    "side-scroll gravity mode" in str(x).lower()
-                    for x in runtime_mechanics
-                )
-
-            if re.search(r"\b(action combat|melee combat|real[- ]?time combat)\b", low):
-                return "melee combat" in runtime_mechanics
-
-            if re.search(r"\b(quest|quests)\b", low):
-                return any("quests" in str(x).lower() for x in runtime_mechanics)
-
-            if re.search(r"\b(inventory|loot|equipment)\b", low):
-                return (
-                    "inventory & potions" in runtime_mechanics
-                    or "equipment" in runtime_mechanics
-                    or "loot drops" in runtime_mechanics
-                )
-
         # Natural-language aliases for the existing Platformer Lite runtime.
         # These do NOT invent new systems; they map wording onto capabilities
         # already declared in RUNTIME_MECHANICS.
@@ -485,48 +458,21 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
              request_id[:8], res.get("provider"), res.get("model"),
              len(res.get("content") or ""), len(plan))
     sections = _assemble_sections(plan, complexity, power)
-    # The deterministic capability matrix is authoritative.
-    # Legacy recommendation remains available for diagnostics/fallback only.
     rec = recommend_runtime(request_text, str(plan.get("runtime") or ""),
                             plan.get("requested_mechanics") or sections["gameplay"]["player_mechanics"])
     selected = (existing or {}).get("selected_runtime") if existing else None
     mech_pick = (sel.get("selected") or {}).get("runtime")
-
     if mech_pick:
-        rec["legacy_recommended"] = rec.get("recommended")
-        rec["legacy_recommended_label"] = rec.get("recommended_label")
-        rec["legacy_compatibility_score"] = rec.get("compatibility_score")
-
-        rec["recommended"] = mech_pick
-        rec["recommended_label"] = RUNTIME_LABELS.get(mech_pick)
-        rec["compatibility_score"] = sel["selected"]["score"]
-        rec["reason"] = "deterministic capability matrix matched the requested mechanics"
-        rec["method"] = sel["method"]
-
-        rec["mechanics_selection"] = {
-            "selected": mech_pick,
-            "score": sel["selected"]["score"],
-            "detected_mechanics": sel["detected_mechanics"],
-            "method": sel["method"],
-        }
-
+        rec["mechanics_selection"] = {"selected": mech_pick,
+                                      "score": sel["selected"]["score"],
+                                      "detected_mechanics": sel["detected_mechanics"],
+                                      "method": sel["method"]}
     selected = selected or mech_pick or rec["recommended"]
     sections["runtime"]["runtime_id"] = selected
     sections["runtime"]["family"] = RUNTIME_LABELS.get(selected) if selected else None
-
-    # Validate the same deterministic mechanics that selected the runtime.
-    # Do not let LLM-added mechanics create false incompatibility warnings.
-    requested_for_support = (
-        sel.get("detected_mechanics")
-        if mech_pick
-        else (plan.get("requested_mechanics") or sections["gameplay"]["player_mechanics"])
-    )
-
-    ms = mechanics_support(
-        selected,
-        requested_for_support,
-        [] if mech_pick else plan.get("unsupported_mechanics"),
-    ) if selected else {"supported": [], "unsupported": [], "runtime_mechanics": []}
+    ms = mechanics_support(selected, plan.get("requested_mechanics") or sections["gameplay"]["player_mechanics"],
+                           plan.get("unsupported_mechanics")) if selected else \
+        {"supported": [], "unsupported": [], "runtime_mechanics": []}
     reqs = derive_asset_requirements(selected, sections, complexity)
     reqs, searched = await match_requirements(current["id"], reqs)
     gen_needed = [r for r in reqs if r["generation_required"]]
