@@ -1,0 +1,49 @@
+{
+  "summary": "Phase 1.5 frontend-only run. Verified: /gamemaker sliders + quote lifecycle (economy 5→7 'Rich', power 5→8 'Advanced', 🔥 chip recomputed 100→150, style/runtime click, idea submit → gamemaker-quote-panel with required/available/provider cost/rule v5 + Confirm/Change/Cancel buttons; Cancel closes panel WITHOUT calling paid LLM as instructed). /admin/gamemaker Economy tab (gm-admin-economy, gm-pricing-grid 121 cells = 10x10 + headers, top-left header 'E\\P', bottom-right 200, reconciliation shows '✓ BALANCED · held out 80 · released 40 · open 0 · burned 40'). Exchange tab (gm-admin-exchange, fire equiv disabled=true at 1, stars=10 coins=5 gems=100 all editable, gm-exchange-pairs contains 'stars,coins'). Fire Vault exchange for auditcheckreal (stars 992→990, coins 12→16, exact ±2/±4 match, 'Exchange complete!' toast). Mobile 390 & 320 /gamemaker: horiz overflow = 0. Regression: /gamemaker/saved lists games; anon /games loads (does not redirect). CRITICAL FRONTEND BUG DISCOVERED: /admin/orai 'Public Access & Rules' sidebar item is unrouted — clicking it highlights the nav but keeps rendering the default OraiDashboard. orai-public-access, orai-rules-chat-input, orai-policy-* are ALL absent from the DOM. OraiPublicAccess.jsx is dead code — grep shows zero imports of it anywhere.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminOrion / SectionRouter", "issue": "Sidebar item 'Public Access & Rules' (NAV_SECTIONS id='public-rules') has NO branch in SectionRouter (AdminOrion.jsx line ~380). Falls through to default OraiDashboard. As a result, the entire Public Access + Rules Chat surface (policies table with 10 capabilities, access dropdown, enabled toggle, emergency button, version chips, rules-chat input) is NEVER rendered. The whole component /app/frontend/src/components/admin/OraiPublicAccess.jsx is dead code — `grep -rn OraiPublicAccess /app/frontend/src` returns only its own file, zero imports.", "selector": "sidebar 'Public Access & Rules' → main panel", "priority": "CRITICAL"},
+      {"component": "GameMakerPage resource picker", "issue": "Console hydration warning: 'In HTML, <span> cannot be a child of <option>'. Source: GameMakerPage.jsx line 237 renders `<option>{r.icon} Pay with {r.name}</option>` where r.icon is likely wrapped in a <span> element. Fix by using plain string emoji only inside <option>.", "selector": "gamemaker-resource-select > option", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Founder rules chat / policy management", "issue": "Because SectionRouter has no public-rules branch, no admin can manage the 10 public-access policies from the UI. Also cannot open the rules-chat proposal panel. Only the backend endpoints exist.", "affected_selectors": ["orai-public-access", "orai-policy-*", "orai-policy-toggle-*", "orai-rules-chat-input", "orai-rules-chat-send"]}
+    ],
+    "design_issues": []
+  },
+  "verified_pass": [
+    "gamemaker-sliders-section rendered between runtimes and CHAT WITH ORAI panel",
+    "Economy slider ArrowRight 5→7 updates chip to '7 · Rich' and requirement 100→150",
+    "AI Power slider 5→8 updates chip to '8 · Advanced'",
+    "gamemaker-requirement-row 🔥 Requires ~150 chip + resource select w/ Fire/Stars/Gems options",
+    "Style cartoon + runtime platformer selectable; idea input enabled",
+    "gamemaker-send-btn → gamemaker-quote-panel with required 150 fire, balance 1946, provider $0.24, rule v5 + Confirm/Change/Cancel",
+    "Cancel button closes quote panel (did NOT click Confirm as instructed)",
+    "/admin/gamemaker Economy tab: gm-admin-economy, gm-pricing-grid (10x10 = 100 cells + 21 headers = 121 total; top-left 'E\\P', bottom-right '200'), gm-reconciliation '✓ BALANCED · held out 80 · released 40 · open 0 · burned 40'",
+    "/admin/gamemaker Exchange tab: fire equiv disabled + value 1, stars=10 coins=5 gems=100 editable, gm-exchange-pairs textarea contains 'stars,coins'",
+    "Fire Vault (auditcheckreal on /home): resource-balances strip with 992 Stars, 12 Coins pre-exchange; ExchangePanel resource-exchange-panel visible",
+    "Exchange stars→coins amount 2 → Preview shows 'Burn 2 Stars → receive 4 Coins · ratio v7'; Confirm → 'Exchange complete!' toast, stars 992→990, coins 12→16 (exact -2/+4)",
+    "Mobile 390px /gamemaker horizontal overflow = 0px",
+    "Mobile 320px /gamemaker horizontal overflow = 0px",
+    "/gamemaker/saved (founder): 'Saved Games' title, 67 game rows",
+    "Anonymous /games: loads without redirect to /waitlist (public games hub still works)"
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "CRITICAL: Wire up OraiPublicAccess in AdminOrion.jsx SectionRouter. Add `import OraiPublicAccess from '@/components/admin/OraiPublicAccess';` and `if (section === 'public-rules') return <OraiPublicAccess />;` alongside the existing private-access / ai-usage branches (around line 393). Without this the whole Phase 1.5 public-policy admin surface is invisible.",
+    "MEDIUM: Remove wrapping <span> from the r.icon usage inside <option> in GameMakerPage.jsx (gamemaker-resource-select) to eliminate React hydration warning."
+  ],
+  "critical_code_review_comments": [
+    "AdminOrion.jsx: NAV_SECTIONS declares 'public-rules' but SectionRouter has no branch. Also, the file's own startup guard (line ~181) still lists 'ai-command','private-access','ai-usage','public-rules' as expected — but 'public-rules' handler was never added when it was introduced, so the console error persists. Suggests missing test coverage on section rendering.",
+    "OraiPublicAccess.jsx is defined but never imported anywhere in the frontend. Add a build-time guard (or a smoke test) that fails when an exported admin panel has zero importers.",
+    "GameMakerPage.jsx resource picker: rendering an icon component wrapped in <span> inside <option> is invalid HTML. Even in a controlled select, this breaks SSR/hydration and can drop the option label in some browsers."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (backend not tested this run)", "frontend": "12/13 flows pass; 1 CRITICAL routing bug"},
+  "test_credentials": "stealth / Password1$ + auditcheckreal / Password1$ both worked (matches /app/memory/test_credentials.md)",
+  "seed_data_creation": "Performed one real 2-star burn → 4-coin credit on auditcheckreal (exchange rule v7 stars→coins) as authorised by the review request. New balances: 990 Stars / 16 Coins.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Main agent needs to wire OraiPublicAccess into AdminOrion.jsx SectionRouter. Once fixed, retest by navigating to /admin/orai → sidebar 'Public Access & Rules' and expect [data-testid=orai-public-access] with 10 policy rows and orai-rules-chat-input visible. All other Phase 1.5 flows already pass end-to-end and do not need re-run.",
+  "rca of the issue": "Bug: Public Access & Rules admin surface never displays. RCA: /app/frontend/src/pages/AdminOrion.jsx defines NAV_SECTIONS with {id:'public-rules', label:'Public Access & Rules'} (line 51). The SectionRouter at line 380 has branches for chat, briefing, actions, reports, alerts, approvals, support, moderation, realms, widgets, badges, settings, private-access, ai-usage, classic — but no branch for 'public-rules'. The router therefore falls through to the default `return <OraiDashboard .../>` (line 397). Confirmed at runtime: after clicking the sidebar entry (highlight applies), main pane still shows 'ORAi Chat' hero and Recent Activity, and [data-testid=orai-public-access] is absent (query returns null). Additional confirmation via `grep -rn OraiPublicAccess /app/frontend/src` — only its own definition file. Fix: (a) import OraiPublicAccess at top of AdminOrion.jsx, (b) add `if (section === 'public-rules') return <OraiPublicAccess />;` before the default return in SectionRouter."
+}

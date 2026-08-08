@@ -68,6 +68,12 @@ export default function GameMakerPage() {
   const [runtime, setRuntime] = useState(null);
   const [idea, setIdea] = useState("");
   const [files, setFiles] = useState([]);
+  const [economy, setEconomy] = useState(5);
+  const [aiPower, setAiPower] = useState(5);
+  const [payRes, setPayRes] = useState("fire");
+  const [econCfg, setEconCfg] = useState(null);
+  const [quote, setQuote] = useState(null);
+  const [hold, setHold] = useState(null);
   const [est, setEst] = useState(null);
   const [job, setJob] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -78,6 +84,7 @@ export default function GameMakerPage() {
     document.title = "OurRealm Game Maker";
     if (!user) return;
     apiClient.get("/gamemaker/catalog").then((r) => setCat(r.data)).catch(() => setCat({ access: { allowed: false } }));
+    apiClient.get("/gamemaker/economy").then((r) => setEconCfg(r.data)).catch(() => {});
   }, [user]);
 
   const pollJob = useCallback((jobId) => {
@@ -106,21 +113,45 @@ export default function GameMakerPage() {
     if (!style || !runtime || !idea.trim()) { toast.error("Pick a style, a runtime and describe your game"); return; }
     setBusy(true);
     try {
-      const r = await apiClient.post("/gamemaker/create", { idea, style, runtime, dry_run: true });
-      setEst(r.data);
-    } catch (e) { toast.error(e?.response?.data?.detail || "Estimate failed"); }
+      const r = await apiClient.post("/gamemaker/quote",
+        { idea, style, runtime, economy, ai_power: aiPower, resource: payRes });
+      setQuote(r.data.quote); setEst(null);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Quote failed"); }
     finally { setBusy(false); }
   };
 
   const create = async () => {
     setBusy(true);
     try {
-      const rid = `gmcreate-${Date.now()}`;
-      const r = await apiClient.post("/gamemaker/create", { idea, style, runtime, request_id: rid });
-      setEst(null); setJob({ id: r.data.job_id, phase: "queued", pct: 0 });
+      const rid = `gmconfirm-${quote.id}`;
+      const r = await apiClient.post(`/gamemaker/quote/${quote.id}/confirm`, { request_id: rid });
+      setHold(r.data.hold);
+      localStorage.setItem("gm.activeHold", r.data.hold.id);
+      setQuote(null); setJob({ id: r.data.job_id, phase: "queued", pct: 0 });
       pollJob(r.data.job_id);
     } catch (e) { toast.error(e?.response?.data?.detail || "Could not start the build"); }
     finally { setBusy(false); }
+  };
+
+  const retryBuild = async () => {
+    const hid = hold?.id || localStorage.getItem("gm.activeHold");
+    try {
+      const r = await apiClient.post(`/gamemaker/hold/${hid}/retry`);
+      setJob({ id: r.data.job_id, phase: "queued", pct: 0 });
+      pollJob(r.data.job_id);
+      toast.info("Retrying with your existing hold — nothing extra is reserved");
+    } catch (e) { toast.error(e?.response?.data?.detail || "Retry failed"); }
+  };
+
+  const returnResource = async () => {
+    const hid = hold?.id || localStorage.getItem("gm.activeHold");
+    try {
+      await apiClient.post(`/gamemaker/hold/${hid}/return`);
+      toast.success("Your resources were returned in full");
+      setHold(null); setJob(null);
+      localStorage.removeItem("gm.activeHold"); localStorage.removeItem("gm.activeJob");
+      clearInterval(pollRef.current);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Return failed"); }
   };
 
   const locked = !user || (cat && !cat.access?.allowed);
@@ -180,6 +211,32 @@ export default function GameMakerPage() {
                 onClick={() => { if (locked) return; if (r.status !== "live") { toast.info(`${r.name} is coming soon`); return; } setRuntime(r.key); }}
                 testid={`gm-runtime-${r.key}`} />
             ))}
+          </div>
+        </section>
+
+        {/* GAME ECONOMY + AI POWER sliders */}
+        <section className="rounded-2xl p-3 sm:p-4 mb-6" data-testid="gamemaker-sliders-section"
+          style={{ border: `1.5px solid ${ORANGE}66`, boxShadow: `0 0 22px ${ORANGE}22` }}>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Slider label="GAME ECONOMY" value={economy} onChange={setEconomy} color={GREEN} locked={locked}
+              tiers={{ 1: "Minimal", 2: "Minimal", 3: "Light", 4: "Light", 5: "Balanced", 6: "Balanced", 7: "Rich", 8: "Rich", 9: "Advanced", 10: "Advanced" }}
+              desc="How deep your game's rewards, unlocks, objectives, achievements and progression go."
+              testid="gamemaker-economy-slider" />
+            <Slider label="AI POWER" value={aiPower} onChange={setAiPower} color={BLUE} locked={locked}
+              tiers={{ 1: "Economy", 2: "Economy", 3: "Standard", 4: "Standard", 5: "Enhanced", 6: "Enhanced", 7: "Advanced", 8: "Advanced", 9: "Maximum", 10: "Maximum" }}
+              desc="Planning depth, model tier, generation passes, validation and polish."
+              testid="gamemaker-power-slider" />
+          </div>
+          <div className="flex items-center gap-2 mt-3 flex-wrap text-[10.5px]" data-testid="gamemaker-requirement-row">
+            <span className="px-3 py-1.5 rounded-full font-bold" style={{ background: "rgba(255,138,90,0.12)", border: "1px solid #FF8A5A66", color: "#FF8A5A" }}>
+              🔥 Requires ~{Math.min(Math.max(10 * (economy + aiPower), econCfg?.rule?.minimum ?? 20), econCfg?.rule?.maximum ?? 200)} Fire Power</span>
+            {(econCfg?.eligible_resources || []).length > 1 && (
+              <select className="rounded-full px-3 py-1.5 text-[10.5px]" value={payRes} onChange={(e) => setPayRes(e.target.value)}
+                style={{ background: "rgba(10,16,30,0.9)", border: "1px solid rgba(255,255,255,0.2)", color: "#EAF2FF" }}
+                data-testid="gamemaker-resource-select">
+                {econCfg.eligible_resources.map((r) => <option key={r.key} value={r.key}>{r.icon} Pay with {r.name}</option>)}
+              </select>)}
+            <span style={{ color: "rgba(234,242,255,0.5)" }}>Exact amount confirmed in your quote · resources have no monetary value</span>
           </div>
         </section>
 
@@ -243,20 +300,35 @@ export default function GameMakerPage() {
           </section>
         </div>
 
-        {/* Summary + estimate + create */}
-        {est && !job && (
-          <div className="rounded-2xl p-4 mb-6" data-testid="gamemaker-summary"
+        {/* QUOTED → AWAITING CONFIRMATION — nothing is held or burned yet */}
+        {quote && !job && (
+          <div className="rounded-2xl p-4 mb-6" data-testid="gamemaker-quote-panel"
             style={{ border: `1.5px solid ${ORANGE}88`, background: "rgba(244,167,59,0.05)" }}>
-            <b className="text-sm block mb-1">Ready to build?</b>
-            <p className="text-[11.5px] mb-2" style={{ color: "rgba(234,242,255,0.7)" }}>
-              <b>{est.runtime}</b> · {String(style).replace(/_/g, " ")} style · Estimated AI usage: <b style={{ color: ORANGE }}>${est.estimated_cost}</b> ({est.model})</p>
-            <p className="text-[11px] mb-3" style={{ color: "rgba(234,242,255,0.55)" }}>“{idea.slice(0, 180)}”</p>
-            <div className="flex gap-2">
+            <b className="text-sm block mb-1">Your build quote</b>
+            <p className="text-[11.5px] mb-1" style={{ color: "rgba(234,242,255,0.75)" }}>
+              <b>{cat?.runtimes?.find((r) => r.key === runtime)?.name}</b> · {String(style).replace(/_/g, " ")} ·
+              Economy {quote.economy} ({quote.economy_tier}) · AI Power {quote.ai_power} ({quote.power_tier})</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 my-2 text-[10.5px]">
+              <div className="rounded-lg p-2" style={{ background: "rgba(255,138,90,0.1)" }} data-testid="quote-required">
+                <b style={{ color: "#FF8A5A" }}>{quote.required_amount} {quote.resource_key}</b><br />required ({quote.required_fire} 🔥 equiv)</div>
+              <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.05)" }} data-testid="quote-available">
+                <b style={{ color: quote.available >= quote.required_amount ? GREEN : "#FF5A6E" }}>{quote.available}</b><br />your balance</div>
+              <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.05)" }}>
+                <b style={{ color: BLUE }}>${quote.provider_estimate}</b><br />est. AI provider cost (separate)</div>
+              <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.05)" }}>
+                <b>rule v{quote.rule_version}</b><br />quote expires in ~20 min</div>
+            </div>
+            <p className="text-[10px] mb-3" style={{ color: "rgba(234,242,255,0.55)" }}>
+              Confirming places a hold — nothing is burned unless your game builds, validates and saves successfully.
+              If the build fails you can retry free or get everything back. Engagement resources have no monetary value.</p>
+            <div className="flex gap-2 flex-wrap">
               <button className="px-5 py-2 rounded-full font-bold text-xs" style={{ background: GREEN, color: "#0a0a0a" }}
-                onClick={create} disabled={busy} data-testid="gamemaker-create-btn">
-                <Gamepad2 size={13} className="inline mr-1" /> Create My Game</button>
-              <button className="px-4 py-2 rounded-full text-xs" style={{ border: "1px solid rgba(255,255,255,0.2)" }}
-                onClick={() => setEst(null)} data-testid="gamemaker-cancel-est">Cancel</button>
+                onClick={create} disabled={busy || quote.available < quote.required_amount} data-testid="gamemaker-confirm-btn">
+                <Gamepad2 size={13} className="inline mr-1" /> Confirm &amp; Start Build</button>
+              <button className="px-4 py-2 rounded-full text-xs" style={{ border: "1px solid rgba(255,255,255,0.25)" }}
+                onClick={() => setQuote(null)} data-testid="gamemaker-change-btn">Change Options</button>
+              <button className="px-4 py-2 rounded-full text-xs" style={{ border: "1px solid rgba(255,255,255,0.15)" }}
+                onClick={() => setQuote(null)} data-testid="gamemaker-cancel-quote">Cancel</button>
             </div>
           </div>
         )}
@@ -284,9 +356,14 @@ export default function GameMakerPage() {
                   onClick={() => navigate(job.result?.game_id ? `/games?play=${job.result.game_id}` : "/gamemaker")}
                   data-testid="gamemaker-open-game">▶ Open My Game</button>)}
               {job.phase === "failed" && (
-                <button className="px-4 py-1.5 rounded-full text-xs font-bold" style={{ border: `1px solid ${BLUE}`, color: BLUE }}
-                  onClick={async () => { const r = await apiClient.post(`/jobs/${job.id}/retry`); setJob({ id: r.data.job_id, phase: "queued", pct: 0 }); pollJob(r.data.job_id); }}
-                  data-testid="gamemaker-retry-job"><RotateCcw size={11} className="inline mr-1" />Retry</button>)}
+                <>
+                  <button className="px-4 py-1.5 rounded-full text-xs font-bold" style={{ border: `1px solid ${BLUE}`, color: BLUE }}
+                    onClick={retryBuild} data-testid="gamemaker-retry-job">
+                    <RotateCcw size={11} className="inline mr-1" />Retry Build (uses your existing hold)</button>
+                  <button className="px-4 py-1.5 rounded-full text-xs font-bold" style={{ border: "1px solid #FF8A5A", color: "#FF8A5A" }}
+                    onClick={returnResource} data-testid="gamemaker-return-resource">
+                    Return Resource &amp; Cancel</button>
+                </>)}
               {!["completed", "failed", "cancelled"].includes(job.phase) && (
                 <button className="px-4 py-1.5 rounded-full text-xs" style={{ border: "1px solid rgba(255,255,255,0.25)" }}
                   onClick={async () => { await apiClient.post(`/jobs/${job.id}/cancel`).catch(() => {}); }}
@@ -308,6 +385,22 @@ export default function GameMakerPage() {
     </div>
   );
 }
+
+const Slider = ({ label, value, onChange, color, tiers, desc, locked, testid }) => (
+  <div data-testid={testid}>
+    <div className="flex items-center gap-2 mb-1">
+      <b className="text-[11px] tracking-[0.12em]" style={{ color, textShadow: `0 0 10px ${color}88` }}>{label}</b>
+      <span className="ml-auto px-2.5 py-0.5 rounded-full text-[11px] font-black"
+        style={{ background: `${color}22`, border: `1px solid ${color}88`, color }} data-testid={`${testid}-value`}>
+        {value} · {tiers[value]}</span>
+    </div>
+    <input type="range" min="1" max="10" step="1" value={value} disabled={locked}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="w-full h-8 cursor-pointer" style={{ accentColor: color, touchAction: "none" }}
+      data-testid={`${testid}-input`} />
+    <p className="text-[9.5px] leading-snug" style={{ color: "rgba(234,242,255,0.55)" }}>{desc}</p>
+  </div>
+);
 
 const fallbackStyles = [
   { key: "pixel_art", name: "Pixel Art", description: "Classic retro pixels — charming & timeless." },

@@ -17,6 +17,8 @@ from core.deps import CurrentUser
 from core.permissions import require_founder, get_admin_role
 from services import game_studio as gs
 from services import job_engine
+from services import economy
+from services import orai_policies as op
 from services.llm_router import tier
 
 log = logging.getLogger("ourrealm.gamemaker")
@@ -91,6 +93,20 @@ async def catalog(current: CurrentUser):
 @job_engine.register("gamemaker_create")
 async def _run_create(job: dict) -> dict:
     p = job["payload"]
+    hold_id = p.get("hold_id")
+    try:
+        result = await _do_create(job, p)
+    except job_engine.JobCancelled:
+        if hold_id:
+            await economy.release_hold(hold_id, "cancelled during execution", "system")
+        raise
+    if hold_id:  # burn ONLY after successful validation + save
+        await economy.finalize_burn(hold_id, result["game_id"])
+        result["burn_finalized"] = True
+    return result
+
+
+async def _do_create(job: dict, p: dict) -> dict:
     user = await db.users.find_one({"id": job["user_id"]}, {"_id": 0, "password": 0, "password_hash": 0})
     await job_engine.phase(job["id"], "planning", 10, "Planning your game with ORAi")
     est = await gs.create_estimate({
@@ -320,6 +336,49 @@ async def set_access(body: dict, current: CurrentUser):
     return {"ok": True, "mode": mode}
 
 
+@admin.post("/test-economy-cycle")
+async def test_economy_cycle(body: dict, current: CurrentUser):
+    """Diagnostics: full quote→hold→(burn|release) cycle with NO providers.
+    Exercises the same atomic economy functions used by real builds."""
+    require_founder(current)
+    username = str(body.get("username") or current["username"])
+    u = await db.users.find_one({"username": username}, {"_id": 0, "password": 0})
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    resource = str(body.get("resource") or "fire")
+    outcome = str(body.get("outcome") or "success")
+    trace = {}
+    q = await economy.create_quote(u, {"idea": "test", "style": "pixel_art",
+                                       "runtime": "platformer", "resource": resource,
+                                       "economy": int(body.get("economy") or 1),
+                                       "ai_power": int(body.get("ai_power") or 1)}, 0.0)
+    trace["quote"] = {k: q[k] for k in ("id", "required_fire", "required_amount", "rule_version", "available")}
+    bal0 = await economy.available_balance(u["id"], resource)
+    rid = f"teccycle-{q['id']}"
+    try:
+        h1 = await economy.place_hold(u, q["id"], rid, founder=False)
+        h2 = await economy.place_hold(u, q["id"], rid, founder=False)  # replay
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    trace["hold"] = {"id": h1["id"], "amount": h1["amount"], "state": h1["state"],
+                     "replay_returned_same": h1["id"] == h2["id"]}
+    trace["balance_before"] = bal0
+    trace["balance_after_hold"] = await economy.available_balance(u["id"], resource)
+    if outcome == "success":
+        await economy.finalize_burn(h1["id"], "test-game")
+        await economy.finalize_burn(h1["id"], "test-game")  # idempotent — no double burn
+        trace["final_state"] = (await db.gm_holds.find_one({"id": h1["id"]}, {"_id": 0, "state": 1}))["state"]
+    else:  # return / release path
+        r1 = await economy.release_hold(h1["id"], "test return", current["username"])
+        r2 = await economy.release_hold(h1["id"], "test return again", current["username"])
+        trace["release"] = {"first": r1, "second_noop": not r2}
+        trace["final_state"] = (await db.gm_holds.find_one({"id": h1["id"]}, {"_id": 0, "state": 1}))["state"]
+    trace["balance_final"] = await economy.available_balance(u["id"], resource)
+    if resource == "fire":
+        trace["reconciliation"] = await economy.reconcile_fire()
+    return trace
+
+
 @admin.post("/test-delayed-job")
 async def test_delayed_job(body: dict, current: CurrentUser):
     """Diagnostics: proves long operations survive the Cloudflare window."""
@@ -339,6 +398,202 @@ async def _run_test_delay(job: dict) -> dict:
         await job_engine.phase(job["id"], "generating", int((i + 1) / steps * 90),
                                f"Simulated slow provider {i + 1}/{steps}")
     return {"slept": secs}
+
+
+# ─── Phase 1.5 — Economy: sliders, quotes, holds, burns ─────────────────
+
+@router.get("/economy")
+async def economy_config(current: CurrentUser):
+    acc = await check_access(current)
+    rule = await economy.active_pricing_rule()
+    regs = await db.resource_registry.find(
+        {"archived": {"$ne": True}, "enabled": True, "build_eligible": True},
+        {"_id": 0, "key": 1, "name": 1, "icon": 1, "color": 1, "fire_equiv": 1, "frozen": 1}).to_list(50)
+    return {"access": acc,
+            "economy_tiers": economy.ECONOMY_TIERS, "power_tiers": economy.POWER_TIERS,
+            "rule": {"version": rule["version"], "base_per_point": rule["base_per_point"],
+                     "minimum": rule["minimum"], "maximum": rule["maximum"], "curve": rule["curve"]},
+            "eligible_resources": regs,
+            "disclaimer": "Engagement resources have no monetary value and cannot be exchanged for money or goods."}
+
+
+@router.post("/quote")
+async def make_quote(body: dict, current: CurrentUser):
+    acc = await check_access(current)
+    if not acc["allowed"]:
+        raise HTTPException(status_code=403, detail=acc.get("message") or "Game Maker access is restricted")
+    power = min(max(int(body.get("ai_power") or 5), 1), 10)
+    pol = await op.check_policy("gamemaker_create", current, power=power,
+                                is_founder=bool(get_admin_role(current)))
+    if not pol["allowed"]:
+        raise HTTPException(status_code=403, detail=f"ORAi policy: {pol['reason']}")
+    idea = str(body.get("idea") or "").strip()
+    rt = next((r for r in RUNTIMES if r[0] == str(body.get("runtime") or "")), None)
+    if not idea or not rt or rt[4] != "live":
+        raise HTTPException(status_code=400, detail="Pick a Live runtime, a style and describe your game")
+    if str(body.get("style") or "") not in {k for k, _, _ in STYLES}:
+        raise HTTPException(status_code=400, detail="Pick one of the 10 animation styles")
+    t = tier(power)
+    try:
+        q = await economy.create_quote(current, {**body, "ai_power": power,
+                                                 "economy": min(max(int(body.get("economy") or 5), 1), 10)},
+                                       provider_est=round(t["est_cost_per_pass"] * 3, 3))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    q["provider_model"] = t["label"]
+    return {"quote": q}
+
+
+@router.post("/quote/{quote_id}/confirm")
+async def confirm_quote(quote_id: str, body: dict, current: CurrentUser):
+    """HELD → job submitted with the SAME idempotency request. Replay-safe."""
+    acc = await check_access(current)
+    if not acc["allowed"]:
+        raise HTTPException(status_code=403, detail="Game Maker access is restricted")
+    rid = str(body.get("request_id") or "") or None
+    founder = bool(get_admin_role(current))
+    try:
+        hold = await economy.place_hold(current, quote_id, rid, founder)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if hold.get("job_id"):  # replayed confirm — same job, no double hold/burn
+        return {"hold": hold, "job_id": hold["job_id"], "replayed": True}
+    q = await db.gm_quotes.find_one({"id": quote_id}, {"_id": 0})
+    rt = next(r for r in RUNTIMES if r[0] == q["runtime"])
+    style_name = next(n for k, n, _ in STYLES if k == q["style"])
+    payload = {"request": f"{q['idea']}\n\nArt direction: render everything in a {style_name} visual style.",
+               "engine_runtime": rt[3], "runtime_choice": q["runtime"], "style": q["style"],
+               "ai_power": q["ai_power"], "complexity": q["economy"], "hold_id": hold["id"]}
+    job = await job_engine.submit("gamemaker_create", current, payload,
+                                  idem_key=f"job:{hold['id']}")
+    await db.gm_holds.update_one({"id": hold["id"]}, {"$set": {"job_id": job["id"]}})
+    hold["job_id"] = job["id"]
+    return {"hold": hold, "job_id": job["id"]}
+
+
+@router.get("/hold/{hold_id}")
+async def hold_status(hold_id: str, current: CurrentUser):
+    h = await db.gm_holds.find_one({"id": hold_id}, {"_id": 0})
+    if not h or (h["user_id"] != current["id"] and not get_admin_role(current)):
+        raise HTTPException(status_code=404, detail="Hold not found")
+    return {"hold": h}
+
+
+@router.post("/hold/{hold_id}/retry")
+async def hold_retry(hold_id: str, current: CurrentUser):
+    """Retry a failed build reusing the SAME hold — never reserves or burns again."""
+    h = await db.gm_holds.find_one({"id": hold_id, "state": "held"}, {"_id": 0})
+    if not h or h["user_id"] != current["id"]:
+        raise HTTPException(status_code=404, detail="No retryable hold found")
+    prev = await db.gm_jobs.find_one({"id": h.get("job_id")}, {"_id": 0, "phase": 1, "payload": 1})
+    if not prev or prev["phase"] != "failed":
+        raise HTTPException(status_code=400, detail="The build for this hold isn't in a failed state")
+    job = await job_engine.submit("gamemaker_create", current, prev["payload"], idem_key=None)
+    await db.gm_holds.update_one({"id": hold_id}, {"$set": {"job_id": job["id"]}})
+    return {"job_id": job["id"], "hold_id": hold_id}
+
+
+@router.post("/hold/{hold_id}/return")
+async def hold_return(hold_id: str, current: CurrentUser):
+    """Return Resource & Cancel — releases the full hold immediately."""
+    h = await db.gm_holds.find_one({"id": hold_id}, {"_id": 0})
+    if not h or h["user_id"] != current["id"]:
+        raise HTTPException(status_code=404, detail="Hold not found")
+    active = await db.gm_jobs.find_one({"id": h.get("job_id"),
+                                        "phase": {"$in": list(job_engine.ACTIVE)}}, {"id": 1})
+    if active:
+        await db.gm_jobs.update_one({"id": h["job_id"]}, {"$set": {"cancel_requested": True}})
+    ok = await economy.release_hold(hold_id, "user returned resource", current["username"])
+    if not ok:
+        raise HTTPException(status_code=400, detail="Hold already finalized or released")
+    return {"released": True}
+
+
+# ─── Phase 1.5 — founder Economy Control Center ──────────────────────────
+
+@admin.get("/pricing")
+async def pricing_rules(current: CurrentUser):
+    require_founder(current)
+    rows = await db.gm_pricing_rules.find({}, {"_id": 0}).sort("version", -1).to_list(50)
+    return {"rules": rows}
+
+
+@admin.post("/pricing")
+async def pricing_update(body: dict, current: CurrentUser):
+    """Creates a NEW immutable rule version — existing quotes/holds keep theirs."""
+    require_founder(current)
+    cur = await economy.active_pricing_rule()
+    fields = ("base_per_point", "economy_weight", "ai_power_weight", "minimum", "maximum",
+              "curve", "runtime_modifiers", "style_modifiers", "media_modifier", "founder_exempt")
+    new = {k: body.get(k, cur.get(k)) for k in fields}
+    if new["curve"] not in ("linear", "tiered"):
+        raise HTTPException(status_code=400, detail="curve must be linear or tiered")
+    for k in ("base_per_point", "economy_weight", "ai_power_weight", "minimum", "maximum"):
+        new[k] = int(new[k])
+    doc = {**new, "version": int(cur["version"]) + 1, "enabled": True,
+           "created_at": _iso(), "created_by": current["username"]}
+    await db.gm_pricing_rules.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return {"rule": doc}
+
+
+@admin.get("/pricing/preview")
+async def pricing_preview(current: CurrentUser):
+    """All 100 Economy × AI Power combinations under the active rule."""
+    require_founder(current)
+    rule = await economy.active_pricing_rule()
+    grid = [[economy.compute_required_fire(rule, e, p) for p in range(1, 11)] for e in range(1, 11)]
+    return {"rule_version": rule["version"], "grid": grid}
+
+
+@admin.get("/holds")
+async def admin_holds(current: CurrentUser, state: str = "", limit: int = 50):
+    require_founder(current)
+    q = {"state": state} if state else {}
+    rows = await db.gm_holds.find(q, {"_id": 0}).sort("created_at", -1).to_list(min(limit, 200))
+    return {"holds": rows}
+
+
+@admin.post("/holds/{hold_id}/release")
+async def admin_release_hold(hold_id: str, body: dict, current: CurrentUser):
+    require_founder(current)
+    reason = str(body.get("reason") or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="A reason is required to release a hold")
+    ok = await economy.release_hold(hold_id, f"admin: {reason}", current["username"])
+    if not ok:
+        raise HTTPException(status_code=400, detail="Hold not in a releasable state")
+    return {"released": True}
+
+
+@admin.get("/reconciliation")
+async def reconciliation(current: CurrentUser):
+    require_founder(current)
+    return {"fire": await economy.reconcile_fire(),
+            "note": "outstanding_vs_expected_ok=true means adapter holds/burns/releases "
+                    "match the authoritative Fire wallet transactions exactly."}
+
+
+@admin.get("/exchange-rules")
+async def exchange_rules(current: CurrentUser):
+    require_founder(current)
+    rows = await db.gm_exchange_rules.find({}, {"_id": 0}).sort("version", -1).to_list(20)
+    return {"rules": rows}
+
+
+@admin.post("/exchange-rules")
+async def exchange_rules_update(body: dict, current: CurrentUser):
+    require_founder(current)
+    cur = await economy.active_exchange_rule()
+    fields = ("pairs", "min_amount", "max_amount", "daily_limit", "cooldown_s",
+              "fee_pct", "rounding", "frozen")
+    new = {k: body.get(k, cur.get(k)) for k in fields}
+    new["pairs"] = [[str(a), str(b)] for a, b in (new.get("pairs") or []) if a != b][:40]
+    doc = {**new, "version": int(cur["version"]) + 1, "enabled": True,
+           "created_at": _iso(), "created_by": current["username"]}
+    await db.gm_exchange_rules.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return {"rule": doc}
 
 
 # ─── Production migration tool (dry-run first, insert-only, reversible) ──

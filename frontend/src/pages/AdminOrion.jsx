@@ -48,6 +48,7 @@ const NAV_SECTIONS = [
   { id: "chat",      label: "ORAi Chat",      icon: MessageSquare },
   { id: "ai-command", label: "AI Command",    icon: Cpu, href: "/admin/orai-control" },
   { id: "private-access", label: "Private ORAi Access", icon: Shield },
+  { id: "public-rules", label: "Public Access & Rules", icon: Shield },
   { id: "ai-usage",  label: "AI Usage",        icon: Activity },
   { id: "briefing",  label: "Founder Briefing", icon: BarChart3 },
   { id: "actions",   label: "Quick Actions",   icon: Zap },
@@ -177,7 +178,7 @@ export default function AdminOrion() {
     const REGISTERED_HANDLERS = new Set([
       "dashboard", "chat", "briefing", "actions", "reports", "alerts",
       "approvals", "support", "moderation", "realms", "widgets", "badges",
-      "settings", "ai-command", "private-access", "ai-usage",
+      "settings", "ai-command", "private-access", "ai-usage", "public-rules",
     ]);
     const SOON_OK = new Set(["workflows", "tasks", "automations"]);
     const missingSections = NAV_SECTIONS

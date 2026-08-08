@@ -32,7 +32,8 @@ SEED = [
      "icon": "💎", "color": "#2EE6FF", "adapter": None, "enabled": True, "public": True},
 ]
 
-SOURCE_TYPES = ("game_reward", "achievement", "admin_adjustment", "reversal", "migration", "event")
+SOURCE_TYPES = ("game_reward", "achievement", "admin_adjustment", "reversal", "migration",
+                "event", "build_burn", "exchange")
 
 
 def _iso():
@@ -55,6 +56,15 @@ async def ensure_indexes_and_seed():
                               "version": 1, "created_at": _iso(), "updated_at": _iso(),
                               "audit": []}},
             upsert=True)
+    # Phase 1.5 economy fields — fire is the canonical unit (1:1, build-eligible)
+    await db.resource_registry.update_one(
+        {"key": "fire", "fire_equiv": {"$exists": False}},
+        {"$set": {"fire_equiv": 1, "build_eligible": True,
+                  "exchange_source": False, "exchange_dest": False}})
+    await db.resource_registry.update_many(
+        {"key": {"$ne": "fire"}, "fire_equiv": {"$exists": False}},
+        {"$set": {"fire_equiv": 0, "build_eligible": False,
+                  "exchange_source": False, "exchange_dest": False}})
 
 
 async def registry(include_private: bool = False) -> list:
@@ -68,7 +78,8 @@ async def registry(include_private: bool = False) -> list:
 async def grant(user_id: str, resource_key: str, amount: int, *, source_type: str,
                 source_id: str = "", game_id: str = None, stage_id: str = None,
                 idem_key: str = None, reason: str = "", actor: str = None,
-                status: str = "finalized", allow_negative: bool = False) -> dict:
+                status: str = "finalized", allow_negative: bool = False,
+                skip_balance: bool = False) -> dict:
     """Append a ledger entry and atomically update the balance. Replay-safe."""
     res = await db.resource_registry.find_one({"key": resource_key}, {"_id": 0})
     if not res:
@@ -111,7 +122,9 @@ async def grant(user_id: str, resource_key: str, amount: int, *, source_type: st
                 return {"transaction": ex, "replayed": True}
         raise
     q = {"user_id": user_id, "resource_key": resource_key}
-    if amount < 0 and not allow_negative:
+    if skip_balance:
+        pass  # ledger-only entry: balance was already adjusted by a hold
+    elif amount < 0 and not allow_negative:
         r = await db.resource_balances.update_one({**q, "balance": {"$gte": -amount}},
                                                   {"$inc": {"balance": amount},
                                                    "$set": {"updated_at": _iso()}})

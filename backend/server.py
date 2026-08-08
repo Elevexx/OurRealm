@@ -273,11 +273,13 @@ app.include_router(waitlist_router_mod.admin_router)
 from routers import jobs as jobs_router_mod  # noqa: E402
 from routers import resources as resources_router_mod  # noqa: E402
 from routers import gamemaker as gamemaker_router_mod  # noqa: E402
+from routers import orai_access as orai_access_router_mod  # noqa: E402
 app.include_router(jobs_router_mod.router)
 app.include_router(resources_router_mod.router)
 app.include_router(resources_router_mod.admin)
 app.include_router(gamemaker_router_mod.router)
 app.include_router(gamemaker_router_mod.admin)
+app.include_router(orai_access_router_mod.router)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
@@ -630,10 +632,14 @@ async def on_startup():
 async def _safe_startup():
     import asyncio
     try:
-        from services import job_engine, resources as _resources
+        from services import job_engine, resources as _resources, economy as _economy
+        from services import orai_policies as _op
         await job_engine.ensure_indexes()
         await job_engine.reap_stale()
         await _resources.ensure_indexes_and_seed()
+        await _economy.ensure_indexes()
+        await _economy.reap_expired_holds()
+        await _op.ensure_seed()
     except Exception as e:
         logger.error(f"[gamemaker] job/resource startup failed: {e}")
     try:

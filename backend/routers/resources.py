@@ -26,10 +26,48 @@ async def my_balances(current: CurrentUser):
             "activity": await rs.recent_activity(current["id"])}
 
 
+@router.get("/exchange/options")
+async def exchange_options(current: CurrentUser):
+    from services import economy
+    rule = await economy.active_exchange_rule()
+    regs = await db.resource_registry.find(
+        {"archived": {"$ne": True}, "enabled": True, "frozen": {"$ne": True},
+         "$or": [{"exchange_source": True}, {"exchange_dest": True}]},
+        {"_id": 0, "key": 1, "name": 1, "icon": 1, "color": 1, "fire_equiv": 1,
+         "exchange_source": 1, "exchange_dest": 1}).to_list(50)
+    return {"resources": regs, "pairs": (rule or {}).get("pairs") or [],
+            "fee_pct": (rule or {}).get("fee_pct") or 0,
+            "frozen": bool((rule or {}).get("frozen")),
+            "disclaimer": "Engagement resources have no monetary value."}
+
+
+@router.post("/exchange/quote")
+async def exchange_make_quote(body: dict, current: CurrentUser):
+    from services import economy
+    try:
+        q = await economy.exchange_quote(current, str(body.get("from") or ""),
+                                         str(body.get("to") or ""), int(body.get("amount") or 0))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"quote": q}
+
+
+@router.post("/exchange/execute")
+async def exchange_run(body: dict, current: CurrentUser):
+    from services import economy
+    try:
+        rec = await economy.exchange_execute(current, str(body.get("quote_id") or ""),
+                                             body.get("request_id"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"exchange": rec}
+
+
 # ─── Founder Resource Manager ────────────────────────────────────────────
 
 SAFE_EDIT_FIELDS = ("name", "description", "icon", "color", "enabled", "public",
-                    "per_user_cap", "global_cap", "daily_limit", "cooldown_s")
+                    "per_user_cap", "global_cap", "daily_limit", "cooldown_s",
+                    "fire_equiv", "build_eligible", "exchange_source", "exchange_dest")
 
 
 @admin.get("")

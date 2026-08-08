@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Gamepad2, Hammer, Flame, ListTree, Shield, Activity, Database, Sparkles,
-  Layers, Image as ImageIcon, ScrollText, Eye, RefreshCw } from "lucide-react";
+  Layers, Image as ImageIcon, ScrollText, Eye, RefreshCw, Coins, ArrowLeftRight } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import AdminBackButton from "@/components/AdminBackButton";
@@ -10,6 +10,7 @@ const SECTIONS = [
   ["overview", "Overview", Activity], ["saved", "Saved Games", Gamepad2],
   ["jobs", "Builds & Jobs", Hammer], ["published", "Published Games", Eye],
   ["resources", "Engagement Resources", Flame], ["ledger", "Ledger Inspector", ListTree],
+  ["economy", "Economy & Pricing", Coins], ["exchange", "Exchange", ArrowLeftRight],
   ["registry", "Runtimes & Styles", Layers], ["diagnostics", "Diagnostics & Migration", Database],
   ["access", "Access & Visibility", Shield],
 ];
@@ -181,6 +182,9 @@ export default function GameMakerAdmin() {
         </div>
       )}
 
+      {tab === "economy" && <EconomyTab />}
+      {tab === "exchange" && <ExchangeTab />}
+
       {tab === "registry" && ov && (
         <div className="grid sm:grid-cols-2 gap-3" data-testid="gm-admin-registry">
           <div className="or-surface p-3 rounded-xl">
@@ -256,6 +260,147 @@ export default function GameMakerAdmin() {
     </div>
   );
 }
+
+const EconomyTab = () => {
+  const [rule, setRule] = useState(null);
+  const [grid, setGrid] = useState(null);
+  const [holds, setHolds] = useState([]);
+  const [recon, setRecon] = useState(null);
+  const load = () => {
+    apiClient.get("/admin/gamemaker/pricing").then((r) => setRule(r.data.rules[0]));
+    apiClient.get("/admin/gamemaker/pricing/preview").then((r) => setGrid(r.data.grid));
+    apiClient.get("/admin/gamemaker/holds").then((r) => setHolds(r.data.holds));
+    apiClient.get("/admin/gamemaker/reconciliation").then((r) => setRecon(r.data.fire));
+  };
+  useEffect(load, []);
+  if (!rule) return null;
+  return (
+    <div className="space-y-3" data-testid="gm-admin-economy">
+      <div className="or-surface p-3 rounded-xl">
+        <b className="text-xs uppercase tracking-widest block mb-2">Pricing rule (active v{rule.version}) — saving creates a new version; existing quotes/holds keep theirs</b>
+        <div className="flex gap-2 flex-wrap items-center text-[11px]">
+          {["base_per_point", "economy_weight", "ai_power_weight", "minimum", "maximum"].map((k) => (
+            <label key={k} className="flex flex-col gap-0.5">
+              <span className="text-[9px] uppercase" style={{ color: "var(--text-muted)" }}>{k.replace(/_/g, " ")}</span>
+              <input className="or-input text-xs w-20" defaultValue={rule[k]} id={`pr-${k}`} data-testid={`gm-pricing-${k}`} />
+            </label>))}
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[9px] uppercase" style={{ color: "var(--text-muted)" }}>curve</span>
+            <select className="or-input text-xs" defaultValue={rule.curve} id="pr-curve"><option>linear</option><option>tiered</option></select>
+          </label>
+          <label className="flex items-center gap-1 text-[10px] mt-3">
+            <input type="checkbox" defaultChecked={rule.founder_exempt} id="pr-exempt" /> founder exempt</label>
+          <button className="or-btn text-[10.5px] mt-3" data-testid="gm-pricing-save"
+            onClick={async () => {
+              const body = { curve: document.getElementById("pr-curve").value,
+                founder_exempt: document.getElementById("pr-exempt").checked };
+              ["base_per_point", "economy_weight", "ai_power_weight", "minimum", "maximum"].forEach((k) => {
+                body[k] = Number(document.getElementById(`pr-${k}`).value); });
+              await apiClient.post("/admin/gamemaker/pricing", body);
+              toast.success("New pricing version created"); load();
+            }}>Save as new version</button>
+        </div>
+      </div>
+      {grid && (
+        <div className="or-surface p-3 rounded-xl overflow-x-auto">
+          <b className="text-xs uppercase tracking-widest block mb-2">All 100 combinations (rows = Economy, cols = AI Power)</b>
+          <table className="text-[9.5px]" data-testid="gm-pricing-grid"><tbody>
+            <tr><td className="pr-2 font-bold">E\P</td>{Array.from({ length: 10 }, (_, i) => <td key={i} className="px-1.5 font-bold">{i + 1}</td>)}</tr>
+            {grid.map((row, e) => (
+              <tr key={e}><td className="pr-2 font-bold">{e + 1}</td>
+                {row.map((v, p) => <td key={p} className="px-1.5 py-0.5" style={{ color: "var(--text-muted)" }}>{v}</td>)}</tr>))}
+          </tbody></table>
+        </div>)}
+      {recon && (
+        <div className="or-surface p-3 rounded-xl text-[11px]" data-testid="gm-reconciliation">
+          <b className="text-xs uppercase tracking-widest">Fire Power reconciliation:</b>{" "}
+          <span style={{ color: recon.outstanding_vs_expected_ok ? "#10E670" : "#FF5A6E" }}>
+            {recon.outstanding_vs_expected_ok ? "✓ BALANCED" : `⚠ orphaned delta ${recon.orphaned_delta}`}</span>
+          <span style={{ color: "var(--text-muted)" }}> · held out {recon.fire_removed_by_holds} · released {recon.fire_released} · open {recon.open_hold_total} · burned {recon.burned_total}</span>
+        </div>)}
+      <div className="or-surface p-3 rounded-xl">
+        <b className="text-xs uppercase tracking-widest block mb-2">Holds</b>
+        {holds.map((h) => (
+          <div key={h.id} className="flex items-center gap-2 flex-wrap py-1 text-[10.5px]">
+            <b>{h.amount} {h.resource_key}</b>
+            <span className="or-chip text-[8.5px] uppercase" style={{ color: h.state === "held" ? "#F4A73B" : h.state === "burned" ? "#FF8A5A" : "#10E670" }}>{h.state}</span>
+            <span style={{ color: "var(--text-muted)" }}>rule v{h.rule_version}{h.exempt ? " · founder exempt" : ""} · {(h.created_at || "").slice(0, 16).replace("T", " ")}</span>
+            {h.state === "held" && (
+              <button className="or-btn or-btn-ghost text-[9px] ml-auto" data-testid={`gm-hold-release-${h.id}`}
+                onClick={async () => { const reason = window.prompt("Release reason (required):"); if (!reason) return;
+                  await apiClient.post(`/admin/gamemaker/holds/${h.id}/release`, { reason }); toast.success("Released"); load(); }}>
+                Release (reason required)</button>)}
+          </div>))}
+        {!holds.length && <p className="text-[10.5px]" style={{ color: "var(--text-muted)" }}>No holds yet.</p>}
+      </div>
+    </div>
+  );
+};
+
+const ExchangeTab = () => {
+  const [rule, setRule] = useState(null);
+  const [regs, setRegs] = useState([]);
+  const load = () => {
+    apiClient.get("/admin/gamemaker/exchange-rules").then((r) => setRule(r.data.rules[0]));
+    apiClient.get("/admin/resources").then((r) => setRegs(r.data.resources));
+  };
+  useEffect(load, []);
+  if (!rule) return null;
+  return (
+    <div className="space-y-3" data-testid="gm-admin-exchange">
+      <div className="or-surface p-3 rounded-xl">
+        <b className="text-xs uppercase tracking-widest block mb-2">Resource equivalences & eligibility (Fire Power = canonical unit, 1:1)</b>
+        {regs.filter((r) => !r.archived).map((r) => (
+          <div key={r.key} className="flex items-center gap-2 flex-wrap py-1 text-[10.5px]">
+            <span>{r.icon}</span><b className="w-16">{r.name}</b>
+            <label className="flex items-center gap-1">1 = <input className="or-input text-xs w-16" defaultValue={r.fire_equiv ?? 0}
+              disabled={r.key === "fire"} id={`fe-${r.key}`} data-testid={`gm-equiv-${r.key}`} /> 🔥</label>
+            {["build_eligible", "exchange_source", "exchange_dest"].map((f) => (
+              <label key={f} className="flex items-center gap-1">
+                <input type="checkbox" defaultChecked={!!r[f]} disabled={r.key === "fire" && f !== "build_eligible"} id={`${f}-${r.key}`} />
+                {f.replace(/_/g, " ")}</label>))}
+            <button className="or-btn or-btn-ghost text-[9px]" data-testid={`gm-equiv-save-${r.key}`}
+              onClick={async () => {
+                const body = { fire_equiv: Number(document.getElementById(`fe-${r.key}`).value) };
+                ["build_eligible", "exchange_source", "exchange_dest"].forEach((f) => {
+                  body[f] = document.getElementById(`${f}-${r.key}`).checked; });
+                if (r.key === "fire") { delete body.fire_equiv; delete body.exchange_source; delete body.exchange_dest; }
+                await apiClient.patch(`/admin/resources/${r.key}`, body);
+                toast.success(`${r.name} updated`); load();
+              }}>Save</button>
+          </div>))}
+      </div>
+      <div className="or-surface p-3 rounded-xl text-[11px]">
+        <b className="text-xs uppercase tracking-widest block mb-2">Exchange rule (active v{rule.version})</b>
+        <p style={{ color: "var(--text-muted)" }} className="text-[10px] mb-1">
+          Allowed pairs (source→destination), one per line as "src,dst". Only listed directions are exchangeable — reverse pairs must be added explicitly (prevents arbitrage loops).</p>
+        <textarea className="or-input text-xs w-full h-20" id="ex-pairs" data-testid="gm-exchange-pairs"
+          defaultValue={(rule.pairs || []).map((p) => p.join(",")).join("\n")} />
+        <div className="flex gap-2 flex-wrap items-center mt-2">
+          {["min_amount", "max_amount", "fee_pct"].map((k) => (
+            <label key={k} className="flex flex-col gap-0.5">
+              <span className="text-[9px] uppercase" style={{ color: "var(--text-muted)" }}>{k.replace(/_/g, " ")}</span>
+              <input className="or-input text-xs w-20" defaultValue={rule[k] ?? ""} id={`ex-${k}`} /></label>))}
+          <label className="flex items-center gap-1 text-[10px] mt-3">
+            <input type="checkbox" defaultChecked={rule.frozen} id="ex-frozen" data-testid="gm-exchange-freeze" /> freeze exchange globally</label>
+          <button className="or-btn text-[10.5px] mt-3" data-testid="gm-exchange-save"
+            onClick={async () => {
+              const pairs = document.getElementById("ex-pairs").value.split("\n")
+                .map((l) => l.split(",").map((x) => x.trim()).filter(Boolean)).filter((p) => p.length === 2);
+              const bad = pairs.filter(([a, b]) => pairs.some(([c, d]) => a === d && b === c));
+              if (bad.length && !window.confirm("Warning: reverse pairs detected — this can enable arbitrage loops with mismatched ratios. Continue?")) return;
+              await apiClient.post("/admin/gamemaker/exchange-rules", {
+                pairs, min_amount: Number(document.getElementById("ex-min_amount").value || 1),
+                max_amount: Number(document.getElementById("ex-max_amount").value || 100000),
+                fee_pct: Number(document.getElementById("ex-fee_pct").value || 0),
+                frozen: document.getElementById("ex-frozen").checked });
+              toast.success("New exchange rule version created"); load();
+            }}>Save as new version</button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const AdjustForm = ({ onDone }) => {
   const [f, setF] = useState({ username: "", key: "stars", amount: "", reason: "" });
