@@ -1,5 +1,17 @@
 # OurRealm — Product Requirements Document (PRD)
 
+## P0 — PHASE 18: PRODUCTION ART (Aug 8 2026) — MILESTONE 1 COMPLETE ✅ (Hero Master + Hero Animation V2 + Blue Nexus Portal wired into the REAL game; awaiting user go-ahead for the remaining asset families)
+### Master blueprint = authoritative visual reference (user-attached image, Aug 8). Engine/gameplay LOCKED — art skins the working geometry.
+### Delivered this milestone
+- Hero Master generated + identity LOCKED (young jungle adventurer, brown spiky hair, brown/gold+green armor, cyan sword). Used as reference image for every animation sheet (identity consistent in-game).
+- Hero Animation V2 sheets wired: idle 8f, run 12f, jump_rise 4f, jump_fall 4f, land 4f, attack 10f, dash 8f, cast 8f, hurt 4f, death 8f, climb 6f (climb sheet has ladder baked in — flagged, acceptable, review later).
+- Blue Nexus Portal: separate stone frame (magenta-keyed alpha) + vortex sheets drawn with screen-blend: locked 4f / unlocking 8f (plays over the 1.5s unlock) / active 8f loop. ~2 hero heights. Cell-edge artifacts removed (10px border erase + black-floor <56).
+- Engine additions (smallest, backward-compatible, in arpgXY only): `sprSt()` bottom-anchored sprite renderer with loop/clamp per state, HSLOT state→slot map, sprite portal rendering with screen-blend; procedural gray-box remains the automatic fallback when a slot is missing. `hero_h:64`, `portal_h:130` spec keys.
+- Asset pipeline: `/app/backend/scripts/ingest_phase18_assets.py` — downloads generated grids, slices rows×cols, chroma-keys (magenta for characters / black-floor for glow sheets), normalizes bottom-center baselines, stitches horizontal strips, saves to media dir, **uploads via storage adapter (S3)** — CRITICAL: media_dir alone 404s because /api/public/game-assets 307-redirects to S3 — registers db.orai_assets records, wires spec.assets. author_graybox_v2.py now PRESERVES wired assets on rerun.
+- Regression with art active: full traversal drive PASS (1:11) — key pickup, ladder climb, gap cross, summit, portal locked→unlocking→active, stage transition with key carried, DEMO COMPLETE. Screenshots: /app/memory/phase18_shots/.
+### NEXT (user gate before mass generation)
+- Remaining families per master blueprint: enemies (grunt/viper/skeleton/shaman), Jungle Titan boss, purple underground portal, items (large Ancient Key, chests, potions, heart, fire orb, crystals, torches), terrain kit + pyramid modules, 5-layer parallax backgrounds, Level 2 Nexus set (void drone/energy sentinel/gravity golem, floating platforms, nebula), HUD upgrade, control button reskin, final polish pass.
+
 ## P0 — XY ENGINE V2: TRUE 2D MULTI-ELEVATION REBUILD (Aug 8 2026) ✅ GRAY-BOX VERTICAL SLICE COMPLETE — full traversal E2E PASS (awaiting user approval before ANY art generation)
 ### What was built (user's 28-step plan, Phases 1–17 equivalent)
 - Backups: /app/memory/backups_jungle_rebuild/ (GameRuntime.jsx.bak, game_studio.py.bak, author_jungle_spec.py.bak, make_test_game.py.bak).

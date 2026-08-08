@@ -2014,10 +2014,35 @@ function arpgXY(st){const c=mkCanvas(0),g=c.getContext('2d'),W=c.width,H=c.heigh
   hurt:s=>({rot:-s.f*0.16,sx:1.05,sy:0.94,oy:0,ox:-s.f*5,leg:0.4,arm:0.8}),
   death:s=>({rot:s.f*Math.min(1.55,s.st*2.6),sx:1,sy:1,oy:s.st*26,ox:0,leg:0.2,arm:0.3}),
   climb:s=>({rot:0,sx:1,sy:1,oy:0,ox:0,leg:Math.sin(s.t*9),arm:Math.sin(s.t*9+3.14)})};
+ /* sprite renderer: bottom-anchored, per-state loop/clamp, falls back to gray-box */
+ function sprSt(slot,x,y,hh,flip,tt,clamp){const im=aimg(slot);if(!im)return false;
+  const m=(AST[slot]&&AST[slot].meta)||{};const fr=m.frames||1,fps=m.fps||10;
+  let fi=Math.floor((tt||0)*fps);fi=clamp?Math.min(fi,fr-1):((fi%fr)+fr)%fr;
+  const fw=im.naturalWidth/fr,fh=im.naturalHeight,ar=fw/fh;
+  g.save();g.translate(x,y);if(flip)g.scale(-1,1);
+  g.drawImage(im,fi*fw,0,fw,fh,-hh*ar/2,-hh,hh*ar,hh);g.restore();return true}
+ const HSLOT={idle:['hero_idle',0],run:['hero_run',0],jump_rise:['hero_jump_rise',1],
+  jump_fall:['hero_jump_fall',1],land:['hero_land',1],attack:['hero_attack',1],
+  cast:['hero_cast',1],dash:['hero_dash',1],hurt:['hero_hurt',1],death:['hero_death',1],
+  climb:['hero_climb',0]};
+ const HH=st.hero_h||64;
  function drawHeroXY(t,dt){
   g.save();g.globalAlpha=0.3;g.fillStyle='#000';
   const gsh=groundY(P.x,P.y-2);g.beginPath();g.ellipse(P.x,Math.min(gsh,P.y+40),14,4,0,0,7);g.fill();g.restore();
   if(P.inv>0&&P.st!=='dash'&&P.st!=='death'&&Math.floor(t*14)%2)return;
+  const hs=HSLOT[P.st]||HSLOT.idle;
+  const tt=hs[1]?P.stT:(P.st==='run'?P.animT*0.9:t);
+  if(sprSt(hs[0],P.x,P.y,HH,P.face<0,tt,!!hs[1])||(aimg('hero_idle')&&sprSt('hero_idle',P.x,P.y,HH,P.face<0,t,false))){
+   if(P.st==='dash'){g.save();g.globalAlpha=0.22;
+    for(let i=1;i<4;i++)sprSt(hs[0],P.x-P.face*i*11,P.y,HH,P.face<0,tt,true);g.restore()}
+   if(P.st==='attack'&&P.stT<0.18){g.save();g.translate(P.x,P.y-HH*0.5);g.scale(P.face,1);
+    g.strokeStyle=LG;g.lineWidth=4;g.shadowColor=LG;g.shadowBlur=16;g.globalAlpha=1-P.stT*4.5;
+    g.beginPath();g.arc(0,0,HH*0.72,-1.1+P.stT*5,0.4+P.stT*5);g.stroke();g.restore()}
+   if(P.st==='cast'&&P.stT<0.3){g.save();g.strokeStyle=LG;g.globalAlpha=1-P.stT*3;g.lineWidth=2;
+    g.beginPath();g.arc(P.x,P.y-HH*0.5,18+P.stT*110,0,7);g.stroke();g.restore()}
+   if(S.debug_collision){g.fillStyle='#fff';g.font='10px monospace';g.textAlign='center';
+    g.fillText(P.st,P.x,P.y-HH-8);g.textAlign='left'}
+   return}
   const tgt=(PO2[P.st]||PO2.idle)({t:t*2+P.animT*3,f:P.face,st:P.stT});
   const po=P.pose,bl=Math.min(1,dt*13);
   po.rot+=(tgt.rot-po.rot)*bl;po.sx+=(tgt.sx-po.sx)*bl;po.sy+=(tgt.sy-po.sy)*bl;
@@ -2047,6 +2072,25 @@ function arpgXY(st){const c=mkCanvas(0),g=c.getContext('2d'),W=c.width,H=c.heigh
   if(S.debug_collision){g.fillStyle='#fff';g.font='10px monospace';g.textAlign='center';
    g.fillText(P.st,P.x,P.y-56);g.textAlign='left'}}
  function drawPortal(p,t){const px=p.x,py=p.y-58,rx=32,ry=52,col=p.color||LG;
+  const PSLOT={locked:'portal_locked',unlocking:'portal_unlocking',active:'portal_active'};
+  if(aimg(PSLOT[p.state]||'portal_active')){
+   const PHH=st.portal_h||150;
+   sprSt('portal_frame',px,p.y+8,PHH*1.16,false,0,true);
+   g.save();g.globalCompositeOperation='screen';
+   sprSt(PSLOT[p.state],px,p.y+4,p.state==='locked'?PHH*0.94:PHH,false,p.state==='unlocking'?p.t:t,p.state==='unlocking');
+   g.restore();
+   if(p.state==='locked'){g.fillStyle='#aeb8cf';g.font='bold 20px system-ui';g.textAlign='center';
+    g.fillText('\uD83D\uDD12',px,py+6);g.font='bold 10px system-ui';g.fillStyle='#8d99b3';
+    g.fillText('SEALED',px,p.y+24);g.textAlign='left'}
+   else if(p.state==='unlocking'){g.fillStyle=LA;g.font='bold 10px system-ui';g.textAlign='center';
+    g.fillText('UNLOCKING\u2026',px,p.y+24);g.textAlign='left';
+    if(Math.random()<0.35)parts.push({x:px+(Math.random()-0.5)*rx*2,y:py+ry,vx:0,vy:-60-Math.random()*60,life:0.7,color:'#FFD34D',r:2})}
+   else{g.fillStyle=col;g.font='bold 10px system-ui';g.textAlign='center';
+    g.fillText('\u25B8 ENTER \u25C2',px,p.y+24);g.textAlign='left';
+    if(Math.random()<0.2)parts.push({x:px+(Math.random()-0.5)*rx*1.6,y:py+(Math.random()-0.5)*ry*1.6,vx:(Math.random()-0.5)*24,vy:-30,life:1,color:'#9fe2ff',r:1.8})}
+   g.fillStyle='#c6d2e8';g.font='bold 11px system-ui';g.textAlign='center';
+   g.fillText((p.label||p.portal_id||'PORTAL').toUpperCase(),px,p.y-(st.portal_h||150)-14);g.textAlign='left';
+   return}
   g.save();
   g.fillStyle='#232b3d';g.beginPath();g.ellipse(px,py,rx+12,ry+12,0,0,7);g.fill();
   g.strokeStyle='#465372';g.lineWidth=4;g.beginPath();g.ellipse(px,py,rx+9,ry+9,0,0,7);g.stroke();

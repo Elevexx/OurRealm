@@ -18,7 +18,7 @@ GRAYBOX_ID = "9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b01"
 L1 = {
     "title": "Jungle Ruins (Gray-box)", "mode": "side_scroll", "schema_version": 2,
     "zone": "forest", "world_w": 4200, "world_h": 1200, "view_h": 420,
-    "player_hp": 34, "player_mana": 14,
+    "player_hp": 34, "player_mana": 14, "hero_h": 64, "portal_h": 130,
     "spawn": {"x": 90, "y": 700},
     "intro": "Head right — find a way down into the lower ruins",
     "solids": [
@@ -89,7 +89,7 @@ L1 = {
 L2 = {
     "title": "Nexus Test Area (Gray-box)", "mode": "side_scroll", "schema_version": 2,
     "zone": "nexus", "world_w": 1800, "world_h": 800, "view_h": 380,
-    "player_hp": 34, "player_mana": 14,
+    "player_hp": 34, "player_mana": 14, "hero_h": 64, "portal_h": 130,
     "spawn": {"x": 80, "y": 640},
     "intro": "Level 2 loaded — the Rift Home lies right",
     "palette": {"sky": "#141033", "bg": "#0a0820", "glow": "#B98BFF"},
@@ -122,7 +122,8 @@ async def main():
     spec = dict(src["spec"])
     spec["stages"] = [L1, L2]
     spec["title"] = "GRAYBOX XY ENGINE V2"
-    spec["assets"] = {}  # gray-box: NO art
+    prev = await db.games.find_one({"id": GRAYBOX_ID}, {"_id": 0, "spec.assets": 1})
+    spec["assets"] = ((prev or {}).get("spec") or {}).get("assets") or {}  # keep wired production art
     spec["debug_collision"] = False
     from services.game_studio import validate_spec
     errs = validate_spec(spec, 5, expected_runtime="action_rpg_2_5d")

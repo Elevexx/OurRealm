@@ -98,20 +98,29 @@ async def main():
             "->", "PASS" if climbed and s['y'] <= 705 else "FAIL")
 
         async def cross_gap():
-            await kd('ArrowRight'); jumped = False; t0 = time.time(); s2 = await gb()
+            # deterministic run-up: stop well before the gap, then poll fast
+            s2 = await goto_x(1400, 30, tol=12)
+            await kd('ArrowRight'); jumped = False; t0 = time.time()
             while time.time() - t0 < 25:
                 s2 = await gb()
-                if not jumped and s2['onG'] and s2['x'] >= 1495 and s2['y'] <= 710:
+                if not jumped and s2['onG'] and s2['x'] >= 1512 and s2['y'] <= 710:
                     await jump(); jumped = True
                 if s2['x'] >= 1750 and s2['y'] <= 710: break
                 if s2['y'] > 800: break
-                await page.wait_for_timeout(100)
+                await page.wait_for_timeout(40)
             await ku('ArrowRight'); return await gb()
         s = await cross_gap()
-        if s['y'] > 800:
-            log("  fell in shaft during backtrack — using ladder route again")
-            s = await goto_x(320, 45, tol=8)
-            await kd('w'); await page.wait_for_timeout(7000); await ku('w')
+        for retry in range(2):
+            if s['y'] <= 710 and s['x'] >= 1740: break
+            log("  fell in shaft during backtrack — ladder route retry")
+            s = await goto_x(1500, 15)          # off the rest platform to cave floor
+            s = await goto_x(320, 45, tol=8)     # west to ladder
+            await kd('w'); t0 = time.time()
+            while time.time() - t0 < 12:
+                s = await gb()
+                if s['y'] <= 705: break
+                await page.wait_for_timeout(180)
+            await ku('w')
             s = await cross_gap()
         log("P7 gap crossed:", s['x'], s['y'], "->", "PASS" if s['x'] >= 1740 and s['y'] <= 710 else "FAIL")
 
