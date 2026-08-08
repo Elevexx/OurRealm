@@ -202,8 +202,8 @@ async def evaluate(game: dict, user: dict | None, ctx: dict | None = None) -> di
     trace = [f"mode={mode}"]
 
     if user is None:  # guest
-        if mode == "public_preview":
-            return _out(True, "public_preview", mode, flags=default_flags(mode),
+        if mode in ("public_preview", "published"):
+            return _out(True, "public_preview", mode, flags=default_flags("public_preview"),
                         message=PUBLIC_PREVIEW_MESSAGE, trace=trace + ["guest allowed"])
         return _out(False, "auth_required", mode, visible=False, trace=trace + ["guest denied"])
 

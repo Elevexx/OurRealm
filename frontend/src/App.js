@@ -55,6 +55,7 @@ const AdminGames = React.lazy(() => import("@/pages/AdminGames"));
 const GamesHub = React.lazy(() => import("@/pages/GamesHub"));
 const PublicGamePreview = React.lazy(() => import("@/pages/PublicGamePreview"));
 const GamePublicPage = React.lazy(() => import("@/pages/GamePublicPage"));
+const PublicGamesHub = React.lazy(() => import("@/pages/PublicGamesHub"));
 const AdminCenterRegistry = React.lazy(() => import("@/pages/AdminCenterRegistry"));
 import ResponsibilityCenterHub from "@/pages/ResponsibilityCenterHub";
 import ResponsibilityCenterCreate from "@/pages/ResponsibilityCenterCreate";
@@ -140,6 +141,15 @@ function ShellRoute({ children }) {
     return <Navigate to={`/waitlist?next=${dest}`} replace />;
   }
   return <Layout><FoundingVipPopup /><LegalNoticeGate />{children}</Layout>;
+}
+
+// /games — signed-in users get the full authenticated hub; anonymous
+// visitors get the public hub (published games only, guest play flow).
+function GamesRoute() {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (user) return <ShellRoute><Lazy><GamesHub /></Lazy></ShellRoute>;
+  return <Lazy><PublicGamesHub /></Lazy>;
 }
 
 // Root — no public landing page. Logged-in users continue to their feed
@@ -265,7 +275,7 @@ function App() {
             <Route path="/admin/previews/:buildId" element={<ShellRoute><Lazy><AdminPreview /></Lazy></ShellRoute>} />
             <Route path="/admin/ai-policies" element={<ShellRoute><Lazy><AdminAiPolicies /></Lazy></ShellRoute>} />
             <Route path="/admin/games" element={<ShellRoute><Lazy><AdminGames /></Lazy></ShellRoute>} />
-            <Route path="/games" element={<ShellRoute><Lazy><GamesHub /></Lazy></ShellRoute>} />
+            <Route path="/games" element={<GamesRoute />} />
             <Route path="/admin/responsibility-center/templates" element={<ShellRoute><AdminRcTemplates mode="list" /></ShellRoute>} />
             <Route path="/admin/responsibility-center/templates/create" element={<ShellRoute><AdminRcTemplates mode="create" /></ShellRoute>} />
             <Route path="/admin/responsibility-center/templates/:templateId" element={<ShellRoute><AdminRcTemplates mode="detail" /></ShellRoute>} />

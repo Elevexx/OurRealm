@@ -24,10 +24,27 @@ export default function GamePublicPage() {
 
   useEffect(() => {
     if (!slug) {
-      // /games/{gameId} → canonical custom URL, else internal play route
+      // /games/{gameId} → canonical custom URL; signed-in users → internal
+      // play route; anonymous visitors → public metadata + guest flow.
       axios.get(`${API}/api/public/game-path/id/${parent}`)
-        .then((r) => navigate(r.data.canonical || `/games?play=${parent}`, { replace: true }))
-        .catch(() => navigate(`/games?play=${parent}`, { replace: true }));
+        .then((r) => {
+          if (r.data.canonical) { navigate(r.data.canonical, { replace: true }); return null; }
+          if (user) { navigate(`/games?play=${parent}`, { replace: true }); return null; }
+          return axios.get(`${API}/api/public/game-path/meta/${parent}`);
+        })
+        .then((r2) => {
+          if (!r2) return;
+          const g = r2.data.game;
+          setMeta(g);
+          document.title = `${g.title} — OurRealm Games`;
+          if (!localStorage.getItem("ourrealm.access")) {
+            try { if (!sessionStorage.getItem(`or-game-prompt-${g.id}`)) setPrompt(true); } catch { setPrompt(true); }
+          }
+        })
+        .catch(() => {
+          if (user) navigate(`/games?play=${parent}`, { replace: true });
+          else setErr("This game is not available right now.");
+        });
       return;
     }
     axios.get(`${API}/api/public/game-path/${parent}/${slug}`)
@@ -51,7 +68,7 @@ export default function GamePublicPage() {
         const d = e?.response?.data?.detail;
         setErr((typeof d === "object" ? d.message : d) || "This game URL is not available.");
       });
-  }, [parent, slug, navigate]);
+  }, [parent, slug, navigate, user]);
 
   useEffect(() => {
     // authenticated visitors go straight into the real play experience
@@ -63,7 +80,7 @@ export default function GamePublicPage() {
     try { sessionStorage.setItem(`or-game-prompt-${meta.id}`, "1"); } catch { /* ok */ }
   };
 
-  if (!slug) return null;
+  if (!slug && !meta && !err) return null;
 
   return (
     <div className="min-h-screen px-4 py-6" style={{ background: "#070c18", color: "#EAF2FF" }}

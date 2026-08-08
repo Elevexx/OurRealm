@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/admin/games", tags=["game-urls"])
 public_router = APIRouter(prefix="/api/public/game-path", tags=["game-path-public"])
 
 RESERVED = {"admin", "api", "create", "edit", "preview", "settings", "login", "signup",
-            "account", "undefined", "null", "new", "hub", "play", "id", "static", "assets"}
+            "account", "undefined", "null", "new", "hub", "play", "id", "meta", "static", "assets"}
 _indexed = False
 
 
@@ -164,6 +164,40 @@ async def canonical_for_id(game_id: str):
     return {"canonical": cur["full_path"] if cur else None}
 
 
+@public_router.get("/hub")
+async def public_games_hub():
+    """Anonymous games hub — published games only, guest access evaluated per game."""
+    rows = await db.games.find({"status": "published"},
+                               {"_id": 0, "build_log": 0, "request": 0}).sort("published_at", -1).to_list(100)
+    urls = {}
+    async for u in db.game_urls.find({"active": True}, {"_id": 0, "game_id": 1, "full_path": 1}):
+        urls[u["game_id"]] = u["full_path"]
+    out = []
+    for g in rows:
+        acc = await gac.evaluate(g, None)
+        if acc["mode"] not in ("published", "public_preview", "preview", "view_only"):
+            continue
+        m = _public_meta(g, acc, urls.get(g["id"]) or f"/games/{g['id']}", include_spec=False)
+        m["plays"] = g.get("plays") or 0
+        out.append(m)
+    return {"games": out}
+
+
+@public_router.get("/meta/{game_id}")
+async def public_meta_by_id(game_id: str):
+    """Anonymous per-game public metadata by id (for published games without a custom URL)."""
+    g = await db.games.find_one({"id": game_id, "status": "published"},
+                                {"_id": 0, "build_log": 0, "request": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    acc = await gac.evaluate(g, None)
+    if acc["mode"] not in ("published", "public_preview", "preview", "view_only"):
+        raise HTTPException(status_code=404, detail="Game not found")
+    cur = await db.game_urls.find_one({"game_id": game_id, "active": True}, {"_id": 0})
+    return {"game": _public_meta(g, acc, cur["full_path"] if cur else None,
+                                 include_spec=acc["allowed"])}
+
+
 @public_router.get("/{parent}/{slug}")
 async def resolve_path(parent: str, slug: str):
     await _ensure_indexes()
@@ -189,4 +223,4 @@ async def resolve_path(parent: str, slug: str):
         raise HTTPException(status_code=404, detail="Game not found")
     return {"redirect": rec["full_path"] if redirected else None,
             "game": _public_meta(g, acc, rec["full_path"],
-                                 include_spec=(cfg_mode == "public_preview"))}
+                                 include_spec=acc["allowed"])}

@@ -4,7 +4,6 @@ import { Star, Globe, Bell, MessageSquare, ShieldCheck, Gamepad2 } from "lucide-
 import Logo from "@/components/Logo";
 import { RcImg } from "@/lib/rcAssets";
 import { useAuth } from "@/contexts/AuthContext";
-import { useAccessControl } from "@/contexts/AccessControlContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import apiClient from "@/api/client";
 
@@ -37,22 +36,11 @@ export default function TopStarBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { getState } = useAccessControl();
   const { mode } = useTheme();
 
   // ── Notifications badge: ONLY unread count, refreshed on route change.
   // Mark-as-seen happens when the user opens /notifications.
   const [unread, setUnread] = useState(0);
-  // Games icon visibility — reuses the AI Access Policy engine (games_play).
-  const [gamesAllowed, setGamesAllowed] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    if (!user) { setGamesAllowed(false); return; }
-    apiClient.get("/ai-policies/me")
-      .then(({ data }) => { if (!cancelled) setGamesAllowed(!!(data?.features?.games_play?.allowed ?? data?.games_play?.allowed)); })
-      .catch(() => { if (!cancelled) setGamesAllowed(false); });
-    return () => { cancelled = true; };
-  }, [user]);
   useEffect(() => {
     let cancelled = false;
     if (!user) { setUnread(0); return; }
@@ -122,12 +110,7 @@ export default function TopStarBar() {
           data-testid="star-bar"
           style={{ scrollSnapType: "x mandatory" }}
         >
-          {ITEMS.filter(({ to, policy }) => {
-            if (to === "/responsibility-center" && !getState("responsibility_center").visible) return false;
-            if (policy === "games_play" && !gamesAllowed) return false;
-            return true;
-          })
-            .map(({ to, label, Icon, testid, color, isNotif, matchPrefix, tooltip, rcLogo }) => {
+          {ITEMS.map(({ to, label, Icon, testid, color, isNotif, matchPrefix, tooltip, rcLogo }) => {
             const pathOnly = to.split("?")[0];
             const active = matchPrefix ? location.pathname.startsWith(pathOnly) : location.pathname === pathOnly;
             const badgeText = isNotif && unread > 0 ? (unread > 99 ? "99+" : String(unread)) : null;
