@@ -298,10 +298,55 @@ EDIT_SYSTEM = (
     "'_substitutions': [strings describing anything you could not honor and the closest supported thing you did instead] (empty if none).")
 
 
+from services import job_engine as _je
+
+
+@_je.register("orai_edit")
+async def _run_orai_edit(job: dict) -> dict:
+    """ORAi Living Project edit — persistent job (Cloudflare-safe).
+    Never modifies the active version until the replacement passes validation."""
+    p = job["payload"]
+    game_id, prompt, scope, add_stages, power = (p["game_id"], p["prompt"], p["scope"],
+                                                 p["add_stages"], p["power"])
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise RuntimeError("Game not found")
+    await _je.phase(job["id"], "generating", 20, "ORAi is rewriting the requested scope")
+    t = tier(power)
+    est = round(t["est_cost_per_pass"] * (2 if add_stages else 1), 3)
+    user = ("CURRENT SPEC:\n" + json.dumps(g.get("spec") or {})[:24000]
+            + "\n\nEDIT SCOPE: " + scope
+            + ("\nEDIT REQUEST: " + prompt if prompt else "")
+            + (f"\nAPPEND exactly {add_stages} brand-new stages that continue the difficulty escalation with NEW "
+               f"environments and fresh hazard mixes. Do NOT modify existing stages." if add_stages else ""))
+    raw = await call_llm(EDIT_SYSTEM, user, power=power, json_mode=True)
+    spec = json.loads(raw)
+    subs = [str(s)[:300] for s in (spec.pop("_substitutions", None) or [])][:8]
+    spec["runtime"] = g["runtime"]
+    if spec.get("player_representation") not in (gs.PLAYER_REPS.get(g["runtime"]) or []):
+        spec["player_representation"] = ((g.get("spec") or {}).get("player_representation")
+                                         or gs.default_rep(g["runtime"], str(spec.get("mode") or "")))
+    await _je.phase(job["id"], "validating", 70, "Validating the updated spec")
+    errs = gs.validate_spec(spec, int(g.get("complexity") or 5))
+    if errs:
+        raise RuntimeError("ORAi edit failed validation: " + "; ".join(errs[:3]))
+    await _je.phase(job["id"], "saving", 90)
+    versions = (g.get("versions") or [])[-29:] + [_versions_entry(g)]
+    new_v = int(g.get("version") or 1) + 1
+    await db.games.update_one({"id": game_id}, {"$set": {
+        "spec": spec, "versions": versions, "version": new_v, "updated_at": _iso(),
+        "actual_cost": round(float(g.get("actual_cost") or 0) + est, 3)}})
+    actor = await db.users.find_one({"id": job["user_id"]}, {"_id": 0, "username": 1, "id": 1})
+    await gs.audit(actor or {"id": job["user_id"]}, "game_orai_edit", game_id,
+                   detail=f"scope={scope} add_stages={add_stages} · {prompt[:120]}", cost=est)
+    return {"version": new_v, "cost": est, "substitutions": subs,
+            "stages": len(spec.get("stages") or []), "title": spec.get("title")}
+
+
 @admin2.post("/{game_id}/orai-edit")
 async def orai_edit(game_id: str, body: dict, current: CurrentUser):
     require_founder(current)
-    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "spec": 0, "build_log": 0})
     if not g:
         raise HTTPException(status_code=404, detail="Game not found")
     if g.get("status") == "building":
@@ -317,33 +362,11 @@ async def orai_edit(game_id: str, body: dict, current: CurrentUser):
     if body.get("dry_run"):
         return {"estimated_cost": est, "model": t["label"], "scope": scope,
                 "add_stages": add_stages, "note": "Only the requested scope is regenerated — everything else is preserved."}
-    user = ("CURRENT SPEC:\n" + json.dumps(g.get("spec") or {})[:24000]
-            + "\n\nEDIT SCOPE: " + scope
-            + ("\nEDIT REQUEST: " + prompt if prompt else "")
-            + (f"\nAPPEND exactly {add_stages} brand-new stages that continue the difficulty escalation with NEW "
-               f"environments and fresh hazard mixes. Do NOT modify existing stages." if add_stages else ""))
-    try:
-        raw = await call_llm(EDIT_SYSTEM, user, power=power, json_mode=True)
-        spec = json.loads(raw)
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"ORAi edit generation failed: {str(e)[:150]}")
-    subs = [str(s)[:300] for s in (spec.pop("_substitutions", None) or [])][:8]
-    spec["runtime"] = g["runtime"]
-    if spec.get("player_representation") not in (gs.PLAYER_REPS.get(g["runtime"]) or []):
-        spec["player_representation"] = ((g.get("spec") or {}).get("player_representation")
-                                         or gs.default_rep(g["runtime"], str(spec.get("mode") or "")))
-    errs = gs.validate_spec(spec, int(g.get("complexity") or 5))
-    if errs:
-        raise HTTPException(status_code=422, detail="ORAi edit failed validation: " + "; ".join(errs[:3]))
-    versions = (g.get("versions") or [])[-29:] + [_versions_entry(g)]
-    new_v = int(g.get("version") or 1) + 1
-    await db.games.update_one({"id": game_id}, {"$set": {
-        "spec": spec, "versions": versions, "version": new_v, "updated_at": _iso(),
-        "actual_cost": round(float(g.get("actual_cost") or 0) + est, 3)}})
-    await gs.audit(current, "game_orai_edit", game_id,
-                   detail=f"scope={scope} add_stages={add_stages} · {prompt[:120]}", cost=est)
-    return {"ok": True, "version": new_v, "cost": est, "substitutions": subs,
-            "stages": len(spec.get("stages") or []), "title": spec.get("title")}
+    job = await _je.submit("orai_edit", current,
+                           {"game_id": game_id, "prompt": prompt, "scope": scope,
+                            "add_stages": add_stages, "power": power},
+                           idem_key=body.get("request_id"))
+    return {"job_id": job["id"], "phase": job["phase"], "estimated_cost": est}
 
 
 async def _fire_analytics(game_id: str) -> dict:

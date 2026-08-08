@@ -56,6 +56,9 @@ const GamesHub = React.lazy(() => import("@/pages/GamesHub"));
 const PublicGamePreview = React.lazy(() => import("@/pages/PublicGamePreview"));
 const GamePublicPage = React.lazy(() => import("@/pages/GamePublicPage"));
 const PublicGamesHub = React.lazy(() => import("@/pages/PublicGamesHub"));
+const GameMakerPage = React.lazy(() => import("@/pages/GameMakerPage"));
+const GameMakerAdmin = React.lazy(() => import("@/pages/GameMakerAdmin"));
+const GameMakerSaved = React.lazy(() => import("@/pages/GameMakerSaved"));
 const AdminCenterRegistry = React.lazy(() => import("@/pages/AdminCenterRegistry"));
 import ResponsibilityCenterHub from "@/pages/ResponsibilityCenterHub";
 import ResponsibilityCenterCreate from "@/pages/ResponsibilityCenterCreate";
@@ -152,6 +155,26 @@ function GamesRoute() {
   return <Lazy><PublicGamesHub /></Lazy>;
 }
 
+// /gamemaker — access is enforced server-side (founder flag, later beta/
+// signed-in/public). Signed-in users get the shell; guests get the page
+// standalone with a lock state.
+function GameMakerRoute() {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (user) return <ShellRoute><Lazy><GameMakerPage /></Lazy></ShellRoute>;
+  return <Lazy><GameMakerPage /></Lazy>;
+}
+
+// /admin/orai — now the main ORAi dashboard. Old OPC deep links that used
+// query params (project/pid) migrate safely to /admin/gamemaker/studio.
+function OraiHome() {
+  const [searchParams] = useSearchParams();
+  if (searchParams.get("project") || searchParams.get("pid") || searchParams.get("tab") === "projects") {
+    return <Navigate to={`/admin/gamemaker/studio?${searchParams.toString()}`} replace />;
+  }
+  return <ShellRoute><AdminOrion /></ShellRoute>;
+}
+
 // Root — no public landing page. Logged-in users continue to their feed
 // (honoring any ?next deep link); anonymous visitors go to /signup.
 function RootRedirect() {
@@ -232,10 +255,14 @@ function App() {
             <Route path="/admin/WebsiteMedia" element={<ShellRoute><AdminWebsiteMedia /></ShellRoute>} />
             <Route path="/admin/widgets" element={<ShellRoute><AdminWidgets /></ShellRoute>} />
             <Route path="/admin/orion-logs" element={<ShellRoute><AdminOrionLogs /></ShellRoute>} />
-            <Route path="/admin/orai" element={<ShellRoute><Lazy><OraiProjects /></Lazy></ShellRoute>} />
-            <Route path="/admin/orai-projects" element={<Navigate to="/admin/orai" replace />} />
-            <Route path="/admin/orai/dashboard" element={<ShellRoute><AdminOrion /></ShellRoute>} />
+            <Route path="/admin/orai" element={<OraiHome />} />
+            <Route path="/admin/orai-projects" element={<Navigate to="/admin/gamemaker/studio" replace />} />
+            <Route path="/admin/orai/dashboard" element={<Navigate to="/admin/orai" replace />} />
             <Route path="/admin/orion" element={<Navigate to="/admin/orai" replace />} />
+            <Route path="/gamemaker" element={<GameMakerRoute />} />
+            <Route path="/gamemaker/saved" element={<ShellRoute><Lazy><GameMakerSaved /></Lazy></ShellRoute>} />
+            <Route path="/admin/gamemaker" element={<ShellRoute><Lazy><GameMakerAdmin /></Lazy></ShellRoute>} />
+            <Route path="/admin/gamemaker/studio" element={<ShellRoute><Lazy><OraiProjects /></Lazy></ShellRoute>} />
             <Route path="/admin/providers" element={<ShellRoute><AdminProviders /></ShellRoute>} />
             <Route path="/admin/analytics" element={<ShellRoute><AdminAnalytics /></ShellRoute>} />
             <Route path="/admin/realm-pulse" element={<ShellRoute><RealmPulse /></ShellRoute>} />

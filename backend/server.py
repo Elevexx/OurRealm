@@ -270,6 +270,14 @@ app.include_router(legal_router_mod.router)
 app.include_router(legal_router_mod.public_router)
 app.include_router(waitlist_router_mod.public_router)
 app.include_router(waitlist_router_mod.admin_router)
+from routers import jobs as jobs_router_mod  # noqa: E402
+from routers import resources as resources_router_mod  # noqa: E402
+from routers import gamemaker as gamemaker_router_mod  # noqa: E402
+app.include_router(jobs_router_mod.router)
+app.include_router(resources_router_mod.router)
+app.include_router(resources_router_mod.admin)
+app.include_router(gamemaker_router_mod.router)
+app.include_router(gamemaker_router_mod.admin)
 
 
 # ─── Friendly signup validation errors + signup health telemetry ───────
@@ -621,6 +629,13 @@ async def on_startup():
 
 async def _safe_startup():
     import asyncio
+    try:
+        from services import job_engine, resources as _resources
+        await job_engine.ensure_indexes()
+        await job_engine.reap_stale()
+        await _resources.ensure_indexes_and_seed()
+    except Exception as e:
+        logger.error(f"[gamemaker] job/resource startup failed: {e}")
     try:
         from services.game_promotion import startup_import
         asyncio.create_task(startup_import())

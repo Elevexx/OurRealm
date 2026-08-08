@@ -1,0 +1,65 @@
+{
+  "summary": "Backend + frontend testing of OurRealm Game Maker Phase 1. Wrote 23 pytest tests in /app/backend/tests/test_gamemaker_phase1.py covering job engine, catalog, create dry-run, resource idempotency + reversal + fire-adapter parity, admin gamemaker RBAC, orai-edit dry-run, and regression (public hub, /api/games auth, fire/wallet). All 23 tests pass. Frontend verified: /gamemaker (founder shows 10 styles + 10 runtimes with Coming Soon on Open World RPG and Shooter, chat & upload panels, send btn), /gamemaker (member sees Founder Preview lock), /admin/gamemaker (all 8 sub-tabs render, Overview shows stats + founder_only mode), /admin/orai (ORAi dashboard), /admin/orai/dashboard redirects to /admin/orai, /admin/gamemaker/studio (OPC projects page), /gamemaker/saved (games list with Play/Publish/Rename/Archive), Home Fire Power card shows [data-testid=resource-balances] strip with 15 Coins / 0 Gems / 5 Keys / 0 Stars for stealth. Mobile 390px on /gamemaker: no horizontal overflow, 2-col grid. However a CRITICAL backend bug was discovered while investigating why the delayed-job test finished in 0.5s.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/admin/gamemaker/test-delayed-job (and any job_engine.submit call without idem_key)",
+        "issue": "job_engine.submit() creates jobs with idem_key=None. MongoDB collection gm_jobs has a *sparse unique* index on idem_key. Sparse only skips indexing when the FIELD IS MISSING, not when its value is explicitly None. Since submit() always sets idem_key (to None if not provided), the second insert throws DuplicateKeyError, submit()'s except-block then does find_one({'idem_key': None}) and returns the FIRST completed job forever. Repro: 3 consecutive POSTs to /api/admin/gamemaker/test-delayed-job returned identical job_id=b8f66ca5f8404e13ad932588aed980d6; DB shows only 1 gm_test_delay doc across many API hits (verified via backend logs and db.gm_jobs.count_documents). This silently breaks the job engine for every kind that doesn't pass idem_key. Fix: either (a) don't set the idem_key field when None (use $unset / omit from dict), or (b) in submit() replay-guard only when idem_key is truthy: `if idem_key: ex = find_one({'idem_key': idem_key})` (already done) AND in the except handler also `if idem_key and (ex := find_one(...))`.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/orai console", "issues": ["Startup validation logs error: 'NAV_SECTIONS contains unregistered ids -> [\"ai-command\",\"private-access\",\"ai-usage\"]. Add a handler in SectionRouter or mark them soon:true.' — noisy in prod console; either register handlers or set soon:true."]}
+    ]
+  },
+  "verified_pass": [
+    "Backend TestCatalog: founder gets access.allowed=true, 10 styles, 10 runtimes, open_world_rpg + shooter have status='planned'",
+    "Backend TestCatalog: normal member auditcheckreal gets access.allowed=false",
+    "Backend TestCreate: shooter runtime blocked with 400; dry_run with live runtime returns estimated_cost without side effects",
+    "Backend TestResources.idempotent_stars_grant: two identical POSTs with same request_id -> second returns replayed=true, balance +5 exactly once",
+    "Backend TestResources.adjust_missing_reason_400: adjustment without reason -> 400",
+    "Backend TestResources.reverse_transaction: reverse endpoint creates compensating entry, balance rolls back by exact amount",
+    "Backend TestResources.resources_me_fire_matches_wallet: /api/resources/me fire balance == /api/fire/wallet vault_balance",
+    "Backend TestAdminGamemaker: overview / jobs / migration/report -> 200 for founder, 401/403 for member and anon; member cannot POST /admin/gamemaker/access",
+    "Backend TestOraiEditDryRun: /api/admin/games/{id}/orai-edit with dry_run:true returns estimated_cost synchronously (no LLM call)",
+    "Backend Regression: /api/public/game-path/hub anon returns >=20 games; /api/games anon -> 401; founder /api/fire/wallet -> 200",
+    "Frontend /gamemaker founder: OurRealm gradient logo, GAME MAKER title, 10 style cards, 10 runtime cards with Coming Soon badges on #5 Open World RPG and #10 Shooter, ORAi chat panel present, upload media panel present, gamemaker-send-btn present",
+    "Frontend /gamemaker member (auditcheckreal): [data-testid=gamemaker-locked] Founder Preview lock visible",
+    "Frontend /admin/gamemaker: h1 'OurRealm Game Maker — Admin', tabs Overview/Saved Games/Builds & Jobs/Published Games/Engagement Resources/Ledger Inspector/Runtimes & Styles/Diagnostics & Migration/Access & Visibility present; Overview shows 31 Published / 9 Approved / 12 Pending / 0 Active Jobs / 0 Failed Jobs / 5 Ledger Entries; Access mode: founder_only, Runtimes 8 live 2 planned, Styles 10",
+    "Frontend /admin/orai: shows ORAi Chat + ORAi Control Center dashboards (not the old projects page)",
+    "Frontend /admin/orai/dashboard: redirects to /admin/orai (page.url final = /admin/orai)",
+    "Frontend /admin/gamemaker/studio: shows 'OurRealm AI — Project Creator' (formerly OPC page)",
+    "Frontend /gamemaker/saved (founder): 'Saved Games' page lists real games with PLAY / PUBLISH / MAKE PRIVATE / RENAME / ARCHIVE / PUBLISH + FOR YOU POST buttons, correct status badges (PUBLISHED / PENDING_APPROVAL / FAILED)",
+    "Frontend /home: [data-testid=resource-balances] present under Fire Power with 15 Coins / 0 Gems / 5 Keys / 0 Stars for stealth",
+    "Frontend mobile 390x844 /gamemaker: no horizontal overflow, 2-column grid legible"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_gamemaker_phase1.py",
+    "/app/test_reports/pytest/iter127_gamemaker.xml",
+    "/app/test_reports/pytest/iter127_gamemaker_rerun.xml"
+  ],
+  "action_items": [
+    "CRITICAL: Fix job_engine.submit() idem_key=None duplicate-key trap. Either omit the field entirely when idem_key is falsy (so the sparse index actually skips it) or only look up existing job in the except block when idem_key is truthy. Right now every job kind that doesn't pass idem_key (test-delayed-job, non-idempotent create paths, etc.) will replay the very first stored job forever. This is why the review's own smoke test 'saw' a 65s completed job — every subsequent submit returns the same completed doc, not a new one.",
+    "Optional: register handlers for ORAi NAV_SECTIONS ids ['ai-command','private-access','ai-usage'] or mark them soon:true to remove console error at /admin/orai load."
+  ],
+  "critical_code_review_comments": [
+    "backend/services/job_engine.py submit(): sparse unique index on idem_key + always-set idem_key=None is a classic Mongo footgun. Also, the except-Exception fallback swallows *any* insert failure (not just duplicate key), so unrelated errors could silently return a stale job.",
+    "Consider changing gm_jobs index from sparse to partial: {partialFilterExpression: {idem_key: {$type: 'string'}}} which correctly ignores null.",
+    "/admin/orai still fires NAV_SECTIONS validation error at page load (visible in console). Suggests some navigation entries were added without router bindings."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_gamemaker_phase1.py (new — 23 tests)"
+  ],
+  "success_rate": {"backend": "23/23 pytest cases pass, but 1 CRITICAL production bug found via probing (job dedupe on None idem_key)", "frontend": "18/18 verified pass"},
+  "test_credentials": "founder: stealth / Password1$ (worked); member: auditcheckreal / Password1$ (worked)",
+  "seed_data_creation": "Created a few small stars grants on auditcheckreal (idempotent tests + reversal test); reversal correctly rolled back its own grant. No games created (only dry_run used, as instructed).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_gamemaker_phase1.py -v. It uses REACT_APP_BACKEND_URL from env. All fixtures scope=module. The delayed-job test finishes in <1s right now because job_engine returns the same completed job every time (see critical bug). Once main agent fixes idem_key handling, the test will take ~70s as intended. Frontend: login as stealth for full flow, auditcheckreal to see the locked view. Do NOT click 'Create My Game' or run non-dry-run orai-edit — both call paid LLMs.",
+  "rca of the issue": "Bug: /api/admin/gamemaker/test-delayed-job returns the same job_id on every call. RCA: In backend/services/job_engine.py:submit(), the job doc is built with idem_key set to whatever was passed (None if omitted). db.gm_jobs has index {idem_key:1, unique:true, sparse:true}. Sparse only excludes documents where the field is entirely missing — not where field==null. So on the first submit without idem_key the doc inserts fine; on the second, insert throws DuplicateKeyError (E11000 duplicate key idem_key: null). The bare `except Exception` block then does find_one({'idem_key': None}) and returns the first stored no-idem-key job. All subsequent same-kind submits without idem_key return that same job. Verified by (a) 3× POSTs returning identical job_id, (b) db.gm_jobs.count_documents({kind:'gm_test_delay'})==1 despite ~7 API hits in logs, (c) index_information showing sparse unique idem_key_1. Mitigation: change job doc build to only include idem_key when truthy, OR change the index to a partial index filtering on {idem_key:{$type:'string'}}. Also tighten the except handler to (i) only fall back when idem_key is truthy and (ii) narrow to DuplicateKeyError."
+}

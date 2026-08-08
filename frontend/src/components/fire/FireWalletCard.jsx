@@ -16,6 +16,7 @@ import { Flame, Clock, ChevronRight, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { CollapsibleHeader, useAccordionState } from "@/components/progression/CollapsibleHeader";
+import { ResourceBalances } from "@/components/fire/ResourceBalances";
 
 const FIRE = "#FF7A1A";
 const GOLD = "#F4C84A";
@@ -466,6 +467,7 @@ export default function FireWalletCard({ compact = false, collapsible = false })
       )}
       </div>
       )}
+      <ResourceBalances />
     </div>
   );
 }

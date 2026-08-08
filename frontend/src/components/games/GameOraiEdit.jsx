@@ -36,14 +36,45 @@ export default function GameOraiEdit({ gameId, onChanged }) {
   const run = async () => {
     setBusy(true);
     try {
-      const r = await apiClient.post(`/admin/games/${gameId}/orai-edit`, { prompt, scope, add_stages: addStages });
-      toast.success(`ORAi edit applied — v${r.data.version} · $${r.data.cost}`);
-      setSubs(r.data.substitutions || []);
-      setEst(null); setPrompt(""); setAddStages(0);
-      onChanged && onChanged();
-    } catch (e) { toast.error(e?.response?.data?.detail || "ORAi edit failed"); }
-    finally { setBusy(false); }
+      const r = await apiClient.post(`/admin/games/${gameId}/orai-edit`,
+        { prompt, scope, add_stages: addStages, request_id: `oedit-${gameId}-${Date.now()}` });
+      const jobId = r.data.job_id;
+      localStorage.setItem(`orai-edit-job-${gameId}`, jobId);
+      toast.info("ORAi is working — this continues even if you leave the page");
+      pollJob(jobId);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "ORAi edit failed");
+      setBusy(false);
+    }
   };
+
+  const pollJob = (jobId) => {
+    const iv = setInterval(async () => {
+      try {
+        const j = (await apiClient.get(`/jobs/${jobId}`)).data.job;
+        if (j.phase === "completed") {
+          clearInterval(iv);
+          localStorage.removeItem(`orai-edit-job-${gameId}`);
+          toast.success(`ORAi edit applied — v${j.result?.version} · $${j.result?.cost}`);
+          setSubs(j.result?.substitutions || []);
+          setEst(null); setPrompt(""); setAddStages(0); setBusy(false);
+          onChanged && onChanged();
+        } else if (j.phase === "failed" || j.phase === "cancelled") {
+          clearInterval(iv);
+          localStorage.removeItem(`orai-edit-job-${gameId}`);
+          toast.error(j.error || "ORAi edit failed");
+          setBusy(false);
+        }
+      } catch { /* keep polling */ }
+    }, 3000);
+  };
+
+  // resume progress display if a job was running when the page was left
+  React.useEffect(() => {
+    const saved = localStorage.getItem(`orai-edit-job-${gameId}`);
+    if (saved) { setBusy(true); pollJob(saved); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId]);
 
   return (
     <div className="or-surface p-3 mt-3" data-testid="game-orai-edit">

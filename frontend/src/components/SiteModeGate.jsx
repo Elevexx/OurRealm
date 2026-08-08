@@ -52,6 +52,11 @@ export default function SiteModeGate() {
     apiClient.get("/access-control/site-status").then((r) => setStatus(r.data)).catch(() => setStatus(null));
   }, [user?.id]);
   if (!status || status.mode === "live" || status.allowed) return null;
+
+  // Public Games is intentionally available even while the rest of OurRealm
+  // is gated by Maintenance/Beta/Preview. This exemption is route-scoped only.
+  if (location.pathname === "/games" || location.pathname.startsWith("/games/")) return null;
+
   if (["/signin", "/signup"].some((p) => location.pathname.startsWith(p))) return null;
   return <ModeScreen mode={status.mode} title={status.title} message={status.message} />;
 }

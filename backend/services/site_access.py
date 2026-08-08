@@ -75,6 +75,7 @@ WHITELIST = (
     # The iframe intentionally has no auth/cookies, so blocking this path
     # causes generated sprites/backgrounds/tiles to fall back to primitives.
     "/api/public/game-assets",
+    "/api/public/game-path",
 )
 
 
