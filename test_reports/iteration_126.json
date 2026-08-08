@@ -1,0 +1,57 @@
+{
+  "summary": "Executed the mandated single-flow XY Engine V2 gray-box traversal test for game id 9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b01 via [data-testid='game-runtime-iframe'] using __GB__ frame.evaluate reads and KeyboardEvent dispatch into the iframe document. Verified core engine steps 1, 2, 7, and 11. Steps 3-6, 8-10 were partially tested but not fully completed within the test window (key pickup + portal approach not achieved). Mobile fixed circular buttons + pointerdown movement PASS.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Underground key pickup (step 4)",
+        "issue": "During ArrowLeft traversal along cave floor (y=1140) from x=1836 the test could not reliably keep the player at y=1140 to reach the pedestal at x~700, y=1040. In two consecutive runs the player ended up back at surface y=700 by the time x reached ~713 (before the pedestal jump), meaning either (a) a one-way surface panel above the cave allowed re-entry to surface via jumps over the pillar at x=1200-1270, or (b) the pedestal's own one-way platform pushed the player up onto the surface. As a result keys[] remained [] and could not be picked up. Recommend main agent verify no vertical route from cave y=1140 back to surface y=700 exists west of the shaft (should not be possible without ladder w-press).",
+        "affected_selectors": ["__GB__.keys", "__GB__.y", "__GB__.x"]
+      },
+      {
+        "flow": "Ladder ascent (step 5)",
+        "issue": "Could not be verified — by the time the player reached x~292 the y coordinate was already 700 (surface), so pressing 'w' did not trigger climbing (y stayed ~700). __GB__.climb never observed true. Direct consequence of the step-4 issue above (player exited cave prematurely).",
+        "affected_selectors": ["__GB__.climb", "__GB__.y"]
+      },
+      {
+        "flow": "Portal approach (step 8)",
+        "issue": "After summit (x=2709, y=540 verified) and descending steps (y ramp back to 700 verified), the player got stuck at x=2892, y=700 in st='idle' and could not progress further right toward the portal at x=3950. ArrowRight was still held via kd('ArrowRight'). Possibly an enemy/collider is blocking or the keydown state was lost after long play. Portal state remained 'locked' throughout. nexus_gate transition locked->unlocking->active NOT verified in this run.",
+        "affected_selectors": ["__GB__.x", "__GB__.portals[0].state"]
+      },
+      {
+        "flow": "Stage 2 transition + ending (steps 9-10)",
+        "issue": "Not reached because portal step 8 did not complete.",
+        "affected_selectors": ["__GB__.stage"]
+      }
+    ],
+    "design_issues": []
+  },
+  "verified_pass": [
+    "Step 1: ArrowRight hold 4s -> x=90->1004 (well past 500), cam[0]=0->605 (X camera scroll PASS).",
+    "Step 2: continued right -> fell into shaft, y reached 1140 (cave floor), cam[1] changed 448->735/780 (Y camera scroll PASS). No death from falling.",
+    "Step 3 (partial): traversed cave leftward, hp dropped 34->30 from spike hazard hits, player recovered (no death, no respawn).",
+    "Step 7: pyramid ramp works — walking right from x=2426 y=678 continuously ascended to summit x=2709 y=540 with onG=true throughout (smooth stair/ramp collision PASS). Descent back to y=700 also PASS.",
+    "Step 11 (mobile): viewport 390x844 shows all six data-testids xy-btn-{left,right,jump,attack,dash,cast} present inside iframe, all position:fixed, left/right in bottom-left corner (left 14/86px, bottom 14px), jump/attack/dash/cast in bottom-right corner (right 14-96px). pointerdown on xy-btn-right moved player x from 90 to 528 in 2s (mobile touch input works)."
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "Investigate why player at cave floor (y=1140) traveling leftward past x~1200 ends up at surface y=700 — possible geometry hole: verify the surface plank does not extend leftward over the cave without a solid gap; or that the pillar at x=1200-1270 jump does not clip player above surface.",
+    "Investigate why player stalls at x~2892 during right traversal on the plateau approach to portal x=3950. Even with ArrowRight held, __GB__.x did not increase past 2892 across 15+ seconds. Could be: an unbeatable brute guardian collider at wrong x, or an invisible wall, or keydown state getting cleared. Please also confirm nexus_gate unlocking->active state machine actually fires when a player with 'ancient_key' approaches within 150px.",
+    "Consider exposing a debug snap of solids/oneways bounding boxes in __GB__ (e.g., __GB__.debug.geom) so the testing agent can programmatically pathfind and prove geometry rather than blind-drive."
+  ],
+  "critical_code_review_comments": [
+    "Jump is edge-latched (documented) — behaves correctly.",
+    "__GB__ hook is present and updates every frame — good for testability.",
+    "Mobile touch buttons expose data-testid and respond to pointerdown — good.",
+    "Ladder climb hook (__GB__.climb) exists but only becomes true when player is actually on ladder tile — could not verify since player never got to correct start position; suggest E1 self-test by teleport or add a __GB__ dev command."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend only)", "frontend": "~55% steps fully verified (5 of ~11 milestones)"},
+  "test_credentials": "founder stealth / Password1$ (used, worked)",
+  "seed_data_creation": "None; used existing published game id 9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b01",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Login: stealth/Password1$ via /login. URL: /games?play=9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b01. iframe [data-testid='game-runtime-iframe']. Click iframe center once + wait 3.5s for READY. Use frame.evaluate to read window.__GB__ and to dispatch KeyboardEvent on document. Jump is edge-latched: keyup('w') then keydown('w') for each jump. Confirmed working: right movement + X cam, descent + Y cam, pyramid ramp asc/desc, mobile pointer buttons. Blockers seen: (a) cave-to-surface leak west of shaft — player unexpectedly rises from y=1140 to y=700 while walking left past pillar x=1200-1270, prevents pedestal key pickup; (b) forward progress stalls at x~2892 on plateau approach to portal. Consider adding debug logging or wall map dump to __GB__ so future agents can diagnose.",
+  "rca of the issue": "Not conclusive. Two independent observations from repeated runs: (1) After descending to cave floor y=1140 at x=1836 and holding ArrowLeft (with periodic jumps to clear pillars/spikes), the player's y transitioned back to 700 (surface) before reaching the pedestal at x=700. This suggests either the pillar at x=1200-1270 has a top that connects to surface, or a one-way platform above cave lets the player pop up. (2) On the plateau, right traversal stalls at x=2892 (~1000px short of the portal). Neither issue was reproduced far enough to isolate root cause; recommend E1 add a geometry dump or run a controlled probe."
+}
