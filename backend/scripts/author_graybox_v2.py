@@ -26,19 +26,18 @@ L1 = {
         {"x": 0, "y": 700, "w": 280, "h": 60},              # surface slab A (start)
         {"x": 360, "y": 700, "w": 1200, "h": 60},           # surface slab B -> descent edge 1560
         {"x": 1700, "y": 700, "w": 2500, "h": 60},          # surface slab C (east, pyramid + plateau)
-        {"x": 1200, "y": 1020, "w": 70, "h": 120},          # cave pillar (jump over)
+        {"x": 1210, "y": 1060, "w": 56, "h": 80},           # cave pillar (jump over)
         {"x": 2560, "y": 760, "w": 80, "h": 380},           # cave east wall (closes underground)
-        {"x": 2900, "y": 580, "w": 120, "h": 120},          # pyramid descend step
-        {"x": 3020, "y": 640, "w": 110, "h": 60},           # pyramid descend step 2
+        {"x": 2750, "y": 520, "w": 150, "h": 180},          # PYRAMID SUMMIT (solid block)
     ],
     "stairs": [
         {"x": 2380, "y": 0, "w": 370, "yl": 700, "yr": 520},  # pyramid west ramp up to summit
+        {"x": 2900, "y": 0, "w": 280, "yl": 520, "yr": 700},  # pyramid east ramp down to plateau
     ],
     "one_way": [
         {"x": 276, "y": 700, "w": 88},                      # plank over ladder shaft
         {"x": 1575, "y": 900, "w": 130},                    # descent shaft rest platform
         {"x": 660, "y": 1040, "w": 90},                     # key pedestal
-        {"x": 2750, "y": 520, "w": 150},                    # PYRAMID SUMMIT deck
     ],
     "ladders": [
         {"x": 318, "y": 700, "h": 440},                     # return shaft: cave -> surface
@@ -54,10 +53,11 @@ L1 = {
          "tint": "rgba(115,75,205,0.07)"},
     ],
     "hazards": [
-        {"x": 980, "y": 1120, "w": 140, "h": 20, "dmg": 2},  # cave spikes (jump over)
+        {"x": 880, "y": 1120, "w": 120, "h": 20, "dmg": 2},  # cave spikes (jump over)
     ],
     "checkpoints": [
         {"id": "cp_descent", "x": 1470, "y": 700},
+        {"id": "cp_cave", "x": 1570, "y": 1140},
         {"id": "cp_key", "x": 860, "y": 1140},
         {"id": "cp_pyramid", "x": 2300, "y": 700},
         {"id": "cp_plateau", "x": 3250, "y": 700},
@@ -78,9 +78,9 @@ L1 = {
     ],
     "enemies": [
         {"x": 950, "y": 700, "type": "walker", "hp": 12, "attack": 3, "speed": 44, "xp": 9},
-        {"x": 1420, "y": 1140, "type": "walker", "hp": 14, "attack": 4, "speed": 48, "xp": 10},
-        {"x": 1050, "y": 960, "type": "bat", "hp": 10, "attack": 3, "speed": 50, "xp": 10, "anchor_y": 960},
-        {"x": 850, "y": 1140, "type": "walker", "hp": 12, "attack": 3, "speed": 42, "xp": 9},
+        {"x": 1420, "y": 1140, "type": "walker", "hp": 12, "attack": 3, "speed": 40, "xp": 10},
+        {"x": 1900, "y": 980, "type": "bat", "hp": 10, "attack": 2, "speed": 50, "xp": 10, "anchor_y": 980},
+        {"x": 620, "y": 1140, "type": "walker", "hp": 10, "attack": 2, "speed": 34, "xp": 9, "range": 60},
         {"x": 3350, "y": 700, "type": "walker", "hp": 16, "attack": 4, "speed": 50, "xp": 12},
         {"x": 3620, "y": 700, "type": "brute", "hp": 40, "attack": 7, "speed": 46, "xp": 24, "range": 140},
     ],

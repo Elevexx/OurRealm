@@ -99,10 +99,14 @@ async def plan_project(body: dict, current: dict) -> dict:
         body = {**body, "runtime_hint": rec["engine_runtime"]}
     doc = await gb.plan_blueprint(body, current)
     # Only realign to the family engine when it is compatible with the
-    # detected mechanics — never force an incompatible runtime.
+    # detected mechanics AND does not score worse than the deterministic
+    # mechanics pick — the capability-matrix pick is authoritative.
     rt_sel = doc.get("runtime_selection") or {}
+    ranked = {r.get("runtime"): r.get("score", 0) for r in (rt_sel.get("ranked") or [])}
     engine_ok = (not rt_sel.get("detected_mechanics")
-                 or rec["engine_runtime"] in (rt_sel.get("compatible_runtimes") or []))
+                 or (rec["engine_runtime"] in (rt_sel.get("compatible_runtimes") or [])
+                     and ranked.get(rec["engine_runtime"], 0)
+                     >= ranked.get(doc.get("selected_runtime"), 0)))
     if rec["engine_runtime"] and doc.get("selected_runtime") != rec["engine_runtime"] and engine_ok:
         doc = gb.change_runtime(doc, rec["engine_runtime"])
         doc["asset_requirements"], _ = await gb.match_requirements(

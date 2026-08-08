@@ -2284,7 +2284,9 @@ function arpgXY(st){const c=mkCanvas(0),g=c.getContext('2d'),W=c.width,H=c.heigh
     if(!P.climb){
      P.wasG=P.onG;
      P.x+=P.vx*dt;
-     let s=solidAt(P.x,P.y);if(s){P.x=P.vx>0?s.x-PW2:s.x+s.w+PW2;P.vx=0}
+     let s=solidAt(P.x,P.y);
+     if(s){if(P.onG&&P.vy>=0&&s.y>=P.y-16&&!solidAt(P.x,s.y)){P.y=s.y}
+      else{P.x=P.vx>0?s.x-PW2:s.x+s.w+PW2;P.vx=0}}
      P.x=Math.max(PW2,Math.min(WW-PW2,P.x));
      const prevY=P.y;P.vy+=1500*dt;P.vy=Math.min(P.vy,920);P.y+=P.vy*dt;P.onG=false;
      s=solidAt(P.x,P.y);
@@ -2315,7 +2317,7 @@ function arpgXY(st){const c=mkCanvas(0),g=c.getContext('2d'),W=c.width,H=c.heigh
     say('Got the '+(kd.label||kd.key_id)+(lp?' \u2014 it opens the '+(lp.label||'portal')+'!':'!'));
     try{parent.postMessage({type:'game_key',key_id:kd.key_id,stage:stageIdx+1,title:st.title||''},'*')}catch(e){}
     saveGame()}});
-  CPS.forEach(cpd=>{if(!cpd.hit&&Math.abs(cpd.x-P.x)<28&&Math.abs(cpd.y-P.y)<64){cpd.hit=true;
+  CPS.forEach(cpd=>{if(!cpd.hit&&Math.abs(cpd.x-P.x)<44&&Math.abs(cpd.y-P.y)<80){cpd.hit=true;
    cp={x:cpd.x,y:cpd.y};pHp=Math.min(pMax,pHp+8);mana=mMax;
    say('\u2691 Checkpoint \u2014 progress & keys saved');sfx('checkpoint');
    burst(cpd.x,cpd.y-30,'#10E670',14,110)}});
@@ -2362,9 +2364,10 @@ function arpgXY(st){const c=mkCanvas(0),g=c.getContext('2d'),W=c.width,H=c.heigh
   ty=Math.max(0,Math.min(Math.max(0,WH2-VH),ty));
   camY+=(ty-camY)*Math.min(1,dt*(P.onG?7:3.6));
   if(shakeT>0){shakeT-=dt;camX+=Math.sin(t*70)*shakeT*10;camY+=Math.cos(t*63)*shakeT*6}
-  window.__GB__={x:Math.round(P.x),y:Math.round(P.y),st:P.st,onG:P.onG,climb:P.climb,hp:pHp,
+  window.__GB__={x:Math.round(P.x),y:Math.round(P.y),st:P.st,onG:P.onG,climb:P.climb,hp:pHp,lives:lives,busy:busy,
    keys:Object.keys(INV),portals:PORT.map(p=>({id:p.portal_id,state:p.state})),
-   cam:[Math.round(camX),Math.round(camY)],stage:stageIdx,cp:CPS.filter(c2=>c2.hit).length};
+   cam:[Math.round(camX),Math.round(camY)],stage:stageIdx,cp:CPS.filter(c2=>c2.hit).length,
+   respawn:[cp.x,cp.y]};
   drawWorld(t,dt);drawHUD();
   if(endT>0){const ea=Math.min(1,(3.2-endT)*1.2);
    g.fillStyle='rgba(2,4,14,'+(ea*0.86).toFixed(2)+')';g.fillRect(0,0,W,H);
@@ -2373,6 +2376,9 @@ function arpgXY(st){const c=mkCanvas(0),g=c.getContext('2d'),W=c.width,H=c.heigh
    g.fillText(st.ending_title||'PART 2',W/2,H/2-6);
    g.font='bold 17px system-ui';g.fillStyle=LG;
    g.fillText(st.ending_subtitle||'COMING SOON',W/2,H/2+28);g.restore()}}
+ window.__GBGEO__={solids:SOL,one_way:OW,stairs:STR,ladders:LAD,hazards:HZD,
+  keys:KEYS.map(k2=>({id:k2.key_id,x:k2.x,y:k2.y})),portals:PORT.map(p=>({id:p.portal_id,x:p.x,y:p.y})),
+  checkpoints:CPS.map(c2=>({id:c2.id,x:c2.x,y:c2.y})),world:[WW,WH2]};
  ctrlGuide();raf=requestAnimationFrame(loop)}
 
 /* ── Racing runtime (tpl_racing_v1) — laps/checkpoints/AI/drift/boost ── */
