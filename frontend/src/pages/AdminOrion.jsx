@@ -177,7 +177,7 @@ export default function AdminOrion() {
     const REGISTERED_HANDLERS = new Set([
       "dashboard", "chat", "briefing", "actions", "reports", "alerts",
       "approvals", "support", "moderation", "realms", "widgets", "badges",
-      "settings",
+      "settings", "ai-command", "private-access", "ai-usage",
     ]);
     const SOON_OK = new Set(["workflows", "tasks", "automations"]);
     const missingSections = NAV_SECTIONS

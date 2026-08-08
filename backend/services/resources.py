@@ -97,15 +97,18 @@ async def grant(user_id: str, resource_key: str, amount: int, *, source_type: st
             raise ValueError(f"Per-user cap reached for '{resource_key}'")
     tx = {"id": uuid.uuid4().hex, "user_id": user_id, "resource_key": resource_key,
           "amount": amount, "source_type": source_type, "source_id": source_id or "",
-          "game_id": game_id, "stage_id": stage_id, "idem_key": idem_key,
+          "game_id": game_id, "stage_id": stage_id,
           "status": status, "reason": (reason or "")[:300], "actor": actor,
           "reversal_of": None, "created_at": _iso(), "finalized_at": _iso() if status == "finalized" else None}
+    if idem_key:  # never store explicit null — sparse unique index indexes null values
+        tx["idem_key"] = idem_key
     try:
         await db.resource_ledger.insert_one(dict(tx))
     except Exception:  # duplicate idem_key race — replay
-        ex = await db.resource_ledger.find_one({"idem_key": idem_key}, {"_id": 0})
-        if ex:
-            return {"transaction": ex, "replayed": True}
+        if idem_key:
+            ex = await db.resource_ledger.find_one({"idem_key": idem_key}, {"_id": 0})
+            if ex:
+                return {"transaction": ex, "replayed": True}
         raise
     q = {"user_id": user_id, "resource_key": resource_key}
     if amount < 0 and not allow_negative:

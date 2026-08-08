@@ -50,14 +50,17 @@ async def submit(kind: str, user: dict, payload: dict, idem_key: str | None = No
     job = {"id": uuid.uuid4().hex, "kind": kind, "user_id": user["id"],
            "username": user.get("username"), "phase": "queued", "pct": 0, "note": "",
            "payload": payload, "result": None, "error": None, "cancel_requested": False,
-           "idem_key": idem_key, "created_at": _iso(), "updated_at": _iso(),
+           "created_at": _iso(), "updated_at": _iso(),
            "heartbeat": _iso(), "expire_at": None}
+    if idem_key:  # never store idem_key=None — sparse unique index treats explicit null as a value
+        job["idem_key"] = idem_key
     try:
         await db.gm_jobs.insert_one(dict(job))
     except Exception:  # duplicate idem_key race
-        ex = await db.gm_jobs.find_one({"idem_key": idem_key}, {"_id": 0})
-        if ex:
-            return ex
+        if idem_key:
+            ex = await db.gm_jobs.find_one({"idem_key": idem_key}, {"_id": 0})
+            if ex:
+                return ex
         raise
     job.pop("_id", None)
     asyncio.create_task(_run(job["id"]))
