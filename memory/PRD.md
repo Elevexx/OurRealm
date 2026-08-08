@@ -3863,3 +3863,10 @@ Credit-conservation finalization: all art/assets/mechanics LOCKED per founder. R
 - Mobile: 6 glass buttons render; right-hold moved hero 90→348; jump tap airborne ✓ (PASS)
 - Cosmetic notes (documented, unchanged): none release-blocking found.
 - Zero code/asset modifications this session.
+
+## Public Games Release (Jun 2026) ✅ DONE — minimum-change build
+Goal: /games public for ANY visitor (published games only), reusing existing Dragon Realm guest flow. Site modes, admin/ORAi/OPC protection, engines, art untouched.
+**Backend:** game_urls.py + GET /api/public/game-path/hub (anon list of published+guest-visible games) and GET /api/public/game-path/meta/{id} (anon per-game meta, spec when guest allowed); resolve_path include_spec now acc.allowed; "meta" reserved slug. game_access_ctl.evaluate guest branch: mode "published" now guest-playable with public_preview flags (fire/keys/saves OFF for guests; signed-in reward flags unchanged).
+**Frontend:** App.js GamesRoute (/games → authed GamesHub via ShellRoute, anon → new PublicGamesHub.jsx); GamePublicPage no-slug branch renders guest meta for anon; TopStarBar Games+RC icons always visible (routes still enforce access).
+**Verified:** anon /games hub (28 games) ✓, guest play RTTEST Tunnel Run via slug page ✓, founder_only games excluded ✓, /api/games + /api/admin/* + /api/orai/* still 401 anon ✓, signed-in member hub + star icons ✓, deployment_agent PASS ✓.
+**Intentionally unchanged:** invite-only platform gate still limits signed-in non-invited members' hub list (existing site-mode logic); RTTEST games remain listed because they are marked published (founder manages via existing controls).
