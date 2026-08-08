@@ -59,9 +59,16 @@ async def main():
             if fight: await ku('j')
             return await gb()
 
+        import os
+        os.makedirs('/app/memory/phase19_shots', exist_ok=True)
+        async def SHOT(name):
+            try: await page.screenshot(path=f"/app/memory/phase19_shots/{name}.jpeg", quality=40, type="jpeg")
+            except Exception: pass
+
         s = await gb()
         log("START:", s['x'], s['y'], "cam", s['cam'])
         cam0 = s['cam'][:]
+        await SHOT("01_desktop_L1_start")
 
         s = await goto_x(1660, 25)
         log("P1 shaft entry:", s['x'], s['y'], "cam", s['cam'])
@@ -74,16 +81,23 @@ async def main():
             log("  derailed at", s['x'], s['y'], "lives", s['lives'], "keys", s['keys'], "- re-descending")
             s = await goto_x(1660, 30); s = await goto_x(1500, 12)
         log("P3 pedestal area:", s['x'], s['y'], "hp", s['hp'], "lives", s['lives'])
+        await SHOT("03_underground")
 
         for i in range(10):
             s = await gb()
             if 'ancient_key' in s['keys']: break
             if s['onG']:
-                if abs(s['x'] - 720) > 45: s = await goto_x(720, 8, tol=15)
+                if abs(s['x'] - 707) > 14: s = await goto_x(707, 8, tol=6)
                 await jump()
             await page.wait_for_timeout(600)
         s = await gb()
         log("P4 KEY PICKUP:", s['keys'], "pos", s['x'], s['y'], "->", "PASS" if 'ancient_key' in s['keys'] else "FAIL")
+        await SHOT("05_key_pickup")
+        # purple ruins gate (underground, x=180) — approach within unlock range, don't enter
+        s = await goto_x(300, 15, tol=10)
+        await page.wait_for_timeout(2000)
+        await SHOT("03b_purple_portal")
+        s = await gb(); log("P4b ruins_gate:", [p for p in s['portals'] if p['id']=='ruins_gate'])
 
         s = await goto_x(320, 20, tol=8)
         log("P5 ladder base:", s['x'], s['y'])
@@ -150,9 +164,38 @@ async def main():
 
         if s['stage'] == 1:
             await page.wait_for_timeout(2500)
-            s = await goto_x(1618, 35, fight=True, tol=14)
-            log("P12 rift approach:", s['x'], s['y'], s['portals'])
-            await page.wait_for_timeout(5000)
+            await SHOT("10_L2_nexus")
+            async def hop(jx, i2, land):
+                s2 = await goto_x(jx - 40, 20, tol=8)
+                await kd('ArrowRight'); jumped = False; t0 = time.time()
+                while time.time() - t0 < 3.5:
+                    s2 = await gb()
+                    if not jumped and s2['x'] >= jx and s2['onG']:
+                        await jump(); jumped = True
+                        if i2 == 3: await SHOT("11_L2_jump")
+                    if jumped and s2['onG'] and s2['x'] >= land + 10: break
+                    if s2['x'] < jx - 200: break
+                    await page.wait_for_timeout(40)
+                await ku('ArrowRight'); return await gb()
+            JP = [262, 562, 832, 1112, 1382, 1662]
+            LAND = [400, 680, 950, 1230, 1490, 1780]
+            done2 = False
+            for attempt in range(4):
+                s = await gb()
+                todo = [i2 for i2 in range(len(JP)) if JP[i2] > s['x'] - 40]
+                ok = True
+                for i2 in todo:
+                    s = await hop(JP[i2], i2, LAND[i2])
+                    if s['x'] < JP[i2] - 100:
+                        ok = False; break
+                if ok and s['x'] >= 1780:
+                    done2 = True; break
+                log("  nexus retry", attempt + 1, "at", s['x'], s['y'], "hp", s['hp'])
+            log("P12 nexus crossing:", "PASS" if done2 else "FAIL", s['x'], s['y'], s['portals'])
+            s = await goto_x(1960, 15, fight=True, tol=16)
+            await page.wait_for_timeout(1500)
+            await SHOT("12_final_portal")
+            await page.wait_for_timeout(4000)
             txt = await fr.evaluate("() => document.body.innerText.slice(0,300)")
             log("P13 END:", txt.replace("\n", " | ")[:220])
             await page.screenshot(path="/tmp/gb_end.jpeg", quality=25, type="jpeg")

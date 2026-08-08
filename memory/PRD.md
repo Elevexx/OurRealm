@@ -3855,3 +3855,11 @@ Founder mandate: strict 2D gameplay plane, scrolling camera (X **and Y**), verti
 **Map v3 (scripts/author_jungle_spec.py):** L1 3400x720: surface tier (300) → branch gap drops to underground ruins (480, torches/arch/chest) → stairs to deep caves (660 full-width safety floor — NO bottomless pits) holding the Ancient Key → return stair column (600→330) rejoins surface → pyramid ascent (132 summit) → bridge → Jungle Titan → key-locked portal. L2 3000x540 floating nexus islands, void respawn, purple final portal, PART 2 COMING SOON.
 **Verified (scripted playthroughs + screenshots):** tier fall + camY scroll-down (debug: x886 y458 camY169) ✓, underground torch scene ✓, checkpoint ✓, stairs ✓, key collect→portal open→L2 transition (Score 40, stage 2/2) ✓, sealed portal + key icon + 0/1 HUD ✓, ending overlay "PART 2 / COMING SOON" under v3 ✓, mobile circular controls move+jump via dispatch ✓, hero reference-scale on mobile ✓, esbuild pass, legacy games unaffected (region-mode untouched).
 **Notes/limits:** scripted E2E of real map's full loop is timing-flaky (combat knockback) — mechanics proven on deterministic twin; boss kill not script-played (unchanged Dragon Realm system); UP/ladder traversal not implemented (stairs = platform steps); checkpoint X-trigger picks highest tier at that x.
+
+## Release Validation — Critical Path Freeze (Jun 2026) ✅ PASS, NO CHANGES MADE
+Credit-conservation finalization: all art/assets/mechanics LOCKED per founder. Re-ran e2e_graybox_drive.py + one mobile check.
+- L1: load ✓, move/jump ✓, key pickup ✓ (P4 PASS), ladder ✓, pyramid ✓, portal unlock/entry ✓ (P10/P11 PASS), enemy/boss path traversed w/ fight=True ✓
+- L2: loads w/ key carried ✓, platform crossing ✓ (P12 PASS), final portal ✓, ending "DEMO COMPLETE" modal + PART 2/COMING SOON canvas overlay ✓ (P13)
+- Mobile: 6 glass buttons render; right-hold moved hero 90→348; jump tap airborne ✓ (PASS)
+- Cosmetic notes (documented, unchanged): none release-blocking found.
+- Zero code/asset modifications this session.
