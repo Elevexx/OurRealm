@@ -35,6 +35,7 @@ import apiClient from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import OraiDashboard, { ORAI_LOGO_URL } from "@/components/admin/OraiDashboard";
 import OraiPrivateAccess from "@/components/admin/OraiPrivateAccess";
+import { OraiPublicAccess } from "@/components/admin/OraiPublicAccess";
 import OraiUsageDashboard from "@/components/admin/OraiUsageDashboard";
 import { OraiVoiceBar } from "@/components/orai/OraiVoiceBar";
 
@@ -391,6 +392,7 @@ function SectionRouter({ section, summary, onDraft, sectionNav }) {
   if (section === "badges")    return <SimplePromptList title="Badges" intros={["How many VIP holders?", "Show badge stats", "Beta holders"]} onPrompt={(p) => sectionNav("chat") || window.dispatchEvent(new CustomEvent("orion-prefill", { detail: p }))} />;
   if (section === "settings")  return <SettingsPanel summary={summary} />;
   if (section === "private-access") return <OraiPrivateAccess />;
+  if (section === "public-rules") return <OraiPublicAccess />;
   if (section === "ai-usage")  return <OraiUsageDashboard />;
   if (section === "classic")   return <Dashboard summary={summary} onSection={sectionNav} />;
   // Default: upgraded ORAi control-center dashboard (hero + live chat)

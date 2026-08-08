@@ -13,7 +13,7 @@ export const OraiPublicAccess = () => {
   const [busy, setBusy] = useState(false);
   const load = () => apiClient.get("/admin/orai-access/policies").then((r) => {
     setPolicies(r.data.policies); setLevels(r.data.access_levels); }).catch(() => {});
-  useEffect(load, []);
+  useEffect(() => { load(); }, []);
 
   const propose = async () => {
     if (!msg.trim()) return;

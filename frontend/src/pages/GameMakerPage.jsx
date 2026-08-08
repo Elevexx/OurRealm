@@ -234,7 +234,7 @@ export default function GameMakerPage() {
               <select className="rounded-full px-3 py-1.5 text-[10.5px]" value={payRes} onChange={(e) => setPayRes(e.target.value)}
                 style={{ background: "rgba(10,16,30,0.9)", border: "1px solid rgba(255,255,255,0.2)", color: "#EAF2FF" }}
                 data-testid="gamemaker-resource-select">
-                {econCfg.eligible_resources.map((r) => <option key={r.key} value={r.key}>{r.icon} Pay with {r.name}</option>)}
+                {econCfg.eligible_resources.map((r) => <option key={r.key} value={r.key}>{`${r.icon || ""} Pay with ${r.name}`}</option>)}
               </select>)}
             <span style={{ color: "rgba(234,242,255,0.5)" }}>Exact amount confirmed in your quote · resources have no monetary value</span>
           </div>
