@@ -76,7 +76,7 @@ export const ResourceBalances = () => {
           <div key={b.key} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
             style={{ background: `color-mix(in srgb, ${b.color} 12%, transparent)`, border: `1px solid ${b.color}55` }}
             data-testid={`resource-balance-${b.key}`} title={b.description}>
-            <span className="text-sm">{b.icon}</span>
+            {b.icon_url ? <img src={b.icon_url} alt={b.name} className="w-4 h-4" /> : <span className="text-sm">{b.icon}</span>}
             <b className="text-xs" style={{ color: b.color }}>{Number(b.balance || 0).toLocaleString()}</b>
             <span className="text-[9.5px]" style={{ color: "var(--text-muted)" }}>{b.name}</span>
           </div>

@@ -54,7 +54,7 @@ router = APIRouter(prefix="/api/media", tags=["media"])
 
 # Allow-list of media kinds — keep this tight so we never proxy
 # unexpected bucket prefixes (e.g. logs, exports).
-_ALLOWED_KINDS: frozenset[str] = frozenset(["audio", "images", "videos"])
+_ALLOWED_KINDS: frozenset[str] = frozenset(["audio", "images", "videos", "resource_visuals"])
 
 _MEDIA_PROXY_TTL = int(os.environ.get("MEDIA_PROXY_TTL_SECONDS") or "3600")
 # Browsers will cache the 307 (and therefore reuse the same signed URL)

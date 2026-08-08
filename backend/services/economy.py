@@ -277,8 +277,18 @@ async def exchange_quote(user: dict, src: str, dst: str, amount: int) -> dict:
         raise ValueError("Pick two different resources")
     if [src, dst] not in [list(p) for p in rule.get("pairs") or []]:
         raise ValueError("That exchange pair isn't enabled")
+    pc = (rule.get("pair_configs") or {}).get(f"{src}>{dst}") or {}
+    if pc.get("enabled") is False or pc.get("frozen"):
+        raise ValueError("That exchange pair is currently unavailable")
+    now = _iso()
+    if pc.get("start") and now < pc["start"]:
+        raise ValueError("That exchange isn't open yet")
+    if pc.get("end") and now > pc["end"]:
+        raise ValueError("That exchange has ended")
     amount = int(amount)
-    if amount < int(rule.get("min_amount") or 1) or amount > int(rule.get("max_amount") or 10 ** 9):
+    lo = int(pc.get("min_amount") or rule.get("min_amount") or 1)
+    hi = int(pc.get("max_amount") or rule.get("max_amount") or 10 ** 9)
+    if amount < lo or amount > hi:
         raise ValueError("Amount outside allowed exchange limits")
     regs = {r["key"]: r async for r in db.resource_registry.find(
         {"key": {"$in": [src, dst]}, "archived": {"$ne": True}, "enabled": True, "frozen": {"$ne": True}})}
@@ -288,16 +298,26 @@ async def exchange_quote(user: dict, src: str, dst: str, amount: int) -> dict:
     if not d or not d.get("exchange_dest"):
         raise ValueError("Destination resource can't be received")
     fe_s, fe_d = int(s.get("fire_equiv") or 0), int(d.get("fire_equiv") or 0)
-    if fe_s <= 0 or fe_d <= 0:
-        raise ValueError("Exchange ratios not configured for this pair")
-    fire_value = amount * fe_s
-    fee = (fire_value * int(rule.get("fee_pct") or 0)) // 100
-    receive = (fire_value - fee) // fe_d  # floor — never mints value (anti-arbitrage)
+    if pc.get("src_amount") and pc.get("dst_amount"):
+        # explicit founder ratio e.g. "Burn 2 Stars → receive 4 Coins"
+        sa, da = int(pc["src_amount"]), int(pc["dst_amount"])
+        fire_value = amount * fe_s if fe_s > 0 else 0
+        fee_pct = int(pc.get("fee_pct") if pc.get("fee_pct") is not None else (rule.get("fee_pct") or 0))
+        receive = ((amount * da) * (100 - fee_pct)) // (sa * 100)  # floor — exact integers
+        fee = (amount * da * fee_pct) // (sa * 100)
+        ratio = {"src_amount": sa, "dst_amount": da, "basis": "explicit_pair"}
+    else:
+        if fe_s <= 0 or fe_d <= 0:
+            raise ValueError("Exchange ratios not configured for this pair")
+        fire_value = amount * fe_s
+        fee = (fire_value * int(rule.get("fee_pct") or 0)) // 100
+        receive = (fire_value - fee) // fe_d  # floor — never mints value (anti-arbitrage)
+        ratio = {"src_fire_equiv": fe_s, "dst_fire_equiv": fe_d, "basis": "fire_equiv"}
     if receive <= 0:
         raise ValueError("Amount too small for this ratio")
     q = {"id": uuid.uuid4().hex, "user_id": user["id"], "src": src, "dst": dst,
          "amount": amount, "receive": receive, "fire_value": fire_value, "fee_fire": fee,
-         "ratio": {"src_fire_equiv": fe_s, "dst_fire_equiv": fe_d},
+         "ratio": ratio,
          "rule_version": rule["version"], "state": "quoted", "created_at": _iso(),
          "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()}
     await db.gm_exchange_quotes.insert_one(dict(q))
@@ -353,6 +373,28 @@ async def exchange_execute(user: dict, quote_id: str, idem_key: str | None) -> d
     rec.pop("_id", None)
     await db.gm_exchange_quotes.update_one({"id": quote_id}, {"$set": {"state": "executed"}})
     return rec
+
+
+def check_arbitrage(rule: dict, regs: dict) -> list:
+    """Detect round-trip loops that mint value under current configs."""
+    warnings = []
+    pairs = [tuple(p) for p in (rule.get("pairs") or [])]
+    pcs = rule.get("pair_configs") or {}
+
+    def rate(a, b, amt):
+        pc = pcs.get(f"{a}>{b}") or {}
+        if pc.get("src_amount") and pc.get("dst_amount"):
+            return (amt * int(pc["dst_amount"])) // int(pc["src_amount"])
+        fa, fb = int(regs.get(a, {}).get("fire_equiv") or 0), int(regs.get(b, {}).get("fire_equiv") or 0)
+        return (amt * fa) // fb if fa > 0 and fb > 0 else 0
+
+    for a, b in pairs:
+        if (b, a) in pairs:
+            start = 1000
+            back = rate(b, a, rate(a, b, start))
+            if back > start:
+                warnings.append(f"ARBITRAGE LOOP: {a}→{b}→{a} turns {start} into {back}")
+    return warnings
 
 
 async def reconcile_fire() -> dict:

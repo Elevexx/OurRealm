@@ -634,12 +634,14 @@ async def _safe_startup():
     try:
         from services import job_engine, resources as _resources, economy as _economy
         from services import orai_policies as _op
+        from services import resource_visuals as _rv
         await job_engine.ensure_indexes()
         await job_engine.reap_stale()
         await _resources.ensure_indexes_and_seed()
         await _economy.ensure_indexes()
         await _economy.reap_expired_holds()
         await _op.ensure_seed()
+        await _rv.ensure_indexes()
     except Exception as e:
         logger.error(f"[gamemaker] job/resource startup failed: {e}")
     try:

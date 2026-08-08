@@ -11,6 +11,7 @@ const SECTIONS = [
   ["jobs", "Builds & Jobs", Hammer], ["published", "Published Games", Eye],
   ["resources", "Engagement Resources", Flame], ["ledger", "Ledger Inspector", ListTree],
   ["economy", "Economy & Pricing", Coins], ["exchange", "Exchange", ArrowLeftRight],
+  ["placements", "Placement Matrix", Layers],
   ["registry", "Runtimes & Styles", Layers], ["diagnostics", "Diagnostics & Migration", Database],
   ["access", "Access & Visibility", Shield],
 ];
@@ -135,20 +136,9 @@ export default function GameMakerAdmin() {
 
       {tab === "resources" && (
         <div className="space-y-2" data-testid="gm-admin-resources-list">
+          <NewResourceWizard onDone={loadTab} />
           {(rows || []).map((r) => (
-            <div key={r.key} className="or-surface p-3 rounded-xl flex items-center gap-3 flex-wrap text-[11.5px]">
-              <span className="text-lg">{r.icon}</span>
-              <b style={{ color: r.color }}>{r.name}</b>
-              <code className="text-[10px]" style={{ color: "var(--text-muted)" }}>{r.key}</code>
-              {r.adapter && <span className="or-chip text-[9px]">adapter: {r.adapter}</span>}
-              <span className="or-chip text-[9px]">{r.enabled ? "enabled" : "disabled"}</span>
-              <span className="or-chip text-[9px]">{r.public ? "public" : "internal"}</span>
-              {r.frozen && <span className="or-chip text-[9px]" style={{ color: "#FF5A6E" }}>FROZEN</span>}
-              {!r.adapter && (
-                <button className="or-btn or-btn-ghost text-[10px] ml-auto" data-testid={`gm-res-freeze-${r.key}`}
-                  onClick={async () => { await apiClient.patch(`/admin/resources/${r.key}`, { frozen: !r.frozen }); loadTab(); }}>
-                  {r.frozen ? "Unfreeze" : "Freeze grants"}</button>)}
-            </div>
+            <ResourceRow key={r.key} r={r} onChanged={loadTab} />
           ))}
           <AdjustForm onDone={loadTab} />
         </div>
@@ -184,6 +174,7 @@ export default function GameMakerAdmin() {
 
       {tab === "economy" && <EconomyTab />}
       {tab === "exchange" && <ExchangeTab />}
+      {tab === "placements" && <PlacementsTab />}
 
       {tab === "registry" && ov && (
         <div className="grid sm:grid-cols-2 gap-3" data-testid="gm-admin-registry">
@@ -397,6 +388,220 @@ const ExchangeTab = () => {
               toast.success("New exchange rule version created"); load();
             }}>Save as new version</button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+const NewResourceWizard = ({ onDone }) => {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ key: "", name: "", description: "", icon: "✦", color: "#2EE6FF" });
+  return (
+    <div className="or-surface p-3 rounded-xl" data-testid="gm-new-resource-wizard">
+      <button className="or-btn text-[10.5px]" onClick={() => setOpen(!open)} data-testid="gm-wizard-toggle">
+        + New Engagement Resource (starts as Draft)</button>
+      {open && (
+        <div className="flex gap-2 flex-wrap items-end mt-2 text-[10.5px]">
+          {[["key", "stable key (permanent)"], ["name", "public name"], ["description", "description"],
+            ["icon", "icon char"], ["color", "color"]].map(([k, ph]) => (
+            <label key={k} className="flex flex-col gap-0.5">
+              <span className="text-[9px] uppercase" style={{ color: "var(--text-muted)" }}>{ph}</span>
+              <input className="or-input text-xs" style={{ width: k === "description" ? 200 : 110 }}
+                value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} data-testid={`gm-wizard-${k}`} />
+            </label>))}
+          <button className="or-btn text-[10.5px]" data-testid="gm-wizard-create"
+            onClick={async () => {
+              try {
+                await apiClient.post("/admin/resources", { ...f, public: false });
+                await apiClient.patch(`/admin/resources/${f.key.toLowerCase().replace(/ /g, "_")}`, { status: "draft" });
+                toast.success("Draft created — add visuals, behavior and placements, then Publish");
+                setOpen(false); onDone();
+              } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
+            }}>Create Draft</button>
+        </div>)}
+    </div>
+  );
+};
+
+const ResourceRow = ({ r, onChanged }) => {
+  const [panel, setPanel] = useState(null); // 'visuals' | 'burn'
+  const [visuals, setVisuals] = useState([]);
+  const [genPrompt, setGenPrompt] = useState("");
+  const [genPreview, setGenPreview] = useState(null);
+  const [burn, setBurn] = useState({ dst: "", src_amount: "", dst_amount: "" });
+  const loadVisuals = () => apiClient.get(`/admin/resources/${r.key}/visuals`).then((x) => setVisuals(x.data.visuals));
+  const pollGen = (jobId) => {
+    const iv = setInterval(async () => {
+      const j = (await apiClient.get(`/jobs/${jobId}`)).data.job;
+      if (j.phase === "completed") { clearInterval(iv); toast.success("Visual generated"); loadVisuals(); }
+      if (j.phase === "failed") { clearInterval(iv); toast.error(j.error || "Generation failed"); }
+    }, 2500);
+  };
+  return (
+    <div className="or-surface p-3 rounded-xl text-[11.5px]" data-testid={`gm-resource-row-${r.key}`}>
+      <div className="flex items-center gap-3 flex-wrap">
+        {r.active_visual?.icon_url ? <img src={r.active_visual.icon_url} alt={r.name} className="w-6 h-6" />
+          : <span className="text-lg">{r.icon}</span>}
+        <b style={{ color: r.color }}>{r.name}</b>
+        <code className="text-[10px]" style={{ color: "var(--text-muted)" }}>{r.key} · v{r.version}</code>
+        {r.status === "draft" && <span className="or-chip text-[9px]" style={{ color: "#F4A73B" }}>DRAFT</span>}
+        {r.adapter && <span className="or-chip text-[9px]">adapter: {r.adapter}</span>}
+        {r.frozen && <span className="or-chip text-[9px]" style={{ color: "#FF5A6E" }}>FROZEN</span>}
+        <span className="ml-auto flex gap-1.5">
+          <button className="or-btn or-btn-ghost text-[9.5px]" data-testid={`gm-res-visuals-${r.key}`}
+            onClick={() => { setPanel(panel === "visuals" ? null : "visuals"); loadVisuals(); }}>Visuals</button>
+          {!r.adapter && (
+            <button className="or-btn or-btn-ghost text-[9.5px]" data-testid={`gm-res-burn-${r.key}`}
+              onClick={() => setPanel(panel === "burn" ? null : "burn")}>Burn into…</button>)}
+          {r.status === "draft" && (
+            <button className="or-btn text-[9.5px]" data-testid={`gm-res-publish-${r.key}`}
+              onClick={async () => {
+                if (!window.confirm(`Publish "${r.name}"?\n\nIt will appear on every surface allowed by its placement policy (Vault, games with it in their manifest, etc). Balances start at 0. Resources have no monetary value.`)) return;
+                await apiClient.patch(`/admin/resources/${r.key}`, { status: "published" });
+                toast.success("Published"); onChanged();
+              }}>Publish</button>)}
+          {!r.adapter && (
+            <button className="or-btn or-btn-ghost text-[9.5px]" data-testid={`gm-res-freeze-${r.key}`}
+              onClick={async () => { await apiClient.patch(`/admin/resources/${r.key}`, { frozen: !r.frozen }); onChanged(); }}>
+              {r.frozen ? "Unfreeze" : "Freeze"}</button>)}
+        </span>
+      </div>
+      {panel === "visuals" && (
+        <div className="mt-2 pt-2" style={{ borderTop: "1px solid var(--border-col)" }} data-testid={`gm-visuals-panel-${r.key}`}>
+          <div className="flex gap-2 flex-wrap items-center mb-2">
+            <input className="or-input text-xs flex-1 min-w-[180px]" placeholder={`e.g. "glowing token for ${r.name}"`}
+              value={genPrompt} onChange={(e) => setGenPrompt(e.target.value)} data-testid={`gm-gen-prompt-${r.key}`} />
+            <button className="or-btn or-btn-ghost text-[9.5px]" data-testid={`gm-gen-preview-${r.key}`}
+              onClick={async () => {
+                const x = await apiClient.post(`/admin/resources/${r.key}/visuals/generate`, { prompt: genPrompt, dry_run: true });
+                setGenPreview(x.data);
+              }}>Generate with ORAi…</button>
+            <label className="or-btn or-btn-ghost text-[9.5px] cursor-pointer">Upload
+              <input type="file" hidden accept="image/png,image/jpeg,image/webp" data-testid={`gm-upload-${r.key}`}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]; if (!file) return;
+                  const rd = new FileReader();
+                  rd.onload = async () => {
+                    try { await apiClient.post(`/admin/resources/${r.key}/visuals/upload`, { image_b64: rd.result, label: r.name });
+                      toast.success("Uploaded — all sizes derived"); loadVisuals();
+                    } catch (err) { toast.error(err?.response?.data?.detail || "Upload failed"); }
+                  };
+                  rd.readAsDataURL(file);
+                }} /></label>
+          </div>
+          {genPreview && (
+            <div className="p-2 rounded-lg text-[10px] mb-2" style={{ background: "rgba(194,107,255,0.08)" }} data-testid={`gm-gen-confirm-${r.key}`}>
+              <p><b>Prompt:</b> {genPreview.final_prompt}</p>
+              <p><b>Provider:</b> {genPreview.provider} · <b>Est. cost:</b> ${genPreview.estimated_cost}</p>
+              <button className="or-btn text-[9.5px] mt-1" data-testid={`gm-gen-confirm-btn-${r.key}`}
+                onClick={async () => {
+                  const x = await apiClient.post(`/admin/resources/${r.key}/visuals/generate`,
+                    { prompt: genPrompt, confirm: true, request_id: `vg-${r.key}-${Date.now()}` });
+                  setGenPreview(null); toast.info("Generating in background…"); pollGen(x.data.job_id);
+                }}>Confirm &amp; Generate</button>
+              <button className="or-btn or-btn-ghost text-[9.5px] mt-1 ml-1" onClick={() => setGenPreview(null)}>Cancel</button>
+            </div>)}
+          <div className="flex gap-2 flex-wrap">
+            {visuals.map((v) => (
+              <div key={v.id} className="text-center" data-testid={`gm-visual-${v.id}`}>
+                <img src={v.images["128"]} alt={v.accessibility_label} className="w-16 h-16 rounded-lg"
+                  style={{ border: v.active ? "2px solid #10E670" : "1px solid var(--border-col)", background: "#0b1220" }} />
+                <div className="text-[8.5px]" style={{ color: "var(--text-muted)" }}>v{v.version} · {v.source}</div>
+                {!v.active && (
+                  <button className="or-btn or-btn-ghost text-[8.5px]" data-testid={`gm-visual-activate-${v.id}`}
+                    onClick={async () => { await apiClient.post(`/admin/resources/${r.key}/visuals/${v.id}/activate`);
+                      toast.success(`v${v.version} active`); loadVisuals(); onChanged(); }}>Activate</button>)}
+                {v.active && <span className="text-[8.5px]" style={{ color: "#10E670" }}>ACTIVE</span>}
+              </div>))}
+            {!visuals.length && <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>No visual versions yet.</p>}
+          </div>
+        </div>)}
+      {panel === "burn" && (
+        <div className="mt-2 pt-2 flex gap-2 flex-wrap items-end" style={{ borderTop: "1px solid var(--border-col)" }}
+          data-testid={`gm-burn-panel-${r.key}`}>
+          <span className="text-[10px] w-full" style={{ color: "var(--text-muted)" }}>
+            Allow {r.name} to burn into… (one direction only — reverse requires its own approval)</span>
+          <input className="or-input text-xs w-24" placeholder="destination key" value={burn.dst}
+            onChange={(e) => setBurn({ ...burn, dst: e.target.value })} data-testid={`gm-burn-dst-${r.key}`} />
+          <input className="or-input text-xs w-20" placeholder={`burn N ${r.key}`} value={burn.src_amount}
+            onChange={(e) => setBurn({ ...burn, src_amount: e.target.value })} data-testid={`gm-burn-src-${r.key}`} />
+          <input className="or-input text-xs w-20" placeholder="receive N" value={burn.dst_amount}
+            onChange={(e) => setBurn({ ...burn, dst_amount: e.target.value })} data-testid={`gm-burn-recv-${r.key}`} />
+          <button className="or-btn or-btn-ghost text-[9.5px]" data-testid={`gm-burn-preview-${r.key}`}
+            onClick={async () => {
+              try {
+                const x = await apiClient.post(`/admin/resources/${r.key}/burn-into`,
+                  { dst: burn.dst, src_amount: Number(burn.src_amount), dst_amount: Number(burn.dst_amount), preview: true });
+                toast.info(`${x.data.preview}${x.data.warnings.length ? " ⚠ " + x.data.warnings[0] : ""}`);
+              } catch (e) { toast.error(e?.response?.data?.detail || "Preview failed"); }
+            }}>Preview</button>
+          <button className="or-btn text-[9.5px]" data-testid={`gm-burn-save-${r.key}`}
+            onClick={async () => {
+              try {
+                await apiClient.post(`/admin/resources/${r.key}/burn-into`,
+                  { dst: burn.dst, src_amount: Number(burn.src_amount), dst_amount: Number(burn.dst_amount), enabled: true });
+                toast.success("Burn-into rule saved (new version)");
+              } catch (e) {
+                if (e?.response?.status === 409 && window.confirm(e.response.data.detail + "\n\nSave anyway?")) {
+                  await apiClient.post(`/admin/resources/${r.key}/burn-into`,
+                    { dst: burn.dst, src_amount: Number(burn.src_amount), dst_amount: Number(burn.dst_amount), enabled: true, confirm_arbitrage: true });
+                  toast.success("Saved with arbitrage override (audited)");
+                } else toast.error(e?.response?.data?.detail || "Failed");
+              }
+            }}>Save Direction</button>
+        </div>)}
+    </div>
+  );
+};
+
+const PlacementsTab = () => {
+  const [m, setM] = useState(null);
+  const load = () => apiClient.get("/admin/resources/placement-matrix").then((r) => setM(r.data));
+  useEffect(() => { load(); }, []);
+  if (!m) return null;
+  const sk = Object.keys(m.surfaces);
+  return (
+    <div className="space-y-3" data-testid="gm-admin-placements">
+      <div className="flex gap-2 flex-wrap">
+        <button className="or-btn or-btn-ghost text-[10px]" data-testid="gm-bulk-freeze-exchange"
+          onClick={async () => { await apiClient.post("/admin/gamemaker/exchange-rules", { frozen: true }); toast.success("All exchanges frozen"); }}>
+          Freeze exchanges globally</button>
+        <button className="or-btn or-btn-ghost text-[10px]"
+          onClick={async () => { await apiClient.post("/admin/gamemaker/exchange-rules", { frozen: false }); toast.success("Exchanges unfrozen"); }}>
+          Unfreeze exchanges</button>
+      </div>
+      <div className="or-surface p-3 rounded-xl overflow-x-auto">
+        <table className="text-[9.5px] min-w-full" data-testid="gm-placement-table">
+          <thead><tr>
+            <th className="text-left pr-2 pb-1">Resource</th>
+            <th className="pr-2 pb-1">Everywhere</th>
+            {sk.map((k) => <th key={k} className="px-1.5 pb-1 whitespace-nowrap">{m.surfaces[k].label}{!m.surfaces[k].builtin && " ⚡"}</th>)}
+          </tr></thead>
+          <tbody>
+            {m.resources.map((r) => (
+              <tr key={r.key} style={{ borderTop: "1px solid var(--border-col)" }} data-testid={`gm-matrix-row-${r.key}`}>
+                <td className="pr-2 py-1.5 font-bold whitespace-nowrap">
+                  {r.visual?.icon_url ? <img src={r.visual.icon_url} alt="" className="w-4 h-4 inline mr-1" /> : <span className="mr-1">{r.icon}</span>}
+                  {r.name}{r.status === "draft" && <span className="or-chip text-[8px] ml-1" style={{ color: "#F4A73B" }}>draft</span>}</td>
+                <td className="text-center">
+                  <input type="checkbox" checked={r.enable_everywhere} data-testid={`gm-everywhere-${r.key}`}
+                    onChange={async (e) => { await apiClient.post(`/admin/resources/${r.key}/enable-everywhere`, { enabled: e.target.checked }); load(); }} /></td>
+                {sk.map((k) => (
+                  <td key={k} className="px-1 py-1 text-center">
+                    <select className="or-input text-[9px] py-0.5" value={r.cells[k].mode === "unsupported" ? "disabled" : r.cells[k].mode}
+                      data-testid={`gm-cell-${r.key}-${k}`}
+                      onChange={async (e) => { await apiClient.post(`/admin/resources/${r.key}/placements`, { surface: k, mode: e.target.value }); load(); }}>
+                      <option value="disabled">Disabled</option>
+                      <option value="display">Display Only</option>
+                      <option value="full">Full</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </td>))}
+              </tr>))}
+          </tbody>
+        </table>
+        <p className="text-[9px] mt-2" style={{ color: "var(--text-muted)" }}>
+          ⚡ = future-surface adapter (auto-discovered). "Full" never exceeds the surface's declared capabilities; per-surface settings only restrict "Enable Everywhere", never expand it.</p>
       </div>
     </div>
   );

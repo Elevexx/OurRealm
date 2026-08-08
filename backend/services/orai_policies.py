@@ -26,6 +26,8 @@ CAPABILITIES = {
     "public_chat": "ORAi public chat",
     "file_analysis": "ORAi file analysis / uploads",
     "publishing_assist": "Publishing assistance (For You posts)",
+    "resource_image_generation": "Engagement resource image generation",
+    "resource_administration": "Engagement resource administration",
 }
 ACCESS_LEVELS = ("founder", "beta", "signed_in", "public")
 
