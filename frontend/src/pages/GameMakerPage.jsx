@@ -116,7 +116,7 @@ export default function GameMakerPage() {
       const r = await apiClient.post("/gamemaker/quote",
         { idea, style, runtime, economy, ai_power: aiPower, resource: payRes });
       setQuote(r.data.quote); setEst(null);
-    } catch (e) { toast.error(e?.response?.data?.detail || "Quote failed"); }
+    } catch (e) { toast.error(e?.response?.data?.detail || "Could not calculate the build requirement"); }
     finally { setBusy(false); }
   };
 
@@ -234,9 +234,10 @@ export default function GameMakerPage() {
               <select className="rounded-full px-3 py-1.5 text-[10.5px]" value={payRes} onChange={(e) => setPayRes(e.target.value)}
                 style={{ background: "rgba(10,16,30,0.9)", border: "1px solid rgba(255,255,255,0.2)", color: "#EAF2FF" }}
                 data-testid="gamemaker-resource-select">
-                {econCfg.eligible_resources.map((r) => <option key={r.key} value={r.key}>{`${r.icon || ""} Pay with ${r.name}`}</option>)}
+                {econCfg.eligible_resources.map((r) => <option key={r.key} value={r.key}>{`${r.icon || ""} Burn ${r.name}`}</option>)}
               </select>)}
-            <span style={{ color: "rgba(234,242,255,0.5)" }}>Exact amount confirmed in your quote · resources have no monetary value</span>
+            <span style={{ color: "rgba(234,242,255,0.5)" }}>
+              Exact {(econCfg?.eligible_resources || []).find((r) => r.key === payRes)?.name || "Fire Power"} requirement shown before you confirm · engagement resources have no monetary value</span>
           </div>
         </section>
 
@@ -304,7 +305,7 @@ export default function GameMakerPage() {
         {quote && !job && (
           <div className="rounded-2xl p-4 mb-6" data-testid="gamemaker-quote-panel"
             style={{ border: `1.5px solid ${ORANGE}88`, background: "rgba(244,167,59,0.05)" }}>
-            <b className="text-sm block mb-1">Your build quote</b>
+            <b className="text-sm block mb-1">Build Requirement</b>
             <p className="text-[11.5px] mb-1" style={{ color: "rgba(234,242,255,0.75)" }}>
               <b>{cat?.runtimes?.find((r) => r.key === runtime)?.name}</b> · {String(style).replace(/_/g, " ")} ·
               Economy {quote.economy} ({quote.economy_tier}) · AI Power {quote.ai_power} ({quote.power_tier})</p>
@@ -314,9 +315,9 @@ export default function GameMakerPage() {
               <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.05)" }} data-testid="quote-available">
                 <b style={{ color: quote.available >= quote.required_amount ? GREEN : "#FF5A6E" }}>{quote.available}</b><br />your balance</div>
               <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.05)" }}>
-                <b style={{ color: BLUE }}>${quote.provider_estimate}</b><br />est. AI provider cost (separate)</div>
+                <b style={{ color: BLUE }}>${quote.provider_estimate}</b><br />Estimated AI Usage (separate)</div>
               <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.05)" }}>
-                <b>rule v{quote.rule_version}</b><br />quote expires in ~20 min</div>
+                <b>rule v{quote.rule_version}</b><br />expires in ~20 min</div>
             </div>
             <p className="text-[10px] mb-3" style={{ color: "rgba(234,242,255,0.55)" }}>
               Confirming places a hold — nothing is burned unless your game builds, validates and saves successfully.

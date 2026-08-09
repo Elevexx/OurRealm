@@ -58,10 +58,10 @@ export default function FireWalletPrivacy() {
   return (
     <div className="or-surface p-5 mb-4" data-testid="fire-wallet-privacy-section">
       <h3 className="text-lg mb-1 flex items-center gap-2" style={{ fontFamily: "var(--font-display)" }}>
-        <Flame size={17} style={{ color: "#FF7A1A" }} fill="#FF7A1A" /> Fire Wallet Privacy
+        <Flame size={17} style={{ color: "#FF7A1A" }} fill="#FF7A1A" /> Fire Vault Privacy
       </h3>
       <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
-        Choose who can view your Fire Wallet statistics.
+        Choose who can view your Fire Vault statistics.
       </p>
       <div className="space-y-3">
         {FIELDS.map((f) => (
@@ -85,7 +85,7 @@ export default function FireWalletPrivacy() {
         ))}
       </div>
       <p className="text-[11px] mt-3" style={{ color: "var(--text-muted)" }}>
-        You always see your own full wallet. These settings only affect what other members can see.
+        You always see your own full Fire Vault. These settings only affect what other members can see.
       </p>
     </div>
   );

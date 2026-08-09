@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Gamepad2, Loader2, UserPlus, LogIn } from "lucide-react";
 import axios from "axios";
 import { GameCover, resolveCover } from "@/components/games/GameCover";
+import { GameMakerCTA } from "@/components/games/GameMakerCTA";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -26,6 +27,7 @@ export default function PublicGamesHub() {
           <Gamepad2 size={24} style={{ color: "#C26BFF" }} />
           <h1 className="text-xl sm:text-2xl font-black flex-1" style={{ fontFamily: "var(--font-display, inherit)" }}>
             OurRealm Games</h1>
+          <GameMakerCTA />
           <button className="px-4 py-1.5 rounded-full font-bold text-xs" data-testid="public-hub-signup-btn"
             style={{ background: "#10E670", color: "#0a0a0a" }}
             onClick={() => navigate("/signup?next=%2Fgames")}>

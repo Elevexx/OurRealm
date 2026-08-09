@@ -19,7 +19,7 @@ const FLAG_LABELS = {
   boosted_fire: "Boosted Fire (2x+ consumes the 24h pool)",
   fire_ranked_feed: "Fire-ranked For You feed (time windows)",
   fire_notifications: "Fire notifications to post authors",
-  fire_wallet_enabled: "Fire Wallet UI (Vault earnings ALWAYS accrue; this only reveals the wallet)",
+  fire_wallet_enabled: "Fire Vault UI (Vault earnings ALWAYS accrue; this only reveals the Fire Vault)",
 };
 
 function ReportBlock({ title, report, testid }) {
@@ -98,7 +98,7 @@ function WalletAdminSection() {
       const r = await apiClient.get("/fire/admin/wallets/overview");
       setOv(r.data);
       setHours(String(r.data.config.settlement_hours));
-    } catch (e) { toast.error(e?.response?.data?.detail || "Wallets load failed"); }
+    } catch (e) { toast.error(e?.response?.data?.detail || "Vaults load failed"); }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -122,15 +122,15 @@ function WalletAdminSection() {
   return (
     <div className="or-surface p-4" data-testid="fire-admin-wallets">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2">
-        <Flame size={14} style={{ color: "#FF7A1A" }} /> Fire Vault &amp; Wallets (Phase 0.5)
+        <Flame size={14} style={{ color: "#FF7A1A" }} /> Fire Vaults (Phase 0.5)
       </div>
       <div className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>
-        Vault = permanent earned fire (not spendable yet). Earnings accrue even while the wallet UI flag is OFF.
+        Vault = permanent earned fire (view-only for now). Earnings accrue even while the Vault UI flag is OFF.
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center mb-3" data-testid="fire-wallets-stats">
         {[["Total Vault Fire", ov.total_vault_fire], ["Total Pending Fire", ov.total_pending_fire],
-          ["Wallets", ov.wallet_count], ["Pending txns", ov.pending_transactions]].map(([k, v]) => (
+          ["Vaults", ov.wallet_count], ["Pending txns", ov.pending_transactions]].map(([k, v]) => (
           <div key={k} className="p-3 rounded-xl" style={{ border: "1px solid var(--border-col)" }}>
             <div className="text-lg font-bold" style={{ color: "#FF7A1A" }}>{(v ?? 0).toLocaleString()}</div>
             <div className="text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{k}</div>
@@ -140,7 +140,7 @@ function WalletAdminSection() {
 
       <div className="grid sm:grid-cols-2 gap-3 text-xs mb-3">
         <div className="p-3 rounded-xl" style={{ border: "1px solid var(--border-col)" }}>
-          <div className="font-semibold mb-1">Largest wallet</div>
+          <div className="font-semibold mb-1">Largest Vault</div>
           <div style={{ color: "var(--text-muted)" }} data-testid="fire-wallets-largest">{who(ov.largest_wallet)}</div>
           <div className="font-semibold mb-1 mt-2">Largest pending</div>
           <div style={{ color: "var(--text-muted)" }} data-testid="fire-wallets-largest-pending">{who(ov.largest_pending_wallet)}</div>
@@ -186,7 +186,7 @@ function WalletAdminSection() {
             const r = await apiClient.post("/fire/admin/wallets/recalculate",
               recalcUser.trim() ? { username: recalcUser.trim() } : {});
             setRecalcReport(r.data);
-            toast.success("Wallet recalculation complete");
+            toast.success("Vault recalculation complete");
             await load();
           })}>
           {busy === "recalc" ? <Loader2 size={11} className="animate-spin" /> : <Wand2 size={11} />} Recalculate / Repair wallets
@@ -433,7 +433,7 @@ function InspectorSection() {
             {" "}{pData.standard_fire} standard / {pData.boosted_fire} boosted
           </div>
           <div style={{ color: "var(--text-muted)" }} className="mb-2">"{(pData.post.content || "").slice(0, 100)}"</div>
-          <div className="font-semibold mb-1">Wallet credits by status</div>
+          <div className="font-semibold mb-1">Vault credits by status</div>
           <div className="flex flex-wrap gap-2 mb-2">
             {Object.entries(pData.wallet_credits_by_status || {}).map(([s, v]) => (
               <span key={s} className="or-chip" style={{ color: st(s) }}>{s}: {v.total} 🔥 ({v.count})</span>

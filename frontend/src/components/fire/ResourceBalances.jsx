@@ -36,14 +36,14 @@ const ExchangePanel = ({ balances, onDone }) => {
               const r = await apiClient.post("/resources/exchange/quote",
                 { from: f.from, to: f.to, amount: Number(f.amount) });
               setQuote(r.data.quote);
-            } catch (e) { toast.error(e?.response?.data?.detail || "Quote failed"); }
+            } catch (e) { toast.error(e?.response?.data?.detail || "Preview failed"); }
           }}>Preview</button>
       </div>
       {quote && (
         <div className="mt-1.5 text-[10.5px] flex items-center gap-2 flex-wrap" data-testid="exchange-quote-row">
           <span>Burn <b style={{ color: "#FF8A5A" }}>{quote.amount} {meta(quote.src).name}</b> → receive{" "}
             <b style={{ color: "#10E670" }}>{quote.receive} {meta(quote.dst).name}</b>
-            {quote.fee_fire > 0 && <> · fee {quote.fee_fire}🔥</>} · ratio v{quote.rule_version}</span>
+            {quote.fee_fire > 0 && <> · +{quote.fee_fire}🔥 extra burned</>} · ratio v{quote.rule_version}</span>
           <button className="or-btn text-[10px]" data-testid="exchange-confirm-btn"
             onClick={async () => {
               try {

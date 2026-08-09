@@ -5,14 +5,16 @@ import { Gamepad2, Hammer, Flame, ListTree, Shield, Activity, Database, Sparkles
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { GoldCoin } from "@/components/resources/GoldCoin";
+import GameMakerRegistry from "@/pages/GameMakerRegistry";
 import AdminBackButton from "@/components/AdminBackButton";
 
 const SECTIONS = [
   ["overview", "Overview", Activity], ["saved", "Saved Games", Gamepad2],
   ["jobs", "Builds & Jobs", Hammer], ["published", "Published Games", Eye],
   ["resources", "Engagement Resources", Flame], ["ledger", "Ledger Inspector", ListTree],
-  ["economy", "Economy & Pricing", Coins], ["exchange", "Exchange", ArrowLeftRight],
+  ["economy", "Economy & Burn Rules", Coins], ["exchange", "Exchange", ArrowLeftRight],
   ["placements", "Placement Matrix", Layers],
+  ["engineregistry", "Engine Registry", Database],
   ["registry", "Runtimes & Styles", Layers], ["diagnostics", "Diagnostics & Migration", Database],
   ["access", "Access & Visibility", Shield],
 ];
@@ -176,6 +178,7 @@ export default function GameMakerAdmin() {
       {tab === "economy" && <EconomyTab />}
       {tab === "exchange" && <ExchangeTab />}
       {tab === "placements" && <PlacementsTab />}
+      {tab === "engineregistry" && <GameMakerRegistry />}
 
       {tab === "registry" && ov && (
         <div className="grid sm:grid-cols-2 gap-3" data-testid="gm-admin-registry">
@@ -269,7 +272,7 @@ const EconomyTab = () => {
   return (
     <div className="space-y-3" data-testid="gm-admin-economy">
       <div className="or-surface p-3 rounded-xl">
-        <b className="text-xs uppercase tracking-widest block mb-2">Pricing rule (active v{rule.version}) — saving creates a new version; existing quotes/holds keep theirs</b>
+        <b className="text-xs uppercase tracking-widest block mb-2">Burn rule (active v{rule.version}) — saving creates a new version; existing requirements/holds keep theirs</b>
         <div className="flex gap-2 flex-wrap items-center text-[11px]">
           {["base_per_point", "economy_weight", "ai_power_weight", "minimum", "maximum"].map((k) => (
             <label key={k} className="flex flex-col gap-0.5">
@@ -289,7 +292,7 @@ const EconomyTab = () => {
               ["base_per_point", "economy_weight", "ai_power_weight", "minimum", "maximum"].forEach((k) => {
                 body[k] = Number(document.getElementById(`pr-${k}`).value); });
               await apiClient.post("/admin/gamemaker/pricing", body);
-              toast.success("New pricing version created"); load();
+              toast.success("New burn rule version created"); load();
             }}>Save as new version</button>
         </div>
       </div>
@@ -496,7 +499,7 @@ const ResourceRow = ({ r, onChanged }) => {
           {genPreview && (
             <div className="p-2 rounded-lg text-[10px] mb-2" style={{ background: "rgba(194,107,255,0.08)" }} data-testid={`gm-gen-confirm-${r.key}`}>
               <p><b>Prompt:</b> {genPreview.final_prompt}</p>
-              <p><b>Provider:</b> {genPreview.provider} · <b>Est. cost:</b> ${genPreview.estimated_cost}</p>
+              <p><b>Provider:</b> {genPreview.provider} · <b>Estimated AI Usage:</b> ${genPreview.estimated_cost}</p>
               <button className="or-btn text-[9.5px] mt-1" data-testid={`gm-gen-confirm-btn-${r.key}`}
                 onClick={async () => {
                   const x = await apiClient.post(`/admin/resources/${r.key}/visuals/generate`,

@@ -136,7 +136,7 @@ export const GameAssetStudio = ({ game, onChanged }) => {
   const applyLib = async (assetId) => {
     try {
       await apiClient.post(`/admin/games/${game.id}/assets/${libFor}/use-library`, { asset_id: assetId });
-      toast.success("Library asset reused — no regeneration cost"); setLibFor(null); load(); onChanged?.();
+      toast.success("Library asset reused — no regeneration needed"); setLibFor(null); load(); onChanged?.();
     } catch (e) { toast.error(e?.response?.data?.detail || "Reuse failed"); }
   };
 

@@ -279,6 +279,8 @@ app.include_router(resources_router_mod.router)
 app.include_router(resources_router_mod.admin)
 app.include_router(gamemaker_router_mod.router)
 app.include_router(gamemaker_router_mod.admin)
+from routers import registry_admin as registry_admin_router_mod  # noqa: E402
+app.include_router(registry_admin_router_mod.router)
 app.include_router(orai_access_router_mod.router)
 
 
@@ -646,6 +648,9 @@ async def _safe_startup():
         await _economy.reap_expired_holds()
         await _op.ensure_seed()
         await _rv.ensure_indexes()
+        from services import engine_registry as _er
+        await _er.ensure_indexes()
+        await _er.ensure_seed()
     except Exception as e:
         logger.error(f"[gamemaker] job/resource startup failed: {e}")
     try:

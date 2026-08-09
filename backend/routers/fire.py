@@ -105,7 +105,7 @@ async def wallet_collect(body: CollectBody, current: CurrentUser):
 async def wallet_history(current: CurrentUser, filter: str = "all", limit: int = 50):
     flags = await fp.get_fire_flags()
     if not flags.get("fire_wallet_history_enabled"):
-        raise HTTPException(status_code=403, detail="Wallet history is not enabled yet")
+        raise HTTPException(status_code=403, detail="Vault history is not enabled yet")
     from services import fire_vault as fv
     return {"history": await fv.wallet_history(current, filter, limit)}
 
@@ -132,7 +132,7 @@ async def fire_up_execute(body: FireUpBody, current: CurrentUser):
     supplies an idempotency key."""
     flags = await fp.get_fire_flags()
     if not flags.get("fire_wallet_enabled"):
-        raise HTTPException(status_code=403, detail="Fire wallet is not enabled yet")
+        raise HTTPException(status_code=403, detail="The Fire Vault is not enabled yet")
     from services import fire_vault as fv
     return await fv.fire_up(current, body.idempotency_key)
 

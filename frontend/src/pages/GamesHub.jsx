@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Gamepad2, Search, Play, ArrowLeft, Trophy, Flag } from "lucide-react";
+import { GameMakerCTA } from "@/components/games/GameMakerCTA";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import GameRuntime from "@/components/games/GameRuntime";
@@ -71,9 +72,12 @@ export default function GamesHub() {
     <div className="max-w-4xl mx-auto pb-12" data-testid="games-hub-page">
       {!playId && (
         <>
-          <h1 className="text-2xl sm:text-3xl mb-1 flex items-center gap-2" style={{ fontFamily: "var(--font-display)" }}>
-            <Gamepad2 size={26} style={{ color: "#C26BFF" }} /> OurRealm Games
-          </h1>
+          <div className="flex items-start gap-2 flex-wrap mb-1">
+            <h1 className="text-2xl sm:text-3xl flex items-center gap-2 flex-1 min-w-0" style={{ fontFamily: "var(--font-display)" }}>
+              <Gamepad2 size={26} style={{ color: "#C26BFF" }} /> OurRealm Games
+            </h1>
+            <GameMakerCTA />
+          </div>
           <p className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>
             A curated library of playable demos built with ORAi — every title a different genre, world and playstyle. Fully editable Living Projects.
           </p>

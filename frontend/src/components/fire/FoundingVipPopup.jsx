@@ -71,7 +71,7 @@ export default function FoundingVipPopup() {
             {busy ? <Loader2 size={13} className="animate-spin" /> : null} Claim Now
           </button>
           <button className="or-chip" onClick={() => { setOpen(false); navigate("/profile"); }}
-            data-testid="founding-vip-popup-wallet">View Fire Wallet</button>
+            data-testid="founding-vip-popup-wallet">View Fire Vault</button>
           <button className="or-chip ml-auto" onClick={dismiss} data-testid="founding-vip-popup-dismiss">
             Dismiss
           </button>

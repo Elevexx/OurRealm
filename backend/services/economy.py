@@ -183,9 +183,9 @@ async def place_hold(user: dict, quote_id: str, idem_key: str | None, founder: b
             return {**ex, "replayed": True}
     q = await db.gm_quotes.find_one({"id": quote_id, "user_id": user["id"]}, {"_id": 0})
     if not q:
-        raise ValueError("Quote not found")
+        raise ValueError("Build requirement not found")
     if q["expires_at"] < _iso():
-        raise ValueError("Quote expired — get a new quote")
+        raise ValueError("That build requirement expired — request a new one")
     rule = await db.gm_pricing_rules.find_one({"version": q["rule_version"]}, {"_id": 0})
     exempt = founder and (rule or {}).get("founder_exempt")
     hold = {"id": uuid.uuid4().hex, "user_id": user["id"], "quote_id": quote_id,
@@ -334,9 +334,9 @@ async def exchange_execute(user: dict, quote_id: str, idem_key: str | None) -> d
     q = await db.gm_exchange_quotes.find_one({"id": quote_id, "user_id": user["id"], "state": "quoted"},
                                              {"_id": 0})
     if not q:
-        raise ValueError("Exchange quote not found or already used")
+        raise ValueError("Exchange preview not found or already used")
     if q["expires_at"] < _iso():
-        raise ValueError("Exchange quote expired")
+        raise ValueError("Exchange preview expired")
     # burn source atomically (fails on insufficient — no partial state)
     if q["src"] == "fire":
         if not await fire_hold(user["id"], q["amount"], f"exchange:{quote_id}"):

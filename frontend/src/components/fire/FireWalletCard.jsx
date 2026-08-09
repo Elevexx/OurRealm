@@ -231,7 +231,7 @@ export default function FireWalletCard({ compact = false, collapsible = false })
     return (
       <div className="or-surface p-3 mb-4 flex items-center gap-3 flex-wrap" data-testid="fire-wallet-compact">
         <span className="flex items-center gap-1.5 text-sm font-bold" style={{ color: FIRE }}>
-          <Flame size={15} fill={FIRE} /> Fire Wallet
+          <Flame size={15} fill={FIRE} /> Fire Power
         </span>
         <span className="text-xs" style={{ color: "var(--text-muted)" }} data-testid="fire-wallet-compact-pool">
           Pool: <b style={{ color: "var(--text-main)" }}>{fmt(pool?.available)}/{fmt(pool?.pool_max)}</b>
@@ -250,7 +250,7 @@ export default function FireWalletCard({ compact = false, collapsible = false })
           </span>
         )}
         <Link to="/profile" className="or-chip ml-auto" data-testid="fire-wallet-compact-link">
-          View wallet <ChevronRight size={11} />
+          View Fire Vault <ChevronRight size={11} />
         </Link>
       </div>
     );
@@ -361,7 +361,7 @@ export default function FireWalletCard({ compact = false, collapsible = false })
           )}
         </div>
         <div className="text-[10px] mt-2" style={{ color: "var(--text-muted)" }}>
-          Boosted Fire recovers exactly 24 hours after each spend. Standard 1× Fire is always unlimited.
+          Boosted Fire recovers exactly 24 hours after each use. Standard 1× Fire is always unlimited.
         </div>
       </div>
 
@@ -441,7 +441,7 @@ export default function FireWalletCard({ compact = false, collapsible = false })
         <div className="mt-4" data-testid="fire-wallet-history-section">
           <button className="or-chip" onClick={() => setHistoryOpen((o) => !o)} data-testid="fire-wallet-history-toggle">
             <ChevronDown size={11} style={{ transform: historyOpen ? "rotate(180deg)" : "none", transition: "transform 150ms" }} />
-            Wallet History
+            Vault History
           </button>
           {historyOpen && (
             <div className="mt-2">

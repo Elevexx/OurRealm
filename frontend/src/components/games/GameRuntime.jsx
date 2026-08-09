@@ -1885,7 +1885,7 @@ function arpgSS(st){const c=mkCanvas(MOB?70:8),g=c.getContext('2d'),W=c.width,H=
    else if(pk.kind==='key'){keysL++;const kid=(S.title||'game')+'-s'+(stageIdx+1);
     if(SAVE_X.arpg){SAVE_X.arpg.keys=(SAVE_X.arpg.keys||0)+1}saveGame();
     try{parent.postMessage({type:'game_key',key_id:kid,stage:stageIdx+1,title:st.title||''},'*')}catch(e){}
-    popup(P.x-cam,P.y-46*k,'\uD83D\uDDDD GOLDEN KEY \u2192 Fire Vault Wallet','#FFD34D');burst(P.x-cam,P.y,'#FFD34D',18,140);sfx('achievement')}}});
+    popup(P.x-cam,P.y-46*k,'\uD83D\uDDDD GOLDEN KEY \u2192 Fire Vault','#FFD34D');burst(P.x-cam,P.y,'#FFD34D',18,140);sfx('achievement')}}});
   projs=projs.filter(p=>{p.x+=p.vx*dt;p.y+=(p.vy||0)*dt;p.life-=dt;
    if(Math.random()<0.5)parts.push({x:p.x-cam,y:p.y,vx:0,vy:0,life:0.3,color:p.fire?'#FF8A3D':LG,r:1.6});
    const f=foes.find(f=>!f.dead&&Math.abs(f.x-p.x)<22&&Math.abs(f.y-p.y)<44*k);

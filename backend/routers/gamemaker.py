@@ -103,6 +103,8 @@ async def _run_create(job: dict) -> dict:
     if hold_id:  # burn ONLY after successful validation + save
         await economy.finalize_burn(hold_id, result["game_id"])
         result["burn_finalized"] = True
+    from services import engine_registry as _er
+    await _er.pin_game(result["game_id"], job.get("username") or "system")
     return result
 
 
@@ -157,6 +159,10 @@ async def create_game(body: dict, current: CurrentUser):
     if rt[4] != "live" or not rt[3]:
         raise HTTPException(status_code=400, detail=f"{rt[1]} is coming soon — it isn't generatable yet. "
                                                     f"Pick a Live runtime for now.")
+    from services import engine_registry as _er
+    allowed, reason = await _er.new_use_allowed(rt[3])
+    if not allowed:
+        raise HTTPException(status_code=400, detail=reason)
     power = min(max(int(body.get("ai_power") or 5), 1), 10)
     t = tier(power)
     if body.get("dry_run"):
@@ -433,6 +439,10 @@ async def make_quote(body: dict, current: CurrentUser):
         raise HTTPException(status_code=400, detail="Pick a Live runtime, a style and describe your game")
     if str(body.get("style") or "") not in {k for k, _, _ in STYLES}:
         raise HTTPException(status_code=400, detail="Pick one of the 10 animation styles")
+    from services import engine_registry as _er
+    allowed, reason = await _er.new_use_allowed(rt[3])
+    if not allowed:
+        raise HTTPException(status_code=400, detail=reason)
     t = tier(power)
     try:
         q = await economy.create_quote(current, {**body, "ai_power": power,
