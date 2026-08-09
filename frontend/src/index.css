@@ -1072,3 +1072,21 @@ html[data-mode="business"] .rcx-scope .or-surface {
     min-height: 64px !important;
   }
 }
+/* ── Canonical gold coin (Coins engagement resource) ─────────────────
+   Gentle spin + bob, transform-only; wrapper reserves the box so the
+   animation never moves layout. Reduced motion → static gold frame. */
+.or-coin-wrap { display: inline-flex; align-items: center; justify-content: center;
+  flex: none; perspective: 140px; }
+.or-coin-anim { object-fit: contain; image-rendering: pixelated;
+  animation: or-coin-flip 3.4s ease-in-out infinite; will-change: transform;
+  filter: drop-shadow(0 0 3px rgba(255, 211, 77, 0.45)); }
+@keyframes or-coin-flip {
+  0%   { transform: rotateY(0deg) translateY(0); }
+  40%  { transform: rotateY(360deg) translateY(0); }
+  58%  { transform: rotateY(360deg) translateY(-5%); }
+  76%  { transform: rotateY(360deg) translateY(0); }
+  100% { transform: rotateY(360deg) translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .or-coin-anim { animation: none; }
+}

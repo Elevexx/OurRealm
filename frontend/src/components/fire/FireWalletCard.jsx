@@ -302,6 +302,21 @@ export default function FireWalletCard({ compact = false, collapsible = false })
         <CollapsibleHeader
           icon={<Flame size={16} style={{ color: FIRE }} fill={FIRE} aria-hidden="true" />}
           title="Fire Power"
+          right={
+            <span className="flex items-center gap-2" data-testid="fire-wallet-collapsed-summary">
+              {(data.held_fire || 0) > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                  style={{ color: GOLD, border: `1px solid color-mix(in srgb, ${GOLD} 45%, transparent)` }}
+                  data-testid="fire-wallet-collapsed-held">
+                  {fmt(data.held_fire)} 🔥 held
+                </span>
+              )}
+              <b className="text-base sm:text-lg" style={{ color: FIRE, textShadow: `0 0 12px color-mix(in srgb, ${FIRE} 40%, transparent)` }}
+                data-testid="fire-wallet-collapsed-balance">
+                {fmt(animVault)} 🔥
+              </b>
+            </span>
+          }
           expanded={expanded}
           onToggle={() => setExpanded((e) => !e)}
           testid="fire-wallet-header"

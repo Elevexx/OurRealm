@@ -103,6 +103,7 @@ async def activate(resource_key: str, visual_id: str, actor: str) -> dict:
                                    "icon_url": vis["images"].get("64", "") + bust,
                                    "icon_512": vis["images"].get("512", "") + bust,
                                    "master_url": vis["images"].get("1024", "") + bust,
+                                   "animation": vis.get("animation"),
                                    "label": vis.get("accessibility_label") or resource_key},
                  "updated_at": _iso()},
         "$inc": {"version": 1},

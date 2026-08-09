@@ -62,7 +62,12 @@ async def my_wallet(current: CurrentUser):
     cfg = await fp.fire_config_for_user(current)
     pool = await fp.pool_status(current, cfg)
     wcfg = await fv.get_wallet_config()
+    held_fire = 0
+    async for h in db.gm_holds.find({"user_id": current["id"], "resource_key": "fire",
+                                     "state": "held"}, {"amount": 1}):
+        held_fire += int(h.get("amount") or 0)
     return {"enabled": True, "wallet": wallet, "pool": pool, "config": cfg,
+            "held_fire": held_fire,
             "settlement_hours": wcfg["settlement_hours"],
             "fire_given": await fv.fire_given_total(current["id"]),
             "fire_received": wallet["lifetime_fire_received"],

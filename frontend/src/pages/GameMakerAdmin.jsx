@@ -4,6 +4,7 @@ import { Gamepad2, Hammer, Flame, ListTree, Shield, Activity, Database, Sparkles
   Layers, Image as ImageIcon, ScrollText, Eye, RefreshCw, Coins, ArrowLeftRight } from "lucide-react";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
+import { GoldCoin } from "@/components/resources/GoldCoin";
 import AdminBackButton from "@/components/AdminBackButton";
 
 const SECTIONS = [
@@ -440,7 +441,10 @@ const ResourceRow = ({ r, onChanged }) => {
   return (
     <div className="or-surface p-3 rounded-xl text-[11.5px]" data-testid={`gm-resource-row-${r.key}`}>
       <div className="flex items-center gap-3 flex-wrap">
-        {r.active_visual?.icon_url ? <img src={r.active_visual.icon_url} alt={r.name} className="w-6 h-6" />
+        {r.active_visual?.icon_url
+          ? (r.active_visual.animation === "gold-coin"
+            ? <GoldCoin src={r.active_visual.icon_url} size={24} alt={r.name} testid={`gm-coin-${r.key}`} />
+            : <img src={r.active_visual.icon_url} alt={r.name} className="w-6 h-6" />)
           : <span className="text-lg">{r.icon}</span>}
         <b style={{ color: r.color }}>{r.name}</b>
         <code className="text-[10px]" style={{ color: "var(--text-muted)" }}>{r.key} · v{r.version}</code>
@@ -581,7 +585,11 @@ const PlacementsTab = () => {
             {m.resources.map((r) => (
               <tr key={r.key} style={{ borderTop: "1px solid var(--border-col)" }} data-testid={`gm-matrix-row-${r.key}`}>
                 <td className="pr-2 py-1.5 font-bold whitespace-nowrap">
-                  {r.visual?.icon_url ? <img src={r.visual.icon_url} alt="" className="w-4 h-4 inline mr-1" /> : <span className="mr-1">{r.icon}</span>}
+                  {r.visual?.icon_url
+                    ? (r.visual.animation === "gold-coin"
+                      ? <GoldCoin src={r.visual.icon_url} size={16} alt="" className="mr-1 align-middle" testid={`gm-matrix-coin-${r.key}`} />
+                      : <img src={r.visual.icon_url} alt="" className="w-4 h-4 inline mr-1" />)
+                    : <span className="mr-1">{r.icon}</span>}
                   {r.name}{r.status === "draft" && <span className="or-chip text-[8px] ml-1" style={{ color: "#F4A73B" }}>draft</span>}</td>
                 <td className="text-center">
                   <input type="checkbox" checked={r.enable_everywhere} data-testid={`gm-everywhere-${r.key}`}

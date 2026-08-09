@@ -169,7 +169,8 @@ async def balances(user_id: str) -> list:
     for r in regs:
         row = {"key": r["key"], "name": r["name"], "icon": r["icon"], "color": r["color"],
                "description": r["description"], "adapter": bool(r.get("adapter")),
-               "icon_url": (r.get("active_visual") or {}).get("icon_url")}
+               "icon_url": (r.get("active_visual") or {}).get("icon_url"),
+               "icon_animation": (r.get("active_visual") or {}).get("animation")}
         if r.get("adapter") == "fire_wallet":
             w = await db.fire_wallets.find_one({"user_id": user_id}, {"_id": 0}) or {}
             row.update({"balance": int(w.get("vault_balance") or 0),

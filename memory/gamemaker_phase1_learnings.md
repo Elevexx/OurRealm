@@ -45,3 +45,8 @@ grant() is the only write path; reversals are compensating entries.
   first so missing icons return clean 404 instead of a doomed presigned redirect.
 - Preview edge injects `cache-control: no-store` on 307s for ALL media kinds
   (backend correctly sends private,max-age=3000 — same as game covers; not a bug).
+
+## Phase 1.6A learnings
+- Canonical in-game gold coin = founder sheet 3be1c0d6...png cell 0 (4x2 grid), served via /api/public/game-assets/. Dragon Realm assets live in games.spec.assets (NOT games.assets).
+- resource_visuals activate() now propagates `animation` field into registry active_visual — keep when editing.
+- 🪙 emoji renders silver on some platforms — that was the "silver coin" complaint.
