@@ -105,6 +105,8 @@ async def _run_create(job: dict) -> dict:
         result["burn_finalized"] = True
     from services import engine_registry as _er
     await _er.pin_game(result["game_id"], job.get("username") or "system")
+    await db.games.update_one({"id": result["game_id"], "age_rating": {"$ne": "13+"}},
+                              {"$set": {"age_rating": "13+"}})
     return result
 
 
@@ -179,7 +181,8 @@ async def create_game(body: dict, current: CurrentUser):
 
 @router.get("/saved")
 async def saved_games(current: CurrentUser):
-    q = {"creator_id": current["id"]} if not get_admin_role(current) else {}
+    q = ({"$or": [{"creator_id": current["id"]}, {"created_by": current["id"]}]}
+         if not get_admin_role(current) else {})
     rows = await db.games.find(q, {"_id": 0, "id": 1, "title": 1, "status": 1, "runtime": 1,
                                    "cover_url": 1, "version": 1, "updated_at": 1, "created_at": 1,
                                    "published_at": 1, "genre": 1, "gamemaker": 1,
@@ -213,8 +216,15 @@ async def _run_publish(job: dict) -> dict:
         raise RuntimeError("Controls validation failed: " + "; ".join(cerrs[:3]))
     await job_engine.phase(job["id"], "publishing", 60, "Publishing")
     prev_status = g["status"]
+    # Public games are always rated 13+ — never below
+    def _below13(v):
+        try:
+            return int(str(v or "").rstrip("+").strip()) < 13
+        except ValueError:
+            return True
     await db.games.update_one({"id": gid}, {"$set": {
         "status": "published", "published_at": g.get("published_at") or _iso(),
+        **({"age_rating": "13+"} if _below13(g.get("age_rating")) else {}),
         "rollback_status": prev_status, "updated_at": _iso()}})
     result = {"game_id": gid, "published": True}
     if p.get("foryou_post"):
@@ -259,10 +269,11 @@ async def _upsert_foryou_post(g: dict, user: dict) -> str:
 
 @router.post("/{game_id}/publish")
 async def publish_game(game_id: str, body: dict, current: CurrentUser):
-    g = await db.games.find_one({"id": game_id}, {"_id": 0, "creator_id": 1})
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "created_by": 1})
     if not g:
         raise HTTPException(status_code=404, detail="Game not found")
-    if g.get("creator_id") != current["id"] and not get_admin_role(current):
+    if g.get("created_by") != current["id"] and g.get("creator_id") != current["id"] \
+            and not get_admin_role(current):
         raise HTTPException(status_code=403, detail="Not your game")
     job = await job_engine.submit("gamemaker_publish", current,
                                   {"game_id": game_id, "foryou_post": bool(body.get("foryou_post"))},
@@ -280,8 +291,9 @@ async def unpublish_game(game_id: str, current: CurrentUser):
 
 @router.post("/{game_id}/rename")
 async def rename_game(game_id: str, body: dict, current: CurrentUser):
-    g = await db.games.find_one({"id": game_id}, {"_id": 0, "creator_id": 1})
-    if not g or (g.get("creator_id") != current["id"] and not get_admin_role(current)):
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "creator_id": 1, "created_by": 1})
+    if not g or (current["id"] not in (g.get("creator_id"), g.get("created_by"))
+                 and not get_admin_role(current)):
         raise HTTPException(status_code=404, detail="Game not found")
     title = str(body.get("title") or "").strip()[:80]
     if not title:
@@ -292,8 +304,9 @@ async def rename_game(game_id: str, body: dict, current: CurrentUser):
 
 @router.post("/{game_id}/archive")
 async def archive_game(game_id: str, current: CurrentUser):
-    g = await db.games.find_one({"id": game_id}, {"_id": 0, "creator_id": 1, "status": 1})
-    if not g or (g.get("creator_id") != current["id"] and not get_admin_role(current)):
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "creator_id": 1, "created_by": 1, "status": 1})
+    if not g or (current["id"] not in (g.get("creator_id"), g.get("created_by"))
+                 and not get_admin_role(current)):
         raise HTTPException(status_code=404, detail="Game not found")
     if g["status"] == "published":
         raise HTTPException(status_code=400, detail="Unpublish before archiving")

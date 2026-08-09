@@ -320,6 +320,7 @@ async def admin_list(current: CurrentUser):
 @admin.post("")
 async def admin_add(body: dict, current: CurrentUser):
     require_founder(current)
+    _guard_resource_config(body)
     key = str(body.get("key") or "").strip().lower().replace(" ", "_")[:30]
     name = str(body.get("name") or "").strip()[:60]
     if not key or not name:
@@ -344,6 +345,7 @@ async def admin_add(body: dict, current: CurrentUser):
 @admin.patch("/{key}")
 async def admin_edit(key: str, body: dict, current: CurrentUser):
     require_founder(current)
+    _guard_resource_config(body)
     res = await db.resource_registry.find_one({"key": key}, {"_id": 0})
     if not res:
         raise HTTPException(status_code=404, detail="Resource not found")
@@ -420,3 +422,55 @@ async def admin_user_balances(username: str, current: CurrentUser):
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
     return {"balances": await rs.balances(u["id"])}
+
+
+# ─── Cross-game resource gates (V1) + founder safeguards ─────────────────
+
+from services import resource_gates as rg  # noqa: E402
+
+PROHIBITED_RESOURCE_FLAGS = frozenset([
+    "transferable", "tradeable", "trading", "marketplace", "cash_value", "cash_out",
+    "redeemable", "monetary_value", "purchasable", "random_reward", "loot_box",
+    "gambling", "prize_pool", "allow_negative"])
+
+
+def _guard_resource_config(body: dict):
+    bad = sorted(PROHIBITED_RESOURCE_FLAGS & set(body.keys()))
+    if bad:
+        raise HTTPException(status_code=400,
+                            detail=f"Blocked by resource safety rules: {', '.join(bad)} — engagement "
+                                   "resources are closed-loop and can never enable transfers, "
+                                   "real-money value, external redemption or random prize burns.")
+    for cap in ("per_user_cap", "global_cap", "daily_limit", "cooldown_s", "fire_equiv"):
+        if cap in body and body[cap] is not None and float(body[cap]) < 0:
+            raise HTTPException(status_code=400, detail=f"{cap} cannot be negative")
+
+
+@admin.post("/gates/{game_id}")
+async def admin_set_gate(game_id: str, body: dict, current: CurrentUser):
+    require_founder(current)
+    _guard_resource_config(body)
+    try:
+        return {"gate": await rg.set_gate(game_id, body, current["username"])}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)[:300])
+
+
+@admin.get("/gates")
+async def admin_list_gates(current: CurrentUser):
+    require_founder(current)
+    rows = await db.gm_resource_gates.find({"active": True}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return {"gates": rows}
+
+
+@router.get("/gates/{game_id}")
+async def gate_status(game_id: str, current: CurrentUser):
+    return await rg.status(game_id, current["id"] if current else None)
+
+
+@router.post("/gates/{game_id}/unlock")
+async def gate_unlock(game_id: str, body: dict, current: CurrentUser):
+    try:
+        return await rg.unlock(game_id, current, body.get("request_id"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)[:300])

@@ -170,6 +170,8 @@ export default function GameMakerPage() {
           </h1>
           <h2 className="font-black tracking-[0.18em] mt-1" style={{ fontSize: "clamp(1.5rem, 5.5vw, 2.6rem)", color: "#fff" }}
             data-testid="gamemaker-title">GAME MAKER</h2>
+          <p className="text-[10px] mt-1" style={{ color: "rgba(234,242,255,0.55)" }} data-testid="gamemaker-age-line">
+            For creators aged 13+ · engagement resources have no monetary value</p>
         </div>
 
         {locked && (

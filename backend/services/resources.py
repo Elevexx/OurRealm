@@ -33,7 +33,7 @@ SEED = [
 ]
 
 SOURCE_TYPES = ("game_reward", "achievement", "admin_adjustment", "reversal", "migration",
-                "event", "build_burn", "exchange")
+                "event", "build_burn", "exchange", "gate_burn")
 
 
 def _iso():

@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Gamepad2, Search, Play, ArrowLeft, Trophy, Flag } from "lucide-react";
 import { GameMakerCTA } from "@/components/games/GameMakerCTA";
+import { ContinuePlaying } from "@/components/games/ContinuePlaying";
+import { GameGate } from "@/components/games/GameGate";
 import { toast } from "sonner";
 import apiClient from "@/api/client";
 import GameRuntime from "@/components/games/GameRuntime";
@@ -15,6 +17,7 @@ export default function GamesHub() {
   const [q, setQ] = useState("");
   const [playing, setPlaying] = useState(null);
   const [fireInfo, setFireInfo] = useState(null);
+  const [gate, setGate] = useState(null);
   const [denied, setDenied] = useState(null);
   const playId = params.get("play");
 
@@ -41,6 +44,8 @@ export default function GamesHub() {
         setPlaying({ blocked: true, message: (typeof d === "object" ? (d.message || d.reason) : d) || "Game not available" });
       });
     apiClient.get(`/games/${playId}/fire-info`).then((r) => setFireInfo(r.data)).catch(() => setFireInfo(null));
+    setGate(null);
+    apiClient.get(`/resources/gates/${playId}`).then((r) => setGate(r.data)).catch(() => setGate({ gate: null, satisfied: true }));
   }, [playId]);
 
   const onScore = useCallback((ev) => {
@@ -79,7 +84,7 @@ export default function GamesHub() {
             <GameMakerCTA />
           </div>
           <p className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>
-            A curated library of playable demos built with ORAi — every title a different genre, world and playstyle. Fully editable Living Projects.
+            A curated library of playable demos built with ORAi — every title a different genre, world and playstyle. Fully editable Living Projects. <b>Rated 13+.</b>
           </p>
           <div className="relative mb-4 max-w-sm">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
@@ -88,17 +93,7 @@ export default function GamesHub() {
           </div>
 
           {(data?.my_progress || []).length > 0 && (
-            <div className="mb-4" data-testid="games-continue">
-              <div className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#10E670" }}>Continue playing</div>
-              <div className="flex gap-2 flex-wrap">
-                {data.my_progress.slice(0, 4).map((p) => (
-                  <button key={p.game_id} className="or-btn or-btn-ghost text-[11px]"
-                    onClick={() => setParams({ play: p.game_id })} data-testid={`games-continue-${p.game_id}`}>
-                    <Play size={11} /> {p.game_title || "Game"} · best {p.best_score}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <ContinuePlaying items={data.my_progress} onOpen={(p) => setParams({ play: p.game_id })} />
           )}
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3" data-testid="games-grid">
@@ -219,7 +214,10 @@ export default function GamesHub() {
               )}
             </div>
           )}
-          {playing.game.spec?.runtime === "turn_based_creature_rpg" ? (
+          {gate?.gate && !gate.satisfied ? (
+            <GameGate gameId={playId} status={gate}
+              onUnlocked={() => apiClient.get(`/resources/gates/${playId}`).then((r) => setGate(r.data))} />
+          ) : playing.game.spec?.runtime === "turn_based_creature_rpg" ? (
             <DragonRealmRuntime />
           ) : (<>
           <div className="relative">

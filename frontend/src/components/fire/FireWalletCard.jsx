@@ -436,7 +436,7 @@ export default function FireWalletCard({ compact = false, collapsible = false })
         <StatTile label="Fire Collected" value={`${fmt(wallet?.lifetime_fire_collected)} 🔥`} testid="fire-wallet-collected" />
       </div>
 
-      {/* 6 — Wallet history (flag-gated, unchanged behavior) */}
+      {/* 6 — Vault history (flag-gated, unchanged behavior) */}
       {features.history && (
         <div className="mt-4" data-testid="fire-wallet-history-section">
           <button className="or-chip" onClick={() => setHistoryOpen((o) => !o)} data-testid="fire-wallet-history-toggle">

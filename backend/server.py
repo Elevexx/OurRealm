@@ -651,6 +651,8 @@ async def _safe_startup():
         from services import engine_registry as _er
         await _er.ensure_indexes()
         await _er.ensure_seed()
+        from services import resource_gates as _rg
+        await _rg.ensure_indexes()
     except Exception as e:
         logger.error(f"[gamemaker] job/resource startup failed: {e}")
     try:
