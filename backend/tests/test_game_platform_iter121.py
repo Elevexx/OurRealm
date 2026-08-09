@@ -266,15 +266,37 @@ class TestBlueprintOps:
 # ── regression: legacy contract preserved ───────────────────────────
 class TestLegacyRegression:
     def test_legacy_projects_blueprints_plan_contract(self, founder_headers):
+        import time
         r = requests.post(f"{BASE_URL}/api/orai/projects/blueprints/plan",
                          headers=founder_headers,
                          json={"request": "a tiny top-down collect-apples arcade game",
                                "complexity": 1, "ai_power": 2,
-                               "name": "TEST_iter121_legacy"},
-                         timeout=120)
-        assert r.status_code == 200, f"legacy plan broken: {r.status_code} {r.text[:300]}"
+                               "name": "TEST_iter121_legacy",
+                               "request_id": f"legacy-blueprint-{time.time_ns()}"},
+                         timeout=15)
+        assert r.status_code in (200, 202), (
+            f"legacy plan broken: {r.status_code} {r.text[:300]}"
+        )
         d = r.json()
-        # Wrapper contract: {"blueprint": <doc>} where doc contains the legacy fields
+        if r.status_code == 202:
+            job_id = d.get("job_id")
+            assert job_id, f"background blueprint response missing job_id: {d}"
+            for _ in range(90):
+                jr = requests.get(
+                    f"{BASE_URL}/api/jobs/{job_id}",
+                    headers=founder_headers,
+                    timeout=15,
+                )
+                assert jr.status_code == 200, jr.text[:300]
+                job = jr.json().get("job") or jr.json()
+                if job.get("phase") == "completed":
+                    d = job.get("result") or {}
+                    break
+                if job.get("phase") in ("failed", "cancelled"):
+                    raise AssertionError(job.get("error") or "blueprint job failed")
+                time.sleep(1)
+            else:
+                raise AssertionError("background blueprint job timed out")
         assert "blueprint" in d, f"top-level 'blueprint' key missing: {list(d)}"
         doc = d["blueprint"]
         for k in ("id", "blueprint", "runtime_recommendation", "selected_runtime",

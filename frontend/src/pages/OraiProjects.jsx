@@ -17,6 +17,7 @@ import BlueprintPlanner from "@/components/oraiprojects/BlueprintPlanner";
 import ProjectMedia from "@/components/oraiprojects/ProjectMedia";
 
 const ACTIVE_KEY = "orai_active_project";
+const BLUEPRINT_JOB_KEY = "orai_blueprint_plan_job";
 
 export default function OraiProjects() {
   const navigate = useNavigate();
@@ -28,6 +29,7 @@ export default function OraiProjects() {
   const [historyKey, setHistoryKey] = useState(0);
   const [blueprint, setBlueprint] = useState(null);
   const [bpLoading, setBpLoading] = useState(false);
+  const [bpProgress, setBpProgress] = useState("");
   const [compatReport, setCompatReport] = useState(null);
 
   const [proj, setProj] = useState(() => {
@@ -42,11 +44,62 @@ export default function OraiProjects() {
   const [suggestions, setSuggestions] = useState([]);
   const [reuseCandidates, setReuseCandidates] = useState([]);
   const debRef = useRef(null);
+  const bpPollRef = useRef(null);
+
+  const pollBlueprintJob = useCallback((jobId) => {
+    clearInterval(bpPollRef.current);
+
+    const check = async () => {
+      try {
+        const { data } = await apiClient.get(`/jobs/${jobId}`);
+        const job = data.job || data;
+        setBpProgress(`${job.note || "Planning blueprint"} · ${job.pct || 0}%`);
+
+        if (job.phase === "completed") {
+          clearInterval(bpPollRef.current);
+          localStorage.removeItem(BLUEPRINT_JOB_KEY);
+          setBpLoading(false);
+          setBpProgress("");
+
+          if (job.result?.compatibility_error) {
+            setCompatReport(job.result.compatibility_error);
+            toast.error("No compatible runtime — see the compatibility report");
+            return;
+          }
+
+          if (!job.result?.blueprint) {
+            toast.error("Blueprint job completed without a blueprint");
+            return;
+          }
+
+          setBlueprint(job.result.blueprint);
+          setView("blueprint");
+          toast.success("Game blueprint planned — review before approval");
+        } else if (["failed", "cancelled"].includes(job.phase)) {
+          clearInterval(bpPollRef.current);
+          localStorage.removeItem(BLUEPRINT_JOB_KEY);
+          setBpLoading(false);
+          setBpProgress("");
+          toast.error(job.error || "Blueprint planning failed");
+        }
+      } catch {
+        setBpProgress("Blueprint is still working in the background…");
+      }
+    };
+
+    setBpLoading(true);
+    setBpProgress("Starting persistent blueprint job…");
+    bpPollRef.current = setInterval(check, 2000);
+    check();
+  }, []);
 
   useEffect(() => {
     apiClient.get("/orai/projects/capabilities")
       .then((r) => setCaps(r.data))
       .catch((e) => { if (e?.response?.status === 403) setDenied(true); });
+    const blueprintJob = localStorage.getItem(BLUEPRINT_JOB_KEY);
+    if (blueprintJob) pollBlueprintJob(blueprintJob);
+
     const saved = localStorage.getItem(ACTIVE_KEY);
     if (saved) {
       apiClient.get(`/orai/projects/${saved}`).then((r) => {
@@ -55,7 +108,9 @@ export default function OraiProjects() {
         } else localStorage.removeItem(ACTIVE_KEY);
       }).catch(() => localStorage.removeItem(ACTIVE_KEY));
     }
-  }, []);
+
+    return () => clearInterval(bpPollRef.current);
+  }, [pollBlueprintJob]);
 
   const providerNames = useMemo(
     () => Object.fromEntries((caps?.providers || []).map((p) => [p.id, p.name])), [caps]);
@@ -107,24 +162,42 @@ export default function OraiProjects() {
   const planBlueprint = async () => {
     if (!proj.prompt.trim()) { toast.error("Describe the game first (chat or prompt box)"); return; }
     setBpLoading(true);
+    setBpProgress("Submitting blueprint job…");
     setCompatReport(null);
     try {
+      const requestId = `blueprint-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const { data } = await apiClient.post("/orai/projects/blueprints/plan", {
-        request: proj.prompt, name: proj.name, complexity: proj.complexity, ai_power: proj.ai_power,
+        request: proj.prompt,
+        name: proj.name,
+        complexity: proj.complexity,
+        ai_power: proj.ai_power,
+        request_id: requestId,
       });
-      setBlueprint(data.blueprint);
-      setView("blueprint");
-      toast.success("Game blueprint planned — review before approval");
+
+      if (data.blueprint) {
+        setBlueprint(data.blueprint);
+        setView("blueprint");
+        setBpLoading(false);
+        setBpProgress("");
+        toast.success("Game blueprint planned — review before approval");
+        return;
+      }
+
+      if (!data.job_id) throw new Error("Blueprint job ID was not returned");
+      localStorage.setItem(BLUEPRINT_JOB_KEY, data.job_id);
+      toast.info("ORAi is planning in the background—you may leave and return");
+      pollBlueprintJob(data.job_id);
     } catch (e) {
       const d = e?.response?.data?.detail;
+      setBpLoading(false);
+      setBpProgress("");
       if (d && d.error_code === "no_compatible_runtime") {
         setCompatReport(d);
         toast.error("No compatible runtime — see the compatibility report");
       } else {
-        toast.error(typeof d === "string" ? d : "Blueprint planning failed");
+        toast.error(typeof d === "string" ? d : "Could not start blueprint planning");
       }
     }
-    finally { setBpLoading(false); }
   };
 
   const goReview = async () => {
@@ -239,6 +312,12 @@ export default function OraiProjects() {
                 onClick={planBlueprint} data-testid="plan-blueprint-btn">
                 {bpLoading ? "Planning…" : "Plan Game Blueprint"}
               </button>
+              {bpLoading && (
+                <div className="w-full text-[10px] font-semibold" style={{ color: "#2EE6FF" }}
+                  data-testid="blueprint-job-progress">
+                  {bpProgress || "ORAi is planning in the background…"}
+                </div>
+              )}
             </div>
           )}
 

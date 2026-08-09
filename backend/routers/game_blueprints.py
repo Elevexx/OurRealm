@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from core.db import db
 from core.deps import CurrentUser
 from core.permissions import require_founder
-from services import asset_library, game_blueprints as gb
+from services import asset_library, game_blueprints as gb, job_engine
 from services.game_studio import RUNTIMES, RUNTIME_LABELS
 from services.orai_projects import audit
 from utils.sliding_window_rate_limit import rate_limit
@@ -117,7 +117,38 @@ async def library_backfill(current: CurrentUser):
 
 
 # ── Planning ─────────────────────────────────────────────────────────
-@router.post("/plan")
+@job_engine.register("orai_blueprint_plan")
+async def _run_blueprint_plan(job: dict) -> dict:
+    """Persistent blueprint planning job—safe beyond Cloudflare's request window."""
+    body = job.get("payload") or {}
+    current = await db.users.find_one(
+        {"id": job["user_id"]},
+        {"_id": 0, "password": 0, "password_hash": 0},
+    )
+    if not current:
+        raise RuntimeError("Blueprint creator account was not found")
+
+    await job_engine.phase(job["id"], "planning", 15, "ORAi is planning the game blueprint")
+    try:
+        doc = await gb.plan_blueprint(body, current)
+    except HTTPException as exc:
+        # Preserve the structured compatibility report for the existing UI.
+        if isinstance(exc.detail, dict) and exc.detail.get("error_code") == "no_compatible_runtime":
+            return {"compatibility_error": exc.detail}
+        raise
+
+    await job_engine.phase(job["id"], "validating", 85, "Validating runtime and blueprint")
+    await db.game_blueprints.insert_one({**doc})
+    await audit(
+        current,
+        "blueprint_planned",
+        doc["id"],
+        f"{doc['name']} · runtime={doc['selected_runtime']} · {doc['validation']['status']}",
+    )
+    return {"blueprint": _pub(doc)}
+
+
+@router.post("/plan", status_code=202)
 async def plan(body: dict, current: CurrentUser):
     require_founder(current)
     rl = await rate_limit(f"bp-plan:{current['id']}", max_requests=30, window_seconds=3600)
@@ -125,11 +156,24 @@ async def plan(body: dict, current: CurrentUser):
         raise HTTPException(status_code=429, detail="Too many planning requests — try later")
     if not str(body.get("request") or "").strip():
         raise HTTPException(status_code=400, detail="Describe the game to plan")
-    doc = await gb.plan_blueprint(body, current)
-    await db.game_blueprints.insert_one({**doc})
-    await audit(current, "blueprint_planned", doc["id"],
-                f"{doc['name']} · runtime={doc['selected_runtime']} · {doc['validation']['status']}")
-    return {"blueprint": _pub(doc)}
+
+    payload = {
+        "request": str(body.get("request") or "")[:12000],
+        "name": str(body.get("name") or "")[:160],
+        "complexity": body.get("complexity"),
+        "ai_power": body.get("ai_power"),
+    }
+    job = await job_engine.submit(
+        "orai_blueprint_plan",
+        current,
+        payload,
+        idem_key=body.get("request_id"),
+    )
+    return {
+        "job_id": job["id"],
+        "phase": job["phase"],
+        "message": "Blueprint planning started and will continue in the background.",
+    }
 
 
 @router.get("")

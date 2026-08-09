@@ -12,7 +12,7 @@ from core.db import db
 from fastapi import HTTPException
 from services.llm_router import tier
 from services.chat_conversations import call_openai_chat
-from services.runtime_selection import select_best_runtime
+from services.runtime_selection import detect_mechanics, select_best_runtime
 from services.game_studio import (RUNTIMES, RUNTIME_LABELS, RUNTIME_MECHANICS, RUNTIME_ENUM,
                                   SCAFFOLDED_RUNTIMES, route_runtime, detect_unsupported)
 from services.game_assets import SLOTS, PROFILES, profile_for, ART_QUALITY
@@ -364,6 +364,19 @@ async def match_requirements(owner_id: str, reqs: list) -> tuple:
 
 
 # ── Validation ───────────────────────────────────────────────────────
+def _requested_stage_count(text: str):
+    patterns = (
+        r"\bexactly\s+(\d{1,2})\s*(?:levels?|stages?|worlds?|lands?)\b",
+        r"\b(\d{1,2})[- ](?:level|stage|world|land)\b",
+        r"\b(?:levels?|stages?|worlds?|lands?)\s*[:=]\s*(\d{1,2})\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, str(text or ""), re.IGNORECASE)
+        if match:
+            return min(max(int(match.group(1)), 1), 50)
+    return None
+
+
 def validate_blueprint(doc: dict) -> dict:
     bp = doc["blueprint"]
     warnings, blocking = [], []
@@ -382,6 +395,37 @@ def validate_blueprint(doc: dict) -> dict:
     ms = doc.get("mechanics_support") or {}
     if ms.get("unsupported"):
         warnings.append(f"{len(ms['unsupported'])} requested mechanic(s) are not supported by the selected runtime")
+
+    generated_ms = doc.get("generated_mechanics_support") or {}
+    generated_unsupported = generated_ms.get("unsupported") or []
+    if generated_unsupported:
+        blocking.append(
+            "Generated blueprint promises unsupported gameplay: " +
+            ", ".join(str(x) for x in generated_unsupported[:6])
+        )
+
+    requested_count = doc.get("requested_stage_count")
+    actual_count = len(bp.get("gameplay", {}).get("levels") or [])
+    if requested_count and actual_count != requested_count:
+        blocking.append(
+            f"Exactly {requested_count} levels/stages were requested, "
+            f"but the blueprint generated {actual_count}"
+        )
+
+    fire_text = " ".join(
+        bp.get("systems", {}).get("fire_power_integrations") or []
+    )
+    risky_terms = sorted(set(re.findall(
+        r"\b(?:pay|payment|buy|purchase|purchasable|price|cost|currency|token|cash|sell|trade)\w*\b",
+        fire_text,
+        re.IGNORECASE,
+    )))
+    if risky_terms:
+        blocking.append(
+            "Fire Power wording must use reward/require/burn language; remove: " +
+            ", ".join(risky_terms)
+        )
+
     missing = [r for r in doc.get("asset_requirements") or [] if r.get("required") and r.get("generation_required")]
     if missing:
         warnings.append(f"{len(missing)} required asset(s) have no library match and would need generation later")
@@ -459,9 +503,13 @@ def _assemble_sections(plan: dict, complexity: int, power: int) -> dict:
 async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
                          feedback: str = "") -> dict:
     """Planning ONLY — one LLM call, no media generation, no build."""
-    request_text = str(body.get("request") or (existing or {}).get("request") or "")[:2000]
+    request_text = str(body.get("request") or (existing or {}).get("request") or "")[:12000]
     complexity = min(max(int(body.get("complexity") or (existing or {}).get("complexity") or 1), 1), 10)
     power = min(max(int(body.get("ai_power") or (existing or {}).get("ai_power") or 3), 1), 10)
+    feedback = str(feedback or "")[:4000]
+    requested_stage_count = _requested_stage_count(
+        request_text + "\n" + feedback
+    )
     # Capability-matrix runtime selection BEFORE any generation. Incompatible
     # requests are refused here — no blueprint is ever generated for them.
     sel = select_best_runtime(request_text)
@@ -474,10 +522,25 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
     request_id = uuid.uuid4().hex
     import time
     _t0 = time.monotonic()
-    user_msg = f"Game request: {request_text}\nComplexity: {complexity}/10"
+    user_msg = (
+        f"Game request: {request_text}\n"
+        f"Complexity: {complexity}/10\n"
+        f"AI Power: {power}/10"
+    )
+    if requested_stage_count:
+        user_msg += (
+            f"\nHARD REQUIREMENT: generate exactly "
+            f"{requested_stage_count} levels/stages. "
+            "Complexity adds detail inside those levels and must not "
+            "change their count."
+        )
     if existing and feedback:
-        user_msg += (f"\nREVISION — previous blueprint (revise per feedback, keep what works):\n"
-                     f"{json.dumps(existing['blueprint'], default=str)[:4000]}\nFounder feedback: {feedback[:800]}")
+        user_msg += (
+            "\nREVISION — previous blueprint "
+            "(revise per feedback, keep what works):\n"
+            f"{json.dumps(existing['blueprint'], default=str)[:12000]}"
+            f"\nFounder feedback: {feedback}"
+        )
     res = await call_openai_chat(
         [{"role": "system", "content": PLAN_SYSTEM}, {"role": "user", "content": user_msg}],
         model=t["model"], max_tokens=t["max_tokens"], json_mode=True)
@@ -514,6 +577,18 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
     selected = selected or mech_pick or rec["recommended"]
     sections["runtime"]["runtime_id"] = selected
     sections["runtime"]["family"] = RUNTIME_LABELS.get(selected) if selected else None
+
+    # Check what the AI actually added after the preflight check.
+    generated_mechanics = detect_mechanics(
+        json.dumps(sections.get("gameplay") or {}, default=str)
+    )
+    generated_ms = mechanics_support(
+        selected, generated_mechanics, []
+    ) if selected else {
+        "supported": [],
+        "unsupported": generated_mechanics,
+        "runtime_mechanics": [],
+    }
 
     # Validate the same deterministic mechanics that selected the runtime.
     # Do not let LLM-added mechanics create false incompatibility warnings.
@@ -561,6 +636,9 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
         "selected_runtime": selected,
         "selected_runtime_label": RUNTIME_LABELS.get(selected) if selected else None,
         "mechanics_support": ms,
+        "generated_mechanics": generated_mechanics,
+        "generated_mechanics_support": generated_ms,
+        "requested_stage_count": requested_stage_count,
         "asset_requirements": reqs,
         "approval_status": "pending_founder_approval",
         "status": "draft",

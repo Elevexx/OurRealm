@@ -552,8 +552,20 @@ async def create_estimate(body: dict, current: dict) -> dict:
     if llm_rt in SCAFFOLDED_RUNTIMES or (llm_rt and llm_rt not in RUNTIMES):
         llm_rt = None
         plan["runtime"] = None
+
+    # An explicit Game Maker selection is authoritative.
+    explicit_rt = str(body.get("runtime") or "").strip()
+    if explicit_rt:
+        if explicit_rt not in RUNTIMES or explicit_rt in SCAFFOLDED_RUNTIMES:
+            raise ValueError(f"Selected runtime is not currently playable: {explicit_rt}")
+        routed = explicit_rt
+        llm_rt = explicit_rt
+        plan["runtime"] = explicit_rt
+
     subs = [str(s)[:200] for s in (plan.get("substitutions") or []) if s]
-    if routed and llm_rt != routed and llm_rt in (None, "rhythm", "quiz_adventure", "matching", "memory", "sorting"):
+    if explicit_rt:
+        plan["runtime"] = explicit_rt
+    elif routed and llm_rt != routed and llm_rt in (None, "rhythm", "quiz_adventure", "matching", "memory", "sorting"):
         if llm_rt:
             subs.append(f"Rerouted from {RUNTIME_LABELS[llm_rt]} to {RUNTIME_LABELS[routed]} to match the requested gameplay")
         plan["runtime"] = routed
@@ -572,9 +584,13 @@ async def create_estimate(body: dict, current: dict) -> dict:
     _raw_route = route_runtime(req_text)
     if _raw_route in SCAFFOLDED_RUNTIMES:
         scaffold_hit = SCAFFOLDED_RUNTIMES[_raw_route]
-    fallback_used = bool(unsupported_genre) or bool(scaffold_hit) or ((not routed) and (llm_rt is None))
+    fallback_used = (False if explicit_rt else
+                     bool(unsupported_genre) or bool(scaffold_hit)
+                     or ((not routed) and (llm_rt is None)))
     plan["fallback_used"] = bool(fallback_used)
-    if scaffold_hit:
+    if explicit_rt:
+        plan["fallback_reason"] = None
+    elif scaffold_hit:
         plan["fallback_reason"] = (f"This game type is not supported yet ({scaffold_hit} is registered in the "
                                    f"runtime catalog — coming soon). ORAi proposes {RUNTIME_LABELS[rt]} as a "
                                    "substitution — generation only proceeds if you explicitly accept it.")
@@ -592,7 +608,8 @@ async def create_estimate(body: dict, current: dict) -> dict:
     plan["classification"] = {
         "detected_genre": RUNTIME_LABELS.get(routed) if routed else (RUNTIME_LABELS.get(llm_rt) if llm_rt else "unrecognized"),
         "confidence": 1.0 if routed else (0.6 if llm_rt else 0.0),
-        "method": "keyword_router" if routed else ("llm_plan" if llm_rt else "none"),
+        "method": ("explicit_selection" if explicit_rt else
+                   "keyword_router" if routed else "llm_plan" if llm_rt else "none"),
         "runtime_id": rt, "template_id": TEMPLATE_IDS[rt],
         "fallback_used": bool(fallback_used),
         "fallback_reason": plan["fallback_reason"],

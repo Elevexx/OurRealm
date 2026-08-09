@@ -26,6 +26,174 @@ async def my_balances(current: CurrentUser):
             "activity": await rs.recent_activity(current["id"])}
 
 
+@router.post("/game-pickup")
+async def claim_game_pickup(body: dict, current: CurrentUser):
+    """Grant a native Engagement Resource only when it exists in the
+    server-saved game specification. The browser cannot choose its amount."""
+    game_id = str(body.get("game_id") or "").strip()[:64]
+    resource_key = str(body.get("resource_key") or "").strip().lower()[:40]
+
+    try:
+        stage_number = int(body.get("stage"))
+        pickup_index = int(body.get("pickup_index"))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=400,
+            detail="stage and pickup_index must be integers",
+        )
+
+    if resource_key not in {"coins", "gems", "stars"}:
+        raise HTTPException(
+            status_code=400,
+            detail="This route supports Coins, Gems and Stars only",
+        )
+
+    game = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    from services.game_access_ctl import evaluate
+    access = await evaluate(game, current)
+    if not access["allowed"]:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "reason": access["reason"],
+                "message": access["message"],
+            },
+        )
+    if access["view_only"]:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "reason": "view_only",
+                "message": access["message"],
+            },
+        )
+
+    from services import resource_visuals as rv
+    placements = await rv.placements_for_surface("games", current["id"])
+    placement = next(
+        (row for row in placements if row["key"] == resource_key),
+        None,
+    )
+    if not placement or not placement["ops"].get("allow_game_rewards"):
+        raise HTTPException(
+            status_code=403,
+            detail="This resource is not enabled for game rewards",
+        )
+
+    spec = game.get("spec") or {}
+    stages = spec.get("stages") or []
+    if stage_number < 1 or stage_number > len(stages):
+        raise HTTPException(status_code=400, detail="Invalid stage")
+
+    pickups = stages[stage_number - 1].get("pickups") or []
+    if pickup_index < 0 or pickup_index >= len(pickups):
+        raise HTTPException(status_code=400, detail="Invalid pickup")
+
+    pickup = pickups[pickup_index]
+    if not isinstance(pickup, dict):
+        raise HTTPException(status_code=400, detail="Invalid pickup definition")
+
+    aliases = {
+        "coin": "coins",
+        "coins": "coins",
+        "gold_coin": "coins",
+        "gem": "gems",
+        "gems": "gems",
+        "star": "stars",
+        "stars": "stars",
+    }
+    saved_key = aliases.get(
+        str(
+            pickup.get("resource_key")
+            or pickup.get("kind")
+            or pickup.get("type")
+            or ""
+        ).strip().lower()
+    )
+    if saved_key != resource_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Requested resource does not match the saved pickup",
+        )
+
+    manifest = (
+        game.get("resource_manifest")
+        or spec.get("resource_manifest")
+        or []
+    )
+    allowed_keys = set()
+    for item in manifest:
+        if isinstance(item, str):
+            allowed_keys.add(item.lower())
+        elif isinstance(item, dict):
+            allowed_keys.add(
+                str(item.get("key") or item.get("resource_key") or "").lower()
+            )
+
+    if resource_key not in allowed_keys:
+        raise HTTPException(
+            status_code=403,
+            detail="This resource is not enabled in the game manifest",
+        )
+
+    try:
+        amount = int(
+            pickup.get("resource_amount")
+            or pickup.get("amount")
+            or 1
+        )
+    except (TypeError, ValueError):
+        amount = 1
+    amount = min(max(amount, 1), 100)
+
+    pickup_id = str(
+        pickup.get("id")
+        or pickup.get("pickup_id")
+        or pickup_index
+    )[:80]
+    game_version = int(game.get("version") or 1)
+    idem_key = (
+        f"game-pickup:{game_id}:v{game_version}:"
+        f"{current['id']}:{stage_number}:{pickup_id}:{resource_key}"
+    )
+
+    try:
+        result = await rs.grant(
+            current["id"],
+            resource_key,
+            amount,
+            source_type="game_reward",
+            source_id=f"stage:{stage_number}:pickup:{pickup_id}",
+            game_id=game_id,
+            stage_id=str(stage_number),
+            idem_key=idem_key,
+            reason=f"{resource_key.title()} collected in game",
+            actor=current.get("username"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    balances = await rs.balances(current["id"])
+    balance = next(
+        (
+            row["balance"]
+            for row in balances
+            if row["key"] == resource_key
+        ),
+        0,
+    )
+    return {
+        "ok": True,
+        "resource_key": resource_key,
+        "amount": amount,
+        "balance": balance,
+        "replayed": result["replayed"],
+    }
+
+
 @router.get("/exchange/options")
 async def exchange_options(current: CurrentUser):
     from services import economy

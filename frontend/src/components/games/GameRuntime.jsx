@@ -592,6 +592,7 @@ function td(st){const c=mkCanvas(0),g=c.getContext('2d');
  function freeSpot(){for(let t=0;t<40;t++){const x=30+Math.random()*(c.width-60),y=30+Math.random()*(c.height-60);
   if(!obs.some(o=>x>o.x-16&&x<o.x+o.w+16&&y>o.y-16&&y<o.y+o.h+16)&&Math.hypot(x-P.x,y-P.y)>60)return{x,y}}return{x:c.width-40,y:40}}
  let cores=[];const nC=st.cores||6;for(let i=0;i<nC;i++)cores.push(freeSpot());
+ const erMap={coin:'coins',coins:'coins',gold_coin:'coins',gem:'gems',gems:'gems',star:'stars',stars:'stars',key:'keys',keys:'keys'};const erPicks=(st.pickups||[]).map((q,i)=>{const z=freeSpot(),x=Number(q.x),y=Number(q.y);return{...q,i,er:erMap[String(q.resource_key||q.kind||q.type||'').toLowerCase()]||'',x:Number.isFinite(x)?(x<=100?x*c.width/100:x):z.x,y:Number.isFinite(y)?(y<=100?y*c.height/100:y):z.y,got:false}}).filter(q=>q.er);
  const hzs=(st.hazards&&st.hazards.length?st.hazards:[{type:'patrol'},{type:'chaser'}]).map(h=>{
   const s=freeSpot();return{x:s.x,y:s.y,vx:(Math.random()<.5?-1:1),vy:(Math.random()<.5?-1:1),
   type:h.type==='chaser'?'chaser':'patrol',sp:(h.speed||(h.type==='chaser'?80:120))*(1+stageIdx*0.1)}});
@@ -608,7 +609,8 @@ function td(st){const c=mkCanvas(0),g=c.getContext('2d');
   if(nx>P.r&&nx<c.width-P.r&&!hitObs(nx,P.y,P.r))P.x=nx;
   if(ny>P.r&&ny<c.height-P.r&&!hitObs(P.x,ny,P.r))P.y=ny;
   cores=cores.filter(co=>{if(Math.hypot(co.x-P.x,co.y-P.y)<20){const p=addScore();burst(co.x,co.y,GLOW,12,100);popup(co.x,co.y-14,'+'+p,GLOW);if(S.checkpoints){cp={x:co.x,y:co.y};popup(co.x,co.y-32,'\u2691 CHECKPOINT',ACC)}refreshHud();return false}return true});
-  if(!cores.length&&!portal)portal={x:c.width-36,y:36};
+  erPicks.forEach(q=>{if(q.got||Math.hypot(q.x-P.x,q.y-P.y)>=20)return;q.got=true;addScore(15);sfx('collect');popup(q.x,q.y-18,'+'+q.er.toUpperCase(),q.er==='gems'?'#4de3ff':q.er==='stars'?'#B98BFF':'#FFD34D');if(q.er==='keys'){try{parent.postMessage({type:'game_key',key_id:q.key_id||q.id||('pickup-'+q.i),stage:stageIdx+1,title:st.title||''},'*')}catch(e){}}else{try{parent.postMessage({type:'game_resource',resource_key:q.er,pickup_index:q.i,stage:stageIdx+1},'*')}catch(e){}}});
+ if(!cores.length&&!portal)portal={x:c.width-36,y:36};
   hzs.forEach(h=>{
    if(h.type==='chaser'){const vx=P.x-h.x,vy=P.y-h.y,m=Math.hypot(vx,vy)||1;h.x+=vx/m*h.sp*dt;h.y+=vy/m*h.sp*dt}
    else{h.x+=h.vx*h.sp*dt;h.y+=h.vy*h.sp*dt;
@@ -623,7 +625,7 @@ function td(st){const c=mkCanvas(0),g=c.getContext('2d');
   g.strokeStyle=GLOW+'40';g.strokeRect(1,1,c.width-2,c.height-2);
   obs.forEach(o=>{g.fillStyle='rgba(138,147,166,0.3)';g.fillRect(o.x,o.y,o.w,o.h);
    g.strokeStyle=GLOW+'33';g.strokeRect(o.x,o.y,o.w,o.h)});
-  cores.forEach(co=>paintCore(g,co.x,co.y,8,t));
+  cores.forEach(co=>paintCore(g,co.x,co.y,8,t));erPicks.forEach(q=>{if(q.got)return;g.save();g.translate(q.x,q.y);g.fillStyle=q.er==='gems'?'#4de3ff':q.er==='stars'?'#B98BFF':'#FFD34D';g.shadowColor=g.fillStyle;g.shadowBlur=10;g.beginPath();g.arc(0,0,8,0,Math.PI*2);g.fill();g.fillStyle='#071018';g.font='bold 9px system-ui';g.textAlign='center';g.textBaseline='middle';g.fillText({coins:'C',gems:'G',stars:'S',keys:'K'}[q.er]||'R',0,0);g.restore()});
   hzs.forEach(h=>paintHazard(g,h.x,h.y,11,h.type==='chaser'?'seeker':'drone',t,P.x));
   if(portal)paintPortal(g,portal.x,portal.y,16,t);
   paintHeroTop(g,P.x,P.y,P.r+2,head,repFor(''),inv,t);
@@ -1876,12 +1878,12 @@ function arpgSS(st){const c=mkCanvas(MOB?70:8),g=c.getContext('2d'),W=c.width,H=
    if(P.onG&&Math.abs(P.vx)>110&&Math.random()<dt*9)parts.push({x:P.x-cam-P.face*9,y:P.y+FO-3,vx:-P.face*32,vy:-16-Math.random()*18,life:0.5,color:'rgba(200,190,160,0.55)',r:1.8});
    if(P.y>WH-6*k)hazardRespawn();
   }
-  picks.forEach(pk=>{if(pk.got)return;if(Math.abs(pk.x-P.x)<22&&Math.abs(pk.y*k-P.y)<34*k){pk.got=true;sfx('collect');
-   if(pk.kind==='coin'){coins++;fp+=10;addScore(5)}else if(pk.kind==='gem'){gems++;fp+=50;addScore(15);popup(P.x-cam,P.y-40*k,'+50 \uD83D\uDD25','#4de3ff')}
+  picks.forEach((pk,pickupIndex)=>{if(pk.got)return;if(Math.abs(pk.x-P.x)<22&&Math.abs(pk.y*k-P.y)<34*k){pk.got=true;sfx('collect');
+   if(pk.kind==='coin'){coins++;fp+=10;addScore(5);try{parent.postMessage({type:'game_resource',resource_key:'coins',pickup_index:pickupIndex,stage:stageIdx+1},'*')}catch(e){}}else if(pk.kind==='gem'){gems++;fp+=50;addScore(15);try{parent.postMessage({type:'game_resource',resource_key:'gems',pickup_index:pickupIndex,stage:stageIdx+1},'*')}catch(e){}popup(P.x-cam,P.y-40*k,'+50 \uD83D\uDD25','#4de3ff')}
    else if(pk.kind==='potion'){pHp=Math.min(pMax,pHp+Math.ceil(pMax*0.5));popup(P.x-cam,P.y-40*k,'+50% HP','#FF5A6E')}
    else if(pk.kind==='mana'){pHp=pMax;mana=mMax;popup(P.x-cam,P.y-40*k,'FULL RESTORE','#2EA0FF')}
    else if(pk.kind==='fire'){firePk++;fp+=100;fireBuff=8;addScore(20);popup(P.x-cam,P.y-46*k,'+100 \uD83D\uDD25 damage up!','#FF7A3D');burst(P.x-cam,P.y,'#FF7A3D',14,120)}
-   else if(pk.kind==='star'){rapid=6;mana=mMax;fp+=500;addScore(15);popup(P.x-cam,P.y-46*k,'+500 \uD83D\uDD25 ARCANE SURGE!','#B98BFF');burst(P.x-cam,P.y,'#B98BFF',16,130)}
+   else if(pk.kind==='star'){rapid=6;mana=mMax;fp+=500;addScore(15);try{parent.postMessage({type:'game_resource',resource_key:'stars',pickup_index:pickupIndex,stage:stageIdx+1},'*')}catch(e){}popup(P.x-cam,P.y-46*k,'+500 \uD83D\uDD25 ARCANE SURGE!','#B98BFF');burst(P.x-cam,P.y,'#B98BFF',16,130)}
    else if(pk.kind==='key'){keysL++;const kid=(S.title||'game')+'-s'+(stageIdx+1);
     if(SAVE_X.arpg){SAVE_X.arpg.keys=(SAVE_X.arpg.keys||0)+1}saveGame();
     try{parent.postMessage({type:'game_key',key_id:kid,stage:stageIdx+1,title:st.title||''},'*')}catch(e){}
@@ -2452,13 +2454,13 @@ function arpgXY(st){const c=mkCanvas(0),g=c.getContext('2d'),W=c.width,H=c.heigh
    cp={x:cpd.x,y:cpd.y};pHp=Math.min(pMax,pHp+8);mana=mMax;
    say('\u2691 Checkpoint \u2014 progress & keys saved');sfx('checkpoint');
    burst(cpd.x,cpd.y-30,'#10E670',14,110)}});
-  PICK.forEach(pk=>{if(pk.got)return;if(Math.abs(pk.x-P.x)<24&&Math.abs(pk.y-(P.y-14))<34){pk.got=true;sfx('collect');
+  PICK.forEach((pk,pickupIndex)=>{if(pk.got)return;if(Math.abs(pk.x-P.x)<24&&Math.abs(pk.y-(P.y-14))<34){pk.got=true;sfx('collect');
    if(pk.kind==='potion'){pHp=Math.min(pMax,pHp+Math.ceil(pMax*0.5));popup(P.x,P.y-44,'+50% HP','#FF5A6E')}
-   else if(pk.kind==='gem'){coins+=5;addScore(15);popup(P.x,P.y-44,'+GEM','#4de3ff')}
+   else if(pk.kind==='gem'){coins+=5;addScore(15);try{parent.postMessage({type:'game_resource',resource_key:'gems',pickup_index:pickupIndex,stage:stageIdx+1},'*')}catch(e){}popup(P.x,P.y-44,'+GEM','#4de3ff')}
    else if(pk.kind==='chest'){coins+=6;pHp=Math.min(pMax,pHp+Math.ceil(pMax*0.25));addScore(20);
     sfx('achievement');burst(pk.x,pk.y-24,'#FFD34D',22,160);popup(pk.x,pk.y-40,'TREASURE!','#FFD34D');
     say('Treasure chest opened!')}
-   else{coins++;addScore(5)}}});
+   else{coins++;addScore(5);if(pk.kind==='coin'){try{parent.postMessage({type:'game_resource',resource_key:'coins',pickup_index:pickupIndex,stage:stageIdx+1},'*')}catch(e){}}}});
   let enterP=null;
   PORT.forEach(p=>{const d=Math.hypot(p.x-P.x,(p.y-56)-(P.y-18));
    if(p.state==='locked'&&p.required_key_id&&INV[p.required_key_id]&&d<160){
@@ -2961,7 +2963,16 @@ export default function GameRuntime({ spec, onScore, height = 460, gameId, contr
   }, [spec, gameId, controls]);
   useEffect(() => {
     const h = (e) => {
+      if (e.source !== ref.current?.contentWindow) return;
       if (e?.data?.type === "game_score" && onScore) onScore(e.data);
+      if (e?.data?.type === "game_resource" && gameId && !guest) {
+        apiClient.post("/resources/game-pickup", {
+          game_id: gameId,
+          stage: e.data.stage,
+          pickup_index: e.data.pickup_index,
+          resource_key: e.data.resource_key,
+        }).catch(() => {});
+      }
       if (e?.data?.type === "game_key" && gameId && !guest) {
         apiClient.post("/fire/keys/collect", { game_id: gameId, stage: e.data.stage,
           key_id: `${gameId}-${e.data.key_id}` }).catch(() => {});

@@ -129,7 +129,8 @@ async def _do_create(job: dict, p: dict) -> dict:
     import asyncio
     for _ in range(360):  # up to ~30 min
         await asyncio.sleep(5)
-        g = await db.games.find_one({"id": gid}, {"_id": 0, "status": 1, "stage": 1, "error": 1})
+        g = await db.games.find_one({"id": gid}, {"_id": 0, "status": 1, "stage": 1, "error": 1,
+                                                      "spec": 1, "resource_manifest": 1})
         if not g:
             raise RuntimeError("Game record disappeared during build")
         st = g.get("status")
@@ -139,7 +140,42 @@ async def _do_create(job: dict, p: dict) -> dict:
         if st == "failed":
             raise RuntimeError(g.get("error") or "Build failed")
         await job_engine.phase(job["id"], "validating", 90, "Finalizing")
-        return {"game_id": gid, "status": st}
+        aliases = {
+            "coin": "coins", "coins": "coins", "gold_coin": "coins",
+            "gem": "gems", "gems": "gems",
+            "star": "stars", "stars": "stars",
+            "key": "keys", "keys": "keys", "fire": "fire",
+        }
+        manifest = set()
+        for item in (g.get("resource_manifest") or ["fire"]):
+            key = item if isinstance(item, str) else item.get("key") or item.get("resource_key")
+            if key:
+                manifest.add(str(key).lower())
+
+        for stage in ((g.get("spec") or {}).get("stages") or []):
+            for pickup in (stage.get("pickups") or []):
+                if not isinstance(pickup, dict):
+                    continue
+                raw_key = str(
+                    pickup.get("resource_key")
+                    or pickup.get("kind")
+                    or pickup.get("type")
+                    or ""
+                ).lower()
+                if raw_key in aliases:
+                    manifest.add(aliases[raw_key])
+            if stage.get("keys"):
+                manifest.add("keys")
+
+        await db.games.update_one(
+            {"id": gid},
+            {"$set": {"resource_manifest": sorted(manifest)}},
+        )
+        return {
+            "game_id": gid,
+            "status": st,
+            "resource_manifest": sorted(manifest),
+        }
     raise RuntimeError("Build timed out")
 
 
