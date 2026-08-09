@@ -35,3 +35,13 @@ Job kinds registered: gamemaker_create, gamemaker_publish, orai_edit, gm_test_de
 fire + keys are ADAPTERS (read-only views of fire_wallets / fire_keys) —
 never grant them through resource ledger. stars/coins/gems are native.
 grant() is the only write path; reversals are compensating entries.
+
+## Phase 1.6 completion (Jun 2026 fork)
+- 401 on /api/media/resource_visuals/* root cause: server.py global_auth_guard only
+  whitelisted GET /api/media/images/. Fix: GET+HEAD whitelist for exact prefix
+  /api/media/resource_visuals/ ONLY (no broad /api/media/ opening).
+- media_proxy hardening: _check_kind() enforces image-only extensions
+  (.png/.jpg/.jpeg/.webp) for resource_visuals; cloud path does adapter.exists()
+  first so missing icons return clean 404 instead of a doomed presigned redirect.
+- Preview edge injects `cache-control: no-store` on 307s for ALL media kinds
+  (backend correctly sends private,max-age=3000 — same as game covers; not a bug).

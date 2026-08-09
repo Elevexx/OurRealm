@@ -56,6 +56,10 @@ router = APIRouter(prefix="/api/media", tags=["media"])
 # unexpected bucket prefixes (e.g. logs, exports).
 _ALLOWED_KINDS: frozenset[str] = frozenset(["audio", "images", "videos", "resource_visuals"])
 
+# resource_visuals is publicly readable (no auth) — restrict to safe,
+# non-executable image formats only.
+_RESOURCE_VISUAL_EXTS: frozenset[str] = frozenset([".png", ".jpg", ".jpeg", ".webp"])
+
 _MEDIA_PROXY_TTL = int(os.environ.get("MEDIA_PROXY_TTL_SECONDS") or "3600")
 # Browsers will cache the 307 (and therefore reuse the same signed URL)
 # for this many seconds. Keep it well below `_MEDIA_PROXY_TTL` so we
@@ -76,6 +80,15 @@ def _safe_filename(name: str) -> str:
     return name
 
 
+def _check_kind(kind: str, name: str) -> str:
+    if kind not in _ALLOWED_KINDS:
+        raise HTTPException(status_code=400, detail="Unknown media kind")
+    safe = _safe_filename(name)
+    if kind == "resource_visuals" and Path(safe).suffix.lower() not in _RESOURCE_VISUAL_EXTS:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+    return safe
+
+
 @router.get("/{kind}/{name}")
 async def media_proxy(
     kind: str,
@@ -83,15 +96,17 @@ async def media_proxy(
     request: Request,
     range_header: Optional[str] = Header(None, alias="Range"),
 ):
-    if kind not in _ALLOWED_KINDS:
-        raise HTTPException(status_code=400, detail="Unknown media kind")
-    safe = _safe_filename(name)
+    safe = _check_kind(kind, name)
 
     adapter = get_storage_adapter()
     canonical_ct = _canonical_mime_for(safe)
 
     # ── Cloud path: 307 to a fresh R2 presigned URL ──────────────────
     if isinstance(adapter, S3CompatibleAdapter):
+        # resource_visuals is publicly readable — return a clean 404 for
+        # missing icons instead of redirecting to a doomed signed URL.
+        if kind == "resource_visuals" and not adapter.exists(kind, safe):
+            raise HTTPException(status_code=404, detail="Not found")
         try:
             signed = adapter.presigned_get(
                 kind, safe, ttl=_MEDIA_PROXY_TTL,
@@ -130,11 +145,11 @@ async def media_proxy(
 async def media_proxy_head(kind: str, name: str):
     # Mirror GET so browsers that probe with HEAD before <audio> load
     # get the same redirect (some older WebKit builds do this).
-    if kind not in _ALLOWED_KINDS:
-        raise HTTPException(status_code=400, detail="Unknown media kind")
-    safe = _safe_filename(name)
+    safe = _check_kind(kind, name)
     adapter = get_storage_adapter()
     if isinstance(adapter, S3CompatibleAdapter):
+        if kind == "resource_visuals" and not adapter.exists(kind, safe):
+            raise HTTPException(status_code=404, detail="Not found")
         try:
             signed = adapter.presigned_get(kind, safe, ttl=_MEDIA_PROXY_TTL)
         except Exception as e:  # noqa: BLE001

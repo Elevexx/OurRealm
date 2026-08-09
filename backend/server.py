@@ -451,7 +451,11 @@ async def global_auth_guard(request, call_next):
             # read-only image serving (CDN-style): <img> tags never send auth
             # headers, so logged-out visitors must be able to load game covers
             or (request.method == "GET" and (path.startswith("/api/media/images/")
-                                             or path.startswith("/api/images/")))):
+                                             or path.startswith("/api/images/")))
+            # resource visual icons (UI decoration only, never sensitive):
+            # <img> tags send no auth headers — read-only GET/HEAD allowed
+            or (request.method in ("GET", "HEAD")
+                and path.startswith("/api/media/resource_visuals/"))):
         return await call_next(request)
     from core.deps import get_current_user
     try:
