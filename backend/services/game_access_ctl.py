@@ -21,8 +21,10 @@ MODE_LABELS = {
     "public_preview": "Public Preview", "published": "Published / Live",
     "maintenance": "Maintenance"}
 
-PUBLIC_PREVIEW_MESSAGE = ("Public Preview — no OurRealm account required. Fire Power, "
-                          "Keys, permanent saves, and account rewards are disabled.")
+PUBLIC_PREVIEW_MESSAGE = ("Public Preview — play free as a guest. Sign in to collect Fire Power, "
+                          "Keys, Engagement Resources and permanent saves.")
+PUBLIC_PREVIEW_MEMBER_MESSAGE = ("Public Preview — you're signed in, so enabled rewards "
+                                 "and saves count permanently.")
 VIEW_ONLY_MESSAGE = ("View Only Mode — gameplay, saves, Fire Power, and Key rewards "
                      "are disabled.")
 MAINTENANCE_MESSAGE = "This game is under maintenance — play is temporarily disabled."
@@ -57,7 +59,7 @@ def normalize_config(body: dict) -> dict:
     for k in FLAG_KEYS:
         if k in (body.get("flags") or {}):
             flags[k] = bool(body["flags"][k])
-    if mode in ("view_only", "public_preview"):  # hard-locked, never founder-enabled
+    if mode == "view_only":  # hard-locked, never founder-enabled
         flags = default_flags(mode)
     fin = body.get("filters") or {}
     filters = {
@@ -197,7 +199,7 @@ async def evaluate(game: dict, user: dict | None, ctx: dict | None = None) -> di
     cfg = get_config(game)
     mode = cfg["mode"]
     flags = {**default_flags(mode), **(cfg.get("flags") or {})}
-    if mode in ("view_only", "public_preview"):
+    if mode == "view_only":
         flags = default_flags(mode)
     trace = [f"mode={mode}"]
 
@@ -210,7 +212,7 @@ async def evaluate(game: dict, user: dict | None, ctx: dict | None = None) -> di
     from core.permissions import get_admin_role
     if cfg.get("founder_bypass", True) and get_admin_role(user):
         trace.append("founder/admin bypass")
-        msg = PUBLIC_PREVIEW_MESSAGE if mode == "public_preview" else \
+        msg = PUBLIC_PREVIEW_MEMBER_MESSAGE if mode == "public_preview" else \
             VIEW_ONLY_MESSAGE if mode == "view_only" else None
         return _out(True, "founder_bypass", mode, flags=flags, message=msg,
                     visible=True, trace=trace)
@@ -259,8 +261,11 @@ async def evaluate(game: dict, user: dict | None, ctx: dict | None = None) -> di
         return _out(True, "view_only", mode, view_only=True, flags=flags,
                     message=VIEW_ONLY_MESSAGE, trace=trace)
     if mode == "public_preview":
-        return _out(True, "public_preview", mode, flags=flags,
-                    message=PUBLIC_PREVIEW_MESSAGE, trace=trace)
+        # Signed-in members earn enabled rewards permanently — only guests are
+        # reward-locked (the server can't credit an anonymous browser).
+        return _out(True, "public_preview", mode, flags=default_flags("published"),
+                    message=PUBLIC_PREVIEW_MEMBER_MESSAGE,
+                    trace=trace + ["signed-in member: enabled rewards active"])
     if mode == "preview":
         return _out(True, "preview", mode, flags=flags,
                     message="Preview build — Founder-controlled test access.", trace=trace)

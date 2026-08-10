@@ -5,6 +5,16 @@ import { toast } from "sonner";
 import apiClient from "@/api/client";
 import { GameCover, resolveCover } from "@/components/games/GameCover";
 
+const STATUS_TRACK = {
+  building: ["Building…", "#2EE6FF"],
+  pending_approval: ["Under Review", "#FFD34D"],
+  approved: ["Private Preview Ready", "#10E670"],
+  published: ["Published — Live", "#10E670"],
+  failed: ["Build Failed", "#FF5A6E"],
+  declined: ["Needs Changes", "#FF8A5A"],
+  archived: ["Archived", "#8899AA"],
+};
+
 export default function GameMakerSaved() {
   const [games, setGames] = useState(null);
   const load = useCallback(() => {
@@ -38,7 +48,11 @@ export default function GameMakerSaved() {
             <div className="flex-1 min-w-[140px]">
               <b className="text-sm block">{g.title}</b>
               <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                {g.runtime} · v{g.version || 1} · <span className="uppercase">{g.status}</span>
+                {g.runtime} · v{g.version || 1} ·{" "}
+                <span className="font-bold px-1.5 py-0.5 rounded-full" data-testid={`gm-status-${g.id}`}
+                  style={{ color: (STATUS_TRACK[g.status] || ["", "#8899AA"])[1],
+                           border: `1px solid ${(STATUS_TRACK[g.status] || ["", "#8899AA"])[1]}44` }}>
+                  {(STATUS_TRACK[g.status] || [String(g.status).toUpperCase()])[0]}</span>
                 {g.gamemaker?.style && <> · {g.gamemaker.style.replace(/_/g, " ")}</>}</span>
             </div>
             <Link to={`/games?play=${g.id}`} className="or-btn or-btn-ghost text-[10px]"><Play size={11} /> Play</Link>

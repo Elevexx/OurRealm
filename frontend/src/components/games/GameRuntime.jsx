@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import apiClient from "@/api/client";
 
 // Sandboxed game runtime v3: ORAi-generated specs run in an isolated iframe
@@ -14,7 +14,7 @@ const RUNTIME_JS = String.raw`
 const S=window.__SPEC__;const SAVE=window.__SAVE__||{};const root=document.getElementById('g');
 let score=0,stageIdx=0,correctTotal=0,answered=0;
 let lives=S.lives||3,combo=0,comboMult=1,best=SAVE.best_score||0,earned=[];
-const ARC={top_down:1,platformer:1,dodge_collect:1,action_rpg_2_5d:1};
+const ARC={top_down:1,platformer:1,dodge_collect:1,action_rpg_2_5d:1,shooter:1,open_world_rpg:1};
 let startMs=Date.now(),maxCombo=1,dmg=0;
 /* ── WebAudio synth SFX (no files, mobile-safe) ── */
 /* ── Controls & Input Modes (per-game config) ── */
@@ -149,7 +149,7 @@ function stage(){root.style.opacity=0;if(ARC[S.runtime])music(true);bgify(docume
  if(titleDone&&!CTRL.reduced_motion){const bn=el('div','','<div style="font-size:10px;letter-spacing:0.42em;color:'+ACC+'">STAGE '+(stageIdx+1)+' / '+S.stages.length+'</div><div style="font-size:21px;font-weight:800;color:'+GLOW+';text-shadow:0 0 18px '+GLOW+'77">'+(st.title||'')+'</div>');
   bn.style.cssText='position:fixed;top:18%;left:50%;z-index:55;text-align:center;pointer-events:none;animation:orbanner 2.1s ease forwards';
   document.body.appendChild(bn);setTimeout(()=>bn.remove(),2200)}
- const rt=({quiz_adventure:qa,matching:ma,sorting:so,memory:me,rhythm:rh,top_down:td,platformer:pf,dodge_collect:dc,puzzle_room:pz,card_battle:cb,tower_defense:tdf,match3:m3,rpg:rpg,turn_based_creature_rpg:rpg,racing:rac,farming:frm,city_builder:cbl,roguelike:rgl,tactics:tac,idle:idl,visual_novel:vn,fishing:fsh,action_rpg_2_5d:arpg})[S.runtime];
+ const rt=({quiz_adventure:qa,matching:ma,sorting:so,memory:me,rhythm:rh,top_down:td,platformer:pf,dodge_collect:dc,puzzle_room:pz,card_battle:cb,tower_defense:tdf,match3:m3,rpg:rpg,turn_based_creature_rpg:rpg,racing:rac,farming:frm,city_builder:cbl,roguelike:rgl,tactics:tac,idle:idl,visual_novel:vn,fishing:fsh,action_rpg_2_5d:arpg,shooter:sht,open_world_rpg:owr})[S.runtime];
  if(rt)rt(st);else root.innerHTML='<div style="text-align:center;padding:50px 20px;font-size:13px;opacity:.8">This game uses a dedicated renderer — open it from the Games hub.</div>';
  root.style.opacity=1},220)}
 
@@ -166,10 +166,10 @@ function ctrlGuide(){if(guideShown||CTRL.show_guide===false)return;guideShown=tr
  if(DESK&&ARC[S.runtime]){const p=[(akeys('left')[0]||'\u2190')+'/'+(akeys('right')[0]||'\u2192')+' move'];
   if(S.runtime==='platformer')p.push((akeys('jump')[0]===' '?'Space':akeys('jump')[0])+' jump');
   else if(S.runtime==='action_rpg_2_5d')p.push('W/\u2191 jump \u00b7 J attack \u00b7 K spell \u00b7 L dodge');
-  else p.push((akeys('up')[0]||'\u2191')+'/'+(akeys('down')[0]||'\u2193')+' '+(S.runtime==='top_down'?'move':'fly'));
+  else p.push((akeys('up')[0]||'\u2191')+'/'+(akeys('down')[0]||'\u2193')+' '+(S.runtime==='dodge_collect'?'fly':'move'));
   p.push('P pause \u00b7 R restart');L.push('\u2328 '+p.join(' \u00b7 '))}
  else if(DESK)L.push('\u2328 Mouse \u2014 click to interact');
- if(MOB)L.push('\uD83D\uDC46 '+({dodge_collect:'Drag to steer',platformer:'On-screen buttons',top_down:'Drag to move',action_rpg_2_5d:'Left: drag joystick \u00b7 Right: ATK / SPL / DODGE',card_battle:'Tap cards to play \u00b7 End Turn',tower_defense:'Tap tower, then a build spot',match3:'Tap two adjacent tiles to swap',rpg:'Tap tiles to walk',turn_based_creature_rpg:'Tap tiles to walk · battle buttons',racing:'Steer & drift buttons',farming:'Tap plots to farm',city_builder:'Tap building, tap tile',roguelike:'Tap tiles to step & fight',tactics:'Tap unit, tile, then target',idle:'Tap to generate',visual_novel:'Tap choices',fishing:'Tap Cast, then Hook on time'}[S.runtime]||'Tap to play'));
+ if(MOB)L.push('\uD83D\uDC46 '+({dodge_collect:'Drag to steer',platformer:'On-screen buttons',top_down:'Drag to move',action_rpg_2_5d:'Left: drag joystick \u00b7 Right: ATK / SPL / DODGE',card_battle:'Tap cards to play \u00b7 End Turn',tower_defense:'Tap tower, then a build spot',match3:'Tap two adjacent tiles to swap',rpg:'Tap tiles to walk',turn_based_creature_rpg:'Tap tiles to walk · battle buttons',racing:'Steer & drift buttons',farming:'Tap plots to farm',city_builder:'Tap building, tap tile',roguelike:'Tap tiles to step & fight',tactics:'Tap unit, tile, then target',idle:'Tap to generate',visual_novel:'Tap choices',fishing:'Tap Cast, then Hook on time',shooter:'Drag to move \u00b7 auto-fire',open_world_rpg:'Drag to roam \u00b7 walk to NPCs \u00b7 bump enemies'}[S.runtime]||'Tap to play'));
  if(!L.length)return;const gd=el('div','',L.join('<br>'));
  gd.style.cssText='position:fixed;left:50%;bottom:76px;transform:translateX(-50%);background:rgba(4,8,20,0.92);border:1px solid '+GLOW+'55;padding:9px 16px;border-radius:12px;font-size:12px;z-index:60;text-align:center;max-width:92%';
  document.body.appendChild(gd);setTimeout(()=>{gd.style.transition='opacity .5s';gd.style.opacity=0;setTimeout(()=>gd.remove(),600)},3400)}
@@ -243,7 +243,7 @@ function paintPlayer(g,x,y,w,tilt,boostT,shieldN,t){
 const REP=(S.player_representation||'').toLowerCase();
 function repFor(mode){if(REP)return REP;
  if(S.runtime==='platformer')return 'platform_hero';
- if(S.runtime==='top_down')return 'explorer';
+ if(S.runtime==='top_down'||S.runtime==='shooter'||S.runtime==='open_world_rpg')return 'explorer';
  return mode==='space_flight'?'spaceship':'hovercraft'}
 function paintShieldRing(g,w,t,n){if(!(n>0))return;g.strokeStyle=GLOW;g.globalAlpha=0.55+Math.sin(t*6)*0.25;g.lineWidth=2;g.shadowColor=GLOW;g.shadowBlur=14;
  g.beginPath();g.arc(0,0,w*0.85,0,7);g.stroke();g.setLineDash([6,6]);g.lineDashOffset=t*30;
@@ -2460,7 +2460,7 @@ function arpgXY(st){const c=mkCanvas(0),g=c.getContext('2d'),W=c.width,H=c.heigh
    else if(pk.kind==='chest'){coins+=6;pHp=Math.min(pMax,pHp+Math.ceil(pMax*0.25));addScore(20);
     sfx('achievement');burst(pk.x,pk.y-24,'#FFD34D',22,160);popup(pk.x,pk.y-40,'TREASURE!','#FFD34D');
     say('Treasure chest opened!')}
-   else{coins++;addScore(5);if(pk.kind==='coin'){try{parent.postMessage({type:'game_resource',resource_key:'coins',pickup_index:pickupIndex,stage:stageIdx+1},'*')}catch(e){}}}});
+   else{coins++;addScore(5);if(pk.kind==='coin'){try{parent.postMessage({type:'game_resource',resource_key:'coins',pickup_index:pickupIndex,stage:stageIdx+1},'*')}catch(e){}}}}});
   let enterP=null;
   PORT.forEach(p=>{const d=Math.hypot(p.x-P.x,(p.y-56)-(P.y-18));
    if(p.state==='locked'&&p.required_key_id&&INV[p.required_key_id]&&d<160){
@@ -2941,17 +2941,190 @@ function fsh(st){let casts=st.casts||8,caught=0,selBait=0,doneFlag=false,phase='
  paintTop();paintBaits();paintCtl();paintColl();
  water.textContent='Pick a bait and cast your line.'}
 
+/* ── Shooter runtime (tpl_shooter_v1) — waves/auto-fire/chaser+gunner AI/portal */
+function sht(st){const c=mkCanvas(0),g=c.getContext('2d');
+ const env=st.environment||V.environment||'grid';
+ const P={x:c.width/2,y:c.height/2,r:11};let head=0,inv=0,over=false;
+ const speed=(st.player_speed||190)*(1+stageIdx*0.04);
+ const WAVES=Math.max(1,Math.min(6,st.waves||3));
+ const EPW=Math.max(1,Math.min(14,st.enemies_per_wave||6));
+ const ESP=(st.enemy_speed||70)*(1+stageIdx*0.08);
+ const EHP=Math.max(1,st.enemy_hp||2);
+ const GR=Math.max(0,Math.min(0.8,st.gunner_ratio!==undefined?+st.gunner_ratio:0.3));
+ const FR=Math.max(0.18,Math.min(0.5,+st.fire_rate||0.3));
+ const BSP=st.bullet_speed||420;
+ let wave=0,EN=[],B=[],EB=[],fireT=0,portal=null,last=performance.now(),t0=last;
+ function spawnWave(){wave++;EN=[];const n=EPW+Math.floor((wave-1)*1.5);
+  for(let i=0;i<n;i++){const edge=Math.floor(Math.random()*4);let x,y;
+   if(edge===0){x=Math.random()*c.width;y=-16}else if(edge===1){x=Math.random()*c.width;y=c.height+16}
+   else if(edge===2){x=-16;y=Math.random()*c.height}else{x=c.width+16;y=Math.random()*c.height}
+   const gun=Math.random()<GR;
+   EN.push({x,y,hp:EHP+(wave>2?1:0),mx:EHP+(wave>2?1:0),gun,cd:1+Math.random()*1.6,
+    sp:ESP*(gun?0.6:1)*(0.85+Math.random()*0.3)})}
+  popup(c.width/2,54,'WAVE '+wave+' / '+WAVES,ACC);sfx('stage')}
+ spawnWave();
+ function nearest(){let bd=1e9,bn=null;EN.forEach(e=>{const d=Math.hypot(e.x-P.x,e.y-P.y);if(d<bd){bd=d;bn=e}});return bn}
+ function hurt(){if(inv>0||over)return;comboBreak();lives--;inv=1.5;shake=8;vib(60);
+  burst(P.x,P.y,HAZC,18,140);refreshHud();if(lives<=0){over=true;setTimeout(gameOver,300)}}
+ function frame(now){if(over)return;
+  if(PAUSED){last=now;g.fillStyle='rgba(4,8,20,0.5)';g.fillRect(0,0,c.width,c.height);g.fillStyle=GLOW;g.font='bold 22px system-ui';g.textAlign='center';g.fillText('PAUSED — press P',c.width/2,c.height*0.45);g.textAlign='left';return requestAnimationFrame(frame)}
+  const dt=Math.min(0.05,(now-last)/1000);last=now;const t=(now-t0)/1000;
+  let dx=0,dy=0;
+  if(act('left'))dx-=1;if(act('right'))dx+=1;if(act('up'))dy-=1;if(act('down'))dy+=1;
+  if(ptr.active){const vx=ptr.x-P.x,vy=ptr.y-P.y,m=Math.hypot(vx,vy);if(m>8){dx=vx/m;dy=vy/m}}
+  if(dx||dy)head=Math.atan2(dy,dx);
+  P.x=Math.max(P.r,Math.min(c.width-P.r,P.x+dx*speed*SENS*dt));
+  P.y=Math.max(P.r,Math.min(c.height-P.r,P.y+dy*speed*SENS*dt));
+  fireT-=dt;const tgt=nearest();
+  if(tgt&&fireT<=0){fireT=FR;const a=Math.atan2(tgt.y-P.y,tgt.x-P.x);head=a;
+   B.push({x:P.x+Math.cos(a)*14,y:P.y+Math.sin(a)*14,vx:Math.cos(a)*BSP,vy:Math.sin(a)*BSP,life:1.4});sfx('click')}
+  B=B.filter(b=>{b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;
+   if(b.life<=0||b.x<-10||b.x>c.width+10||b.y<-10||b.y>c.height+10)return false;
+   for(const e of EN){if(Math.hypot(e.x-b.x,e.y-b.y)<13){e.hp--;burst(b.x,b.y,GLOW,6,70);
+    if(e.hp<=0){EN=EN.filter(z=>z!==e);const p=addScore(e.gun?15:10);burst(e.x,e.y,HAZC,16,130);popup(e.x,e.y-14,'+'+p,GLOW);sfx('collect');refreshHud()}
+    return false}}
+   return true});
+  EN.forEach(e=>{const vx=P.x-e.x,vy=P.y-e.y,d=Math.hypot(vx,vy)||1;
+   if(e.gun){if(d>150){e.x+=vx/d*e.sp*dt;e.y+=vy/d*e.sp*dt}else if(d<105){e.x-=vx/d*e.sp*0.7*dt;e.y-=vy/d*e.sp*0.7*dt}
+    e.cd-=dt;if(e.cd<=0){e.cd=1.6+Math.random()*1.2;const a=Math.atan2(vy,vx);
+     EB.push({x:e.x,y:e.y,vx:Math.cos(a)*200,vy:Math.sin(a)*200,life:2.6})}}
+   else{e.x+=vx/d*e.sp*dt;e.y+=vy/d*e.sp*dt}
+   if(inv<=0&&d<P.r+11)hurt()});
+  EB=EB.filter(b=>{b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;
+   if(b.life<=0)return false;
+   if(inv<=0&&Math.hypot(b.x-P.x,b.y-P.y)<P.r+4){hurt();return false}return true});
+  if(inv>0)inv-=dt;
+  if(!EN.length&&!portal){if(wave<WAVES)spawnWave();else{portal={x:c.width-36,y:36};sfx('portal')}}
+  if(portal&&Math.hypot(portal.x-P.x,portal.y-P.y)<26){over=true;burst(P.x,P.y,'#C26BFF',24,160);
+   setTimeout(()=>fb(true,(st.title||'Arena')+' cleared!'+unlockMsg(),next),300);return}
+  g.save();if(shake>0.4&&!CTRL.reduced_motion){g.translate((Math.random()-0.5)*shake,(Math.random()-0.5)*shake);shake*=0.86}
+  drawEnv(g,c.width,c.height,env,t,0.25);
+  g.strokeStyle=GLOW+'40';g.strokeRect(1,1,c.width-2,c.height-2);
+  B.forEach(b=>{g.fillStyle=GLOW;g.shadowColor=GLOW;g.shadowBlur=8;g.beginPath();g.arc(b.x,b.y,3.4,0,7);g.fill();g.shadowBlur=0});
+  EB.forEach(b=>{g.fillStyle=HAZC;g.shadowColor=HAZC;g.shadowBlur=8;g.beginPath();g.arc(b.x,b.y,3.6,0,7);g.fill();g.shadowBlur=0});
+  EN.forEach(e=>{paintHazard(g,e.x,e.y,11,e.gun?'drone':'seeker',t,P.x);
+   if(e.hp<e.mx){g.fillStyle='#ffffff22';g.fillRect(e.x-11,e.y-19,22,3);g.fillStyle=HAZC;g.fillRect(e.x-11,e.y-19,22*(e.hp/e.mx),3)}});
+  if(portal)paintPortal(g,portal.x,portal.y,16,t);
+  paintHeroTop(g,P.x,P.y,P.r+2,head,repFor(''),inv,t);
+  drawFx(g,dt);
+  g.fillStyle=T.text;g.font='12px system-ui';
+  g.fillText(EN.length?('Wave '+wave+'/'+WAVES+' · Enemies left: '+EN.length):'Reach the portal!',10,18);
+  g.restore();
+  requestAnimationFrame(frame)}
+ ctrlGuide();
+ requestAnimationFrame(frame)}
+
+/* ── Open World RPG runtime (tpl_open_world_rpg_v1) — seamless world/zones/NPC quests/world gate */
+function owr(st){const c=mkCanvas(0),g=c.getContext('2d');
+ const WW=Math.max(800,Math.min(4000,st.world_w||2200)),WH=Math.max(600,Math.min(4000,st.world_h||1500));
+ const env=st.environment||V.environment||'grid';
+ const P={x:120,y:WH/2,r:11};let head=0,inv=0,over=false,camX=0,camY=0,atkCd=0,sayMsg='',sayT=0;
+ const speed=(st.player_speed||200)*(1+stageIdx*0.03);
+ const zones=(st.zones||[]).map(z=>({name:z.name||'Zone',x:+z.x||0,y:+z.y||0,
+  w:+z.w||WW,h:+z.h||WH,env:z.environment||env}));
+ const npcs=(st.npcs||[]).map((n,i)=>({name:n.name||('Guide '+(i+1)),x:+n.x||220,y:+n.y||220,
+  dialog:n.dialog||'Safe travels, wanderer.',talked:false,
+  quest:(n.quest&&(n.quest.type==='collect'||n.quest.type==='defeat'))?
+   {type:n.quest.type,target:Math.max(1,+n.quest.target||3),reward:+((n.quest||{}).reward_points)||30,
+    accepted:false,done:false,base:0}:null}));
+ const EN=(st.enemies||[]).map(e=>({type:e.type||'raider',x:+e.x||WW/2,y:+e.y||WH/2,
+  hx:+e.x||WW/2,hy:+e.y||WH/2,sp:(+e.speed||70)*(1+stageIdx*0.06),hp:3,mx:3,alive:true}));
+ const NREL=Math.max(3,Math.min(12,st.collectibles||6));
+ const REL=[];for(let i=0;i<NREL;i++)REL.push({x:150+Math.random()*(WW-300),y:120+Math.random()*(WH-240),got:false});
+ const goal={x:Math.max(40,Math.min(WW-40,(st.goal||{}).x||WW-140)),y:Math.max(40,Math.min(WH-40,(st.goal||{}).y||WH-120))};
+ let relicGot=0,defGot=0,cp={x:P.x,y:P.y},last=performance.now(),t0=last,hintT=0;
+ function say2(m){sayMsg=m;sayT=3.4}
+ function quests(){return npcs.filter(n=>n.quest)}
+ function questsLeft(){return quests().filter(n=>!n.quest.done).length}
+ function checkQuests(){quests().forEach(n=>{const q=n.quest;if(!q.accepted||q.done)return;
+  const have=(q.type==='collect'?relicGot:defGot)-q.base;
+  if(have>=q.target){q.done=true;const p=addScore(q.reward);sfx('achievement');vib(50);
+   popup(P.x,P.y-30,'QUEST COMPLETE +'+p,'#10E670');refreshHud();
+   say2(n.name+"'s quest complete!"+(questsLeft()?' '+questsLeft()+' quest(s) remain.':' The world gate is OPEN!'))}})}
+ function hurt(){if(inv>0||over)return;comboBreak();lives--;inv=1.5;shake=8;vib(60);
+  burst(P.x,P.y,HAZC,18,140);P.x=cp.x;P.y=cp.y;refreshHud();
+  if(lives<=0){over=true;setTimeout(gameOver,300)}}
+ function frame(now){if(over)return;
+  if(PAUSED){last=now;g.fillStyle='rgba(4,8,20,0.5)';g.fillRect(0,0,c.width,c.height);g.fillStyle=GLOW;g.font='bold 22px system-ui';g.textAlign='center';g.fillText('PAUSED — press P',c.width/2,c.height*0.45);g.textAlign='left';return requestAnimationFrame(frame)}
+  const dt=Math.min(0.05,(now-last)/1000);last=now;const t=(now-t0)/1000;
+  let dx=0,dy=0;
+  if(act('left'))dx-=1;if(act('right'))dx+=1;if(act('up'))dy-=1;if(act('down'))dy+=1;
+  if(ptr.active){const wx=ptr.x+camX,wy=ptr.y+camY,vx=wx-P.x,vy=wy-P.y,m=Math.hypot(vx,vy);if(m>10){dx=vx/m;dy=vy/m}}
+  if(dx||dy)head=Math.atan2(dy,dx);
+  P.x=Math.max(P.r,Math.min(WW-P.r,P.x+dx*speed*SENS*dt));
+  P.y=Math.max(P.r,Math.min(WH-P.r,P.y+dy*speed*SENS*dt));
+  camX=Math.max(0,Math.min(WW-c.width,P.x-c.width/2));
+  camY=Math.max(0,Math.min(WH-c.height,P.y-c.height/2));
+  npcs.forEach(n=>{if(Math.hypot(n.x-P.x,n.y-P.y)<46){
+   if(!n.talked){n.talked=true;cp={x:n.x,y:n.y+30};sfx('checkpoint');
+    let m=n.name+': "'+n.dialog+'"';
+    if(n.quest&&!n.quest.accepted){n.quest.accepted=true;
+     n.quest.base=n.quest.type==='collect'?relicGot:defGot;
+     m+=' — QUEST: '+(n.quest.type==='collect'?('collect '+n.quest.target+' relics'):('defeat '+n.quest.target+' roamers'))}
+    say2(m);popup(n.x,n.y-30,'\u2691 CHECKPOINT',ACC)}}
+   else if(Math.hypot(n.x-P.x,n.y-P.y)>90)n.talked=false});
+  REL.forEach(r2=>{if(r2.got||Math.hypot(r2.x-P.x,r2.y-P.y)>=22)return;r2.got=true;relicGot++;
+   const p=addScore(10);burst(r2.x,r2.y,GLOW,12,100);popup(r2.x,r2.y-14,'+RELIC '+relicGot,GLOW);sfx('collect');refreshHud();checkQuests()});
+  if(atkCd>0)atkCd-=dt;
+  EN.forEach(e=>{if(!e.alive)return;const vx=P.x-e.x,vy=P.y-e.y,d=Math.hypot(vx,vy)||1;
+   if(d<240){e.x+=vx/d*e.sp*dt;e.y+=vy/d*e.sp*dt}
+   else{const hx=e.hx-e.x,hy=e.hy-e.y,hm=Math.hypot(hx,hy);if(hm>8){e.x+=hx/hm*e.sp*0.5*dt;e.y+=hy/hm*e.sp*0.5*dt}}
+   if(d<P.r+13){if(atkCd<=0){atkCd=0.45;e.hp--;sfx('hit');burst(e.x,e.y,GLOW,8,90);
+     const ka=Math.atan2(e.y-P.y,e.x-P.x);e.x+=Math.cos(ka)*26;e.y+=Math.sin(ka)*26;
+     if(e.hp<=0){e.alive=false;defGot++;const p=addScore(20);burst(e.x,e.y,HAZC,16,130);popup(e.x,e.y-14,'+'+p,GLOW);sfx('collect');refreshHud();checkQuests()}}
+    else if(inv<=0)hurt()}});
+  if(inv>0)inv-=dt;if(sayT>0)sayT-=dt;if(hintT>0)hintT-=dt;
+  const gd=Math.hypot(goal.x-P.x,goal.y-P.y);
+  if(gd<30){if(questsLeft()===0){over=true;burst(P.x,P.y,'#C26BFF',24,160);
+    setTimeout(()=>fb(true,(st.title||'World')+' complete!'+unlockMsg(),next),300);return}
+   if(hintT<=0){hintT=3;sfx('wrong');say2('\uD83D\uDD12 The world gate is sealed — '+questsLeft()+' quest(s) remain.')}}
+  g.save();if(shake>0.4&&!CTRL.reduced_motion){g.translate((Math.random()-0.5)*shake,(Math.random()-0.5)*shake);shake*=0.86}
+  drawEnv(g,c.width,c.height,env,t,0.22);
+  g.save();g.translate(-camX,-camY);
+  zones.forEach((z,i)=>{g.fillStyle=['#2EE6FF','#F4A73B','#C26BFF','#10E670'][i%4]+'0d';g.fillRect(z.x,z.y,z.w,z.h);
+   g.strokeStyle=GLOW+'26';g.strokeRect(z.x,z.y,z.w,z.h);
+   g.fillStyle=T.text+'66';g.font='bold 13px system-ui';g.fillText(z.name.toUpperCase(),z.x+12,z.y+22)});
+  g.strokeStyle=GLOW+'55';g.lineWidth=2;g.strokeRect(2,2,WW-4,WH-4);g.lineWidth=1;
+  REL.forEach(r2=>{if(!r2.got)paintCore(g,r2.x,r2.y,8,t)});
+  npcs.forEach(n=>{g.fillStyle='#10E670';g.shadowColor='#10E670';g.shadowBlur=10;
+   g.beginPath();g.arc(n.x,n.y,10,0,7);g.fill();g.shadowBlur=0;
+   g.fillStyle='#071018';g.font='bold 10px system-ui';g.textAlign='center';g.fillText('!',n.x,n.y+3.5);
+   g.fillStyle=T.text;g.font='10px system-ui';g.fillText(n.name,n.x,n.y-16);
+   if(n.quest)g.fillText(n.quest.done?'\u2713 done':(n.quest.accepted?'quest active':'has a quest'),n.x,n.y+24);
+   g.textAlign='left'});
+  EN.forEach(e=>{if(!e.alive)return;paintHazard(g,e.x,e.y,11,'seeker',t,P.x);
+   if(e.hp<e.mx){g.fillStyle='#ffffff22';g.fillRect(e.x-11,e.y-19,22,3);g.fillStyle=HAZC;g.fillRect(e.x-11,e.y-19,22*(e.hp/e.mx),3)}});
+  paintPortal(g,goal.x,goal.y,16,t);
+  if(questsLeft()>0){g.fillStyle='#071018cc';g.font='bold 10px system-ui';g.textAlign='center';
+   g.fillStyle=HAZC;g.fillText('\uD83D\uDD12',goal.x,goal.y-24);g.textAlign='left'}
+  paintHeroTop(g,P.x,P.y,P.r+2,head,repFor(''),inv,t);
+  g.restore();
+  drawFx(g,dt);
+  g.fillStyle=T.text;g.font='12px system-ui';
+  g.fillText('Quests: '+(quests().length-questsLeft())+'/'+quests().length+' · Relics '+relicGot+' · Roamers down '+defGot,10,18);
+  if(sayT>0){g.fillStyle='rgba(4,8,20,0.8)';g.fillRect(8,c.height-46,c.width-16,38);
+   g.strokeStyle=GLOW+'44';g.strokeRect(8,c.height-46,c.width-16,38);
+   g.fillStyle=T.text;g.font='11.5px system-ui';g.fillText(sayMsg.slice(0,110),16,c.height-23)}
+  g.restore();
+  requestAnimationFrame(frame)}
+ ctrlGuide();
+ requestAnimationFrame(frame)}
+
 titleScreen();
+try{parent.postMessage({type:'runtime_ready'},'*')}catch(e){}
 `;
 
 function buildSrcdoc(spec, save, audio, controls) {
   return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body><div id="g"></div><script>window.__SPEC__=${JSON.stringify(spec).replace(/</g, "\\u003c")};window.__SAVE__=${JSON.stringify(save || {}).replace(/</g, "\\u003c")};window.__AUDIO__=${JSON.stringify(audio || {}).replace(/</g, "\\u003c")};window.__CTRL__=${JSON.stringify(controls || {}).replace(/</g, "\\u003c")};<\/script>
+<body><div id="g"></div><script>window.addEventListener("error",function(ev){try{parent.postMessage({type:"runtime_error",message:String((ev&&ev.message)||"Runtime error")},"*")}catch(e){}});window.__SPEC__=${JSON.stringify(spec).replace(/</g, "\\u003c")};window.__SAVE__=${JSON.stringify(save || {}).replace(/</g, "\\u003c")};window.__AUDIO__=${JSON.stringify(audio || {}).replace(/</g, "\\u003c")};window.__CTRL__=${JSON.stringify(controls || {}).replace(/</g, "\\u003c")};<\/script>
 <script>${RUNTIME_JS}<\/script></body></html>`;
 }
 
 export default function GameRuntime({ spec, onScore, height = 460, gameId, controls, guest }) {
   const ref = useRef(null);
+  const [runtimeFail, setRuntimeFail] = useState(null);
+  const [retryKey, setRetryKey] = useState(0);
+  const readyRef = useRef(false);
   const srcdoc = useMemo(() => {
     if (!spec) return "";
     let save = {}, audio = {};
@@ -2964,6 +3137,10 @@ export default function GameRuntime({ spec, onScore, height = 460, gameId, contr
   useEffect(() => {
     const h = (e) => {
       if (e.source !== ref.current?.contentWindow) return;
+      if (e?.data?.type === "runtime_ready") { readyRef.current = true; setRuntimeFail(null); }
+      if (e?.data?.type === "runtime_error" && !readyRef.current) {
+        setRuntimeFail(e.data.message || "The game engine hit an error while loading.");
+      }
       if (e?.data?.type === "game_score" && onScore) onScore(e.data);
       if (e?.data?.type === "game_resource" && gameId && !guest) {
         apiClient.post("/resources/game-pickup", {
@@ -2984,9 +3161,32 @@ export default function GameRuntime({ spec, onScore, height = 460, gameId, contr
     window.addEventListener("message", h);
     return () => window.removeEventListener("message", h);
   }, [onScore, gameId, guest]);
+  useEffect(() => {
+    readyRef.current = false;
+    setRuntimeFail(null);
+    if (!srcdoc) return;
+    const t = setTimeout(() => {
+      if (!readyRef.current) setRuntimeFail("The game didn't finish loading.");
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [srcdoc]);
   if (!spec) return null;
+  if (runtimeFail) {
+    return (
+      <div data-testid="game-runtime-error" className="w-full rounded-xl flex flex-col items-center justify-center gap-3 text-center px-6"
+        style={{ height, border: "1px solid rgba(255,90,110,0.35)", background: "#0b1220", color: "#EAF2FF" }}>
+        <div style={{ fontSize: 34 }}>🛠️</div>
+        <div className="font-bold">This game couldn't start</div>
+        <div className="text-sm opacity-70 max-w-md">{runtimeFail} Try reloading — if it keeps happening the game will be repaired on the next update.</div>
+        <button data-testid="game-runtime-retry" onClick={() => { readyRef.current = false; setRuntimeFail(null); setRetryKey(k => k + 1); }}
+          className="px-5 py-2 rounded-xl font-bold" style={{ border: "1px solid rgba(46,230,255,0.4)", background: "rgba(46,230,255,0.12)", color: "#EAF2FF" }}>
+          Reload game
+        </button>
+      </div>
+    );
+  }
   return (
-    <iframe ref={ref} title={spec.title || "game"} srcDoc={srcdoc} sandbox="allow-scripts"
+    <iframe key={retryKey} ref={ref} title={spec.title || "game"} srcDoc={srcdoc} sandbox="allow-scripts"
       className="w-full rounded-xl" style={{ height, border: "1px solid rgba(46,230,255,0.25)", background: "#0b1220" }}
       data-testid="game-runtime-iframe" />
   );

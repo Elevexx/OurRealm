@@ -312,6 +312,9 @@ def derive_asset_requirements(rt: str, bp: dict, complexity: int) -> list:
     reqs = []
     if rt:
         for key in PROFILES[profile_for(rt)]:
+            # The current Top-Down renderer has no boss or NPC gameplay.
+            if rt == "top_down" and key in {"boss_sprite", "npc_sprite"}:
+                continue
             d = SLOTS[key]
             if not d["required"] and complexity <= 2 and key in ("boss_sprite", "npc_sprite", "icon_set", "battle_scene", "character_portrait"):
                 continue
@@ -500,6 +503,174 @@ def _assemble_sections(plan: dict, complexity: int, power: int) -> dict:
     }
 
 
+
+
+_TOP_DOWN_BLOCKED = re.compile(
+    r"\b(?:boss|bosses|quest|quests|npc|npcs|dialogue|dialog|inventory|loot|"
+    r"combat|attack|weapon|spell|shop|craft|cooking interaction|puzzle|switch|"
+    r"key[- ]gated|locked room|unlock room|doors?|door system)\b",
+    re.IGNORECASE,
+)
+
+_TOP_DOWN_ALLOWED = re.compile(
+    r"\b(?:top[- ]down|overhead|four[- ]direction|4[- ]direction|move|movement|"
+    r"collect|collectible|core|ingredient|obstacle|patrol|chaser|hazard|avoid|"
+    r"checkpoint|respawn|portal|finish|touch|mobile|coin|gem|star|key|"
+    r"engagement resource|resource pickup)\b",
+    re.IGNORECASE,
+)
+
+
+def _content_values_text(value) -> str:
+    """Flatten populated JSON values without treating schema keys as mechanics."""
+    if isinstance(value, dict):
+        return " ".join(_content_values_text(v) for v in value.values() if v)
+    if isinstance(value, (list, tuple, set)):
+        return " ".join(_content_values_text(v) for v in value if v)
+    return str(value or "")
+
+
+def _top_down_stage_summary(item: str, index: int) -> str:
+    if not _TOP_DOWN_BLOCKED.search(item):
+        return item
+    match = re.search(
+        r"['\"](?:name|title)['\"]\s*:\s*['\"]([^'\"]+)",
+        item,
+        re.IGNORECASE,
+    )
+    label = match.group(1)[:80] if match else f"Stage {index + 1}"
+    return (
+        f"{label} — unique overhead layout with ingredient-themed cores, "
+        "obstacles, patrol/chaser hazards, checkpoints, verified resource "
+        "pickups and a finish portal"
+    )
+
+
+def _sanitize_runtime_sections(sections: dict, selected_rt: str,
+                               request_text: str, tools=None) -> dict:
+    """Remove promises the selected executable runtime cannot perform."""
+    identity = sections.get("identity") or {}
+    runtime = sections.get("runtime") or {}
+    gameplay = sections.get("gameplay") or {}
+    systems = sections.get("systems") or {}
+    media = sections.get("media") or {}
+    toolset = {str(x).strip().lower() for x in (tools or []) if str(x).strip()}
+
+    if selected_rt == "top_down":
+        portal_label = (
+            "Arcane Hearth finish portal"
+            if re.search(r"\barcane hearth\b", request_text or "", re.IGNORECASE)
+            else "finish portal"
+        )
+        if _TOP_DOWN_BLOCKED.search(identity.get("description") or ""):
+            identity["description"] = (
+                f"{identity.get('title') or 'This game'} is a true overhead "
+                "collection-and-avoidance game using the existing Top-Down runtime."
+            )
+        identity["genre"] = "top-down collection / avoidance"
+        runtime["camera_model"] = "true overhead top-down camera"
+        runtime["control_model"] = (
+            "WASD/arrow-key 4-direction movement and responsive mobile touch movement"
+        )
+        gameplay["core_loop"] = (
+            "Move through each overhead stage, collect every required "
+            "ingredient-themed core, avoid obstacles and patrol/chaser hazards, "
+            f"then enter the activated {portal_label}."
+        )
+        for key in ("bosses", "npcs", "quests", "upgrades", "abilities",
+                    "weapons_or_spells"):
+            gameplay[key] = []
+        gameplay["inventory"] = ""
+        gameplay["progression"] = (
+            "Clearing one stage opens the next stage; required cores reset "
+            "at the start of each stage."
+        )
+        gameplay["player_mechanics"] = [
+            item for item in _slist(gameplay.get("player_mechanics"), 20, 160)
+            if _TOP_DOWN_ALLOWED.search(item) and not _TOP_DOWN_BLOCKED.search(item)
+        ]
+        if not gameplay["player_mechanics"]:
+            gameplay["player_mechanics"] = [
+                "4-direction overhead movement",
+                "collect required ingredient-themed cores",
+                "avoid obstacles and patrol/chaser hazards",
+                "checkpoint respawn",
+                "collect verified Coin, Gem, Star and Key pickups",
+                "enter the finish portal after all required cores are collected",
+            ]
+        gameplay["enemies"] = [
+            item for item in _slist(gameplay.get("enemies"), 20, 160)
+            if re.search(r"\b(?:patrol|patroller|chaser|hazard)\b", item, re.IGNORECASE)
+            and not _TOP_DOWN_BLOCKED.search(item)
+        ] or [
+            "Patrol hazard — pursues the player when nearby",
+            "Chaser hazard — pursues the player when nearby",
+        ]
+        gameplay["levels"] = [
+            _top_down_stage_summary(item, i)
+            for i, item in enumerate(_slist(gameplay.get("levels"), 50, 500))
+        ]
+        gameplay["worlds"] = [
+            item for item in _slist(gameplay.get("worlds"), 50, 160)
+            if not _TOP_DOWN_BLOCKED.search(item)
+        ]
+        gameplay["maps"] = [
+            item for item in _slist(gameplay.get("maps"), 50, 160)
+            if not _TOP_DOWN_BLOCKED.search(item)
+        ]
+        gameplay["objectives"] = [
+            "Collect every required ingredient-themed core",
+            "Avoid obstacles and patrol/chaser hazards",
+            f"Reach the activated {portal_label}",
+            "Optionally collect verified Coins, Gems, Stars and Keys",
+        ]
+        systems["ui_hud"] = [
+            item for item in _slist(systems.get("ui_hud"), 20, 160)
+            if not _TOP_DOWN_BLOCKED.search(item)
+        ] or [
+            "Stage name, required cores remaining, lives and verified resource counters"
+        ]
+        systems["achievements"] = [
+            item for item in _slist(systems.get("achievements"), 20, 160)
+            if not _TOP_DOWN_BLOCKED.search(item)
+        ]
+        systems["tutorials"] = [
+            "Show 4-direction movement, core collection, hazards, checkpoints, "
+            "verified resource pickups and the finish portal."
+        ]
+        systems["save_requirements"] = (
+            "Verified Coins, Gems, Stars and Keys use the shared Engagement "
+            "Resource systems; checkpoint position lasts for the current stage."
+        )
+        for key in ("artwork", "animation", "promotional"):
+            media[key] = [
+                item for item in _slist(media.get(key), 20, 160)
+                if not _TOP_DOWN_BLOCKED.search(item)
+            ]
+
+    if not re.search(r"\bfire power\b", request_text or "", re.IGNORECASE):
+        systems["fire_power_integrations"] = []
+
+    if toolset:
+        if not toolset.intersection({"audio", "music", "sound", "voice"}):
+            media["music"] = []
+            media["sound_effects"] = []
+            media["voice"] = []
+        if "video" not in toolset:
+            media["cinematics"] = []
+        if "image" not in toolset:
+            media["artwork"] = []
+            media["animation"] = []
+            media["promotional"] = []
+
+    sections["identity"] = identity
+    sections["runtime"] = runtime
+    sections["gameplay"] = gameplay
+    sections["systems"] = systems
+    sections["media"] = media
+    return sections
+
+
 async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
                          feedback: str = "") -> dict:
     """Planning ONLY — one LLM call, no media generation, no build."""
@@ -513,6 +684,12 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
     # Capability-matrix runtime selection BEFORE any generation. Incompatible
     # requests are refused here — no blueprint is ever generated for them.
     sel = select_best_runtime(request_text)
+    preselected = (
+        (existing or {}).get("selected_runtime")
+        or (sel.get("selected") or {}).get("runtime")
+    )
+    tools = list(body.get("tools") or (existing or {}).get("tools") or [])
+    settings = body.get("settings") or (existing or {}).get("settings") or {}
     if sel["no_compatible_runtime"] and not (existing or {}).get("selected_runtime"):
         raise HTTPException(status_code=422, detail={
             "error_code": "no_compatible_runtime", **sel["report"],
@@ -533,6 +710,30 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
             f"{requested_stage_count} levels/stages. "
             "Complexity adds detail inside those levels and must not "
             "change their count."
+        )
+    if preselected:
+        user_msg += (
+            f"\nHARD RUNTIME CONTRACT: {preselected} is already selected and "
+            "must not be changed. Promise only these executable mechanics: "
+            f"{json.dumps(RUNTIME_MECHANICS.get(preselected, []))}. "
+            "Theme and labels may change; executable systems may not."
+        )
+    if preselected == "top_down":
+        user_msg += (
+            "\nTOP-DOWN OUTPUT RULES: use a true overhead camera and only the "
+            "existing 4-direction movement, required collectible cores, static "
+            "obstacles, patrol/chaser hazards, checkpoints/respawn, verified "
+            "Coin/Gem/Star/Key pickups, finish portal and touch controls. Leave "
+            "bosses, NPCs, quests, dialogue, inventory/loot, combat, attacks, "
+            "weapons, spells, crafting, cooking interactions and puzzle systems "
+            "empty. Ingredient cores and any founder-named portal are themes for "
+            "existing mechanics, not new systems."
+        )
+    if tools:
+        user_msg += (
+            f"\nSELECTED PROJECT TOOLS: {json.dumps(tools)}. Do not request media "
+            "from unselected tools. Game + Image alone means music, sound "
+            "effects, voice and cinematics must be empty."
         )
     if existing and feedback:
         user_msg += (
@@ -577,10 +778,13 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
     selected = selected or mech_pick or rec["recommended"]
     sections["runtime"]["runtime_id"] = selected
     sections["runtime"]["family"] = RUNTIME_LABELS.get(selected) if selected else None
+    sections = _sanitize_runtime_sections(
+        sections, selected, request_text, tools
+    )
 
-    # Check what the AI actually added after the preflight check.
+    # Check what remains after the executable-runtime truth boundary.
     generated_mechanics = detect_mechanics(
-        json.dumps(sections.get("gameplay") or {}, default=str)
+        _content_values_text(sections.get("gameplay") or {})
     )
     generated_ms = mechanics_support(
         selected, generated_mechanics, []
@@ -628,6 +832,7 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
         "name": str(body.get("name") or plan.get("title") or "Untitled Blueprint")[:120],
         "request": request_text,
         "complexity": complexity, "ai_power": power,
+        "tools": tools, "settings": settings,
         "blueprint": sections,
         "runtime_recommendation": rec,
         "runtime_selection": {k: sel[k] for k in ("detected_mechanics", "core_mechanics",

@@ -324,21 +324,38 @@ async def games_hub(current: CurrentUser, q: str = "", subject: str = ""):
 
 @public.get("/{game_id}")
 async def play_game(game_id: str, current: CurrentUser):
-    g = await db.games.find_one({"id": game_id, "status": "published"},
-                                {"_id": 0, "build_log": 0, "request": 0})
+    proj = {"_id": 0, "build_log": 0, "request": 0, "est_cost": 0, "actual_cost": 0, "estimates": 0}
+    creator_preview = False
+    g = await db.games.find_one({"id": game_id, "status": "published"}, proj)
     if not g:
         from core.permissions import get_admin_role, ROLE_FOUNDER
         if get_admin_role(current) == ROLE_FOUNDER:
             # founders can play approved (unpublished) validation games
-            g = await db.games.find_one({"id": game_id, "status": {"$in": ["approved", "published"]}},
-                                        {"_id": 0, "build_log": 0, "request": 0})
+            g = await db.games.find_one({"id": game_id, "status": {"$in": ["approved", "published"]}}, proj)
+    if not g:
+        # creators get a private authenticated preview of their own unpublished games
+        g = await db.games.find_one({"id": game_id,
+                                     "status": {"$in": ["approved", "pending_approval"]},
+                                     "$or": [{"created_by": current["id"]}, {"creator_id": current["id"]}]},
+                                    proj)
+        if g:
+            creator_preview = True
     if not g:
         # course mini-games: playable if not published but user can access the course lesson
         g = await db.games.find_one({"id": game_id, "status": {"$in": ["approved", "published"]},
-                                     "course_context.center_id": {"$exists": True}},
-                                    {"_id": 0, "build_log": 0, "request": 0})
+                                     "course_context.center_id": {"$exists": True}}, proj)
         if not g:
             raise HTTPException(status_code=404, detail="Game not found")
+    if creator_preview:
+        from routers.games_plus import game_controls
+        prog = await db.game_progress.find_one({"game_id": game_id, "user_id": current["id"]}, {"_id": 0})
+        g["controls"] = game_controls(g)
+        return {"game": g, "progress": prog,
+                "access": {"mode": "private_preview", "label": "Private Preview", "view_only": False,
+                           "flags": {"fire": False, "keys": False, "saves": True,
+                                     "leaderboard": False, "reports": True},
+                           "message": "Private Preview — only you (and admins) can play this game "
+                                      "until it's published."}}
     if not isinstance(g.get("access"), dict):
         # legacy game with no explicit per-game config — platform-wide gate applies
         from services.access_policy import check_access

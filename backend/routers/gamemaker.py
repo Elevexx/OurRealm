@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException
 
 from core.db import db
 from core.deps import CurrentUser
-from core.permissions import require_founder, get_admin_role
+from core.permissions import require_founder, get_admin_role, ROLE_FOUNDER
 from services import game_studio as gs
 from services import job_engine
 from services import economy
@@ -46,12 +46,12 @@ RUNTIMES = [
     ("turn_based_creature_rpg", "Turn-Based Creature RPG", "Capture creatures, train, evolve & battle in turn-based adventures.", "turn_based_creature_rpg", "live"),
     ("platformer", "Platformer", "Classic side-scrolling platform action.", "platformer", "live"),
     ("top_down_adventure", "Top-Down Adventure", "Explore, solve puzzles, fight enemies, collect items & more.", "top_down", "live"),
-    ("open_world_rpg", "Open World RPG", "Large seamless worlds, quests, factions, dynamic events & more.", "rpg", "planned"),
+    ("open_world_rpg", "Open World RPG", "Seamless scrolling worlds, zones, NPC quests, roaming enemies & world gates.", "open_world_rpg", "live"),
     ("card_battle", "Card Battle", "Strategic card battles with decks, mana & abilities.", "card_battle", "live"),
     ("tower_defense", "Tower Defense", "Build towers, defend your base, upgrade & survive waves.", "tower_defense", "live"),
     ("match3", "Match-3 Puzzle", "Swap, match, combo & achieve high scores.", "match3", "live"),
     ("racing", "Racing", "High-speed races, tracks, upgrades & challenges.", "racing", "live"),
-    ("shooter", "Shooter", "FPS or TPS combat, weapons, AI, missions & more.", None, "planned"),
+    ("shooter", "Shooter", "Top-down arena combat — waves, enemy AI, auto-fire blasters & portals.", "shooter", "live"),
 ]
 
 
@@ -204,8 +204,10 @@ async def create_game(body: dict, current: CurrentUser):
     power = min(max(int(body.get("ai_power") or 5), 1), 10)
     t = tier(power)
     if body.get("dry_run"):
-        return {"estimated_cost": round(t["est_cost_per_pass"] * 3, 3), "model": t["label"],
-                "runtime": rt[1], "style": style}
+        out = {"model": t["label"], "runtime": rt[1], "style": style}
+        if get_admin_role(current) == ROLE_FOUNDER:  # internal AI $ estimates are founder-only
+            out["estimated_cost"] = round(t["est_cost_per_pass"] * 3, 3)
+        return out
     style_name = next(n for k, n, _ in STYLES if k == style)
     payload = {"request": f"{idea}\n\nArt direction: render everything in a {style_name} visual style.",
                "engine_runtime": rt[3], "runtime_choice": rt_choice, "style": style,
@@ -500,6 +502,8 @@ async def make_quote(body: dict, current: CurrentUser):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     q["provider_model"] = t["label"]
+    if get_admin_role(current) != ROLE_FOUNDER:  # internal AI $ estimates are founder-only
+        q.pop("provider_estimate", None)
     return {"quote": q}
 
 

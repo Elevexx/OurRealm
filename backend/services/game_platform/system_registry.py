@@ -11,7 +11,7 @@ def _sys(label, status, notes=""):
 # status: implemented (works in vetted runtimes today) · partial · planned
 GAMEPLAY_SYSTEM_SEED = {
     "dialogue": _sys("Dialogue", "implemented", "visual_novel + rpg NPC dialogue"),
-    "quests": _sys("Quests", "implemented", "rpg/top_down objectives + quest lists"),
+    "quests": _sys("Quests", "implemented", "rpg and Action RPG quest systems; Top-Down uses stage objectives only"),
     "inventory": _sys("Inventory", "implemented", "rpg inventory"),
     "crafting": _sys("Crafting", "partial", "farming goods crafting; deep trees planned"),
     "equipment": _sys("Equipment", "implemented", "rpg equipment slots"),

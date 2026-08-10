@@ -171,6 +171,8 @@ export default function OraiProjects() {
         name: proj.name,
         complexity: proj.complexity,
         ai_power: proj.ai_power,
+        tools: proj.tools,
+        settings: proj.settings,
         request_id: requestId,
       });
 

@@ -162,6 +162,8 @@ async def plan(body: dict, current: CurrentUser):
         "name": str(body.get("name") or "")[:160],
         "complexity": body.get("complexity"),
         "ai_power": body.get("ai_power"),
+        "tools": body.get("tools") if isinstance(body.get("tools"), list) else [],
+        "settings": body.get("settings") if isinstance(body.get("settings"), dict) else {},
     }
     job = await job_engine.submit(
         "orai_blueprint_plan",

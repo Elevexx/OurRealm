@@ -53,22 +53,27 @@ def test_overview_seeded(founder):
     assert len(ov["schema"]) >= 28
     rt = {x["key"]: x for x in ov["runtime"]}
     assert rt["platformer"]["versions"][0]["status"] == "live"
-    # Truthful: planned runtimes seed as draft, not live
-    assert rt["open_world_rpg"]["versions"][0]["status"] == "draft"
-    assert rt["shooter"]["versions"][0]["status"] == "draft"
+    # June 2026: shooter + open_world_rpg were implemented and promoted to live
+    assert any(v["status"] == "live" for v in rt["open_world_rpg"]["versions"])
+    assert any(v["status"] == "live" for v in rt["shooter"]["versions"])
 
 
-def test_planned_runtime_capabilities_all_false(founder):
+def test_implemented_runtime_capabilities_truthful(founder):
     d = founder.get(f"{REG}/runtime/shooter", timeout=15).json()
-    caps = d["versions"][0]["definition"]["capabilities"]
-    assert caps and not any(caps.values()), "planned runtime must not claim any capability"
+    live = next(v for v in d["versions"] if v["status"] == "live")
+    caps = live["definition"]["capabilities"]
+    assert caps["realtime_movement"] and caps["projectiles"] and caps["enemies_ai"]
+    assert not caps["multiplayer"] and not caps["first_person"], \
+        "shooter must not claim unimplemented capabilities"
 
 
 def test_inventory(founder):
     inv = founder.get(f"{REG}/inventory", timeout=30).json()
     assert inv["games_total"] >= 60
     assert "platformer" in inv["implemented_runtimes"]
-    assert set(inv["planned_runtimes"]) == {"open_world_rpg", "shooter"}
+    assert set(inv["planned_runtimes"]) == set()
+    assert "shooter" in inv["implemented_runtimes"]
+    assert "open_world_rpg" in inv["implemented_runtimes"]
     unmapped = [g for g in inv["games"] if not g["mapped_runtime"]]
     for g in unmapped:
         assert "review" in g["mapping_reason"] or "skipped" in g["mapping_reason"]
@@ -220,11 +225,14 @@ def test_sandbox_demo_job(founder):
     import pymongo  # noqa: F401 — not available; cleanup via API not needed (sandbox flagged)
 
 
-def test_sandbox_demo_planned_runtime_fails_honestly(founder):
-    r = founder.post(f"{REG}/runtime/shooter/versions/1/sandbox-demo", json={}, timeout=15)
+def test_sandbox_demo_implemented_runtime_succeeds(founder):
+    # shooter is implemented + has a published reference game now — the
+    # sandbox demo must clone the REAL working spec and complete.
+    live = founder.get(f"{REG}/runtime/shooter", timeout=15).json()
+    v = next(x["version"] for x in live["versions"] if x["status"] == "live")
+    r = founder.post(f"{REG}/runtime/shooter/versions/{v}/sandbox-demo", json={}, timeout=15)
     j = _wait_job(founder, r.json()["job_id"], timeout=60)
-    assert j["status"] == "failed"
-    assert "reference game" in (j.get("error") or "")
+    assert j["status"] == "completed", j.get("error")
 
 
 # ─── Permissions ──────────────────────────────────────────────────────────

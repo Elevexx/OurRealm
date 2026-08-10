@@ -239,14 +239,15 @@ class TestPublicPreview:
         assert "Public Preview" in (d.get("message") or "")
         for k in ("fire", "keys", "saves", "leaderboard"):
             assert d["flags"].get(k) is False
-        # member rewards blocked
+        # signed-in members now collect enabled rewards permanently (P0 founder
+        # directive: Public Preview no longer blanket-disables member rewards)
         pr = requests.post(f"{BASE}/api/games/{GAME_ID}/progress",
                            headers=tftwo_h, json={"state": {}}, timeout=10)
-        assert pr.status_code == 403
+        assert pr.status_code == 200
         k = requests.post(f"{BASE}/api/fire/keys/collect", headers=tftwo_h,
                           json={"key_id": "k1", "game_id": GAME_ID}, timeout=10)
-        assert k.status_code == 403
-        assert (k.json().get("detail") or {}).get("reason") == "public_preview_rewards_disabled"
+        assert k.status_code == 200
+        assert k.json().get("ok") is True
         # regenerate invalidates old token
         link2 = requests.post(f"{BASE}/api/admin/games/{GAME_ID}/access/preview-link",
                               headers=founder_h, timeout=10)

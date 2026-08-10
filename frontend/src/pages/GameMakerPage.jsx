@@ -316,8 +316,9 @@ export default function GameMakerPage() {
                 <b style={{ color: "#FF8A5A" }}>{quote.required_amount} {quote.resource_key}</b><br />required ({quote.required_fire} 🔥 equiv)</div>
               <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.05)" }} data-testid="quote-available">
                 <b style={{ color: quote.available >= quote.required_amount ? GREEN : "#FF5A6E" }}>{quote.available}</b><br />your balance</div>
-              <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.05)" }}>
-                <b style={{ color: BLUE }}>${quote.provider_estimate}</b><br />Estimated AI Usage (separate)</div>
+              {quote.provider_estimate != null && (
+                <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.05)" }}>
+                  <b style={{ color: BLUE }}>${quote.provider_estimate}</b><br />Estimated AI Usage (separate)</div>)}
               <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.05)" }}>
                 <b>rule v{quote.rule_version}</b><br />expires in ~20 min</div>
             </div>
@@ -355,9 +356,13 @@ export default function GameMakerPage() {
             {job.error && <p className="text-[11px] mt-1.5" style={{ color: "#FF8A9A" }} data-testid="gamemaker-job-error">{job.error}</p>}
             <div className="flex gap-2 mt-3">
               {job.phase === "completed" && (
-                <button className="px-4 py-1.5 rounded-full font-bold text-xs" style={{ background: GREEN, color: "#0a0a0a" }}
-                  onClick={() => navigate(job.result?.game_id ? `/games?play=${job.result.game_id}` : "/gamemaker")}
-                  data-testid="gamemaker-open-game">▶ Open My Game</button>)}
+                <div>
+                  <button className="px-4 py-1.5 rounded-full font-bold text-xs" style={{ background: GREEN, color: "#0a0a0a" }}
+                    onClick={() => navigate(job.result?.game_id ? `/games?play=${job.result.game_id}` : "/gamemaker")}
+                    data-testid="gamemaker-open-game">▶ Open My Game</button>
+                  <p className="text-[10px] mt-1.5" style={{ color: "rgba(234,242,255,0.5)" }} data-testid="gamemaker-private-preview-note">
+                    Opens your private preview — only you can play it until you publish from Saved Games.</p>
+                </div>)}
               {job.phase === "failed" && (
                 <>
                   <button className="px-4 py-1.5 rounded-full text-xs font-bold" style={{ border: `1px solid ${BLUE}`, color: BLUE }}

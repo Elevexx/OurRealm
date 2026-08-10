@@ -29,7 +29,8 @@ RUNTIMES = ["quiz_adventure", "matching", "sorting", "memory", "rhythm",
             "card_battle", "tower_defense", "match3",
             "rpg", "racing", "farming", "city_builder",
             "roguelike", "tactics", "idle", "visual_novel", "fishing",
-            "turn_based_creature_rpg", "action_rpg_2_5d"]
+            "turn_based_creature_rpg", "action_rpg_2_5d",
+            "shooter", "open_world_rpg"]
 # Catalog entries registered but not yet LLM-generatable. (turn_based_creature_rpg
 # was promoted to a first-class runtime — runtime_turn_based_creature_rpg_v1,
 # tpl_turn_based_creature_rpg_v1 — reusing the vetted rpg engine machinery.)
@@ -45,6 +46,7 @@ RUNTIME_LABELS = {
     "visual_novel": "Visual Novel", "fishing": "Fishing",
     "turn_based_creature_rpg": "Turn-Based Creature RPG",
     "action_rpg_2_5d": "2.5D Action RPG",
+    "shooter": "Shooter", "open_world_rpg": "Open World RPG",
     **SCAFFOLDED_RUNTIMES,
 }
 # Template registry — every catalog family maps to exactly one vetted template.
@@ -97,6 +99,10 @@ GENRE_MAP = [
       "jrpg", "turn-based creature", "turn based creature", "party combat",
       "creature roster", "tame monsters", "wizard rpg", "dragon collecting",
       "collect and battle", "creature battles"), "turn_based_creature_rpg"),
+    (("shooter", "twin stick", "twin-stick", "shoot em up", "shoot 'em up", "shmup", "space shooter",
+      "arena shooter", "top-down shooter", "top down shooter", "blaster", "gun game", "fps", "tps"), "shooter"),
+    (("open world", "open-world", "openworld", "free roam", "free-roam", "seamless world",
+      "sandbox rpg", "explore a huge world", "vast world"), "open_world_rpg"),
     (("rpg", "role playing", "role-playing"), "rpg"),
     (("racing", "race track", "kart", "lap race", "street race", "drift", "grand prix"), "racing"),
     (("farming", "farm sim", "farm simulator", "harvest game", "crop game", "plant and harvest"), "farming"),
@@ -121,7 +127,9 @@ RUNTIME_MECHANICS = {
     "rhythm": ["beat timing", "tap accuracy", "tempo ramp"],
     "puzzle_room": ["riddles", "code locks", "sequence puzzles", "hints", "room progression"],
     "platformer": ["player movement", "jumping", "gravity", "collectibles", "hazards", "goal flag", "touch controls"],
-    "top_down": ["4-direction movement", "collectible cores", "patrol + chaser hazards", "obstacles", "finish portal", "touch controls"],
+    "top_down": ["4-direction movement", "collectible cores", "patrol + chaser hazards", "obstacles",
+                 "checkpoints & respawn", "finish portal", "touch controls",
+                 "verified resource pickups (Coins, Gems, Stars, Keys)"],
     "dodge_collect": ["left/right movement", "falling collectibles", "moving hazards", "increasing speed", "touch/drag controls"],
     "memory": ["card flipping", "pair recall"],
     "matching": ["pair matching"],
@@ -159,6 +167,13 @@ RUNTIME_MECHANICS = {
                                 "inventory", "party system", "creature roster", "turn-based combat",
                                 "capture mechanic", "creature taming", "tame & befriend wild creature",
                                 "XP & leveling", "save/load", "starter creature", "village & region maps"],
+    "shooter": ["free 360° movement", "auto-aim firing at the nearest threat", "enemy waves",
+                "chaser + gunner enemy AI", "enemy projectiles", "hit points & i-frames",
+                "wave counter", "exit portal", "touch controls"],
+    "open_world_rpg": ["seamless scrolling world", "camera follow", "named zones/regions",
+                       "NPC dialogue", "collect & defeat quests", "quest tracker",
+                       "roaming enemy AI (patrol/chase)", "bump combat", "relic collectibles",
+                       "world gate unlock", "checkpoints & respawn", "touch controls"],
 }
 COMPLEXITY_FEATURES = {
     1: ["single mechanic", "one stage", "simple scoring", "win/lose screen"],
@@ -260,6 +275,8 @@ async def audit(actor, action, game_id=None, detail="", cost=None):
 PLAYER_REPS = {
     "dodge_collect": ["hovercraft", "spaceship", "hover_bike", "runner", "rolling_orb"],
     "top_down": ["explorer", "stealth_operative", "robot", "knight", "wizard", "rolling_orb"],
+    "shooter": ["explorer", "robot", "stealth_operative", "knight"],
+    "open_world_rpg": ["explorer", "knight", "wizard", "robot"],
     "platformer": ["platform_hero", "explorer", "knight", "robot", "wizard"],
     "puzzle_room": ["puzzle_cursor"],
     "rhythm": ["rhythm_notes"],
@@ -355,6 +372,14 @@ IDENTITY_BASE = {
     "fishing": ("tap Cast, then tap Hook when the marker is in the green zone", "lakeside timing UI",
                 "pick bait, cast, hook with timing, collect rarer fish with better accuracy",
                 "pick bait → cast → hook on time → log the catch → fill the collection"),
+    "shooter": ("WASD/arrows/touch-drag 360° movement · auto-fire targets the nearest enemy",
+                "fixed overhead arena camera",
+                "move to dodge enemy contact and bullets while your blaster auto-fires; clear each wave",
+                "survive wave → clear enemies → tougher wave → exit portal → next arena"),
+    "open_world_rpg": ("WASD/arrows/touch-drag free roaming; walk up to NPCs to talk; bump enemies to fight",
+                       "smooth scrolling camera over a seamless world",
+                       "roam named zones, take NPC quests, collect relics, defeat roamers, unlock the world gate",
+                       "explore zones → accept quests → collect & fight → complete all quests → world gate"),
 }
 
 
@@ -519,6 +544,8 @@ RUNTIME ROUTING — pick the runtime whose GAMEPLAY matches the request:
 - visual novel/branching story/dating sim -> visual_novel
 - fishing/angling -> fishing
 - exploration/maze/adventure world/top-down movement -> top_down
+- shooter/twin-stick/shmup/blaster/arena shooter -> shooter
+- open world/free roam/seamless world exploration RPG -> open_world_rpg
 - platform/jumping/side-scrolling -> platformer
 - escape room/riddles/locks -> puzzle_room
 - music/beat/tempo -> rhythm
@@ -553,14 +580,19 @@ async def create_estimate(body: dict, current: dict) -> dict:
         llm_rt = None
         plan["runtime"] = None
 
-    # An explicit Game Maker selection is authoritative.
+    # An explicit Game Maker selection is AUTHORITATIVE — it can never be
+    # replaced by prompt inference or a quiz fallback (P0).
     explicit_rt = str(body.get("runtime") or "").strip()
     if explicit_rt:
         if explicit_rt not in RUNTIMES or explicit_rt in SCAFFOLDED_RUNTIMES:
-            raise ValueError(f"Selected runtime is not currently playable: {explicit_rt}")
+            raise ValueError(f"The selected runtime '{explicit_rt}' isn't available for builds right now — "
+                             "your Engagement Resource hold will be returned.")
         routed = explicit_rt
         llm_rt = explicit_rt
         plan["runtime"] = explicit_rt
+        plan["requested_runtime"] = explicit_rt
+        if body.get("animation_style"):
+            plan["animation_style"] = str(body.get("animation_style"))[:60]
 
     subs = [str(s)[:200] for s in (plan.get("substitutions") or []) if s]
     if explicit_rt:
@@ -629,7 +661,7 @@ async def create_estimate(body: dict, current: dict) -> dict:
     plan["stages"] = 1 if complexity == 1 else max(3, min(5, stages)) if complexity == 2 else max(min_stages_for(complexity), stages)
     plan["est_play_minutes"] = str(plan.get("est_play_minutes") or {1: "3-5", 2: "8-15", 3: "15-25"}.get(complexity, "20-45"))
     # honest presentation & visual plan
-    canvas_rt = {"dodge_collect", "top_down", "platformer"}
+    canvas_rt = {"dodge_collect", "top_down", "platformer", "shooter", "open_world_rpg"}
     modes = ("road_3d", "lane_runner", "vertical", "space_flight", "arena_360", "tunnel")
     pm = str(plan.get("presentation_mode") or "")
     if rt == "dodge_collect" and pm not in modes:
@@ -680,7 +712,9 @@ async def create_estimate(body: dict, current: dict) -> dict:
               "tactics": "click unit → tile → target · End Turn",
               "idle": "click to generate, buy generators & upgrades",
               "visual_novel": "click dialogue choices",
-              "fishing": "click Cast, then Hook on the timing bar"}.get(rt2, "mouse / tap driven")
+              "fishing": "click Cast, then Hook on the timing bar",
+              "shooter": "←→↑↓ / WASD move · auto-fire targets the nearest enemy",
+              "open_world_rpg": "←→↑↓ / WASD roam · walk to NPCs to talk · bump enemies to fight"}.get(rt2, "mouse / tap driven")
         tl = {"dodge_collect": "drag steering", "platformer": "left/right/jump buttons", "top_down": "drag joystick",
               "puzzle_room": "tap, type & inspect", "rhythm": "tap the beat pad", "memory": "tap cards",
               "matching": "tap pairs", "sorting": "tap categories", "quiz_adventure": "tap answers",
@@ -691,7 +725,9 @@ async def create_estimate(body: dict, current: dict) -> dict:
               "farming": "tap plots + craft buttons", "city_builder": "tap building, tap tile",
               "roguelike": "tap tiles to step & fight", "tactics": "tap unit, tile, then target",
               "idle": "tap to generate", "visual_novel": "tap choices",
-              "fishing": "tap Cast / Hook"}.get(rt2, "tap")
+              "fishing": "tap Cast / Hook",
+              "shooter": "drag to move · auto-fire",
+              "open_world_rpg": "drag to roam · tap near NPCs"}.get(rt2, "tap")
         return km, tl
     dk, tl = plan_ident_controls(rt, pm)
     sc = str(body.get("supported_controls") or "both").lower()
@@ -741,8 +777,24 @@ dodge_collect: {"mode":"road_3d|lane_runner|vertical|space_flight|arena_360|tunn
   "pickups":{"shield":0.05,"boost":0.05},"formation":"zigzag|line|arc|random"}]}
   (each later stage: higher fall_speed +15-25%, lower spawn_ms, more target_cores; VARY environment,
    hazard_types, formation and optionally mode across stages — do NOT make visually identical stages)
-top_down: {"stages":[{"title":"...","cores":6,"obstacles":3,"player_speed":180,"hazards":[{"type":"patrol","speed":120},{"type":"chaser","speed":80}]}]}
+top_down: {"stages":[{"title":"...","environment":"grid|sunset|crystal|lava|space","cores":6,"obstacles":3,"player_speed":180,"hazards":[{"type":"patrol","speed":120},{"type":"chaser","speed":80}],"pickups":[{"id":"unique-id","x":25,"y":35,"kind":"coin|gem|star|key","resource_amount":1}]}]}
+  (pickups are optional unless the request asks for Engagement Resources; when requested, include distinct
+   server-verifiable pickup ids and only coin/gem/star/key kinds; browser coordinates are percentages 1-99)
   (each later stage: more cores/hazards/obstacles, faster hazards; max 5 hazards)
+shooter: {"stages":[{"title":"...","environment":"grid|space|lava|crystal|sunset","waves":3,
+  "enemies_per_wave":6,"enemy_speed":70,"enemy_hp":2,"gunner_ratio":0.3,"player_hp":6,
+  "fire_rate":0.3,"bullet_speed":420}]}
+  (each later stage: more waves/enemies, faster enemies, higher gunner_ratio; waves 1-6,
+   enemies_per_wave 3-14, enemy_speed 50-160, fire_rate 0.18-0.5)
+open_world_rpg: {"stages":[{"title":"...","environment":"grid|sunset|crystal|lava|space",
+  "world_w":2200,"world_h":1500,
+  "zones":[{"name":"...","x":0,"y":0,"w":1100,"h":1500,"environment":"grid"}],
+  "npcs":[{"name":"...","x":300,"y":300,"dialog":"1-2 sentences",
+           "quest":{"type":"collect|defeat","target":3,"reward_points":40}}],
+  "enemies":[{"type":"raider","x":900,"y":500,"speed":70}],
+  "collectibles":6,"goal":{"x":2000,"y":1300}}]}
+  (2-4 zones tiling the world, 1-3 NPCs with at least ONE quest, 2-8 enemies, collectibles 3-12;
+   all coordinates inside world_w/world_h; later stages: bigger worlds, more quests & enemies)
 platformer: {"stages":[{"title":"...","platforms":[{"x":0,"y":92,"w":100},{"x":10,"y":72,"w":20},...],
   "cores":[{"x":20,"y":64}],"hazards":[{"x":50,"y":88}],"goal":{"x":90,"y":16}}]}
   (x/y/w are 0-100 percent of the play area, y grows downward; first platform must be a wide floor;
@@ -971,6 +1023,75 @@ def validate_spec(spec: dict, complexity: int = 1, expected_runtime: str | None 
         elif r == "top_down":
             if not st.get("cores"):
                 errs.append(f"stage {i+1}: needs cores count")
+            # Optional native ER pickups must be deterministic enough for the
+            # server ledger to verify. Coordinates are stage percentages.
+            pickup_ids = set()
+            for j, pickup in enumerate(st.get("pickups") or []):
+                label = f"stage {i+1} pickup {j+1}"
+                if not isinstance(pickup, dict):
+                    errs.append(f"{label}: must be an object")
+                    continue
+                pickup_id = str(
+                    pickup.get("id") or pickup.get("pickup_id") or ""
+                ).strip()
+                if not pickup_id:
+                    errs.append(f"{label}: needs a stable id")
+                elif pickup_id in pickup_ids:
+                    errs.append(f"{label}: duplicate id '{pickup_id}'")
+                else:
+                    pickup_ids.add(pickup_id)
+                kind = str(
+                    pickup.get("resource_key")
+                    or pickup.get("kind")
+                    or pickup.get("type")
+                    or ""
+                ).strip().lower()
+                if kind not in {
+                    "coin", "coins", "gold_coin", "gem", "gems",
+                    "star", "stars", "key", "keys",
+                }:
+                    errs.append(f"{label}: unsupported resource kind '{kind}'")
+                for axis in ("x", "y"):
+                    raw_coord = pickup.get(axis)
+                    try:
+                        coord = float(raw_coord)
+                    except (TypeError, ValueError):
+                        errs.append(f"{label}: {axis} must be a number from 0 to 100")
+                        continue
+                    if isinstance(raw_coord, bool) or not 0 <= coord <= 100:
+                        errs.append(f"{label}: {axis} must be from 0 to 100")
+                raw_amount = pickup.get(
+                    "resource_amount", pickup.get("amount", 1)
+                )
+                try:
+                    amount = int(raw_amount)
+                    exact_amount = float(raw_amount) == amount
+                except (TypeError, ValueError):
+                    amount, exact_amount = 0, False
+                if (isinstance(raw_amount, bool) or not exact_amount
+                        or not 1 <= amount <= 100):
+                    errs.append(f"{label}: resource amount must be an integer from 1 to 100")
+        elif r == "shooter":
+            waves = int(st.get("waves") or 0)
+            if not 1 <= waves <= 6:
+                errs.append(f"stage {i+1}: waves must be 1-6")
+            epw = int(st.get("enemies_per_wave") or 0)
+            if not 1 <= epw <= 14:
+                errs.append(f"stage {i+1}: enemies_per_wave must be 1-14")
+        elif r == "open_world_rpg":
+            ww, wh = int(st.get("world_w") or 0), int(st.get("world_h") or 0)
+            if not (800 <= ww <= 4000 and 600 <= wh <= 4000):
+                errs.append(f"stage {i+1}: world_w must be 800-4000 and world_h 600-4000")
+            npcs = st.get("npcs") or []
+            if not npcs:
+                errs.append(f"stage {i+1}: needs at least one NPC")
+            if not any(isinstance(n, dict) and (n.get("quest") or {}).get("type") in ("collect", "defeat")
+                       for n in npcs):
+                errs.append(f"stage {i+1}: at least one NPC needs a collect/defeat quest")
+            goal = st.get("goal") or {}
+            if not (isinstance(goal, dict) and 0 <= float(goal.get("x", -1)) <= ww
+                    and 0 <= float(goal.get("y", -1)) <= wh):
+                errs.append(f"stage {i+1}: goal must sit inside the world bounds")
         elif r == "action_rpg_2_5d":
             if st.get("mode") == "side_scroll":
                 if int(st.get("schema_version") or 1) >= 2:

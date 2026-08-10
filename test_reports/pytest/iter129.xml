@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="6" time="4.255" timestamp="2026-08-10T03:17:20.142570+00:00" hostname="agent-env-202f2836-c5ea-402c-ad2b-a32e7c42aed9"><testcase classname="backend.tests.test_iter129_recovery" name="test_catalog_has_new_runtimes" time="1.619" /><testcase classname="backend.tests.test_iter129_recovery" name="test_quote_explicit_runtime_shooter" time="0.122" /><testcase classname="backend.tests.test_iter129_recovery" name="test_quote_provider_estimate_founder_vs_support" time="0.223" /><testcase classname="backend.tests.test_iter129_recovery" name="test_get_game_no_cost_fields_for_member" time="0.115"><failure message="AssertionError: GET game: 403 {&quot;detail&quot;:{&quot;reason&quot;:&quot;platform_restricted&quot;,&quot;message&quot;:&quot;OurRealm Games are in founder testing — access opens soon!&quot;}}&#10;assert 403 == 200&#10; +  where 403 = &lt;Response [403]&gt;.status_code">backend/tests/test_iter129_recovery.py:130: in test_get_game_no_cost_fields_for_member
+    assert r.status_code == 200, f"GET game: {r.status_code} {r.text[:200]}"
+E   AssertionError: GET game: 403 {"detail":{"reason":"platform_restricted","message":"OurRealm Games are in founder testing — access opens soon!"}}
+E   assert 403 == 200
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="backend.tests.test_iter129_recovery" name="test_private_preview_creator_vs_other" time="1.449"><failure message="AssertionError: creator GET: 404 {&quot;detail&quot;:&quot;Game not found&quot;}&#10;assert 404 == 200&#10; +  where 404 = &lt;Response [404]&gt;.status_code">backend/tests/test_iter129_recovery.py:188: in test_private_preview_creator_vs_other
+    assert r1.status_code == 200, f"creator GET: {r1.status_code} {r1.text[:200]}"
+E   AssertionError: creator GET: 404 {"detail":"Game not found"}
+E   assert 404 == 200
+E    +  where 404 = &lt;Response [404]&gt;.status_code</failure></testcase><testcase classname="backend.tests.test_iter129_recovery" name="test_public_preview_member_rewards" time="0.656"><failure message="AssertionError: fire keys collect: 400 {&quot;detail&quot;:&quot;key_id required&quot;}&#10;assert 400 == 200&#10; +  where 400 = &lt;Response [400]&gt;.status_code">backend/tests/test_iter129_recovery.py:247: in test_public_preview_member_rewards
+    assert r_k.status_code == 200, f"fire keys collect: {r_k.status_code} {r_k.text[:200]}"
+E   AssertionError: fire keys collect: 400 {"detail":"key_id required"}
+E   assert 400 == 200
+E    +  where 400 = &lt;Response [400]&gt;.status_code</failure></testcase></testsuite></testsuites>

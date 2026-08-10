@@ -86,9 +86,11 @@ RUNTIME_MECHANICS: dict[str, set] = {
     "sorting": {"grid_puzzle"} | _COMMON,
     "memory": {"grid_puzzle"} | _COMMON,
     "puzzle_room": {"grid_puzzle", "quests_dialogue"} | _COMMON,
-    # Planned — nothing implemented yet; truthfully empty:
-    "open_world_rpg": set(),
-    "shooter": set(),
+    # Implemented June 2026 — truthful capability sets (GameRuntime.jsx sht/owr):
+    "open_world_rpg": {"realtime_movement", "combat", "enemies_ai", "quests_dialogue",
+                       "level_progression"} | _COMMON,
+    "shooter": {"realtime_movement", "combat", "projectiles", "enemies_ai",
+                "level_progression"} | _COMMON,
 }
 
 RUNTIME_ENGINE = {k: "orc_canvas_v1" for k in RUNTIME_MECHANICS}
@@ -107,7 +109,7 @@ RUNTIME_NAMES = {
     "puzzle_room": "Puzzle Room", "open_world_rpg": "Open World RPG", "shooter": "Shooter",
 }
 
-PLANNED_RUNTIMES = {"open_world_rpg", "shooter"}
+PLANNED_RUNTIMES = set()
 
 _UI_BASED = {"quiz_adventure", "matching", "sorting", "memory", "rhythm", "puzzle_room",
              "card_battle", "visual_novel", "fishing", "idle", "farming", "city_builder", "tactics"}

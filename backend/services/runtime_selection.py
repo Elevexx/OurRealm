@@ -89,8 +89,9 @@ _M = {
     "sorting": {"s": {"sorting_categorize"}, "a": set()},
     "memory": {"s": {"memory_matching"}, "a": set()},
     "rhythm": {"s": {"rhythm_timing"}, "a": set()},
-    "top_down": {"s": {"top_down_exploration", "real_time_movement", "stealth", "quests"},
-                 "a": {"action_combat", "survival", "shooting", "boss_battles", "inventory_loot"}},
+    "top_down": {"s": {"top_down_exploration", "real_time_movement", "stealth",
+                         "checkpoints", "resource_pickups", "verified_resource_pickups"},
+                 "a": {"survival"}},
     "platformer": {
     "s": {"platforming", "real_time_movement"},
     "a": {"boss_battles", "puzzle_solving"},

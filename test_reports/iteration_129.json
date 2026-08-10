@@ -1,0 +1,29 @@
+{
+  "summary": "Iter129 verification of production recovery + shooter/OWR launch. 6 targeted backend tests written and PASSING (catalog live shooter+owr, explicit runtime honored, provider_estimate hidden from support admin, cost fields stripped from GET /api/games/{id}, private_preview creator branch + 404 for other member, public_preview signed-in member progress+fire keys collect). Frontend e2e: signed-in member loaded /games hub, opened Neon Breach — iframe rendered title screen, tap started gameplay with canvas + 'Wave 1/2 · Enemies left' + 'Stage 1/3 · Score' HUD, NO game-runtime-error panel and NO SyntaxError in console. Emberwild demo playable as founder — title + canvas + 'Quests: 0/2 · Relics 0 · Roamers down 0' HUD. GameMakerSaved chips show friendly labels ('Published — Live', 'Archived'). Overall PASS.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Play Emberwild (open_world_rpg) as normal member", "issue": "GET /api/games/demo-owr-emberwild-v1 returns 403 platform_restricted for member auditcheckreal (Neon Breach shooter is accessible to same member). Emberwild also NOT visible in /games hub listing for the member. Founder can play. Likely the OWR demo game is missing a per-game access config and falls through the legacy platform gate. Consider setting explicit access={mode:'published'} on demo-owr-emberwild-v1 to match Neon Breach.", "affected_selectors": ["[data-testid=game-runtime-iframe]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter129_recovery.py", "/app/test_reports/pytest/iter129.xml"],
+  "action_items": [
+    "(Minor) Investigate why demo-owr-emberwild-v1 is not visible/playable for normal signed-in members (auditcheckreal) — likely missing per-game access config causing platform gate to reject. Shooter demo works fine for the same member.",
+    "(Optional) Also ensure Emberwild appears in /games hub for members after fixing access."
+  ],
+  "critical_code_review_comments": [
+    "routers/games.py play_game() correctly excludes est_cost/actual_cost/estimates via projection unconditionally — verified.",
+    "Private preview branch uses $or on created_by/creator_id — good coverage.",
+    "gamemaker/quote strips provider_estimate for non-founder (support admin) as expected."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter129_recovery.py"],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "~90% (only Emberwild member-access anomaly)"},
+  "test_credentials": "stealth/Password1$, support/Password1$, auditcheckreal/Password1$, tftwo/pass1234",
+  "seed_data_creation": "Temp game doc 'test-priv-<hex>' inserted+deleted within test_private_preview_creator_vs_other. No residue.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test file /app/backend/tests/test_iter129_recovery.py is reusable regression for cost hiding, private preview branch, explicit runtime, catalog, public_preview member rewards. Frontend playback confirmed for both shooter and OWR via founder; member-side OWR access is the sole open item.",
+  "rca of the issue": "Emberwild 403 for member: routers/games.py falls into legacy platform_restricted gate when game document lacks a dict access field. Shooter demo works because it has access.mode=published. Fix: set access.mode='published' on demo-owr-emberwild-v1 via admin PUT or db update."
+}

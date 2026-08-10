@@ -28,7 +28,9 @@ RUNTIME_FAMILY_SEED = {
     "endless_runner": _fam("Endless Runner", "dodge_collect", "generatable",
                            ["endless", "runner", "dodge", "collect", "speed ramp", "lanes", "obstacles"]),
     "top_down_adventure": _fam("Top-Down Adventure", "top_down", "generatable",
-                               ["exploration", "top-down", "adventure", "collect", "patrol enemies", "keys", "portal"]),
+                               ["4-direction movement", "top-down", "collectible cores", "obstacles",
+                                "patrol enemies", "chaser enemies", "checkpoints", "keys", "portal",
+                                "verified Coins/Gems/Stars/Keys pickups", "touch controls"]),
     "turn_based_creature_rpg": _fam(
         "Turn-Based Creature RPG", "turn_based_creature_rpg", "generatable",
         ["turn-based battles", "creatures", "party", "capture", "taming", "monster collecting",
