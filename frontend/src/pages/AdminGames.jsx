@@ -682,6 +682,17 @@ export default function AdminGames() {
                 <button className="or-btn text-xs" disabled={busy} onClick={() => act(detail.id, "archive")} data-testid="game-archive">
                   <Archive size={12} /> Archive</button>
               )}
+              <button className="or-btn text-xs" style={{ color: "#FFD34D" }} disabled={busy} data-testid="game-production-repair"
+                onClick={async () => {
+                  const k = window.prompt("Production Repair — snapshots the spec, strips broken art, fixes portal/key links.\nTrim to how many stages? (blank = keep all)", "");
+                  if (k === null) return;
+                  try {
+                    const r = await apiClient.post(`/admin/games/${detail.id}/production-repair`, { keep_stages: k ? Number(k) : 0 });
+                    toast.success((r.data.actions || []).join(" · ") || "Repair complete");
+                    loadDetail(detail.id); load();
+                  } catch (e) { toast.error(e?.response?.data?.detail || "Repair failed"); }
+                }}>
+                <RefreshCcw size={12} /> Production Repair</button>
             </div>
           </div>
 

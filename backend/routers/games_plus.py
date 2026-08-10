@@ -708,6 +708,97 @@ async def trim_stages(game_id: str, body: dict, current: CurrentUser):
             "rollback": "spec snapshot stored in gm_spec_history"}
 
 
+@admin2.post("/{game_id}/production-repair")
+async def production_repair(game_id: str, body: dict, current: CurrentUser):
+    """One-click founder repair (built for Skybound Chef, works on any game):
+    snapshots the spec for rollback, trims to keep_stages preserving the boss
+    finale, strips wired assets that fail validation (baked checkerboards /
+    missing alpha on sprites) so the renderer falls back to visible procedural
+    art, and audits key/portal relationships."""
+    require_founder(current)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    spec = g.get("spec") or {}
+    report = {"game_id": game_id, "title": g.get("title"), "actions": [], "warnings": []}
+    await db.gm_spec_history.insert_one({
+        "game_id": game_id, "spec": spec, "reason": "production_repair",
+        "by": current.get("username"), "at": _iso()})
+    report["rollback"] = "full spec snapshot stored in gm_spec_history (reason=production_repair)"
+
+    stages = spec.get("stages") or []
+    keep = int(body.get("keep_stages") or 0)
+    if keep and 1 <= keep < len(stages):
+        tail = stages[keep - 1:]
+        final = next((s for s in reversed(tail) if s.get("boss")), tail[-1])
+        stages = stages[:keep - 1] + [final]
+        spec["stages"] = stages
+        report["actions"].append(f"trimmed {len(g['spec'].get('stages') or [])} -> {keep} stages, "
+                                 f"final challenge kept (boss={bool(final.get('boss'))})")
+    elif keep:
+        report["warnings"].append(f"keep_stages={keep} skipped (game has {len(stages)} stages)")
+
+    import urllib.request
+    from services.asset_validator import checkerboard_score, transparent_fraction
+
+    def _fetch(u):
+        return urllib.request.urlopen(u, timeout=20).read()
+    removed = []
+    for slot, a in list((spec.get("assets") or {}).items()):
+        url = (a or {}).get("url") or ""
+        src = "http://localhost:8001" + url if url.startswith("/") else url
+        try:
+            raw = await asyncio.to_thread(_fetch, src)
+        except Exception:  # noqa: BLE001
+            report["warnings"].append(f"asset '{slot}' unreachable during validation — left in place")
+            continue
+        cb = checkerboard_score(raw)
+        tf = transparent_fraction(raw)
+        is_sprite = slot.endswith("_sprite") or slot in ("effect_fx", "tileset")
+        if cb >= 0.55:
+            removed.append((slot, f"baked checkerboard pattern (score {round(cb, 2)})"))
+        elif is_sprite and tf <= 0.02:
+            removed.append((slot, "sprite has no usable transparency (missing alpha)"))
+        elif is_sprite and tf >= 0.985:
+            removed.append((slot, "sprite is effectively empty (all transparent)"))
+    for slot, why in removed:
+        spec["assets"].pop(slot, None)
+        report["actions"].append(f"removed asset '{slot}': {why} — renderer falls back to visible procedural art")
+
+    key_ids = set()
+    for s in stages:
+        for k in (s.get("keys") or []):
+            if k.get("key_id"):
+                key_ids.add(k["key_id"])
+    for i, s in enumerate(stages):
+        for p in (s.get("portals") or []):
+            req = p.get("required_key_id")
+            if req and req not in key_ids:
+                p["required_key_id"] = None
+                report["actions"].append(
+                    f"stage {i + 1}: portal '{p.get('portal_id') or p.get('label') or '?'}' required missing "
+                    f"key '{req}' — requirement cleared so the game stays completable")
+
+    await db.games.update_one({"id": game_id}, {"$set": {"spec": spec, "updated_at": _iso()}})
+    await gs.audit(current, "game_production_repair", game_id,
+                   detail="; ".join(report["actions"]) or "no changes needed")
+    if not report["actions"]:
+        report["actions"].append("no repairs were needed — spec already clean")
+    return {"ok": True, **report}
+
+
+@admin2.post("/{game_id}/production-repair/rollback")
+async def production_repair_rollback(game_id: str, current: CurrentUser):
+    require_founder(current)
+    snap = await db.gm_spec_history.find_one(
+        {"game_id": game_id, "reason": "production_repair"}, {"_id": 0}, sort=[("at", -1)])
+    if not snap:
+        raise HTTPException(status_code=404, detail="No production-repair snapshot found for this game")
+    await db.games.update_one({"id": game_id}, {"$set": {"spec": snap["spec"], "updated_at": _iso()}})
+    await gs.audit(current, "game_production_repair_rollback", game_id, detail=f"restored snapshot from {snap.get('at')}")
+    return {"ok": True, "restored_from": snap.get("at")}
+
+
 @admin2.post("/{game_id}/cover-remove")
 async def cover_remove(game_id: str, current: CurrentUser):
     require_founder(current)

@@ -1,0 +1,39 @@
+{
+  "summary": "Iter131 PASS. Backend: 12/12 pytest tests green — new production-repair suite (3 tests, temp game trim+opaque-sprite removal + rollback + non-founder 403 + demo-shooter no-op preserving all 3 assets) plus retained iter130 honesty/trim (4) and shooter_owr_launch (5). Rollback restored 12-stage spec and enemy_sprite asset. Demo shooter kept player_sprite/background/enemy_sprite after {} repair (returns 'no repairs were needed'). Snapshot cleanup verified. Frontend: signed-in auditcheckreal played Neon Breach shooter — canvas 894x422 with real hex/tech background art (not plain grid), player sprite visible, 8-dir movement confirmed via __DBG_POS (rt=shooter): initial (447,211) -> ArrowRight (560.98,211) x-only, -> ArrowRight+ArrowDown (643.79,293.81) both axes, HUD 'Wave 1/2 · Enemies left: 1 · Stage 1/3 · Score 30' visible, zero non-401 console errors. Emberwild OWR played — painterly terrain art rendered, Keeper Lyra NPC sprite visible, __DBG_POS (rt=open_world_rpg) initial cx=0,cy=489 -> after 3x diagonal keystrokes cx=0,cy=267.48 (camera y follows), player pos moved (120,700)->(341,478). Fullscreen [data-testid=game-fullscreen-toggle] toggle: iframe width 896 -> 1920 -> 896 (enter/exit works). Mobile Emberwild 390x844: rotate-prompt found INSIDE iframe with 'Continue in Portrait' dismiss button ('🔄 Rotate for Wide View — this game plays best in landscape.'), canvas width 364 -> 818 after rotate to 844x390 (ratio 2.247x > 1.5x threshold) WITHOUT page reload, HUD 'Stage 1/2 · Score 0' preserved. Jungle Ruins (arpgXY) mobile: canvas grew 364 -> 818, all 6 xy-btn-* (left/right/jump/attack/dash/cast) exist and were fully in-viewport in portrait, canvas remained rendered in landscape, no crash, hero + HUD ('Stage 1/2', health bars) preserved.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Emberwild NPC say-bar", "issue": "Automation could not detect a say-bar element after walking toward Lyra (~3 diagonal steps only got player to (341,478); Lyra ~ (320,360)). Say-bar likely renders on canvas rather than as DOM node, or requires closer proximity. Visual behavior not verified but no error was thrown.", "affected_selectors": ["[data-testid*='say-bar']"]}
+    ],
+    "design_issues": [
+      {"screen": "Emberwild + Jungle Ruins mobile landscape", "issues": ["Rotate-prompt overlay ('Continue in Portrait') remains visible AFTER rotating to 844x390 landscape — expected to auto-dismiss when orientation is already landscape. Minor UX polish item."]},
+      {"screen": "Jungle Ruins landscape 844x390", "issues": ["xy-btn-* mobile controls exist (6/6) and were 6/6 in-viewport in portrait, but after rotating to landscape 844x390 all 6 buttons sit below the fold because parent-page header/description/HUD consume the small 390px height. Recommend either compressing parent chrome in landscape or auto-triggering fullscreen container when a mobile viewport enters landscape."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter131_production_repair.py",
+    "/app/backend/tests/test_iter130_honesty_and_trim.py",
+    "/app/backend/tests/test_shooter_owr_launch.py",
+    "/app/test_reports/pytest/iter131.xml"
+  ],
+  "action_items": [
+    "MINOR (design): hide the in-iframe rotate-prompt when window.matchMedia('(orientation: landscape)').matches so it doesn't sit on top of a landscape canvas.",
+    "MINOR (layout): in mobile landscape (viewport height < ~500), auto-collapse parent chrome or auto-enter the fullscreen container so xy-btn-* mobile controls remain inside the viewport."
+  ],
+  "critical_code_review_comments": [
+    "routers/games_plus.py production_repair (lines 711-787) correctly: (a) snapshots the FULL spec into gm_spec_history before mutating, (b) preserves the boss as final stage on trim, (c) uses asset_validator.transparent_fraction / checkerboard_score to purge fake sprites, (d) audits actions, (e) returns human-readable action list including 'no repairs were needed' for clean specs. Good defensive design.",
+    "routers/games_plus.py production_repair_rollback (lines 790-799) reads the most-recent reason=production_repair snapshot, restores full spec, and audits. Correctly non-founder gated.",
+    "GameRuntime.jsx orientation contract still works: canvas doubles width on rotate without page reload (2.247x measured for BOTH Emberwild owr and arpgXY Jungle Ruins), state (Score/Stage/hearts) preserved.",
+    "The rotate-prompt component lives inside the sandboxed iframe body — Playwright must use content_frame() to reach it. Testing docs remain accurate.",
+    "OBSERVATION: rotate-prompt does not self-hide on orientation=landscape — see design_issues."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter131_production_repair.py"],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% for required checks; 2 minor design polish items"},
+  "test_credentials": "founder stealth/Password1$, member auditcheckreal/Password1$ — both worked cleanly",
+  "seed_data_creation": "test_iter131_production_repair.py creates a temp 12-stage game 'TEST-repair-<hex>' with an opaque enemy_sprite JPG and deletes it + snapshots in fixture teardown. Also deletes the gm_spec_history snapshot that the demo-shooter no-op repair generates. All cleanup verified successful.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New reusable pytest at /app/backend/tests/test_iter131_production_repair.py exercises production-repair + rollback end-to-end (including a demo-shooter no-op that verifies asset persistence — this is the guardrail against the earlier deadlocked-repair-strips-shooter-assets incident). Playwright pattern unchanged: iframe [data-testid=game-runtime-iframe] + content_frame(); rotate-prompt lives INSIDE the frame; fullscreen toggle testid on parent. Emberwild/Neon Breach expose window.__DBG_POS (rt='open_world_rpg' / 'shooter'); arpgXY (Jungle Ruins) does NOT expose __DBG_POS — use canvas presence + HUD text as liveness signals instead. Signin form testids: signin-email / signin-password / signin-submit (works reliably on both mobile and desktop).",
+  "rca of the issue": "N/A — no bugs blocking the milestone. Two minor mobile-landscape polish items surfaced (rotate-prompt persistence + xy-btn viewport clipping) and are noted as design_issues, not blockers."
+}

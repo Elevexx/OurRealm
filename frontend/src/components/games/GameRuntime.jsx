@@ -360,7 +360,7 @@ function paintHeroSide(g,x,y,w,h,face,wph,grounded,rep,inv,t){g.save();g.transla
  g.restore()}
 function paintHeroTop(g,x,y,r,ang,rep,inv,t){g.save();g.translate(x,y);g.rotate(ang);
  if(aimg('player_sprite')){g.restore();if(inv>0)drawFxAt(g,x,y,r*3.4,t);
-  drawSpr(g,'player_sprite',x,y,r*2.6,ang+1.5708,t);return}
+  drawSpr(g,'player_sprite',x,y,r*3.6,ang+1.5708,t);return}
  const cA=inv>0?ACC:PCOL[0],cB=PCOL[1]||GLOW;
  if(rep==='stealth_operative'){g.fillStyle='rgba(46,230,255,0.06)';g.beginPath();g.moveTo(0,0);g.arc(0,0,r*4,-0.55,0.55);g.closePath();g.fill()}
  g.shadowColor=GLOW;g.shadowBlur=12;
@@ -387,8 +387,8 @@ function paintCore(g,x,y,r,t){g.save();g.translate(x,y);
  g.strokeStyle=GLOW;g.lineWidth=1.5;g.globalAlpha=0.8;g.rotate(t*2);
  g.beginPath();g.ellipse(0,0,pr*1.35,pr*0.5,0,0,7);g.stroke();g.globalAlpha=1;g.restore()}
 function paintHazard(g,x,y,r,kind,t,px){
- if(kind==='boss'&&drawSpr(g,'boss_sprite',x,y,r*3.4,0,t))return;
- if(drawSpr(g,'enemy_sprite',x,y,r*2.7,0,t))return;
+ if(kind==='boss'&&drawSpr(g,'boss_sprite',x,y,r*4.2,0,t))return;
+ if(drawSpr(g,'enemy_sprite',x,y,r*3.4,0,t))return;
  g.save();g.translate(x,y);g.shadowColor=HAZC;g.shadowBlur=12;
  if(kind==='barrier'){const w2=r*3.2;
   const bg2=g.createLinearGradient(-w2,0,w2,0);bg2.addColorStop(0,'rgba(255,61,90,0)');bg2.addColorStop(0.5,HAZC);bg2.addColorStop(1,'rgba(255,61,90,0)');
@@ -476,6 +476,12 @@ const BG={
   for(let y=off;y<H;y+=40){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}
   for(let x=0;x<W;x+=40){g.beginPath();g.moveTo(x,0);g.lineTo(x,H);g.stroke()}}};
 function drawEnv(g,W,H,env,t,sp){(BG[env]||BG.grid)(g,W,H,t,sp)}
+function drawBg(g,W,H,env,t,sp){const im=aimg('background');
+ if(im){const ar=im.naturalWidth/im.naturalHeight,car=W/H;let dw,dh;
+  if(ar>car){dh=H;dw=H*ar}else{dw=W;dh=W/ar}
+  g.drawImage(im,(W-dw)/2,(H-dh)/2,dw,dh);
+  g.fillStyle='rgba(4,8,20,0.30)';g.fillRect(0,0,W,H);return}
+ drawEnv(g,W,H,env,t,sp)}
 
 /* ── DODGE & COLLECT — 6 presentation modes ─────────────────────────── */
 function dc(st){const c=mkCanvas(0),g=c.getContext('2d');
@@ -3043,7 +3049,7 @@ function sht(st){const c=mkCanvas(0),g=c.getContext('2d');
   if(portal&&Math.hypot(portal.x-P.x,portal.y-P.y)<26){over=true;burst(P.x,P.y,'#C26BFF',24,160);
    setTimeout(()=>fb(true,(st.title||'Arena')+' cleared!'+unlockMsg(),next),300);return}
   g.save();if(shake>0.4&&!CTRL.reduced_motion){g.translate((Math.random()-0.5)*shake,(Math.random()-0.5)*shake);shake*=0.86}
-  drawEnv(g,c.width,c.height,env,t,0.25);
+  drawBg(g,c.width,c.height,env,t,0.25);
   g.strokeStyle=GLOW+'40';g.strokeRect(1,1,c.width-2,c.height-2);
   B.forEach(b=>{g.fillStyle=GLOW;g.shadowColor=GLOW;g.shadowBlur=8;g.beginPath();g.arc(b.x,b.y,3.4,0,7);g.fill();g.shadowBlur=0});
   EB.forEach(b=>{g.fillStyle=HAZC;g.shadowColor=HAZC;g.shadowBlur=8;g.beginPath();g.arc(b.x,b.y,3.6,0,7);g.fill();g.shadowBlur=0});
@@ -3126,17 +3132,17 @@ function owr(st){const c=mkCanvas(0),g=c.getContext('2d');
     setTimeout(()=>fb(true,(st.title||'World')+' complete!'+unlockMsg(),next),300);return}
    if(hintT<=0){hintT=3;sfx('wrong');say2('\uD83D\uDD12 The world gate is sealed — '+questsLeft()+' quest(s) remain.')}}
   g.save();if(shake>0.4&&!CTRL.reduced_motion){g.translate((Math.random()-0.5)*shake,(Math.random()-0.5)*shake);shake*=0.86}
-  drawEnv(g,c.width,c.height,env,t,0.22);
+  drawBg(g,c.width,c.height,env,t,0.22);
   g.save();g.translate(-camX,-camY);
   zones.forEach((z,i)=>{g.fillStyle=['#2EE6FF','#F4A73B','#C26BFF','#10E670'][i%4]+'0d';g.fillRect(z.x,z.y,z.w,z.h);
    g.strokeStyle=GLOW+'26';g.strokeRect(z.x,z.y,z.w,z.h);
    g.fillStyle=T.text+'66';g.font='bold 13px system-ui';g.fillText(z.name.toUpperCase(),z.x+12,z.y+22)});
   g.strokeStyle=GLOW+'55';g.lineWidth=2;g.strokeRect(2,2,WW-4,WH-4);g.lineWidth=1;
   REL.forEach(r2=>{if(!r2.got)paintCore(g,r2.x,r2.y,8,t)});
-  npcs.forEach(n=>{g.fillStyle='#10E670';g.shadowColor='#10E670';g.shadowBlur=10;
+  npcs.forEach(n=>{if(!drawSpr(g,'npc_sprite',n.x,n.y,46,0,t)){g.fillStyle='#10E670';g.shadowColor='#10E670';g.shadowBlur=10;
    g.beginPath();g.arc(n.x,n.y,10,0,7);g.fill();g.shadowBlur=0;
-   g.fillStyle='#071018';g.font='bold 10px system-ui';g.textAlign='center';g.fillText('!',n.x,n.y+3.5);
-   g.fillStyle=T.text;g.font='10px system-ui';g.fillText(n.name,n.x,n.y-16);
+   g.fillStyle='#071018';g.font='bold 10px system-ui';g.textAlign='center';g.fillText('!',n.x,n.y+3.5)}
+   g.fillStyle=T.text;g.font='10px system-ui';g.textAlign='center';g.fillText(n.name,n.x,n.y-22);
    if(n.quest)g.fillText(n.quest.done?'\u2713 done':(n.quest.accepted?'quest active':'has a quest'),n.x,n.y+24);
    g.textAlign='left'});
   EN.forEach(e=>{if(!e.alive)return;paintHazard(g,e.x,e.y,11,'seeker',t,P.x);

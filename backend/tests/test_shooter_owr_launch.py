@@ -3,6 +3,9 @@ import os
 
 import pytest
 import requests
+from dotenv import load_dotenv
+
+load_dotenv("/app/backend/.env")
 
 BASE = os.environ.get("TEST_BASE", "http://localhost:8001")
 
