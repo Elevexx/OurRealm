@@ -124,12 +124,110 @@ async def reset_settings_draft(actor: dict) -> dict:
 
 async def get_signup_mode() -> dict:
     row = await db.platform_settings.find_one({"id": "signup"}, {"_id": 0}) or {}
+    row = await _apply_due_schedule(row)
     mode = row.get("mode")
     if mode not in SIGNUP_MODES:
         mode = "waitlist" if row.get("allow_new_signups") is False else "open"
     return {"mode": mode, "reason": row.get("mode_reason"),
             "changed_at": row.get("mode_changed_at"),
-            "changed_by": row.get("mode_changed_by")}
+            "changed_by": row.get("mode_changed_by"),
+            "schedule": row.get("schedule")}
+
+
+async def _apply_due_schedule(row: dict) -> dict:
+    """Lazily apply a due scheduled mode change (checked on every read)."""
+    sch = row.get("schedule")
+    if not isinstance(sch, dict):
+        return row
+    now = _now()
+    changed = False
+    try:
+        start_at = datetime.fromisoformat(sch["at"]) if sch.get("at") else None
+        end_at = datetime.fromisoformat(sch["end_at"]) if sch.get("end_at") else None
+    except Exception:  # noqa: BLE001
+        await db.platform_settings.update_one({"id": "signup"}, {"$unset": {"schedule": ""}})
+        row.pop("schedule", None)
+        return row
+    if start_at and now >= start_at and not sch.get("started"):
+        row["mode"] = sch["mode"]
+        row["allow_new_signups"] = sch["mode"] == "open"
+        row["mode_reason"] = sch.get("reason") or f"Scheduled change ({sch.get('tz_label') or 'UTC'})"
+        row["mode_changed_at"] = _now_iso()
+        row["mode_changed_by"] = f"schedule:{sch.get('created_by') or 'founder'}"
+        sch["started"] = True
+        changed = True
+        await _audit("waitlist.signup_mode_changed", sch.get("created_by") or "schedule",
+                     mode=sch["mode"], reason="scheduled activation", scheduled=True)
+    if sch.get("started") and (not end_at or now >= end_at):
+        if end_at and sch.get("end_mode") in SIGNUP_MODES:
+            row["mode"] = sch["end_mode"]
+            row["allow_new_signups"] = sch["end_mode"] == "open"
+            row["mode_reason"] = sch.get("reason") or "Scheduled end"
+            row["mode_changed_at"] = _now_iso()
+            row["mode_changed_by"] = f"schedule:{sch.get('created_by') or 'founder'}"
+            await _audit("waitlist.signup_mode_changed", sch.get("created_by") or "schedule",
+                         mode=sch["end_mode"], reason="scheduled deactivation", scheduled=True)
+        row.pop("schedule", None)
+        changed = True
+        await db.platform_settings.update_one(
+            {"id": "signup"},
+            {"$set": {k: row.get(k) for k in ("mode", "allow_new_signups", "mode_reason",
+                                              "mode_changed_at", "mode_changed_by")},
+             "$unset": {"schedule": ""}}, upsert=True)
+        return row
+    if changed:
+        await db.platform_settings.update_one(
+            {"id": "signup"},
+            {"$set": {**{k: row.get(k) for k in ("mode", "allow_new_signups", "mode_reason",
+                                                 "mode_changed_at", "mode_changed_by")},
+                      "schedule": sch}}, upsert=True)
+    return row
+
+
+async def set_signup_schedule(actor: dict, payload: dict) -> dict:
+    mode = payload.get("mode")
+    if mode not in SIGNUP_MODES:
+        raise ValueError("Unknown scheduled mode")
+    try:
+        at = datetime.fromisoformat(str(payload.get("at")))
+        if at.tzinfo is None:
+            raise ValueError
+    except Exception:  # noqa: BLE001
+        raise ValueError("Schedule start must be an ISO datetime with timezone")
+    end_at = None
+    if payload.get("end_at"):
+        try:
+            end_at = datetime.fromisoformat(str(payload["end_at"]))
+            if end_at.tzinfo is None or end_at <= at:
+                raise ValueError
+        except Exception:  # noqa: BLE001
+            raise ValueError("Schedule end must be a timezone-aware ISO datetime after the start")
+    end_mode = payload.get("end_mode")
+    if end_at and end_mode not in SIGNUP_MODES:
+        raise ValueError("A valid end mode is required when an end time is set")
+    sch = {"mode": mode, "at": at.isoformat(),
+           "end_at": end_at.isoformat() if end_at else None,
+           "end_mode": end_mode if end_at else None,
+           "tz_label": _clean(payload.get("tz_label"), 60) or "UTC",
+           "reason": _clean(payload.get("reason"), 400) or None,
+           "created_by": actor.get("username"), "created_at": _now_iso(), "started": False}
+    await db.platform_settings.update_one({"id": "signup"},
+                                          {"$set": {"id": "signup", "schedule": sch}}, upsert=True)
+    await _audit("waitlist.signup_schedule_set", actor["id"], schedule=sch)
+    return sch
+
+
+async def cancel_signup_schedule(actor: dict) -> None:
+    await db.platform_settings.update_one({"id": "signup"}, {"$unset": {"schedule": ""}})
+    await _audit("waitlist.signup_schedule_cancelled", actor["id"])
+
+
+async def signup_mode_history(limit: int = 30) -> list:
+    rows = await db.audit_log.find(
+        {"action": {"$in": ["waitlist.signup_mode_changed", "waitlist.signup_schedule_set",
+                            "waitlist.signup_schedule_cancelled"]}},
+        {"_id": 0}).sort("at", -1).to_list(limit)
+    return rows
 
 
 async def set_signup_mode(actor: dict, mode: str, reason: str) -> dict:

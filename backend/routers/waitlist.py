@@ -332,3 +332,34 @@ async def set_mode(payload: ModePayload, current: CurrentUser):
         return {"signup_mode": await wl.set_signup_mode(current, payload.mode, payload.reason)}
     except ValueError as e:
         _err(e)
+
+
+class SchedulePayload(BaseModel):
+    mode: str
+    at: str
+    end_at: str = ""
+    end_mode: str = ""
+    tz_label: str = "UTC"
+    reason: str = ""
+
+
+@admin_router.post("/signup-schedule")
+async def set_schedule(payload: SchedulePayload, current: CurrentUser):
+    require_founder(current)
+    try:
+        return {"schedule": await wl.set_signup_schedule(current, payload.dict())}
+    except ValueError as e:
+        _err(e)
+
+
+@admin_router.delete("/signup-schedule")
+async def cancel_schedule(current: CurrentUser):
+    require_founder(current)
+    await wl.cancel_signup_schedule(current)
+    return {"ok": True}
+
+
+@admin_router.get("/signup-mode/history")
+async def mode_history(current: CurrentUser):
+    require_support_access(current)
+    return {"history": await wl.signup_mode_history()}

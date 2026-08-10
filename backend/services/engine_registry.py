@@ -398,10 +398,11 @@ async def new_use_allowed(runtime_key: str) -> tuple[bool, str]:
     if item.get("disabled"):
         return False, f"Runtime '{runtime_key}' is disabled for new games"
     live = await db.gm_registry_versions.find_one(
-        {"family": "runtime", "key": runtime_key, "status": "live"}, {"_id": 0, "version": 1})
+        {"family": "runtime", "key": runtime_key, "status": {"$in": ["live", "beta"]}},
+        {"_id": 0, "version": 1, "status": 1})
     if not live:
-        return False, f"Runtime '{runtime_key}' has no Live version — new games are blocked"
-    return True, f"live v{live['version']}"
+        return False, f"Runtime '{runtime_key}' has no Live/Beta version — new games are blocked"
+    return True, f"{live['status']} v{live['version']}"
 
 
 # ─── Inventory / migration map / pinning (insert-only, reversible) ───────

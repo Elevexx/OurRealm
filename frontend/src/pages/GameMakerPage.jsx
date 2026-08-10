@@ -51,6 +51,9 @@ const Card = ({ n, name, desc, img, color, selected, status, onClick, testid }) 
       {status === "planned" && (
         <span className="absolute top-1.5 right-1.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase"
           style={{ background: "rgba(4,8,18,0.85)", color: ORANGE, border: `1px solid ${ORANGE}` }}>Coming Soon</span>)}
+      {status === "beta" && (
+        <span className="absolute top-1.5 right-1.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase"
+          style={{ background: "rgba(4,8,18,0.85)", color: "#2EE6FF", border: "1px solid #2EE6FF" }}>Beta</span>)}
       {selected && (
         <span className="absolute inset-0 flex items-center justify-center" style={{ background: `${color}22` }}>
           <CheckCircle2 size={30} style={{ color, filter: `drop-shadow(0 0 8px ${color})` }} />
@@ -180,7 +183,11 @@ export default function GameMakerPage() {
             <Lock size={22} className="mx-auto mb-2" style={{ color: ORANGE }} />
             <p className="text-sm font-bold mb-1">Founder Preview</p>
             <p className="text-[11px]" style={{ color: "rgba(234,242,255,0.65)" }}>
-              {cat?.access?.message || "OurRealm Game Maker is opening soon — sign in to check your access."}</p>
+              {cat?.access?.message || (user ? "OurRealm Game Maker is opening soon — check back for your access."
+                : "Browse freely — create a free OurRealm account to build your own games.")}</p>
+            {!user && (
+              <button className="px-4 py-1.5 rounded-full font-bold text-xs mr-2" style={{ background: GREEN, color: "#0a0a0a" }}
+                onClick={() => navigate("/signup?next=%2Fgamemaker")} data-testid="gamemaker-signup-btn">Create Account</button>)}
             {!user && (
               <button className="mt-3 px-5 py-2 rounded-full font-bold text-xs" style={{ background: GREEN, color: "#0a0a0a" }}
                 onClick={() => navigate("/signin?next=%2Fgamemaker")} data-testid="gamemaker-signin-btn">Sign In</button>)}
@@ -210,7 +217,7 @@ export default function GameMakerPage() {
             {(cat?.runtimes || fallbackRuntimes).map((r, i) => (
               <Card key={r.key} n={i + 1} name={r.name} desc={r.description} img={IMG[r.key]} color={GREEN}
                 status={r.status} selected={runtime === r.key}
-                onClick={() => { if (locked) return; if (r.status !== "live") { toast.info(`${r.name} is coming soon`); return; } setRuntime(r.key); }}
+                onClick={() => { if (locked) return; if (r.status !== "live" && r.status !== "beta") { toast.info(`${r.name} is coming soon`); return; } setRuntime(r.key); }}
                 testid={`gm-runtime-${r.key}`} />
             ))}
           </div>
@@ -424,13 +431,13 @@ const fallbackStyles = [
 ];
 const fallbackRuntimes = [
   { key: "action_rpg_2_5d", name: "Action RPG 2.5D", description: "Real-time combat, spells, quests, bosses, loot & more.", status: "live" },
-  { key: "turn_based_creature_rpg", name: "Turn-Based Creature RPG", description: "Capture creatures, train, evolve & battle in turn-based adventures.", status: "live" },
-  { key: "platformer", name: "Platformer", description: "Classic side-scrolling platform action.", status: "live" },
-  { key: "top_down_adventure", name: "Top-Down Adventure", description: "Explore, solve puzzles, fight enemies, collect items & more.", status: "live" },
-  { key: "open_world_rpg", name: "Open World RPG", description: "Large seamless worlds, quests, factions, dynamic events & more.", status: "planned" },
-  { key: "card_battle", name: "Card Battle", description: "Strategic card battles with decks, mana & abilities.", status: "live" },
-  { key: "tower_defense", name: "Tower Defense", description: "Build towers, defend your base, upgrade & survive waves.", status: "live" },
-  { key: "match3", name: "Match-3 Puzzle", description: "Swap, match, combo & achieve high scores.", status: "live" },
-  { key: "racing", name: "Racing", description: "High-speed races, tracks, upgrades & challenges.", status: "live" },
-  { key: "shooter", name: "Shooter", description: "FPS or TPS combat, weapons, AI, missions & more.", status: "planned" },
+  { key: "turn_based_creature_rpg", name: "Turn-Based Creature RPG", description: "Capture creatures, train, evolve & battle in turn-based adventures.", status: "beta" },
+  { key: "platformer", name: "Platformer", description: "Classic side-scrolling platform action.", status: "beta" },
+  { key: "top_down_adventure", name: "Top-Down Adventure", description: "Explore, solve puzzles, fight enemies, collect items & more.", status: "beta" },
+  { key: "open_world_rpg", name: "Open World RPG", description: "Seamless scrolling worlds, zones, NPC quests & world gates.", status: "beta" },
+  { key: "card_battle", name: "Card Battle", description: "Strategic card battles with decks, mana & abilities.", status: "beta" },
+  { key: "tower_defense", name: "Tower Defense", description: "Build towers, defend your base, upgrade & survive waves.", status: "beta" },
+  { key: "match3", name: "Match-3 Puzzle", description: "Swap, match, combo & achieve high scores.", status: "beta" },
+  { key: "racing", name: "Racing", description: "High-speed races, tracks, upgrades & challenges.", status: "beta" },
+  { key: "shooter", name: "Shooter", description: "Top-down arena combat — waves, enemy AI & auto-fire.", status: "beta" },
 ];

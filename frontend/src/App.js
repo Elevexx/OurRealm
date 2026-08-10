@@ -141,7 +141,8 @@ function ShellRoute({ children }) {
   }
   if (!user) {
     const dest = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/waitlist?next=${dest}`} replace />;
+    // unauthenticated visitors keep their destination and land on signup
+    return <Navigate to={`/signup?next=${dest}`} replace />;
   }
   return <Layout><FoundingVipPopup /><LegalNoticeGate />{children}</Layout>;
 }
@@ -184,7 +185,7 @@ function RootRedirect() {
   const raw = searchParams.get("next") || searchParams.get("to") || "";
   const next = raw.startsWith("/") && !raw.startsWith("//") ? raw : "";
   if (user) return <Navigate to={next || "/feed"} replace />;
-  return <Navigate to={next ? `/waitlist?next=${encodeURIComponent(next)}` : "/waitlist"} replace />;
+  return <Navigate to={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"} replace />;
 }
 
 // Pending-deletion users get the restore prompt instead of any
@@ -260,6 +261,8 @@ function App() {
             <Route path="/admin/orai/dashboard" element={<Navigate to="/admin/orai" replace />} />
             <Route path="/admin/orion" element={<Navigate to="/admin/orai" replace />} />
             <Route path="/gamemaker" element={<GameMakerRoute />} />
+            <Route path="/GameMaker" element={<Navigate to="/gamemaker" replace />} />
+            <Route path="/GAMEMAKER" element={<Navigate to="/gamemaker" replace />} />
             <Route path="/gamemaker/saved" element={<ShellRoute><Lazy><GameMakerSaved /></Lazy></ShellRoute>} />
             <Route path="/admin/gamemaker" element={<ShellRoute><Lazy><GameMakerAdmin /></Lazy></ShellRoute>} />
             <Route path="/admin/gamemaker/studio" element={<ShellRoute><Lazy><OraiProjects /></Lazy></ShellRoute>} />

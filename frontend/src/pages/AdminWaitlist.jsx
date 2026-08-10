@@ -267,6 +267,116 @@ function ModeTab() {
           toast.success("Signup mode updated"); load();
         } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
       }} data-testid="mode-apply"><Lock size={12} />&nbsp;Apply Mode</button>
+      <ScheduleBox schedule={data.signup_mode.schedule} reload={load} />
+      <HistoryBox />
+      <div className="flex gap-2 pt-1">
+        <a className="or-btn or-btn-ghost text-xs" href="/signup" target="_blank" rel="noreferrer"
+          data-testid="mode-preview-signup">Preview /signup</a>
+        <a className="or-btn or-btn-ghost text-xs" href="/waitlist" target="_blank" rel="noreferrer"
+          data-testid="mode-preview-waitlist">Preview /waitlist</a>
+      </div>
+    </div>
+  );
+}
+
+const TZS = ["UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+             "Europe/London", "Europe/Paris", "Asia/Tokyo", "Australia/Sydney"];
+
+function ScheduleBox({ schedule, reload }) {
+  const [mode, setMode] = useState("waitlist");
+  const [at, setAt] = useState("");
+  const [endAt, setEndAt] = useState("");
+  const [endMode, setEndMode] = useState("open");
+  const [tz, setTz] = useState("UTC");
+  const toIso = (local) => {
+    if (!local) return null;
+    try {
+      const [d, t] = local.split("T");
+      const [y, mo, da] = d.split("-").map(Number);
+      const [h, mi] = t.split(":").map(Number);
+      const guess = new Date(Date.UTC(y, mo - 1, da, h, mi));
+      const inTz = new Date(guess.toLocaleString("en-US", { timeZone: tz }));
+      const offset = guess.getTime() - inTz.getTime();
+      return new Date(guess.getTime() + offset).toISOString();
+    } catch { return null; }
+  };
+  return (
+    <div className="rounded-lg p-3 space-y-2" style={{ border: "1px solid var(--border-col)" }}
+      data-testid="signup-schedule-box">
+      <b className="text-xs">Scheduled activation / deactivation</b>
+      {schedule ? (
+        <div className="text-[11px]" data-testid="signup-schedule-current">
+          Scheduled: switch to <b style={{ color: gold }}>{schedule.mode}</b> at {schedule.at}
+          {schedule.end_at && <> · then <b>{schedule.end_mode}</b> at {schedule.end_at}</>}
+          {" "}({schedule.tz_label}) · by {schedule.created_by}
+          <button type="button" className="or-btn or-btn-ghost text-[10px] ml-2" data-testid="signup-schedule-cancel"
+            onClick={async () => {
+              await apiClient.delete("/waitlist/admin/signup-schedule");
+              toast.success("Schedule cancelled"); reload();
+            }}>Cancel schedule</button>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-2 items-center text-[11px]">
+            <span>Switch to</span>
+            <select className="or-input text-xs w-auto" value={mode} onChange={(e) => setMode(e.target.value)}
+              data-testid="schedule-mode">
+              {["open", "waitlist", "invite_only", "existing_only", "maintenance"].map((m) =>
+                <option key={m} value={m}>{m}</option>)}
+            </select>
+            <span>at</span>
+            <input type="datetime-local" className="or-input text-xs w-auto" value={at}
+              onChange={(e) => setAt(e.target.value)} data-testid="schedule-at" />
+            <select className="or-input text-xs w-auto" value={tz} onChange={(e) => setTz(e.target.value)}
+              data-testid="schedule-tz">
+              {TZS.map((z) => <option key={z} value={z}>{z}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-wrap gap-2 items-center text-[11px]">
+            <span>Optional end: revert to</span>
+            <select className="or-input text-xs w-auto" value={endMode} onChange={(e) => setEndMode(e.target.value)}
+              data-testid="schedule-end-mode">
+              {["open", "waitlist", "invite_only", "existing_only", "maintenance"].map((m) =>
+                <option key={m} value={m}>{m}</option>)}
+            </select>
+            <input type="datetime-local" className="or-input text-xs w-auto" value={endAt}
+              onChange={(e) => setEndAt(e.target.value)} data-testid="schedule-end-at" />
+          </div>
+          <button type="button" className="or-btn text-xs" data-testid="schedule-save" onClick={async () => {
+            const iso = toIso(at);
+            if (!iso) { toast.error("Pick a start date & time"); return; }
+            try {
+              await apiClient.post("/waitlist/admin/signup-schedule", {
+                mode, at: iso, end_at: toIso(endAt) || "", end_mode: endAt ? endMode : "",
+                tz_label: tz });
+              toast.success("Schedule saved"); reload();
+            } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
+          }}>Save schedule</button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function HistoryBox() {
+  const [rows, setRows] = useState(null);
+  useEffect(() => {
+    apiClient.get("/waitlist/admin/signup-mode/history")
+      .then((r) => setRows(r.data.history || [])).catch(() => setRows([]));
+  }, []);
+  if (!rows) return null;
+  return (
+    <div className="rounded-lg p-3" style={{ border: "1px solid var(--border-col)" }}
+      data-testid="signup-mode-history">
+      <b className="text-xs block mb-1">Audit history</b>
+      {rows.length === 0 && <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>No changes recorded yet.</p>}
+      {rows.slice(0, 12).map((r, i) => (
+        <div key={i} className="text-[10.5px] py-0.5" style={{ color: "var(--text-muted)" }}>
+          {r.at?.slice(0, 16).replace("T", " ")} · {r.action.replace("waitlist.", "")}
+          {r.mode && <> → <b style={{ color: gold }}>{r.mode}</b></>}
+          {r.reason && <> · {r.reason}</>}
+        </div>
+      ))}
     </div>
   );
 }

@@ -679,6 +679,35 @@ async def cover_upload(game_id: str, body: dict, current: CurrentUser):
     return {"ok": True, "cover_url": url}
 
 
+@admin2.post("/{game_id}/trim-stages")
+async def trim_stages(game_id: str, body: dict, current: CurrentUser):
+    """Founder repair: reduce a game to exactly keep_count stages while
+    preserving the final challenge (the tail stage with a boss survives).
+    Previous spec is snapshotted for rollback."""
+    require_founder(current)
+    keep = int(body.get("keep_count") or 0)
+    g = await db.games.find_one({"id": game_id}, {"_id": 0, "id": 1, "title": 1, "spec": 1})
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    stages = (g.get("spec") or {}).get("stages") or []
+    if not 1 <= keep < len(stages):
+        raise HTTPException(status_code=400,
+                            detail=f"keep_count must be between 1 and {len(stages) - 1} (game has {len(stages)} stages)")
+    tail = stages[keep - 1:]
+    final = next((s for s in reversed(tail) if s.get("boss")), tail[-1])
+    new_stages = stages[:keep - 1] + [final]
+    await db.gm_spec_history.insert_one({
+        "game_id": game_id, "spec": g["spec"], "reason": "trim_stages",
+        "from_stages": len(stages), "to_stages": keep,
+        "by": current.get("username"), "at": _iso()})
+    await db.games.update_one({"id": game_id}, {"$set": {"spec.stages": new_stages, "updated_at": _iso()}})
+    from services import game_studio as gs
+    await gs.audit(current, "game_trim_stages", game_id,
+                   detail=f"{len(stages)} -> {keep} stages, final challenge kept: {bool(final.get('boss'))}")
+    return {"ok": True, "stages": keep, "final_has_boss": bool(final.get("boss")),
+            "rollback": "spec snapshot stored in gm_spec_history"}
+
+
 @admin2.post("/{game_id}/cover-remove")
 async def cover_remove(game_id: str, current: CurrentUser):
     require_founder(current)

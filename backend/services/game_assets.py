@@ -435,6 +435,28 @@ async def run_job(job_id: str, actor: dict):
                         if qa2["score"] >= qa["score"]:
                             raw, model, qa = raw2, model2, qa2
                 rec = await image_store.save_bytes(raw, actor["id"], declared_mime="image/png")
+                from services.asset_validator import validate_asset
+                v_errs = await asyncio.to_thread(validate_asset, raw, sl["key"], SLOTS[sl["key"]])
+                if v_errs and spent + 2 * unit <= job["cost_ceiling"] + 1e-9:
+                    # one corrective retry — never wire defective art into gameplay
+                    fix_p = (f"{sl['prompt']}, CRITICAL: fully painted artwork with NO transparency "
+                             f"checkerboard pattern, no gray checker grid, no empty regions, {q['suffix']}")
+                    async with GEN_SEMAPHORE:
+                        raw3, model3 = await generate_orai_image(fix_p[:980])
+                    if SLOTS[sl["key"]]["transparent"]:
+                        raw3 = await asyncio.to_thread(_chroma_key, raw3)
+                    else:
+                        raw3 = await asyncio.to_thread(_square_pad, raw3, 1536)
+                    spent = round(spent + unit, 3)
+                    v2 = await asyncio.to_thread(validate_asset, raw3, sl["key"], SLOTS[sl["key"]])
+                    if len(v2) <= len(v_errs):
+                        raw, model, v_errs = raw3, model3, v2
+                        rec = await image_store.save_bytes(raw, actor["id"], declared_mime="image/png")
+                if v_errs:
+                    await db.game_asset_jobs.update_one({"id": job_id, "slots.key": sl["key"]}, {"$set": {
+                        "slots.$.status": "failed_validation",
+                        "slots.$.error": "; ".join(v_errs)[:300], "spent": spent, "heartbeat": _iso()}})
+                    continue
                 meta = _asset_meta(sl["key"], rec.width, rec.height)
                 if qa is not None:
                     meta["anim_qa"] = qa

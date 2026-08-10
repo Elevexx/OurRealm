@@ -95,7 +95,11 @@ async def main(publish: bool):
     from services import game_studio as gs
     from services import engine_registry as er
 
-    founder = await db.users.find_one({"username": FOUNDER_USERNAME}, {"_id": 0, "id": 1, "username": 1})
+    founder = await db.users.find_one({"username": FOUNDER_USERNAME}, {"_id": 0, "id": 1, "username": 1}) \
+        or await db.users.find_one({"admin_role": "founder"}, {"_id": 0, "id": 1, "username": 1})
+    if not founder:
+        print("no founder account found — skipping demo seeding")
+        return 1
     now = _iso()
 
     for gid, spec, rt, note in DEMOS:
@@ -138,9 +142,9 @@ async def main(publish: bool):
     # ── Registry: truthful v2 + contract test + promote to live ──────────
     for rt in ("shooter", "open_world_rpg"):
         live = await db.gm_registry_versions.find_one(
-            {"family": "runtime", "key": rt, "status": "live"}, {"_id": 0, "version": 1})
+            {"family": "runtime", "key": rt, "status": {"$in": ["live", "beta"]}}, {"_id": 0, "version": 1, "status": 1})
         if live:
-            print(f"runtime {rt} already live at v{live['version']}")
+            print(f"runtime {rt} already {live['status']} at v{live['version']}")
             continue
         draft = await db.gm_registry_versions.find_one(
             {"family": "runtime", "key": rt, "status": "draft"}, {"_id": 0, "version": 1},
@@ -170,12 +174,12 @@ async def main(publish: bool):
             print(f"   {'✓' if chk['passed'] else '✗'} {chk['check']}: {chk['detail']}")
         if not result["passed"]:
             return 1
-        for status in ("internal", "beta", "live"):
+        for status in ("internal", "beta"):
             await er.promote("runtime", rt, v, status, founder["username"])
         await db.gm_registry_items.update_one(
             {"family": "runtime", "key": rt},
-            {"$set": {"description": "Implemented in orc_canvas_v1"}})
-        print(f"{rt} v{v} promoted to LIVE")
+            {"$set": {"description": "Implemented in orc_canvas_v1 — Beta pending full visual pass"}})
+        print(f"{rt} v{v} promoted to BETA (visual-quality pass required before Live)")
     return 0
 
 

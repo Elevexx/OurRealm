@@ -105,7 +105,7 @@ Readiness 100/100. Remaining backlog unchanged: public course sharing, invite-pi
 - arpg engine upgrades: animation frame-strips for hero/boss (anim slot generation), PHASE 2+ boss content tuning, minimap, spell bar with multiple spells
 
 ## GAME MAKER RUNTIME REBUILD — status after 2026-06-10 session (Founder Directive Phases 0-12)
-DONE: all 5 P0s (iframe SyntaxError recovery+heartbeat+error panel, explicit-runtime authoritative, creator private preview+status tracker, public-preview member rewards, founder-only $ estimates); 10/10 primary runtimes LIVE with passing contract tests (shooter + open_world_rpg newly implemented); published original demos demo-shooter-neon-breach-v1 + demo-owr-emberwild-v1 with original covers; 7 copyright-risk GameMaker tiles replaced with wholly original art.
+DONE: all 5 P0s; 10 primary runtimes implemented (1 Live: action_rpg_2_5d; 9 Beta pending visual pass per founder visual-quality rule); Beta demos published (Neon Breach, Emberwild); 7 copyright-risk tiles replaced.
 REMAINING (priority order per founder):
 - P1: Per-style rendering verification for all 10 animation styles across runtimes; deeper behavioral browser tests (saves, ER pickups per runtime, mobile).
 - P1: Additional runtime families (Multiplayer Online / MMO): build contracts, schemas, registry entry, networking boundary, greybox foundation, mark "Coming Soon" — NEVER "Live" while incomplete.

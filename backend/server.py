@@ -656,6 +656,11 @@ async def _safe_startup():
     except Exception as e:
         logger.error(f"[gamemaker] job/resource startup failed: {e}")
     try:
+        from services import phase13_migrations as _p13
+        await _p13.run()
+    except Exception as e:
+        logger.error(f"[phase13] migrations failed: {e}")
+    try:
         from services.game_promotion import startup_import
         asyncio.create_task(startup_import())
     except Exception as e:

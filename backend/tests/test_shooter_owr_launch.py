@@ -14,13 +14,16 @@ def founder_h():
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 
-def test_catalog_lists_both_live(founder_h):
+def test_catalog_lists_both(founder_h):
     r = requests.get(f"{BASE}/api/gamemaker/catalog", headers=founder_h, timeout=10)
     assert r.status_code == 200
     rts = {x["key"]: x["status"] for x in r.json()["runtimes"]}
-    assert rts["shooter"] == "live"
-    assert rts["open_world_rpg"] == "live"
-    assert all(v == "live" for v in rts.values()), f"non-live primary runtime: {rts}"
+    # Truthful statuses: greybox-presentation demos stay beta; only the
+    # asset-driven 2.5D Action RPG has passed the full visual-quality review.
+    assert rts["shooter"] == "beta"
+    assert rts["open_world_rpg"] == "beta"
+    assert rts["action_rpg_2_5d"] == "live"
+    assert all(v in ("live", "beta") for v in rts.values()), f"unexpected status: {rts}"
 
 
 def test_validate_spec_rules():
@@ -51,10 +54,6 @@ def test_registry_live_and_truthful(founder_h):
     r = requests.get(f"{BASE}/api/admin/gamemaker/registry/overview",
                      headers=founder_h, timeout=10)
     assert r.status_code == 200
-    for fam in r.json().get("families", {}).get("runtime", []):
-        if fam["key"] in ("shooter", "open_world_rpg"):
-            assert any(v["status"] == "live" for v in fam.get("versions", [])) or \
-                fam.get("live_version") is not None or True
 
 
 def test_demo_games_published_and_playable(founder_h):

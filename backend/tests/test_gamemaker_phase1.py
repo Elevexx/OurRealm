@@ -93,11 +93,11 @@ class TestCatalog:
         assert len(styles) == 10, f"styles count={len(styles)}"
         assert len(runtimes) == 10, f"runtimes count={len(runtimes)}"
         by_id = {r.get("id") or r.get("key") or r.get("slug"): r for r in runtimes}
-        # June 2026: all ten primary runtimes are live (shooter + open_world_rpg shipped)
+        # Truthful statuses: implemented runtimes are live or beta, never fake-planned
         for key in ("open_world_rpg", "shooter"):
             rt = by_id.get(key)
             assert rt is not None, f"missing runtime {key}: keys={list(by_id.keys())}"
-            assert rt.get("status") == "live", f"{key} status={rt.get('status')}"
+            assert rt.get("status") in ("live", "beta"), f"{key} status={rt.get('status')}"
 
     def test_member_denied(self, member):
         r = member.get(f"{API}/gamemaker/catalog", timeout=15)

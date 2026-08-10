@@ -480,3 +480,22 @@ AFTER NEXT DEPLOY: production boots → startup_import inserts all 27 published 
 - testing_agent iteration_129: PASS except Emberwild access gap (fixed + re-verified by curl). Gameplay screenshots verified for both new runtimes.
 ### API charges (founder-requested reporting)
 - Estimated: ~$0.30-0.45 for 10 medium-quality images. Actual: 10 images via Emergent LLM key (gemini-3.1-flash-image); no LLM text generation invoked (builds mocked/deterministic).
+
+## 2026-06-10 (later) — FOUNDER CORRECTION: honesty pass + renderer repairs (Phase 13 QUEUED, not abandoned)
+### Truthful statuses (visual-quality rule: Live requires demo passing full visual review)
+- Catalog + GameMakerPage + registry: ONLY action_rpg_2_5d remains "live"; other 9 primaries now "beta" (selectable, BETA chip, quotes/builds still allowed for live+beta). shooter/owr registry versions demoted live→beta w/ audit. launch_shooter_owr.py now promotes to beta only. engine_registry.new_use_allowed accepts live|beta.
+### Renderer repairs (fixes Skybound Chef in prod on redeploy — game doc NOT in preview DB, scanned all 279 collections)
+- arpgSS ui_frame border-image: removed `fill` (ornate art no longer painted behind HUD text), dark readable backdrop added.
+- Removed duplicate canvas 'LEVEL x/y · TITLE' text (DOM hud already shows stage).
+- Mobile controls: scale factor KSC=innerWidth/440 (buttons/gaps shrink on narrow phones, overflow:hidden, safe-area padding) — no more cropped jump button.
+- Player visibility: soft locator glow under hero when sprite assets are used.
+### 8-direction movement — PROVEN + normalized
+- td/sht/owr keyboard diagonals now normalized (arpg top-down already was). Added window.__DBG_POS test hook (td/sht/owr).
+- Browser proof (Emberwild): all 4 cardinals 140px, all 4 diagonals 140px, ratio 1.000; camera follows both axes with correct clamping.
+### Skybound repair tooling (for production use after deploy)
+- POST /api/admin/games/{id}/trim-stages {keep_count:11} — founder-only, keeps the boss stage as the final stage, snapshots old spec to gm_spec_history for rollback. Tested: 12→11 with boss preserved.
+- services/asset_validator.py: rejects baked transparency checkerboards (synthetic checkers score 1.0, real art 0.28, threshold 0.55), empty/transparent-hole art, sheet-vs-background misuse. Wired into game_assets.run_job with one corrective regeneration retry; failing slots marked failed_validation and never wired into gameplay.
+### 3D honesty
+- No WebGL/GLB rendering exists anywhere; nothing claims "real 3D". Registry first_person/multiplayer caps false. Real-3D remains a truthful backlog item.
+### Tests: phase2 suite updated + green (13 passed); registry test versions purged; sandbox games archived.
+### PHASE 13 STATUS: 13A DONE (waitlist off one-time migration + schedule/timezone/cancel/audit/preview admin tool + /signup redirects + /GameMaker→/gamemaker + guest browse CTA + prod demo seeding via phase13_migrations startup). 13B was IN PROGRESS (analysis done: user pinned to old level config_version keeps deleted tasks; RECALC_TTL_SECONDS=120; planned: follow latest published version, /me?force after claim, focus/poll refresh). 13C-13J NOT STARTED — resume automatically after founder reviews this correction.

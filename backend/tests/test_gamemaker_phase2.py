@@ -53,15 +53,16 @@ def test_overview_seeded(founder):
     assert len(ov["schema"]) >= 28
     rt = {x["key"]: x for x in ov["runtime"]}
     assert rt["platformer"]["versions"][0]["status"] == "live"
-    # June 2026: shooter + open_world_rpg were implemented and promoted to live
-    assert any(v["status"] == "live" for v in rt["open_world_rpg"]["versions"])
-    assert any(v["status"] == "live" for v in rt["shooter"]["versions"])
+    # Founder visual-quality directive: shooter/open_world_rpg run in BETA
+    # until their demos pass the full visual pass (never registry-only Live).
+    assert any(v["status"] in ("live", "beta") for v in rt["open_world_rpg"]["versions"])
+    assert any(v["status"] in ("live", "beta") for v in rt["shooter"]["versions"])
 
 
 def test_implemented_runtime_capabilities_truthful(founder):
     d = founder.get(f"{REG}/runtime/shooter", timeout=15).json()
-    live = next(v for v in d["versions"] if v["status"] == "live")
-    caps = live["definition"]["capabilities"]
+    ver = next(v for v in d["versions"] if v["status"] in ("live", "beta"))
+    caps = ver["definition"]["capabilities"]
     assert caps["realtime_movement"] and caps["projectiles"] and caps["enemies_ai"]
     assert not caps["multiplayer"] and not caps["first_person"], \
         "shooter must not claim unimplemented capabilities"
@@ -142,8 +143,10 @@ def test_clone_edit_contract_promote_lifecycle(founder):
     assert j["status"] == "completed" and j["result"]["passed"], j["result"]
     # now promotes
     assert founder.post(f"{REG}/runtime/platformer/versions/{v}/promote", json={"to": "beta"}, timeout=15).status_code == 200
-    # sequential enforcement: draft can't jump to live
-    r = founder.post(f"{REG}/runtime/shooter/versions/1/promote", json={"to": "live"}, timeout=15)
+    # sequential enforcement: a fresh draft can't jump straight to live
+    r = founder.post(f"{REG}/runtime/platformer/versions", json={}, timeout=15)
+    v2 = r.json()["version"]["version"]
+    r = founder.post(f"{REG}/runtime/platformer/versions/{v2}/promote", json={"to": "live"}, timeout=15)
     assert r.status_code == 400
 
 
@@ -229,7 +232,7 @@ def test_sandbox_demo_implemented_runtime_succeeds(founder):
     # shooter is implemented + has a published reference game now — the
     # sandbox demo must clone the REAL working spec and complete.
     live = founder.get(f"{REG}/runtime/shooter", timeout=15).json()
-    v = next(x["version"] for x in live["versions"] if x["status"] == "live")
+    v = next(x["version"] for x in live["versions"] if x["status"] in ("live", "beta"))
     r = founder.post(f"{REG}/runtime/shooter/versions/{v}/sandbox-demo", json={}, timeout=15)
     j = _wait_job(founder, r.json()["job_id"], timeout=60)
     assert j["status"] == "completed", j.get("error")

@@ -42,16 +42,19 @@ STYLES = [
 ]
 # Public catalog — 10 runtimes; status is truthful (planned = not yet generatable)
 RUNTIMES = [
+    # Status truth (founder directive): "live" requires a published demo passing the
+    # full visual-quality review incl. asset integration. Mechanically complete
+    # runtimes whose demos are still canvas/greybox presentation stay "beta".
     ("action_rpg_2_5d", "Action RPG 2.5D", "Real-time combat, spells, quests, bosses, loot & more.", "action_rpg_2_5d", "live"),
-    ("turn_based_creature_rpg", "Turn-Based Creature RPG", "Capture creatures, train, evolve & battle in turn-based adventures.", "turn_based_creature_rpg", "live"),
-    ("platformer", "Platformer", "Classic side-scrolling platform action.", "platformer", "live"),
-    ("top_down_adventure", "Top-Down Adventure", "Explore, solve puzzles, fight enemies, collect items & more.", "top_down", "live"),
-    ("open_world_rpg", "Open World RPG", "Seamless scrolling worlds, zones, NPC quests, roaming enemies & world gates.", "open_world_rpg", "live"),
-    ("card_battle", "Card Battle", "Strategic card battles with decks, mana & abilities.", "card_battle", "live"),
-    ("tower_defense", "Tower Defense", "Build towers, defend your base, upgrade & survive waves.", "tower_defense", "live"),
-    ("match3", "Match-3 Puzzle", "Swap, match, combo & achieve high scores.", "match3", "live"),
-    ("racing", "Racing", "High-speed races, tracks, upgrades & challenges.", "racing", "live"),
-    ("shooter", "Shooter", "Top-down arena combat — waves, enemy AI, auto-fire blasters & portals.", "shooter", "live"),
+    ("turn_based_creature_rpg", "Turn-Based Creature RPG", "Capture creatures, train, evolve & battle in turn-based adventures.", "turn_based_creature_rpg", "beta"),
+    ("platformer", "Platformer", "Classic side-scrolling platform action.", "platformer", "beta"),
+    ("top_down_adventure", "Top-Down Adventure", "Explore, solve puzzles, fight enemies, collect items & more.", "top_down", "beta"),
+    ("open_world_rpg", "Open World RPG", "Seamless scrolling worlds, zones, NPC quests, roaming enemies & world gates.", "open_world_rpg", "beta"),
+    ("card_battle", "Card Battle", "Strategic card battles with decks, mana & abilities.", "card_battle", "beta"),
+    ("tower_defense", "Tower Defense", "Build towers, defend your base, upgrade & survive waves.", "tower_defense", "beta"),
+    ("match3", "Match-3 Puzzle", "Swap, match, combo & achieve high scores.", "match3", "beta"),
+    ("racing", "Racing", "High-speed races, tracks, upgrades & challenges.", "racing", "beta"),
+    ("shooter", "Shooter", "Top-down arena combat — waves, enemy AI, auto-fire blasters & portals.", "shooter", "beta"),
 ]
 
 
@@ -194,9 +197,9 @@ async def create_game(body: dict, current: CurrentUser):
     rt = next((r for r in RUNTIMES if r[0] == rt_choice), None)
     if not rt:
         raise HTTPException(status_code=400, detail="Pick one of the 10 game runtimes")
-    if rt[4] != "live" or not rt[3]:
+    if rt[4] not in ("live", "beta") or not rt[3]:
         raise HTTPException(status_code=400, detail=f"{rt[1]} is coming soon — it isn't generatable yet. "
-                                                    f"Pick a Live runtime for now.")
+                                                    f"Pick a Live or Beta runtime for now.")
     from services import engine_registry as _er
     allowed, reason = await _er.new_use_allowed(rt[3])
     if not allowed:
@@ -486,8 +489,8 @@ async def make_quote(body: dict, current: CurrentUser):
         raise HTTPException(status_code=403, detail=f"ORAi policy: {pol['reason']}")
     idea = str(body.get("idea") or "").strip()
     rt = next((r for r in RUNTIMES if r[0] == str(body.get("runtime") or "")), None)
-    if not idea or not rt or rt[4] != "live":
-        raise HTTPException(status_code=400, detail="Pick a Live runtime, a style and describe your game")
+    if not idea or not rt or rt[4] not in ("live", "beta"):
+        raise HTTPException(status_code=400, detail="Pick a Live or Beta runtime, a style and describe your game")
     if str(body.get("style") or "") not in {k for k, _, _ in STYLES}:
         raise HTTPException(status_code=400, detail="Pick one of the 10 animation styles")
     from services import engine_registry as _er
