@@ -458,6 +458,10 @@ async def global_auth_guard(request, call_next):
             # headers, so logged-out visitors must be able to load game covers
             or (request.method == "GET" and (path.startswith("/api/media/images/")
                                              or path.startswith("/api/images/")))
+            # game 3D models (GLB): GLTFLoader/browser fetches send no auth
+            # headers — read-only GET/HEAD serving, filenames are checksums
+            or (request.method in ("GET", "HEAD")
+                and path.startswith("/api/media/models/"))
             # resource visual icons (UI decoration only, never sensitive):
             # <img> tags send no auth headers — read-only GET/HEAD allowed
             or (request.method in ("GET", "HEAD")

@@ -1,0 +1,190 @@
+{
+ "models": {
+  "pantry_imp": {
+   "workflow": "image",
+   "task_id": "019fedb1-72e8-70f0-9623-759242643a56",
+   "slot": "model_guardian",
+   "replayed": false,
+   "status": "SUCCEEDED",
+   "credits": 30,
+   "master_url": "/api/media/models/bea1cfb92526acad7e67fb556a4e20a5.glb",
+   "master_bytes": 33238844,
+   "runtime_url": "/api/media/models/965951d21a4486f82709d1e200abf9f3.glb",
+   "runtime_bytes": 25650660,
+   "validation": {
+    "version": 2,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 4,
+    "animations": []
+   }
+  },
+  "maeve": {
+   "workflow": "multi_image",
+   "task_id": "019fedb1-49c5-717b-a764-eefaab5c6a0f",
+   "slot": "player_model",
+   "replayed": false,
+   "status": "SUCCEEDED",
+   "credits": 30,
+   "master_url": "/api/media/models/c168cb597956c585457685885d3e2c4a.glb",
+   "master_bytes": 32955204,
+   "runtime_url": "/api/media/models/e60993a38b56b97aec3394acb7bf4954.glb",
+   "runtime_bytes": 25825428,
+   "validation": {
+    "version": 2,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 4,
+    "animations": []
+   }
+  },
+  "npc_chef_base": {
+   "workflow": "image",
+   "task_id": "019fedb1-cb3c-7b17-a7a7-a9051215adc0",
+   "slot": "model_npc",
+   "replayed": false,
+   "status": "SUCCEEDED",
+   "credits": 30,
+   "master_url": "/api/media/models/0db48a8ea27e147ae45f548f10dde473.glb",
+   "master_bytes": 27840800,
+   "runtime_url": "/api/media/models/c9c2190e0943f0f7bee4a6e6339f311f.glb",
+   "runtime_bytes": 21676676,
+   "validation": {
+    "version": 2,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 4,
+    "animations": []
+   }
+  },
+  "mask_guardian": {
+   "workflow": "image",
+   "task_id": "019fedb1-9cac-7b13-843c-ea195e7aace4",
+   "slot": "model_boss",
+   "replayed": false,
+   "status": "SUCCEEDED",
+   "credits": 30,
+   "master_url": "/api/media/models/e8da6beb3e68d9701f7c171a210f2985.glb",
+   "master_bytes": 37289964,
+   "runtime_url": "/api/media/models/2558dbbe431c499beb856aba1cb1f786.glb",
+   "runtime_bytes": 29708356,
+   "validation": {
+    "version": 2,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 4,
+    "animations": []
+   }
+  },
+  "cooking_station": {
+   "workflow": "text_refine",
+   "task_id": "019fedb3-5466-7b55-94b1-7cc8951157df",
+   "slot": "model_station",
+   "stage": "refine",
+   "prompt": "A round copper cauldron cooking station over a small stone fire bowl with glowing embers, wooden ladle resting on the rim, bright Irish fantasy kitchen prop",
+   "replayed": false,
+   "status": "SUCCEEDED",
+   "credits": 10,
+   "master_url": "/api/media/models/0b6b417467c2c89eb601e127934331b3.glb",
+   "master_bytes": 25907732,
+   "runtime_url": "/api/media/models/7836d5ea8bde3266ccb7843922ee3e7e.glb",
+   "runtime_bytes": 18836596,
+   "validation": {
+    "version": 2,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 4,
+    "animations": []
+   }
+  },
+  "hazard_brazier": {
+   "workflow": "text_refine",
+   "task_id": "019fedb3-50ca-713d-9d0d-ad1667ec07a3",
+   "slot": "model_hazard",
+   "stage": "refine",
+   "prompt": "A freestanding copper ember brazier on a wrought iron tripod stand, glowing coals, Celtic knot engravings on the bowl rim, fantasy game prop, bright warm firelit look",
+   "replayed": false,
+   "status": "SUCCEEDED",
+   "credits": 10,
+   "master_url": "/api/media/models/c8f9e5c941e88b61e0fc8fcd30def50c.glb",
+   "master_bytes": 27192324,
+   "runtime_url": "/api/media/models/79fe9a5c7c725219c4fa903d8d855e1d.glb",
+   "runtime_bytes": 20912832,
+   "validation": {
+    "version": 2,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 4,
+    "animations": []
+   }
+  },
+  "portal_hearth": {
+   "workflow": "text_refine",
+   "task_id": "019fedb3-51d0-7007-9e3b-b626b52c9e72",
+   "slot": "model_portal",
+   "stage": "refine",
+   "prompt": "A circular standing portal gate of carved emerald-green stone and copper, Celtic knotwork arch, upright ring shape with open center, glowing rune inlays, fantasy game prop",
+   "replayed": false,
+   "status": "SUCCEEDED",
+   "credits": 10,
+   "master_url": "/api/media/models/0a285bdc38774f49a82c8505e01c2402.glb",
+   "master_bytes": 29098192,
+   "runtime_url": "/api/media/models/3cb28d6e798404183caee009cd934a73.glb",
+   "runtime_bytes": 21798948,
+   "validation": {
+    "version": 2,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 4,
+    "animations": []
+   }
+  },
+  "env_kit_counter": {
+   "workflow": "text_refine",
+   "task_id": "019fedb3-5364-71ef-8dca-384e3f093955",
+   "slot": "model_env_kit",
+   "stage": "refine",
+   "prompt": "A sturdy rustic Irish kitchen counter table of warm oak wood with copper pots and a folded teal cloth on top, Celtic carvings on the legs, bright fantasy game prop",
+   "replayed": false,
+   "status": "SUCCEEDED",
+   "credits": 10,
+   "master_url": "/api/media/models/917c4f0c6f386ffd9ce20b1207a07f3a.glb",
+   "master_bytes": 29225076,
+   "runtime_url": "/api/media/models/e0b0241aa6a05bdf73ff7677a5122f56.glb",
+   "runtime_bytes": 22314612,
+   "validation": {
+    "version": 2,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 4,
+    "animations": []
+   }
+  },
+  "ingredient_set": {
+   "workflow": "text_refine",
+   "task_id": "019fedb3-ce17-7147-bc60-a72161619634",
+   "slot": "model_ingredient",
+   "stage": "refine",
+   "prompt": "A small bundle of fresh green herbs tied with twine next to a tiny round cheese wheel, stylized bright fantasy cooking ingredient pickup, single compact cluster",
+   "replayed": false,
+   "status": "SUCCEEDED",
+   "credits": 10,
+   "master_url": "/api/media/models/bf242bf4a670062c8f8668c03cfbc749.glb",
+   "master_bytes": 61927240,
+   "runtime_url": "/api/media/models/6d87b61000713681bcc45b8e01ff4acb.glb",
+   "runtime_bytes": 55509536,
+   "validation": {
+    "version": 2,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 4,
+    "animations": []
+   }
+  }
+ },
+ "credits": {
+  "balance_start": 5427,
+  "balance_end": 5157,
+  "consumed_this_batch": 270
+ }
+}

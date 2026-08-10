@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { makeGLTFLoader } from "./questLevel";
 import apiClient from "@/api/client";
 import { buildLevel, disposeLevel, tickLevel } from "./questLevel";
 
@@ -48,6 +49,9 @@ export default function ThreeRuntime({ game, onExit }) {
     // player
     const player = new THREE.Group();
     scene.add(player);
+    const lantern = new THREE.PointLight(0xffd9a0, 10, 9, 1.9);
+    lantern.position.set(0, 2.4, 0.6);
+    player.add(lantern);
     const capsule = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 0.9, 6, 12),
       new THREE.MeshStandardMaterial({ color: world.hero_color || "#37e0c8", roughness: 0.4 }));
     capsule.position.y = 0.95;
@@ -56,7 +60,7 @@ export default function ThreeRuntime({ game, onExit }) {
     let mixer = null;
     const glbUrl = (spec.assets || {}).player_model?.url;
     if (glbUrl) {
-      new GLTFLoader().load(glbUrl, (g) => {
+      makeGLTFLoader().load(glbUrl, (g) => {
         if (disposed) return;
         player.remove(capsule);
         const model = g.scene;
@@ -159,11 +163,11 @@ export default function ThreeRuntime({ game, onExit }) {
       if (disposed || !running) return;
       raf = requestAnimationFrame(loop);
       const dt = Math.min(clock.getDelta(), 0.05);
-      if (mixer) mixer.update(dt);
       hitCd = Math.max(0, hitCd - dt);
       let ix = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0) + touch.x;
       let iz = (keys.s || keys.arrowdown ? 1 : 0) - (keys.w || keys.arrowup ? 1 : 0) + touch.y;
       const mag = Math.hypot(ix, iz);
+      if (mixer) { if (mag > 0.05) mixer.update(dt); }
       if (mag > 1) { ix /= mag; iz /= mag; } // normalized 8-direction diagonals
       const nx = player.position.x + ix * 7 * dt;
       const nz = player.position.z + iz * 7 * dt;

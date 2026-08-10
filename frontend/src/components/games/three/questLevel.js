@@ -4,6 +4,51 @@
    Characters remain greybox primitives until validated Meshy GLBs land
    (founder mandate: no flat-sprite substitution). */
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+
+const draco = new DRACOLoader();
+draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/");
+export function makeGLTFLoader() {
+  const l = new GLTFLoader();
+  l.setDRACOLoader(draco);
+  return l;
+}
+
+const glbCache = {};
+function loadGLB(url) {
+  if (!glbCache[url]) {
+    glbCache[url] = new Promise((res, rej) => makeGLTFLoader().load(url, res, undefined, rej));
+  }
+  return glbCache[url];
+}
+
+/* Attach a validated Meshy GLB as a child of a primitive anchor. The primitive
+   keeps position/rotation/visible/material semantics; its surface turns invisible. */
+function attachModel(anchor, url, targetH, opts = {}) {
+  loadGLB(url).then((g) => {
+    const model = g.scene.clone(true);
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const s = targetH / Math.max(0.001, size.y);
+    model.scale.setScalar(s);
+    const c = box.getCenter(new THREE.Vector3());
+    model.position.set(-c.x * s, -box.min.y * s + (opts.yBase ?? -targetH / 2), -c.z * s);
+    if (opts.yaw) model.rotation.y = opts.yaw;
+    model.traverse((n) => {
+      if (n.isMesh) {
+        n.castShadow = true; n.receiveShadow = true;
+        if (opts.emissive && n.material && "emissive" in n.material) {
+          n.material = n.material.clone();
+          n.material.emissive = new THREE.Color(opts.emissive);
+          n.material.emissiveIntensity = opts.emissiveIntensity ?? 0.55;
+        }
+      }
+    });
+    anchor.add(model);
+    if (anchor.material) { anchor.material.visible = false; }
+  }).catch(() => {});
+}
 
 const texCache = {};
 function tex(url, rx = 1, ry = 1) {
@@ -70,11 +115,27 @@ export function buildLevel(scene, lvl, assets) {
     lvl.guardian_color || "#8a3fd0", "#4a1a80", ...(lvl.guardian || [10, 8]), 1.3);
   g.guardianHp = lvl.guardian_hp || 5;
   g.key = mk(new THREE.OctahedronGeometry(0.42), "#2ee87a", "#0f8a3f", ...(lvl.key || [0, 10]), 1.0);
-  g.key.visible = false; // spawns after guardian falls
+  g.key.visible = true; // visible goal from level start; collectable after guardian falls
+  const mKey = slotUrl(assets, "model_key");
+  if (mKey) attachModel(g.key, mKey, 1.6, { emissive: "#2ee87a", emissiveIntensity: 0.5 });
   const keyLight = new THREE.PointLight("#4dffa0", 0, 9);
   keyLight.position.set((lvl.key || [0, 10])[0], 2.2, (lvl.key || [0, 10])[1]);
   scene.add(keyLight); g.meshes.push(keyLight); g.keyLight = keyLight;
   g.portal = mk(new THREE.TorusGeometry(1.5, 0.2, 12, 36), "#37c8ff", "#1a7aff", ...(lvl.portal || [16, 0]), 1.8);
+  const mPortal = slotUrl(assets, "model_portal");
+  if (mPortal) attachModel(g.portal, mPortal, 3.4, { yBase: -1.8 });
+  const mStation = slotUrl(assets, "model_station");
+  if (mStation) attachModel(g.station, mStation, 1.5, { yBase: -0.55 });
+  const mNpc = slotUrl(assets, "model_npc");
+  if (mNpc) attachModel(g.npc, mNpc, 1.9, { yBase: -1.0, yaw: Math.PI / 3 });
+  const mGuard = slotUrl(assets, lvl.boss ? "model_boss" : "model_guardian");
+  if (mGuard) attachModel(g.guardian, mGuard, lvl.boss ? 3.0 : 2.2, { yBase: -1.3 });
+  const mHazard = slotUrl(assets, "model_hazard");
+  if (mHazard) (lvl.accent_lights || []).forEach(([x, z]) => {
+    const a = new THREE.Object3D();
+    a.position.set(x, 0, z); scene.add(a); g.meshes.push(a);
+    attachModel(a, mHazard, 1.6, { yBase: 0 });
+  });
   // cinematic firelight: warm station glow + cool portal glow + level accents
   const st = lvl.station || [8, -6];
   const sl = new THREE.PointLight("#ffab52", 28, 14, 1.8);
@@ -97,8 +158,11 @@ export function buildLevel(scene, lvl, assets) {
   pg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   g.embers = add(new THREE.Points(pg, new THREE.PointsMaterial({
     color: lvl.ember_color || "#ffb35c", size: 0.14, transparent: true, opacity: 0.85 })));
+  const mIng = slotUrl(assets, "model_ingredient");
   (lvl.ingredients || [[-4, 4], [3, -9], [-10, 8]]).forEach(([x, z]) => {
-    g.pickups.push({ kind: "ingredient", mesh: mk(new THREE.IcosahedronGeometry(0.35, 0), "#7ee081", "#2e7d32", x, z, 0.7) });
+    const m = mk(new THREE.IcosahedronGeometry(0.35, 0), "#7ee081", "#2e7d32", x, z, 0.7);
+    if (mIng) attachModel(m, mIng, 0.75);
+    g.pickups.push({ kind: "ingredient", mesh: m });
   });
   (lvl.coins || [[-2, -2], [5, 3], [-6, -10], [9, -2], [12, 5], [-12, 2]]).forEach(([x, z]) => {
     g.pickups.push({ kind: "coin", mesh: mk(new THREE.CylinderGeometry(0.28, 0.28, 0.1, 12), "#ffd34d", "#8a6d1a", x, z, 0.6) });
@@ -121,7 +185,7 @@ export function tickLevel(g, dt) {
   p.needsUpdate = true;
   if (g.key && g.key.visible) {
     g.key.rotation.y += dt * 2.2;
-    if (g.keyLight) g.keyLight.intensity = 16 + Math.sin(Date.now() * 0.004) * 5;
+    if (g.keyLight) g.keyLight.intensity = 14 + Math.sin(Date.now() * 0.004) * 5;
   } else if (g.keyLight) g.keyLight.intensity = 0;
 }
 

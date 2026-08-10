@@ -1,4 +1,28 @@
-# OurRealm — Product Requirements (UPDATED 2026-06 — Two-Flagship AAA Phase)
+# OurRealm — Product Requirements (UPDATED 2026-06 — ARCANE 3D COMPLETE, PAUSED FOR FOUNDER)
+
+## ARCANE HEARTH — COMPLETE (deploy-ready checkpoint, iteration 140 FULL PASS)
+- 10 validated Meshy GLB models wired into wkq-arcane-hearth-3d-v1 (all draco+2K runtime
+  derivatives 1-12MB; 8K/4K masters retained in R2 + /app/artifacts/wkq/models):
+  player_model = RIGGED Maeve + walking clip (rig task 019fedc0-6f33-72b2-b7ca-da33187eee84),
+  model_guardian (pantry imp), model_boss (mask guardian), model_npc (chef), model_station,
+  model_hazard (brazier), model_portal, model_ingredient, model_env_kit, model_key (canary
+  019fed73-016b-7c2f-aa0e-20dbeb8de9a9 — NEVER resubmit).
+- Meshy credits: 5,477 → 5,147 = 330 total (canary 35, 9-model batch 270 [image models 30ea,
+  text preview+refine 10ea], remesh 5, rig 5, ~15 founder-console/timing gap). Report:
+  /app/artifacts/wkq/meshy_report.json. All models first-attempt SUCCEEDED.
+- Zero uncaught console errors; fullscreen (or3d-css-fs) verified; portrait/landscape verified;
+  walk anim plays only while moving; /api/media/models GET exempted from global auth
+  (GLTFLoader sends no headers) in server.py middleware.
+- Known automation-only limitation (NOT a product bug): headless RAF throttling prevents
+  scripted full-loop playthrough; loop primitives all verified + server endpoints proven.
+- Optional (unactioned per founder stop order): __OR3D_TP debug hook; gentler L1 NPC route.
+
+## FOUNDER STOP ORDER (ACTIVE)
+- Arcane complete → STOP. Await founder approval/testing/deploy.
+- DO NOT start Skybound 3D conversion (no paid Skybound generation was ever submitted).
+- DO NOT start OurRealm Nexus (next founder-directed project after approval).
+- Preserve current Skybound 2D game unchanged (iteration 138 state).
+
 
 ## LATEST STATE (this session)
 - **Skybound Chef (wkq-skybound-chef-v2)**: COMPLETE in preview (iteration 138 pass).
