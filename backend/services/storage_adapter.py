@@ -87,6 +87,7 @@ _CANONICAL_MIME: dict[str, str] = {
     "qt":   "video/quicktime",
     "mkv":  "video/x-matroska",
     "3gp":  "video/3gpp",
+    "glb":  "model/gltf-binary",
 }
 
 

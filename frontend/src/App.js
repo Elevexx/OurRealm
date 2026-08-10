@@ -52,6 +52,7 @@ const AdminPreview = React.lazy(() => import("@/pages/AdminPreview"));
 const AdminAiPolicies = React.lazy(() => import("@/pages/AdminAiPolicies"));
 const EduPlans = React.lazy(() => import("@/pages/EduPlans"));
 const AdminGames = React.lazy(() => import("@/pages/AdminGames"));
+const AdminMeshy = React.lazy(() => import("@/pages/AdminMeshy"));
 const GamesHub = React.lazy(() => import("@/pages/GamesHub"));
 const PublicGamePreview = React.lazy(() => import("@/pages/PublicGamePreview"));
 const GamePublicPage = React.lazy(() => import("@/pages/GamePublicPage"));
@@ -257,6 +258,7 @@ function App() {
             <Route path="/admin/widgets" element={<ShellRoute><AdminWidgets /></ShellRoute>} />
             <Route path="/admin/orion-logs" element={<ShellRoute><AdminOrionLogs /></ShellRoute>} />
             <Route path="/admin/orai" element={<OraiHome />} />
+            <Route path="/admin/meshy" element={<AdminMeshy />} />
             <Route path="/admin/orai-projects" element={<Navigate to="/admin/gamemaker/studio" replace />} />
             <Route path="/admin/orai/dashboard" element={<Navigate to="/admin/orai" replace />} />
             <Route path="/admin/orion" element={<Navigate to="/admin/orai" replace />} />

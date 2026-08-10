@@ -54,7 +54,7 @@ router = APIRouter(prefix="/api/media", tags=["media"])
 
 # Allow-list of media kinds — keep this tight so we never proxy
 # unexpected bucket prefixes (e.g. logs, exports).
-_ALLOWED_KINDS: frozenset[str] = frozenset(["audio", "images", "videos", "resource_visuals"])
+_ALLOWED_KINDS: frozenset[str] = frozenset(["audio", "images", "videos", "resource_visuals", "models"])
 
 # resource_visuals is publicly readable (no auth) — restrict to safe,
 # non-executable image formats only.

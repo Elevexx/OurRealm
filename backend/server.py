@@ -109,7 +109,7 @@ async def health_version():
     can be verified from outside. Booleans only — never values."""
     return {
         "app": "OurRealm",
-        "backend_build": "2026-08-04-openai-key-hardening",
+        "backend_build": "2026-08-10-runtime-visual-pass-ck3",
         "features": {
             "ctx_path_fix": True,
             "structured_chat_contract": True,
@@ -281,6 +281,8 @@ app.include_router(gamemaker_router_mod.router)
 app.include_router(gamemaker_router_mod.admin)
 from routers import registry_admin as registry_admin_router_mod  # noqa: E402
 app.include_router(registry_admin_router_mod.router)
+from routers import meshy_admin as meshy_admin_router_mod  # noqa: E402
+app.include_router(meshy_admin_router_mod.admin)
 app.include_router(orai_access_router_mod.router)
 
 

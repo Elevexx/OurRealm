@@ -9,6 +9,7 @@ import apiClient from "@/api/client";
 import GameRuntime from "@/components/games/GameRuntime";
 import { GameCover, resolveCover } from "@/components/games/GameCover";
 import DragonRealmRuntime from "@/components/games/dragonrealm/DragonRealmRuntime";
+const ThreeRuntime = React.lazy(() => import("@/components/games/three/ThreeRuntime"));
 import { GameLeaderboard, AudioSettings } from "@/components/games/GameSocial";
 
 export default function GamesHub() {
@@ -217,7 +218,11 @@ export default function GamesHub() {
           {gate?.gate && !gate.satisfied ? (
             <GameGate gameId={playId} status={gate}
               onUnlocked={() => apiClient.get(`/resources/gates/${playId}`).then((r) => setGate(r.data))} />
-          ) : playing.game.spec?.runtime === "turn_based_creature_rpg" ? (
+          ) : playing.game.spec?.renderer_id === "renderer_three_v1" ? (
+            <React.Suspense fallback={<div className="text-sm opacity-70 p-8">Loading 3D engine…</div>}>
+              <ThreeRuntime game={playing.game} onExit={() => setPlaying(null)} />
+            </React.Suspense>
+          ) : playing.game.spec?.renderer_id === "renderer_pixel_creature_rpg_v1" ? (
             <DragonRealmRuntime />
           ) : (<>
           <div className="relative">

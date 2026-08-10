@@ -499,3 +499,13 @@ AFTER NEXT DEPLOY: production boots → startup_import inserts all 27 published 
 - No WebGL/GLB rendering exists anywhere; nothing claims "real 3D". Registry first_person/multiplayer caps false. Real-3D remains a truthful backlog item.
 ### Tests: phase2 suite updated + green (13 passed); registry test versions purged; sandbox games archived.
 ### PHASE 13 STATUS: 13A DONE (waitlist off one-time migration + schedule/timezone/cancel/audit/preview admin tool + /signup redirects + /GameMaker→/gamemaker + guest browse CTA + prod demo seeding via phase13_migrations startup). 13B was IN PROGRESS (analysis done: user pinned to old level config_version keeps deleted tasks; RECALC_TTL_SECONDS=120; planned: follow latest published version, /me?force after claim, focus/poll refresh). 13C-13J NOT STARTED — resume automatically after founder reviews this correction.
+
+## Aug 10 2026 — 10/10 Runtimes LIVE + Meshy foundation + OurRealm 3D Runtime v1 (iterations 131-136)
+- Visual production passes completed with original generated art + browser-proven mechanics for ALL 10 primary runtimes (shooter, open_world_rpg, platformer, top_down, creature_rpg [Dragon Realm dedicated + new Emberling Grove generic demo], card_battle [2-duel arc], tower_defense, match3 [composed 4x2 gem sheet], racing [new sprite/bg support in rac()]).
+- Skybound production-repair one-click endpoint + rollback + AdminGames button (prod verification pending founder deploy/credentials).
+- Max Quality Mode: removed min(...,5) AI-power clamps, min(cx,8) complexity clamp, stage cap 8→20, defaults 10/10 everywhere; demo records carry complexity/ai_power 10.
+- Meshy provider (services/meshy_provider.py, routers/meshy_admin.py, /admin/meshy UI): all workflows mapped (text preview/refine, image, multi-image, remesh, convert, rig, animation), idempotency keys, credit tracking, GLB structural validation, storage via media adapter (models kind), founder-only, honest placeholder-key handling, no key leakage (tested).
+- OurRealm 3D Runtime v1 (three.js, code-split ThreeRuntime.jsx, renderer_three_v1 routing): real WebGL, GLB loader w/ greybox fallback, third-person follow cam, collision, orbs→portal→victory loop proven E2E; demo 'Ember Spire 3D (Beta)' seeded; open_world_3d runtime added to catalog as Beta.
+- GamesHub routing fixed to key on spec.renderer_id (Dragon Realm regression protected).
+- backend_build bumped to 2026-08-10-runtime-visual-pass-ck3 for deploy verification.
+- Image generation this session: 24 total; per-asset paid attempts all ≤2 (td_player 2, cb_enemy 2, cb_boss 2, rest 1). Keying pipeline: scripts/wire_assets.py (flood-key checker/uniform incl. dark + white, alpha-trim, validation gates).

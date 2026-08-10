@@ -1,14 +1,29 @@
 # OurRealm — Product Requirements Document (PRD)
 
-## ⏸️ FOUNDER SAFE CHECKPOINT PAUSE (Aug 10 2026) — ACTIVE STATE
-All new runtime, visual-generation and Phase 13 work is PAUSED per founder directive.
-MESHY_API_KEY=MESHY_KEY_PENDING placeholder created (backend/.env line 19, server-side only,
-gitignored, zero frontend refs, never logged, no Meshy calls made). NOTE: production deployment
-secrets are managed separately — founder must add/replace MESHY_API_KEY in Manage Publishing →
-Secrets when deploying (workspace .env does not auto-copy to production; see Aug 4 incident).
-Everything below this line is preserved completed work. Resume point: Creature RPG visual pass
-(next in the 7-runtime order), then Card Battle, Tower Defense, Match-3, Racing, then Real 3D
-WebGL engine (Meshy key intended for 3D model generation), then Phase 13B-13J.
+## ✅ MILESTONE (Aug 10 2026): ALL 10 GAMEMAKER RUNTIMES HONESTLY LIVE + MESHY + 3D FOUNDATION
+Iterations 131-136 all PASS. Catalog truth: 10 live runtimes, 1 beta (open_world_3d — new OurRealm 3D Runtime v1, three.js WebGL, stays Beta until Meshy-model production pass).
+Runtime → featured demo: action_rpg_2_5d→Jungle Ruins/Graybox XY; shooter→Neon Breach (demo-shooter-neon-breach-v1); open_world_rpg→Emberwild (demo-owr-emberwild-v1); platformer→Crystal Caverns (850b4ee4…); top_down_adventure→Cyber Heist (af6cab00…); turn_based_creature_rpg→Dragon Realm (dedicated pixel renderer) + Emberling Grove (demo-crpg-emberling-grove-v1, generic runtime); card_battle→Realm Legends 2-duel arc (fe027e6a…); tower_defense→Realm Defense (70d5bee3…); match3→Crystal Fusion (c0c208b9…); racing→Nitro Circuit GP (465e7b15…); open_world_3d→Ember Spire 3D (demo-3d-ember-spire-v1, renderer_three_v1).
+All demo records carry complexity:10 + ai_power:10. All art is original generated (franchise-safe prompts), keyed/trimmed/validated via scripts/wire_assets.py.
+
+### Meshy 3D (Section 5) — foundation COMPLETE in preview, real-key connectivity PENDING production
+- services/meshy_provider.py + routers/meshy_admin.py + /admin/meshy founder panel. Workflows mapped per official playbook (text preview/refine v2, image/multi-image/remesh/convert/rig/animation v1, balance health test = no-credit). Idempotency keys, credits per task, GLB validator (magic/version/meshes/materials/animations/checksum), storage via media adapter kind 'models' (/api/media/models/*.glb), archive-before-cancel, global enable toggle, per-task audit. Key NEVER logged/echoed (tested).
+- Preview key is placeholder MESHY_KEY_PENDING (honest ok:false). REAL KEY lives in production secrets only → connectivity test + first low-cost model task must run on production (or founder supplies a staging key).
+- Queued next: ORAi structured Meshy tools + GameMaker asset-resolution stage 3D controls (generate/preview/approve/rig/animate/save-to-library) — build after real-key connectivity proof.
+
+### OurRealm 3D Runtime v1 (Section 6) — foundation COMPLETE (Beta)
+components/games/three/ThreeRuntime.jsx (code-split lazy): WebGL renderer, GLB loading (spec.assets.player_model.url) w/ greybox capsule fallback, PBR-ready lights/shadows/fog, third-person follow camera both axes, normalized WASD/arrow + touch-drag input, circle collision + world bounds, orbs→portal→victory loop (proven E2E incl. collision + victory overlay), DPR cap 2, ResizeObserver, visibility pause (no duplicate rAF), context-loss handlers, window.__OR3D debug. Routed via spec.renderer_id==='renderer_three_v1' in GamesHub.jsx. Promote to Live only after Meshy GLB asset pass + mobile perf proof.
+
+### PRODUCTION BLOCKERS (honest)
+1. Production founder credentials differ from preview — cannot run Skybound repair/API/screenshots on https://ourrealm.social. Founder must redeploy (new build string 2026-08-10-runtime-visual-pass-ck3 verifies via /api/health/version), then click Admin→Games→Skybound Chef→Production Repair (keep_stages=11, snapshot+rollback built), or provide prod founder access.
+2. Prod DB does not contain the preview demo records/assets. Need a founder-triggered "Sync Showcase Demos" import (bundle export/import endpoint) — QUEUED P0 for next session.
+3. Meshy real-key connectivity + first controlled generation: production-only.
+
+## NEXT TASKS (priority)
+- P0: Showcase-demo sync bundle endpoint (export from preview → founder one-click import in prod).
+- P0 after deploy: Skybound production repair + production screenshots; production acceptance matrix re-run.
+- P1: Meshy ORAi tools + GameMaker 3D asset stage; first Meshy GLB into Ember Spire 3D.
+- P1: Universal player-shell polish leftovers (pause/mute/restart buttons on parent shell; hide bottom nav in CSS fullscreen — verify).
+- P2: Phase 13B-13J (daily-task live updates, ORAi quick buttons, hub pinning, voice-to-voice, saved-games card, dynamic More catalogs, artwork mgmt, multiplayer Coming Soon).
 
 ## P0 — VISUAL PRODUCTION PASS PROGRAM (Aug 10 2026) — CHECKPOINTS 1 & 2 COMPLETE ✅
 ### Founder execution order: Deploy-check → Skybound → Orientation/Fullscreen → Visual passes (2-runtime checkpoints) → Real 3D → Phase 13
