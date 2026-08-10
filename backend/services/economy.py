@@ -159,6 +159,8 @@ async def create_quote(user: dict, body: dict, provider_est: float) -> dict:
     q = {"id": uuid.uuid4().hex, "user_id": user["id"], "state": "quoted",
          "style": body.get("style"), "runtime": body.get("runtime"),
          "economy": int(body["economy"]), "ai_power": int(body["ai_power"]),
+         "complexity": int(body.get("complexity") or 10),
+         "founder_max_quality": bool(body.get("founder_max_quality")),
          "idea": str(body.get("idea") or "")[:2000],
          "resource_key": reg["key"], "fire_equiv": fe,
          "required_fire": rf, "required_amount": amt,

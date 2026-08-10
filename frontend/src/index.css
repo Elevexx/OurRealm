@@ -1051,6 +1051,15 @@ html[data-mode="business"] .rcx-scope .or-surface {
   display: none !important;
 }
 
+/* 3D runtime CSS fullscreen: hide all site chrome */
+.or3d-css-fs nav,
+.or3d-css-fs header,
+.or3d-css-fs .or-hide-while-gaming,
+.or3d-css-fs [data-testid="orai-assistant-fab"] {
+  display: none !important;
+}
+.or3d-css-fs { overflow: hidden !important; }
+
 /* Waitlist mobile search layout */
 @media (max-width: 640px) {
   .waitlist-search-row {

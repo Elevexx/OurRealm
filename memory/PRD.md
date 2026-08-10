@@ -1,4 +1,53 @@
-# OurRealm — Product Requirements Document (PRD)
+# OurRealm — Product Requirements (UPDATED 2026-06 — Two-Flagship AAA Phase)
+
+## LATEST STATE (this session)
+- **Skybound Chef (wkq-skybound-chef-v2)**: COMPLETE in preview (iteration 138 pass).
+  3 AAA chapters (Sky Harbor Market / Neon Sushi District / Arcane Hearth Nexus finale
+  with boss-gated portal + Hearth Guardian). 33 original assets wired (Aurora identity-locked
+  hero set ×10, foes ×4, items/portals ×10, 3 env families far+mid+tile). 8 old greybox
+  stages preserved in spec.wip_stages. ONE 10,000 FP finale reward (idempotent gfp:final);
+  forbidden pool banner replaced with honest reward summary. Landscape=wider world,
+  portrait=safe-area — verified by screenshots.
+- **Arcane Hearth (wkq-arcane-hearth-3d-v1)**: 3 textured genuine-WebGL-3D levels
+  (Sky Harbor Kitchens / Copper Stormworks / Festival Citadel) — iteration 139 pass.
+  L2/L4 preserved in spec.wip_levels_3d. Quest loop + realm-key award + score submit +
+  fire economy (+50/level, +250 finale) + fullscreen toggle (or3d-css-fs hides nav).
+  Characters = greybox primitives UNTIL Meshy GLB pass (founder mandate: no sprite substitution).
+- **Emerald Realm Key system**: /app/backend/routers/realm_keys.py — registry (db.realm_keys),
+  ownership (db.user_realm_keys, unique user+key), award idempotent/server-authoritative,
+  /mine collection. 6 registry entries (3 per game), art wired from 8K-mastered item_key.
+- **MESHY CANARY (0/1, BLOCKED)**: founder chose Option A + canary gate (Emerald Key first:
+  8K texture → GLB validation → ThreeRuntime load → desktop/portrait/landscape shots →
+  credit report → pause for gate). MESHY_API_KEY still placeholder in preview .env —
+  founder adding via Secrets panel. Plan: /app/memory/meshy_3d_plan.md (10 models, limits:
+  3 paid attempts/model, 2 repair cycles/milestone, 650 Meshy credit stop threshold).
+- Paid image generation: 43 assets, 43 paid attempts (zero retries), all via founder's
+  OpenAI key (gpt-image-2). Manifest/ledger: /app/artifacts/wkq/. 8K masters: master8k/.
+- Level audit: /app/memory/wkq_level_audit.md (no level exceeded 50% → exactly 3+3 AAA).
+
+## NEXT (strict order)
+1. Meshy canary when key lands: restart backend → auth check (never print key) → canary.
+2. If canary passes: remaining 9 models w/ per-model report (task id, credits, validation).
+3. Final cross-device testing, ER verification, production publish of both games.
+4. Paused backlog: Phase 13B-13H (daily tasks/badges, ORAi quick buttons, hub pinning,
+   voice repair, saved-games card, dynamic catalogs, artwork admin).
+
+## KEY FILES
+- Engines: frontend/src/components/games/GameRuntime.jsx (arpgXY ~line 2005+, per-zone
+  bg/tiles, boss-gated portals, realm_level_complete postMessage ~2555, shell award ~3290),
+  three/ThreeRuntime.jsx + three/questLevel.js (textures, lights, embers, quest loop).
+- Seeds: backend/scripts/seed_wkq_skybound_v3.py, seed_wkq_arcane_v2.py (ground truth).
+- Gen pipeline: backend/scripts/wkq_gen.py (chroma-key, 8K masters, wire_slot,
+  3-attempt ledger), wkq_batch_skybound.py, wkq_batch_arcane.py, wire_wkq_skybound.py.
+- Identity locks: /app/memory/character_identity_lock.md (Aurora ✓ shipped, Maeve refs ready).
+
+## GUARDRAILS (founder mandates, permanent)
+- Complexity/AI Power always 10/10. Max 3 paid attempts per asset. No checkerboards,
+  no board text, no stretched art. Identity locks binding. Server-authoritative ER;
+  browser never picks reward type/amount. Never print/log the Meshy key.
+- PRODUCTION exists: https://ourrealm.social (no agent access; changes need redeploy).
+
+quirements Document (PRD)
 
 ## ✅ MILESTONE (Aug 10 2026): ALL 10 GAMEMAKER RUNTIMES HONESTLY LIVE + MESHY + 3D FOUNDATION
 Iterations 131-136 all PASS. Catalog truth: 10 live runtimes, 1 beta (open_world_3d — new OurRealm 3D Runtime v1, three.js WebGL, stays Beta until Meshy-model production pass).

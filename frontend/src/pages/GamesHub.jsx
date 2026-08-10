@@ -200,14 +200,13 @@ export default function GamesHub() {
               style={{ background: "rgba(255,138,90,0.07)", border: "1px solid rgba(255,138,90,0.3)" }}>
               {fireInfo.enabled ? (
                 <>
-                  <b style={{ color: "#FF8A5A" }}>🔥 {fireInfo.pool_remaining.toLocaleString()} Fire available</b>
+                  <b style={{ color: "#FF8A5A" }}>🔥 Fire Power rewards — server-verified</b>
                   <span style={{ color: "var(--text-muted)" }}>
-                    {" "}· Stage clear +{fireInfo.rewards.completion} · Finish +{fireInfo.rewards.final_completion}
+                    {fireInfo.rewards.completion > 0 && <> · Stage clear +{fireInfo.rewards.completion}</>}
+                    {fireInfo.rewards.final_completion > 0 && <> · Finish +{fireInfo.rewards.final_completion.toLocaleString()} (once per player)</>}
                     {fireInfo.rewards.perfect > 0 && <> · Perfect +{fireInfo.rewards.perfect}</>}
                     {fireInfo.rewards.speed > 0 && <> · Speed +{fireInfo.rewards.speed}</>}
                     {fireInfo.rewards.achievement > 0 && <> · Achievements +{fireInfo.rewards.achievement}</>}
-                    {" "}· up to <b style={{ color: "#FF8A5A" }}>{fireInfo.max_per_player} 🔥</b> per player
-                    · community pool {fireInfo.pool_pct}% remaining
                   </span>
                 </>
               ) : (

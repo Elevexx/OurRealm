@@ -153,8 +153,11 @@ async def create_estimate(body: dict, current: CurrentUser):
     require_founder(current)
     from services.access_policy import require_access
     await require_access("game_creator", current, consume=False)
-    complexity = min(max(int(body.get("complexity") or 10), 1), 10)
-    ai_power = min(max(int(body.get("ai_power") or 10), 1), 10)
+    from services.quality_profile import apply_founder_max
+    _qp = apply_founder_max({"complexity": body.get("complexity"), "ai_power": body.get("ai_power")}, current)
+    complexity = min(max(int(_qp.get("complexity") or 10), 1), 10)
+    ai_power = min(max(int(_qp.get("ai_power") or 10), 1), 10)
+    body["founder_max_quality"] = _qp["founder_max_quality"]
     # Founders bypass level access; configured levels gate everyone else
     # once game creation opens beyond founders (policy-driven).
     settings = await gs.get_studio_settings()

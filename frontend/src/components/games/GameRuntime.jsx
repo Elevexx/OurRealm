@@ -2101,8 +2101,11 @@ function arpgXY(st){const c=mkCanvas(0),g=c.getContext('2d'),W=c.width,H=c.heigh
   return PATQ[k2]}
  function bgLayer(slot,par,vy){const im=aimg(slot);if(!im)return false;
   const ih=H,iw=im.naturalWidth*(H/im.naturalHeight);
-  let off=-((camX*par*kk)%iw);const py=-camY*vy*kk;
-  for(let x=off-iw;x<W+iw;x+=iw)g.drawImage(im,Math.round(x),Math.round(py),Math.ceil(iw)+1,ih);
+  let off=-((camX*par*kk)%(iw*2));const py=-camY*vy*kk;
+  for(let x=off-iw*2;x<W+iw;x+=iw*2){
+   g.drawImage(im,Math.round(x),Math.round(py),Math.ceil(iw)+1,ih);
+   g.save();g.translate(Math.round(x+iw*2),py);g.scale(-1,1);
+   g.drawImage(im,0,0,Math.ceil(iw)+1,ih);g.restore()}
   return true}
  const HSLOT={idle:['hero_idle',0],run:['hero_run',0],jump_rise:['hero_jump_rise',1],
   jump_fall:['hero_jump_fall',1],land:['hero_land',1],attack:['hero_attack',1],
@@ -2209,7 +2212,7 @@ function arpgXY(st){const c=mkCanvas(0),g=c.getContext('2d'),W=c.width,H=c.heigh
    if(Math.random()<0.2)parts.push({x:px+(Math.random()-0.5)*rx*1.6,y:py+(Math.random()-0.5)*ry*1.6,vx:(Math.random()-0.5)*24,vy:-30,life:1,color:'#9fe2ff',r:1.8})}
   g.fillStyle='#c6d2e8';g.font='bold 11px system-ui';g.textAlign='center';
   g.fillText((p.label||p.portal_id||'PORTAL').toUpperCase(),px,py-ry-14);g.textAlign='left';g.restore()}
- const ZONE=st.zone==='nexus'?'nexus':'forest';
+ const ZONE=(st.zone&&(AST['bg_'+st.zone+'_far']||AST['tile_'+st.zone]))?st.zone:(st.zone==='nexus'?'nexus':'forest');
  function drawWorld(t,dt){
   skyGrad(g,W,H,LP.sky||'#16243c',LP.bg||'#0a1020');
   /* layered parallax — VISUAL depth only, gameplay stays strict X/Y */
@@ -2232,7 +2235,7 @@ function arpgXY(st){const c=mkCanvas(0),g=c.getContext('2d'),W=c.width,H=c.heigh
    else{g.fillStyle=r.tint||'rgba(255,255,255,0.03)';g.fillRect(r.x,r.y,r.w,r.h)}
    g.fillStyle='rgba(234,242,255,0.14)';g.font='bold 26px system-ui';
    g.fillText(r.label||'',r.x+24,r.y+40)});
-  const tpat=pat(ZONE==='nexus'?'nexus_tile':'terrain_tile',0.16);
+  const tpat=pat('tile_'+ZONE,0.16)||pat(ZONE==='nexus'?'nexus_tile':'terrain_tile',0.16);
   STR.forEach(s=>{const yb=Math.max(s.yl,s.yr)+30;
    g.fillStyle=tpat||'#33405a';g.beginPath();g.moveTo(s.x,s.yl);g.lineTo(s.x+s.w,s.yr);
    g.lineTo(s.x+s.w,yb);g.lineTo(s.x,yb);g.fill();
@@ -2546,6 +2549,8 @@ function arpgXY(st){const c=mkCanvas(0),g=c.getContext('2d'),W=c.width,H=c.heigh
    else if(enterP.target==='end'||(st.ending&&stageIdx>=S.stages.length-1)){
     if(endT<=0){endT=3.2;busy=true;sfx('victory');saveGame()}}
    else{doneFlag=true;cancelAnimationFrame(raf);addScore(40);sfx('portal');saveGame();
+    try{parent.postMessage({type:'realm_level_complete',level_index:stageIdx,
+     key_id:(st.keys&&st.keys[0]&&st.keys[0].key_id)||null,title:st.title||''},'*')}catch(e){}
     fb(true,(st.title||'Level')+' complete!'+unlockMsg(),next);return}}
   if(endT>0){endT-=dt;
    if(endT<=0){doneFlag=true;cancelAnimationFrame(raf);addScore(80);saveGame();
@@ -3271,6 +3276,11 @@ export default function GameRuntime({ spec, onScore, height = 460, gameId, contr
       if (e?.data?.type === "game_key" && gameId && !guest) {
         apiClient.post("/fire/keys/collect", { game_id: gameId, stage: e.data.stage,
           key_id: `${gameId}-${e.data.key_id}` }).catch(() => {});
+      }
+      if (e?.data?.type === "realm_level_complete" && gameId && !guest) {
+        apiClient.post("/realm-keys/award", {
+          game_id: gameId, level_index: e.data.level_index,
+        }).catch(() => {});
       }
       if (e?.data?.type === "game_save" && gameId && !guest) {
         try { localStorage.setItem(`or-game-save-${gameId}`, JSON.stringify(e.data.save || {})); } catch { /* full */ }

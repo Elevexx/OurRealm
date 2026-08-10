@@ -216,6 +216,8 @@ async def create_game(body: dict, current: CurrentUser):
     payload = {"request": f"{idea}\n\nArt direction: render everything in a {style_name} visual style.",
                "engine_runtime": rt[3], "runtime_choice": rt_choice, "style": style,
                "ai_power": power, "complexity": min(max(int(body.get("complexity") or 10), 1), 10)}
+    from services.quality_profile import apply_founder_max
+    apply_founder_max(payload, current)
     job = await job_engine.submit("gamemaker_create", current, payload,
                                   idem_key=body.get("request_id"))
     return {"job_id": job["id"], "phase": job["phase"]}
@@ -499,9 +501,11 @@ async def make_quote(body: dict, current: CurrentUser):
     if not allowed:
         raise HTTPException(status_code=400, detail=reason)
     t = tier(power)
+    from services.quality_profile import apply_founder_max
+    _qb = apply_founder_max({**body, "ai_power": power,
+                             "economy": min(max(int(body.get("economy") or 5), 1), 10)}, current)
     try:
-        q = await economy.create_quote(current, {**body, "ai_power": power,
-                                                 "economy": min(max(int(body.get("economy") or 5), 1), 10)},
+        q = await economy.create_quote(current, _qb,
                                        provider_est=round(t["est_cost_per_pass"] * 3, 3))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
