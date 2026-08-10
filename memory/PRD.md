@@ -1,4 +1,34 @@
-# OurRealm — Product Requirements (UPDATED 2026-06 — ARCANE 3D COMPLETE, PAUSED FOR FOUNDER)
+# OurRealm — Product Requirements (UPDATED 2026-06 — ARCANE PROD GATE DONE, NEXUS QUEUED)
+
+## STARTING GATE RESULTS (Nexus directive received — gate executed, PAUSED pre-Nexus)
+- Production (ourrealm.social): backend healthy; ALL 10 runtime GLB URLs return 307→R2 publicly
+  (shared bucket; middleware exemption already deployed). Founder-auth flows unverifiable from
+  preview (no prod credentials — by design).
+- PRODUCTION DB GAP CLOSED: game docs/registry live in preview Mongo only → built
+  services/wkq_fixtures.py + fixtures/wkq_flagships.json (version-stamped idempotent startup
+  importer, upserts 2 games + 6 realm keys, never touches player data). Proven in preview.
+  Production converges on founder's NEXT REDEPLOY.
+- 10-vs-8 GLB inventory answer: L1 loads 9 after env-kit fix (was 8: model_env_kit existed but
+  wasn't consumed by props — now attached); model_boss loads only in L5 (boss:true).
+- Preview verification: iter140 full pass; scale/controls/awards all confirmed.
+- AWAITING: founder redeploy + production play-test approval → then begin NEXUS Phase 1.
+
+## NEXUS V1 DIRECTIVE (QUEUED — full text in chat 2026-06; Images 1+2 binding references)
+- Routes: /nexus (public + signed-in world entry), /admin/nexus (founder builder per Image 1).
+- Phase 1 greybox FIRST (no paid media): Three.js world, third-person avatar, collision/spawn,
+  portals, persistent position, draft/published/versions/rollback, 2-session real multiplayer,
+  founder editor perms, ORAi structured-diff edit workflow (no eval).
+- Then: PC pointer-lock camera + invert H/V + sensitivity; mobile joystick/drag/pinch/left-hand;
+  real multiplayer (server-authoritative, interpolation, rate limits, REAL online counts only);
+  admin editor (select/move/rotate/scale/dup/remove/undo, zones, lighting, portals, NPCs);
+  ORAi World Architect (Understand→Plan→Diff→Preview→Approve→Apply-to-draft, audit);
+  chat/voice/media/GLB uploads; Meshy studio with Arcane safeguards; Avatar Studio (2 original
+  starter avatars AFTER greybox+multiplayer gates; skinned GLBs w/ idle/walk/run/jump/land/interact).
+- Checkpoints: A greybox+multiplayer (no paid gen) → B Meshy env asset + avatar canary w/ cost
+  report → C two avatars + polished plaza zone. Visual gate 90+ vs Images, max 3 paid/asset,
+  max 2 repair cycles. Reuse: ThreeRuntime/draco, meshy_provider, GLB validation, job engine,
+  ORAi routing, voice, auth/audit, fire/ER systems. Preserve Arcane unchanged (extract shared services).
+
 
 ## ARCANE HEARTH — COMPLETE (deploy-ready checkpoint, iteration 140 FULL PASS)
 - 10 validated Meshy GLB models wired into wkq-arcane-hearth-3d-v1 (all draco+2K runtime

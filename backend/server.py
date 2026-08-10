@@ -669,6 +669,11 @@ async def _safe_startup():
     except Exception as e:
         logger.error(f"[phase13] migrations failed: {e}")
     try:
+        from services import wkq_fixtures as _wkq
+        await _wkq.run()
+    except Exception as e:
+        logger.error(f"[wkq-fixtures] import failed: {e}")
+    try:
         from services.game_promotion import startup_import
         asyncio.create_task(startup_import())
     except Exception as e:

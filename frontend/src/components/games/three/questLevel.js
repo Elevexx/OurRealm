@@ -93,12 +93,14 @@ export function buildLevel(scene, lvl, assets) {
     m.receiveShadow = true;
     g.obstacles.push({ x, z, hw: w / 2 + 0.5, hd: d / 2 + 0.5 });
   });
+  const mEnv = slotUrl(assets, "model_env_kit");
   (lvl.props || []).forEach(([x, z, w, h, d]) => {
     const m = add(new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
       wUrl ? new THREE.MeshStandardMaterial({ map: tex(wUrl, 1, 1), roughness: 0.8 })
            : new THREE.MeshStandardMaterial({ color: "#4a3a2c", roughness: 0.8 })));
     m.position.set(x, h / 2, z);
     m.castShadow = true;
+    if (mEnv) attachModel(m, mEnv, Math.max(h, 1.2), { yBase: -h / 2 });
     g.obstacles.push({ x, z, hw: w / 2 + 0.4, hd: d / 2 + 0.4 });
   });
   const mk = (geo, color, emissive, x, z, y = 0.8) => {
