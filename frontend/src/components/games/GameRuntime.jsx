@@ -101,7 +101,7 @@ function addScore(pts){let p=(pts!==undefined?pts:((S.scoring||{}).points_per_co
 function comboBreak(){combo=0;comboMult=1}
 function unlockMsg(){const u=(S.unlockables||[]).find(x=>Number(x.stage)===stageIdx+1);return u?' \u2605 Unlocked: '+u.label:''}
 function checkAchievements(pct){(S.achievements||[]).forEach(a=>{if(!earned.includes(a.label)&&(a.id==='perfect'?pct===100:true))earned.push(a.label)})}
-function done(){music(false);sfx('victory');if(earned.length)sfx('achievement');root.innerHTML='';root.appendChild(hud());const pct=answered?Math.round(correctTotal/answered*100):100;
+function done(){__ended=true;music(false);sfx('victory');if(earned.length)sfx('achievement');root.innerHTML='';root.appendChild(hud());const pct=answered?Math.round(correctTotal/answered*100):100;
  const pass=pct>=((S.scoring||{}).pass_pct||60)||ARC[S.runtime];checkAchievements(pct);saveGame();
  const secs=Math.round((Date.now()-startMs)/1000),mm=Math.floor(secs/60)+':'+String(secs%60).padStart(2,'0');
  const stats=[['SCORE',score],['BEST',Math.max(best,score)],['TIME',mm]];
@@ -116,7 +116,7 @@ function done(){music(false);sfx('victory');if(earned.length)sfx('achievement');
  d.style.cssText='text-align:center;padding:22px 16px;animation:orfade .4s';root.appendChild(d);
  if(pass)confetti();
  root.appendChild(btn('Play again',restart));post(true)}
-function gameOver(){music(false);sfx('gameover');root.innerHTML='';root.appendChild(hud());saveGame();
+function gameOver(){__ended=true;music(false);sfx('gameover');root.innerHTML='';root.appendChild(hud());saveGame();
  const secs=Math.round((Date.now()-startMs)/1000),mm=Math.floor(secs/60)+':'+String(secs%60).padStart(2,'0');
  const d=el('div','','<div style="font-size:40px;animation:orpop .6s backwards">\uD83D\uDC80</div>'+
   '<h2 style="margin:8px 0 2px;color:#FF6B6B;text-shadow:0 0 22px #FF6B6B66;animation:orpop .5s">GAME OVER</h2>'+
@@ -141,10 +141,43 @@ function titleScreen(){const ov=el('div','');
  ov.appendChild(badge);ov.appendChild(h);ov.appendChild(sub);ov.appendChild(cta);document.body.appendChild(ov);
  const go=()=>{if(titleDone)return;titleDone=true;sfx('click');ov.style.transition='opacity .45s';ov.style.opacity=0;setTimeout(()=>ov.remove(),480);stage()};
  ov.addEventListener('pointerdown',go);document.addEventListener('keydown',go)}
-function restart(){score=0;stageIdx=0;correctTotal=0;answered=0;lives=S.lives||3;combo=0;comboMult=1;earned=[];startMs=Date.now();maxCombo=1;dmg=0;stage()}
+function restart(){__ended=false;score=0;stageIdx=0;correctTotal=0;answered=0;lives=S.lives||3;combo=0;comboMult=1;earned=[];startMs=Date.now();maxCombo=1;dmg=0;stage()}
 function next(){saveGame();stageIdx++;if(stageIdx>=S.stages.length)done();else stage()}
+
+/* ── shared orientation & fullscreen contract ───────────────────────── */
+const ORIENT_PREF={action_rpg_2_5d:'landscape',platformer:'landscape',open_world_rpg:'landscape',
+ racing:'landscape',shooter:'landscape',dodge_collect:'landscape',top_down:'either',
+ card_battle:'portrait',match3:'portrait',tower_defense:'either'};
+let __stageLive=false,__ended=false,__gen=0,_lastVW=window.innerWidth,_lastVH=window.innerHeight,_rsT=null,_rotShown=false;
+// generation-gated rAF: rebuilding a stage (rotation/resize) kills stale loops
+const _raf=window.requestAnimationFrame.bind(window);
+window.requestAnimationFrame=function(cb){const g2=__gen;return _raf(function(ts){if(g2===__gen)cb(ts)})};
+function _relayout(){if(!__stageLive||__ended)return;
+ const w=window.innerWidth,h=window.innerHeight;
+ if(Math.abs(w-_lastVW)<36&&Math.abs(h-_lastVH)<36)return;
+ _lastVW=w;_lastVH=h;
+ // rebuild the current stage at the new dimensions — score/lives/stage are
+ // preserved (globals); the world genuinely widens instead of stretching.
+ try{stage()}catch(e){}}
+function _queueRelayout(ms){clearTimeout(_rsT);_rsT=setTimeout(_relayout,ms||280)}
+window.addEventListener('resize',function(){_queueRelayout(280)});
+window.addEventListener('orientationchange',function(){_queueRelayout(380)});
+if(window.visualViewport)window.visualViewport.addEventListener('resize',function(){_queueRelayout(280)});
+function rotatePrompt(){
+ if(_rotShown||!MOB)return;
+ if((ORIENT_PREF[S.runtime]||'either')!=='landscape')return;
+ if(window.innerWidth>=window.innerHeight)return;
+ _rotShown=true;
+ const p=el('div','','<span style="font-size:16px">\uD83D\uDD04</span> <b>Rotate for Wide View</b> \u2014 this game plays best in landscape.');
+ p.style.cssText='position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:70;background:rgba(4,8,20,0.94);border:1px solid '+GLOW+'66;border-radius:12px;padding:9px 14px;font-size:12px;display:flex;gap:10px;align-items:center;max-width:94%';
+ const ok=el('button','','Continue in Portrait');
+ ok.style.cssText='background:none;border:1px solid '+GLOW+'55;border-radius:999px;color:inherit;font-size:11px;padding:4px 10px;cursor:pointer';
+ ok.setAttribute('data-testid','rotate-prompt-dismiss');
+ ok.addEventListener('click',function(){p.remove()});
+ p.appendChild(ok);p.setAttribute('data-testid','rotate-prompt');
+ document.body.appendChild(p);setTimeout(function(){try{p.remove()}catch(e){}},9000)}
 function mark(ok,pts){answered++;if(ok){addScore(pts);answered--;}else comboBreak();post(false)}
-function stage(){root.style.opacity=0;if(ARC[S.runtime])music(true);bgify(document.body,'background',0.8);setTimeout(()=>{root.innerHTML='';root.appendChild(hud());const st=S.stages[stageIdx];
+function stage(){__stageLive=true;__gen++;_lastVW=window.innerWidth;_lastVH=window.innerHeight;rotatePrompt();root.style.opacity=0;if(ARC[S.runtime])music(true);bgify(document.body,'background',0.8);setTimeout(()=>{root.innerHTML='';root.appendChild(hud());const st=S.stages[stageIdx];
  const h=el('div','','<h3 style="margin:6px 12px;color:'+GLOW+'">'+(st.title||'')+'</h3>');root.appendChild(h);
  if(titleDone&&!CTRL.reduced_motion){const bn=el('div','','<div style="font-size:10px;letter-spacing:0.42em;color:'+ACC+'">STAGE '+(stageIdx+1)+' / '+S.stages.length+'</div><div style="font-size:21px;font-weight:800;color:'+GLOW+';text-shadow:0 0 18px '+GLOW+'77">'+(st.title||'')+'</div>');
   bn.style.cssText='position:fixed;top:18%;left:50%;z-index:55;text-align:center;pointer-events:none;animation:orbanner 2.1s ease forwards';
@@ -174,9 +207,14 @@ function ctrlGuide(){if(guideShown||CTRL.show_guide===false)return;guideShown=tr
  gd.style.cssText='position:fixed;left:50%;bottom:76px;transform:translateX(-50%);background:rgba(4,8,20,0.92);border:1px solid '+GLOW+'55;padding:9px 16px;border-radius:12px;font-size:12px;z-index:60;text-align:center;max-width:92%';
  document.body.appendChild(gd);setTimeout(()=>{gd.style.transition='opacity .5s';gd.style.opacity=0;setTimeout(()=>gd.remove(),600)},3400)}
 const ptr={active:false,x:0,y:0};
-function mkCanvas(extraH){const c=el('canvas','');const W=Math.min(root.clientWidth||360,900);
- const H=Math.max(280,window.innerHeight-96-(extraH||0));c.width=W;c.height=H;
- c.style.cssText='display:block;touch-action:none;border-radius:12px';
+function mkCanvas(extraH){const c=el('canvas','');const W=Math.min(root.clientWidth||360,1280);
+ const H=Math.max(280,window.innerHeight-96-(extraH||0));
+ const DPR=Math.min(2,window.devicePixelRatio||1);
+ c.width=Math.round(W*DPR);c.height=Math.round(H*DPR);
+ try{Object.defineProperty(c,'width',{get:function(){return W}});
+     Object.defineProperty(c,'height',{get:function(){return H}})}catch(e){}
+ c.getContext('2d').scale(DPR,DPR);
+ c.style.cssText='display:block;touch-action:none;border-radius:12px;width:'+W+'px;height:'+H+'px';
  const wrap=el('div','');wrap.style.cssText='position:relative;width:'+W+'px;margin:0 auto;border-radius:12px;border:1px solid '+GLOW+'26;overflow:hidden';
  wrap.appendChild(c);
  const vg=el('div','');vg.style.cssText='position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 44%,transparent 54%,rgba(0,0,0,0.42) 100%)';
@@ -3131,9 +3169,41 @@ function buildSrcdoc(spec, save, audio, controls) {
 
 export default function GameRuntime({ spec, onScore, height = 460, gameId, controls, guest }) {
   const ref = useRef(null);
+  const wrapRef = useRef(null);
   const [runtimeFail, setRuntimeFail] = useState(null);
   const [retryKey, setRetryKey] = useState(0);
+  const [nativeFs, setNativeFs] = useState(false);
+  const [cssFs, setCssFs] = useState(false);
+  const fsActive = nativeFs || cssFs;
   const readyRef = useRef(false);
+  const prefLandscape = ["action_rpg_2_5d", "platformer", "open_world_rpg", "racing",
+    "shooter", "dodge_collect"].includes(spec?.runtime);
+  useEffect(() => {
+    const h = () => setNativeFs(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", h);
+    return () => document.removeEventListener("fullscreenchange", h);
+  }, []);
+  useEffect(() => {
+    document.body.style.overflow = cssFs ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [cssFs]);
+  const toggleFs = async () => {
+    if (document.fullscreenElement) {
+      try { await document.exitFullscreen(); } catch { /* noop */ }
+      try { window.screen?.orientation?.unlock?.(); } catch { /* noop */ }
+      return;
+    }
+    if (cssFs) { setCssFs(false); return; }
+    const elw = wrapRef.current;
+    if (elw?.requestFullscreen) {
+      try {
+        await elw.requestFullscreen();
+        if (prefLandscape) { try { await window.screen?.orientation?.lock?.("landscape"); } catch { /* iOS */ } }
+        return;
+      } catch { /* fall through to CSS fullscreen */ }
+    }
+    setCssFs(true); // iOS Safari: full-viewport CSS fallback (rotate guidance shown in-game)
+  };
   const srcdoc = useMemo(() => {
     if (!spec) return "";
     let save = {}, audio = {};
@@ -3195,8 +3265,22 @@ export default function GameRuntime({ spec, onScore, height = 460, gameId, contr
     );
   }
   return (
-    <iframe key={retryKey} ref={ref} title={spec.title || "game"} srcDoc={srcdoc} sandbox="allow-scripts"
-      className="w-full rounded-xl" style={{ height, border: "1px solid rgba(46,230,255,0.25)", background: "#0b1220" }}
-      data-testid="game-runtime-iframe" />
+    <div ref={wrapRef}
+      className={cssFs ? "fixed inset-0 z-[100] bg-black flex items-stretch" : "relative w-full"}
+      style={cssFs ? { paddingTop: "env(safe-area-inset-top,0px)", paddingBottom: "env(safe-area-inset-bottom,0px)" } : undefined}
+      data-testid="game-runtime-shell">
+      <iframe key={retryKey} ref={ref} title={spec.title || "game"} srcDoc={srcdoc} sandbox="allow-scripts"
+        className="w-full rounded-xl"
+        style={{ height: fsActive ? "100%" : height, border: fsActive ? "none" : "1px solid rgba(46,230,255,0.25)", background: "#0b1220" }}
+        data-testid="game-runtime-iframe" />
+      <button type="button" onClick={toggleFs} data-testid="game-fullscreen-toggle"
+        title={fsActive ? "Exit fullscreen" : "Fullscreen / wide view"}
+        className="absolute flex items-center justify-center rounded-full font-bold"
+        style={{ top: fsActive ? "calc(env(safe-area-inset-top,0px) + 10px)" : 8, right: 8, width: 34, height: 34,
+                 zIndex: 30, background: "rgba(4,8,20,0.82)", color: "#EAF2FF",
+                 border: "1px solid rgba(46,230,255,0.45)", fontSize: 15, cursor: "pointer" }}>
+        {fsActive ? "✕" : "⛶"}
+      </button>
+    </div>
   );
 }

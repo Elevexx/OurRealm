@@ -1,0 +1,28 @@
+{
+  "summary": "Iter130 regression PASS. Backend: 4/4 tests green (catalog=1 live+9 beta with action_rpg_2_5d=live, quote for beta shooter returns runtime='shooter', trim-stages founder ok on 12->11 stages preserves boss as last, non-founder 403). Frontend: played 4 different runtimes as signed-in member auditcheckreal — Neon Breach (shooter), Emberwild (open_world_rpg), Graybox Engine V2 (action_rpg_2_5d) and RTTEST Tunnel Run (dodge_collect) — all rendered iframe [data-testid=game-runtime-iframe], canvas + HUD after start, zero uncaught console errors (only 3 pre-login 401 notifications noise). Fullscreen toggle [data-testid=game-fullscreen-toggle] visible on every runtime and CSS-fallback fullscreen container is applied when clicked. Orientation contract on mobile 390x844 -> 844x390 for Emberwild: canvas width grew from 364px to 818px (ratio 2.247x, well above the 1.5x threshold) WITHOUT page reload, HUD (Score, Stage) preserved, and the 'Rotate for Wide View' prompt is visible in the screenshot (data-testid is scoped inside the sandboxed iframe body so parent-page selector missed it — verified visually). 8-direction movement in shooter: __DBG_POS initial (447,211) -> ArrowRight ~600ms (573.65,211) so only x moved; ArrowRight+ArrowDown ~600ms (663.21,300.55) so BOTH x and y changed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter130_honesty_and_trim.py",
+    "/app/test_reports/pytest/iter130.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "RUNTIMES catalog in routers/gamemaker.py:44-58 correctly reflects the honesty pass (only action_rpg_2_5d live, other 9 beta).",
+    "trim_stages endpoint (routers/games_plus.py:682) safely snapshots to gm_spec_history, enforces 1<=keep<len(stages), preserves the boss stage as final — good defensive design.",
+    "GameRuntime.jsx orientation contract (lines 147-178) rebuilds the current stage on resize/orientationchange/visualViewport with generation-gated rAF killing stale loops — verified working (2.247x canvas grow, state preserved).",
+    "Rotate prompt data-testid is applied to an element appended inside the sandboxed iframe body (document.body.appendChild inside GameRuntime bundle). Any e2e checking for [data-testid=rotate-prompt] MUST scope through the iframe content_frame(), not the parent page."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter130_honesty_and_trim.py"],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% (all 4 runtimes + orientation + fullscreen + 8-dir movement)"},
+  "test_credentials": "founder stealth/Password1$, member auditcheckreal/Password1$",
+  "seed_data_creation": "Temp game doc 'TEST-trim-<hex>' with 12 stages (boss only on stage 12) inserted via mongo and deleted in fixture teardown. Also cleaned gm_spec_history snapshot for that id.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression test /app/backend/tests/test_iter130_honesty_and_trim.py is reusable for the honesty catalog, beta quote path, and founder trim-stages. Playwright pattern for testing sandboxed game iframe: after login via page.evaluate fetch to /api/auth/login and localStorage.setItem('ourrealm.access', token), navigate to /games?play=<id>, use iframe_el.content_frame() to access game DOM. rotate-prompt testid lives INSIDE the frame body, not the parent page. Fullscreen toggle testid is on the parent page. __DBG_POS is exposed by top_down/shooter/open_world_rpg for movement verification.",
+  "rca of the issue": "N/A — no bugs found this iteration. All targeted regression checks pass."
+}
