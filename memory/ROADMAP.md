@@ -103,3 +103,11 @@ Readiness 100/100. Remaining backlog unchanged: public course sharing, invite-pi
 - P0 (founder decision): approve/decline the 2.5D Runtime Proof in Founder Review; optionally resume Dragon Realm batch v2 (state file resumable, now can include an action_rpg_2_5d variant)
 - P1: Founder Moderation Cockpit UI; P2 Voice moderation; P3 Appeal Center; P8 Game Creator Founder Cockpit UI (blueprints/rollbacks/builds)
 - arpg engine upgrades: animation frame-strips for hero/boss (anim slot generation), PHASE 2+ boss content tuning, minimap, spell bar with multiple spells
+
+## GAME MAKER RUNTIME REBUILD — status after 2026-06-10 session (Founder Directive Phases 0-12)
+DONE: all 5 P0s (iframe SyntaxError recovery+heartbeat+error panel, explicit-runtime authoritative, creator private preview+status tracker, public-preview member rewards, founder-only $ estimates); 10/10 primary runtimes LIVE with passing contract tests (shooter + open_world_rpg newly implemented); published original demos demo-shooter-neon-breach-v1 + demo-owr-emberwild-v1 with original covers; 7 copyright-risk GameMaker tiles replaced with wholly original art.
+REMAINING (priority order per founder):
+- P1: Per-style rendering verification for all 10 animation styles across runtimes; deeper behavioral browser tests (saves, ER pickups per runtime, mobile).
+- P1: Additional runtime families (Multiplayer Online / MMO): build contracts, schemas, registry entry, networking boundary, greybox foundation, mark "Coming Soon" — NEVER "Live" while incomplete.
+- P2: Real 3D WebGL rendering path (currently canvas 2D/2.5D only — engine registry must stay truthful).
+- P2: Sweep remaining game covers (12 published games missing covers) + any legacy franchise-look covers on individual games (text scan found 0 hits; visual audit of hub covers pending).

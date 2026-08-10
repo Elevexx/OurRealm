@@ -117,6 +117,12 @@ async def main(publish: bool):
                 "controls": {"desktop_enabled": True, "mobile_enabled": True},
                 "gamemaker": {"style": "low_poly", "runtime_choice": rt, "created_via": "runtime_demo_seed"},
                 "resource_manifest": ["fire"], "age_rating": "13+", "genre": rt,
+                "access": {"mode": "published", "users": [], "badges": [], "badge_match": "any",
+                           "levels": [], "min_level": None, "max_level": None,
+                           "flags": {"fire": True, "keys": True, "saves": True,
+                                     "leaderboard": True, "reports": True},
+                           "filters": {}, "founder_bypass": True,
+                           "visible_when_blocked": False, "maintenance_message": ""},
             })
             print(f"seeded demo game {gid} ({spec['title']})")
         else:

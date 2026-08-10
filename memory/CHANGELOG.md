@@ -459,3 +459,24 @@ AFTER NEXT DEPLOY: production boots → startup_import inserts all 27 published 
 - ORAi Cover Generator: POST /api/admin/games/{gid}/generate-cover (reuses services/orai_images.generate_orai_image + image_store; audited). components/admin/GameCoverTool.jsx in AdminGames detail. Tested: generated Gemini cover for RTTEST game. NOTE: an existing cover editor (Regenerate/Edit prompt/Upload/Remove) also exists near the top of AdminGames detail — the new tool is a compact one-click ORAi shortcut using the same storage.
 - Widget polish (rc_widgets.py + RcWidgetBoard.jsx): slots now instance-based (duplicates allowed), rename (title), lock (edit controls hidden for non-managers), per-role visibility (server-side filter in dashboard(); managers always see all). Verified via curl: rename/dup/lock/roles persist + hydrate. Old layouts (no instance_id) auto-get ids on next save — backward compatible.
 - Guest conversion modal on both guest surfaces (GamePublicPage + PublicGamePreview): game_score event → score modal "Create Account & Keep Earning" (next-path preserved) / "Keep playing as guest" (session dismiss). UI-verified incl. dismissal persistence.
+
+## 2026-06-10 — Founder Directive: P0 Production Recovery + Runtime Expansion (iter129)
+### P0 fixes (all verified)
+- **Production blank-iframe SyntaxError FIXED**: missing `}` in PICK.forEach coin-pickup block (GameRuntime.jsx ~L2463). All games render again. Added `runtime_ready` heartbeat + `runtime_error` postMessage + visible "This game couldn't start" recovery panel (`game-runtime-error`, `game-runtime-retry`). No eval/new Function in runtime (CSP-safe).
+- **P0-1 Explicit runtime authoritative**: removed broken `_finalize_estimate` phantom call (would NameError); explicit body["runtime"] now sets routed/llm_rt/plan and records requested_runtime + animation_style. No quiz fallback ever.
+- **P0-2 Creator private preview**: GET /api/games/{id} lets creators play own approved/pending games (access.mode=private_preview, saves on, fire/keys off). GameMakerSaved.jsx STATUS_TRACK chips (Building…/Under Review/Private Preview Ready/Published — Live/Build Failed). Open My Game note added.
+- **P0-3 Public Preview member rewards**: game_access_ctl no longer hard-locks flags for public_preview; signed-in members get default published flags (PUBLIC_PREVIEW_MEMBER_MESSAGE); guests stay reward-locked. Updated test_game_access_ctl_iter123 accordingly.
+- **P0-4 Dollar estimates founder-only**: quote.provider_estimate + dry_run estimated_cost stripped for non-founders; play responses exclude est_cost/actual_cost/estimates; GameMakerPage renders $ cell only when present.
+### New runtimes (10/10 primaries now LIVE)
+- **shooter** (sht in RUNTIME_JS): top-down arena, waves, chaser+gunner AI, enemy bullets, auto-fire, portal. Demo: "Neon Breach: Sector Zero" (demo-shooter-neon-breach-v1, published).
+- **open_world_rpg** (owr): seamless scrolling world, zones, NPC dialog + collect/defeat quests, roaming enemies, bump combat, relics, sealed world gate. Demo: "Emberwild: The Roaming Vale" (demo-owr-emberwild-v1, published).
+- Backend wiring: RUNTIMES/LABELS/WIN_LOSS/GENRE_MAP/RUNTIME_MECHANICS/PLAYER_REPS/IDENTITY_BASE/SPEC_SYSTEM/validate_spec/controls maps. Catalog entries live. engine_registry RUNTIME_MECHANICS truthful, PLANNED_RUNTIMES now empty; both promoted draft→live with PASSING contract tests via scripts/launch_shooter_owr.py (idempotent, seeds demos w/ explicit access config).
+- IMPORTANT: seeded games need explicit access={mode:published,...} or platform gate 403s members.
+### Copyright-risk artwork replaced (wholly original, gemini-3.1-flash-image)
+- GameMakerPage tiles replaced: platformer (was Mario-lookalike), cartoon style (Mario pipes), comic_book (Superman-like), turn_based_creature_rpg (Pokémon-like), top_down_adventure (Zelda-like), shooter (was misleading FPS), racing (real-car photo). All URLs curl-verified 200.
+- Demo covers generated + stored persistently via /api/admin/games/{id}/cover-upload.
+### Testing
+- Backend: 168 tests green (all gamemaker suites + new test_shooter_owr_launch.py; updated stale phase1/phase2 assertions that expected shooter/owr as planned/draft).
+- testing_agent iteration_129: PASS except Emberwild access gap (fixed + re-verified by curl). Gameplay screenshots verified for both new runtimes.
+### API charges (founder-requested reporting)
+- Estimated: ~$0.30-0.45 for 10 medium-quality images. Actual: 10 images via Emergent LLM key (gemini-3.1-flash-image); no LLM text generation invoked (builds mocked/deterministic).
