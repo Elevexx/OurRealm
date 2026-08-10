@@ -39,7 +39,7 @@ async def plan_project(body: dict, current: dict) -> dict:
     media, no build."""
     stages = []
     request_text = str(body.get("request") or "")[:2000]
-    power = min(max(int(body.get("ai_power") or 3), 1), 10)
+    power = min(max(int(body.get("ai_power") or 10), 1), 10)
 
     # 1-5: understand + detections (one cheap LLM call, deterministic split)
     t0 = time.monotonic()

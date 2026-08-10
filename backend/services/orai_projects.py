@@ -142,8 +142,8 @@ PRESETS = [
 def estimate_project(p: dict) -> dict:
     tools = p.get("tools") or []
     s = p.get("settings") or {}
-    cx = min(max(int(p.get("complexity") or 5), 1), 10)
-    power = min(max(int(p.get("ai_power") or 5), 1), 10)
+    cx = min(max(int(p.get("complexity") or 10), 1), 10)
+    power = min(max(int(p.get("ai_power") or 10), 1), 10)
     t = tier(power)
     items = []
 
@@ -518,7 +518,7 @@ async def run_generation(pid: str, current: dict):
             try:
                 from services import game_studio as gs
                 est = await gs.create_estimate({"request": (p.get("prompt") or p["name"])[:1200],
-                                                "complexity": min(cx, 8), "ai_power": power,
+                                                "complexity": cx, "ai_power": power,
                                                 "supported_controls": (s.get("game") or {}).get("controls") or "both"},
                                                current)
                 sim = (est.get("plan") or {}).get("showcase_similarity") or {}

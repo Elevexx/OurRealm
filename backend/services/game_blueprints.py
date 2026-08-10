@@ -675,8 +675,8 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
                          feedback: str = "") -> dict:
     """Planning ONLY — one LLM call, no media generation, no build."""
     request_text = str(body.get("request") or (existing or {}).get("request") or "")[:12000]
-    complexity = min(max(int(body.get("complexity") or (existing or {}).get("complexity") or 1), 1), 10)
-    power = min(max(int(body.get("ai_power") or (existing or {}).get("ai_power") or 3), 1), 10)
+    complexity = min(max(int(body.get("complexity") or (existing or {}).get("complexity") or 10), 1), 10)
+    power = min(max(int(body.get("ai_power") or (existing or {}).get("ai_power") or 10), 1), 10)
     feedback = str(feedback or "")[:4000]
     requested_stage_count = _requested_stage_count(
         request_text + "\n" + feedback

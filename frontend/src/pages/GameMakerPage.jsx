@@ -72,7 +72,7 @@ export default function GameMakerPage() {
   const [idea, setIdea] = useState("");
   const [files, setFiles] = useState([]);
   const [economy, setEconomy] = useState(5);
-  const [aiPower, setAiPower] = useState(5);
+  const [aiPower, setAiPower] = useState(10);
   const [payRes, setPayRes] = useState("fire");
   const [econCfg, setEconCfg] = useState(null);
   const [quote, setQuote] = useState(null);
@@ -432,8 +432,8 @@ const fallbackStyles = [
 const fallbackRuntimes = [
   { key: "action_rpg_2_5d", name: "Action RPG 2.5D", description: "Real-time combat, spells, quests, bosses, loot & more.", status: "live" },
   { key: "turn_based_creature_rpg", name: "Turn-Based Creature RPG", description: "Capture creatures, train, evolve & battle in turn-based adventures.", status: "beta" },
-  { key: "platformer", name: "Platformer", description: "Classic side-scrolling platform action.", status: "beta" },
-  { key: "top_down_adventure", name: "Top-Down Adventure", description: "Explore, solve puzzles, fight enemies, collect items & more.", status: "beta" },
+  { key: "platformer", name: "Platformer", description: "Classic side-scrolling platform action.", status: "live" },
+  { key: "top_down_adventure", name: "Top-Down Adventure", description: "Explore, solve puzzles, fight enemies, collect items & more.", status: "live" },
   { key: "open_world_rpg", name: "Open World RPG", description: "Seamless scrolling worlds, zones, NPC quests & world gates.", status: "live" },
   { key: "card_battle", name: "Card Battle", description: "Strategic card battles with decks, mana & abilities.", status: "beta" },
   { key: "tower_defense", name: "Tower Defense", description: "Build towers, defend your base, upgrade & survive waves.", status: "beta" },

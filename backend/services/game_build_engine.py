@@ -175,7 +175,7 @@ async def build_review(bp: dict, owner_id: str) -> dict:
     scenes = scene_graph(bp)
     resolution = await resolve_assets(bp, owner_id)
     validation = runtime_validation(bp, scenes, resolution)
-    t = tier(min(bp.get("ai_power") or 3, 5))
+    t = tier(bp.get("ai_power") or 10)
     passes = t["passes"] + 1
     return {
         "blueprint_id": bp["id"], "name": bp["name"],
@@ -213,7 +213,7 @@ async def start_blueprint_build(bp: dict, current: dict) -> dict:
     if not validation["passed"]:
         return {"started": False, "validation": validation}
     g = bp["blueprint"]["gameplay"]
-    stages = max(1, min(len(g.get("levels") or []) or 3, 8)) if bp["complexity"] > 1 else \
+    stages = max(1, min(len(g.get("levels") or []) or 3, 20)) if bp["complexity"] > 1 else \
         max(1, min(len(g.get("levels") or []) or 1, 3))
     plan = {
         "title": bp["blueprint"]["identity"].get("title") or bp["name"],

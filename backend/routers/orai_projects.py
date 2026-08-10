@@ -52,8 +52,8 @@ def _validate_body(body: dict) -> dict:
             "prompt": str(body.get("prompt") or "")[:4000],
             "tools": tools, "providers": providers,
             "center_id": str(body.get("center_id") or "")[:64] or None,
-            "complexity": min(max(int(body.get("complexity") or 5), 1), 10),
-            "ai_power": min(max(int(body.get("ai_power") or 5), 1), 10),
+            "complexity": min(max(int(body.get("complexity") or 10), 1), 10),
+            "ai_power": min(max(int(body.get("ai_power") or 10), 1), 10),
             "settings": body.get("settings") or {},
             "suggestion_used": (body.get("suggestion_used") or "")[:40]}
 

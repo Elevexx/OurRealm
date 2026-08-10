@@ -47,8 +47,8 @@ RUNTIMES = [
     # runtimes whose demos are still canvas/greybox presentation stay "beta".
     ("action_rpg_2_5d", "Action RPG 2.5D", "Real-time combat, spells, quests, bosses, loot & more.", "action_rpg_2_5d", "live"),
     ("turn_based_creature_rpg", "Turn-Based Creature RPG", "Capture creatures, train, evolve & battle in turn-based adventures.", "turn_based_creature_rpg", "beta"),
-    ("platformer", "Platformer", "Classic side-scrolling platform action.", "platformer", "beta"),
-    ("top_down_adventure", "Top-Down Adventure", "Explore, solve puzzles, fight enemies, collect items & more.", "top_down", "beta"),
+    ("platformer", "Platformer", "Classic side-scrolling platform action.", "platformer", "live"),
+    ("top_down_adventure", "Top-Down Adventure", "Explore, solve puzzles, fight enemies, collect items & more.", "top_down", "live"),
     ("open_world_rpg", "Open World RPG", "Seamless scrolling worlds, zones, NPC quests, roaming enemies & world gates.", "open_world_rpg", "live"),
     ("card_battle", "Card Battle", "Strategic card battles with decks, mana & abilities.", "card_battle", "beta"),
     ("tower_defense", "Tower Defense", "Build towers, defend your base, upgrade & survive waves.", "tower_defense", "beta"),
@@ -204,7 +204,7 @@ async def create_game(body: dict, current: CurrentUser):
     allowed, reason = await _er.new_use_allowed(rt[3])
     if not allowed:
         raise HTTPException(status_code=400, detail=reason)
-    power = min(max(int(body.get("ai_power") or 5), 1), 10)
+    power = min(max(int(body.get("ai_power") or 10), 1), 10)
     t = tier(power)
     if body.get("dry_run"):
         out = {"model": t["label"], "runtime": rt[1], "style": style}
@@ -214,7 +214,7 @@ async def create_game(body: dict, current: CurrentUser):
     style_name = next(n for k, n, _ in STYLES if k == style)
     payload = {"request": f"{idea}\n\nArt direction: render everything in a {style_name} visual style.",
                "engine_runtime": rt[3], "runtime_choice": rt_choice, "style": style,
-               "ai_power": power, "complexity": min(max(int(body.get("complexity") or 4), 1), 10)}
+               "ai_power": power, "complexity": min(max(int(body.get("complexity") or 10), 1), 10)}
     job = await job_engine.submit("gamemaker_create", current, payload,
                                   idem_key=body.get("request_id"))
     return {"job_id": job["id"], "phase": job["phase"]}
@@ -482,7 +482,7 @@ async def make_quote(body: dict, current: CurrentUser):
     acc = await check_access(current)
     if not acc["allowed"]:
         raise HTTPException(status_code=403, detail=acc.get("message") or "Game Maker access is restricted")
-    power = min(max(int(body.get("ai_power") or 5), 1), 10)
+    power = min(max(int(body.get("ai_power") or 10), 1), 10)
     pol = await op.check_policy("gamemaker_create", current, power=power,
                                 is_founder=bool(get_admin_role(current)))
     if not pol["allowed"]:

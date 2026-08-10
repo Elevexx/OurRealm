@@ -42,8 +42,9 @@ def test_catalog_three_live_seven_beta(founder_token):
     runtimes = r.json().get("runtimes") or []
     live = {x["key"] for x in runtimes if x["status"] == "live"}
     beta = {x["key"] for x in runtimes if x["status"] == "beta"}
-    assert live == {"action_rpg_2_5d", "shooter", "open_world_rpg"}, f"live={live}"
-    for k in ["platformer", "top_down_adventure", "turn_based_creature_rpg",
+    assert live == {"action_rpg_2_5d", "shooter", "open_world_rpg",
+                    "platformer", "top_down_adventure"}, f"live={live}"
+    for k in ["turn_based_creature_rpg",
               "card_battle", "tower_defense", "match3", "racing"]:
         assert k in beta, f"Missing beta runtime {k}"
 

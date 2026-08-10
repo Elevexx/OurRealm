@@ -202,7 +202,7 @@ async def edit_section(bp: dict, section: str, instruction: str, current: dict) 
                             detail=f"Unknown section — pick one of: {', '.join(EDIT_SECTIONS)}")
     path = EDIT_SECTIONS[section]
     before = _get_path(bp, path)
-    t = tier(min(int(bp.get("ai_power") or 3), 5))
+    t = tier(int(bp.get("ai_power") or 10))
     res = await call_openai_chat(
         [{"role": "system", "content": EDIT_SYSTEM},
          {"role": "user", "content": f"SECTION '{section}' current value:\n"
