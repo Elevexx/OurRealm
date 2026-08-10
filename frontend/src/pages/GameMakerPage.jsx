@@ -434,10 +434,10 @@ const fallbackRuntimes = [
   { key: "turn_based_creature_rpg", name: "Turn-Based Creature RPG", description: "Capture creatures, train, evolve & battle in turn-based adventures.", status: "beta" },
   { key: "platformer", name: "Platformer", description: "Classic side-scrolling platform action.", status: "beta" },
   { key: "top_down_adventure", name: "Top-Down Adventure", description: "Explore, solve puzzles, fight enemies, collect items & more.", status: "beta" },
-  { key: "open_world_rpg", name: "Open World RPG", description: "Seamless scrolling worlds, zones, NPC quests & world gates.", status: "beta" },
+  { key: "open_world_rpg", name: "Open World RPG", description: "Seamless scrolling worlds, zones, NPC quests & world gates.", status: "live" },
   { key: "card_battle", name: "Card Battle", description: "Strategic card battles with decks, mana & abilities.", status: "beta" },
   { key: "tower_defense", name: "Tower Defense", description: "Build towers, defend your base, upgrade & survive waves.", status: "beta" },
   { key: "match3", name: "Match-3 Puzzle", description: "Swap, match, combo & achieve high scores.", status: "beta" },
   { key: "racing", name: "Racing", description: "High-speed races, tracks, upgrades & challenges.", status: "beta" },
-  { key: "shooter", name: "Shooter", description: "Top-down arena combat — waves, enemy AI & auto-fire.", status: "beta" },
+  { key: "shooter", name: "Shooter", description: "Top-down arena combat — waves, enemy AI & auto-fire.", status: "live" },
 ];

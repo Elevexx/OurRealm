@@ -21,10 +21,10 @@ def test_catalog_lists_both(founder_h):
     r = requests.get(f"{BASE}/api/gamemaker/catalog", headers=founder_h, timeout=10)
     assert r.status_code == 200
     rts = {x["key"]: x["status"] for x in r.json()["runtimes"]}
-    # Truthful statuses: greybox-presentation demos stay beta; only the
-    # asset-driven 2.5D Action RPG has passed the full visual-quality review.
-    assert rts["shooter"] == "beta"
-    assert rts["open_world_rpg"] == "beta"
+    # Truthful statuses: shooter + open_world_rpg earned Live after the visual
+    # production pass + browser-proven mechanics (portal, quests, world gate).
+    assert rts["shooter"] == "live"
+    assert rts["open_world_rpg"] == "live"
     assert rts["action_rpg_2_5d"] == "live"
     assert all(v in ("live", "beta") for v in rts.values()), f"unexpected status: {rts}"
 

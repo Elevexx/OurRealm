@@ -33,21 +33,19 @@ def member_token():
 
 
 # ---------- Catalog truthfulness ----------
-def test_catalog_one_live_nine_beta(founder_token):
+def test_catalog_three_live_seven_beta(founder_token):
+    """Truthful statuses: action_rpg_2_5d + shooter + open_world_rpg earned
+    Live (visual pass + browser-proven mechanics); the other 7 remain Beta."""
     r = requests.get(f"{BASE}/api/gamemaker/catalog",
                      headers={"Authorization": f"Bearer {founder_token}"}, timeout=20)
     assert r.status_code == 200, r.text
     runtimes = r.json().get("runtimes") or []
-    live = [x for x in runtimes if x["status"] == "live"]
-    beta = [x for x in runtimes if x["status"] == "beta"]
-    assert len(live) == 1, f"Expected 1 live runtime, got {[x['key'] for x in live]}"
-    assert live[0]["key"] == "action_rpg_2_5d"
-    assert len(beta) == 9, f"Expected 9 beta runtimes, got {len(beta)}: {[x['key'] for x in beta]}"
-    beta_keys = {x["key"] for x in beta}
-    for k in ["shooter", "open_world_rpg", "platformer", "top_down_adventure",
-              "turn_based_creature_rpg", "card_battle", "tower_defense",
-              "match3", "racing"]:
-        assert k in beta_keys, f"Missing beta runtime {k}"
+    live = {x["key"] for x in runtimes if x["status"] == "live"}
+    beta = {x["key"] for x in runtimes if x["status"] == "beta"}
+    assert live == {"action_rpg_2_5d", "shooter", "open_world_rpg"}, f"live={live}"
+    for k in ["platformer", "top_down_adventure", "turn_based_creature_rpg",
+              "card_battle", "tower_defense", "match3", "racing"]:
+        assert k in beta, f"Missing beta runtime {k}"
 
 
 # ---------- Quote for beta runtime ----------

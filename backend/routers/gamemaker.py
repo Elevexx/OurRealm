@@ -49,12 +49,12 @@ RUNTIMES = [
     ("turn_based_creature_rpg", "Turn-Based Creature RPG", "Capture creatures, train, evolve & battle in turn-based adventures.", "turn_based_creature_rpg", "beta"),
     ("platformer", "Platformer", "Classic side-scrolling platform action.", "platformer", "beta"),
     ("top_down_adventure", "Top-Down Adventure", "Explore, solve puzzles, fight enemies, collect items & more.", "top_down", "beta"),
-    ("open_world_rpg", "Open World RPG", "Seamless scrolling worlds, zones, NPC quests, roaming enemies & world gates.", "open_world_rpg", "beta"),
+    ("open_world_rpg", "Open World RPG", "Seamless scrolling worlds, zones, NPC quests, roaming enemies & world gates.", "open_world_rpg", "live"),
     ("card_battle", "Card Battle", "Strategic card battles with decks, mana & abilities.", "card_battle", "beta"),
     ("tower_defense", "Tower Defense", "Build towers, defend your base, upgrade & survive waves.", "tower_defense", "beta"),
     ("match3", "Match-3 Puzzle", "Swap, match, combo & achieve high scores.", "match3", "beta"),
     ("racing", "Racing", "High-speed races, tracks, upgrades & challenges.", "racing", "beta"),
-    ("shooter", "Shooter", "Top-down arena combat — waves, enemy AI, auto-fire blasters & portals.", "shooter", "beta"),
+    ("shooter", "Shooter", "Top-down arena combat — waves, enemy AI, auto-fire blasters & portals.", "shooter", "live"),
 ]
 
 

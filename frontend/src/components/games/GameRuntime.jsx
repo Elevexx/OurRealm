@@ -164,9 +164,9 @@ window.addEventListener('resize',function(){_queueRelayout(280)});
 window.addEventListener('orientationchange',function(){_queueRelayout(380)});
 if(window.visualViewport)window.visualViewport.addEventListener('resize',function(){_queueRelayout(280)});
 function rotatePrompt(){
+ if(window.innerWidth>=window.innerHeight){const old=document.querySelector('[data-testid="rotate-prompt"]');if(old)old.remove();return}
  if(_rotShown||!MOB)return;
  if((ORIENT_PREF[S.runtime]||'either')!=='landscape')return;
- if(window.innerWidth>=window.innerHeight)return;
  _rotShown=true;
  const p=el('div','','<span style="font-size:16px">\uD83D\uDD04</span> <b>Rotate for Wide View</b> \u2014 this game plays best in landscape.');
  p.style.cssText='position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:70;background:rgba(4,8,20,0.94);border:1px solid '+GLOW+'66;border-radius:12px;padding:9px 14px;font-size:12px;display:flex;gap:10px;align-items:center;max-width:94%';
@@ -336,8 +336,12 @@ function paintAvatar(g,x,y,w,tilt,boostT,shieldN,t,mode){const rp=repFor(mode);
  else if(rp==='runner')paintRunnerP(g,x,y,w,tilt,boostT,shieldN,t);
  else paintPlayer(g,x,y,w,tilt,boostT,shieldN,t)}
 function paintHeroSide(g,x,y,w,h,face,wph,grounded,rep,inv,t){g.save();g.translate(x+w/2,y+h);if(face<0)g.scale(-1,1);
- if(aimg('player_sprite')){g.restore();if(inv>0)drawFxAt(g,x+w/2,y+h/2,h*2,t);
-  drawSpr(g,'player_sprite',x+w/2,y+h*0.42,h*1.35,0,t,face<0);return}
+ if(aimg('player_sprite')){g.restore();
+  const lg0=g.createRadialGradient(x+w/2,y+h,2,x+w/2,y+h,h*0.9);
+  lg0.addColorStop(0,GLOW+'66');lg0.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=lg0;g.beginPath();g.ellipse(x+w/2,y+h,h*0.9,h*0.34,0,0,7);g.fill();
+  if(inv>0)drawFxAt(g,x+w/2,y+h/2,h*2,t);
+  drawSpr(g,'player_sprite',x+w/2,y+h*0.18,h*1.85,0,t,face<0);return}
  const cA=inv>0?ACC:PCOL[0],cB=PCOL[1]||GLOW;const lg2=grounded?Math.sin(wph)*w*0.3:w*0.18;
  g.strokeStyle=cB;g.lineWidth=3;g.lineCap='round';
  g.beginPath();g.moveTo(0,-h*0.42);g.lineTo(lg2,0);g.stroke();
@@ -359,8 +363,13 @@ function paintHeroSide(g,x,y,w,h,face,wph,grounded,rep,inv,t){g.save();g.transla
  else{g.fillStyle=cB;g.fillRect(-w*0.25,-h*1.08,w*0.5,w*0.14)}
  g.restore()}
 function paintHeroTop(g,x,y,r,ang,rep,inv,t){g.save();g.translate(x,y);g.rotate(ang);
- if(aimg('player_sprite')){g.restore();if(inv>0)drawFxAt(g,x,y,r*3.4,t);
-  drawSpr(g,'player_sprite',x,y,r*3.6,ang+1.5708,t);return}
+ if(aimg('player_sprite')){g.restore();
+  const lg1=g.createRadialGradient(x,y,2,x,y,r*2.8);
+  lg1.addColorStop(0,GLOW+'99');lg1.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=lg1;g.beginPath();g.arc(x,y,r*2.8,0,7);g.fill();
+  g.strokeStyle=GLOW+'aa';g.lineWidth=1.6;g.beginPath();g.arc(x,y,r*2.2,0,7);g.stroke();
+  if(inv>0)drawFxAt(g,x,y,r*3.4,t);
+  drawSpr(g,'player_sprite',x,y,r*4.2,ang+1.5708,t);return}
  const cA=inv>0?ACC:PCOL[0],cB=PCOL[1]||GLOW;
  if(rep==='stealth_operative'){g.fillStyle='rgba(46,230,255,0.06)';g.beginPath();g.moveTo(0,0);g.arc(0,0,r*4,-0.55,0.55);g.closePath();g.fill()}
  g.shadowColor=GLOW;g.shadowBlur=12;
@@ -654,6 +663,7 @@ function td(st){const c=mkCanvas(0),g=c.getContext('2d');
   if(nx>P.r&&nx<c.width-P.r&&!hitObs(nx,P.y,P.r))P.x=nx;
   if(ny>P.r&&ny<c.height-P.r&&!hitObs(P.x,ny,P.r))P.y=ny;
   window.__DBG_POS={x:P.x,y:P.y,rt:'top_down'};
+  window.__DBG_TD={cores:cores.map(co=>({x:co.x,y:co.y})),portal:portal?{x:portal.x,y:portal.y}:null,obs:obs.length};
   cores=cores.filter(co=>{if(Math.hypot(co.x-P.x,co.y-P.y)<20){const p=addScore();burst(co.x,co.y,GLOW,12,100);popup(co.x,co.y-14,'+'+p,GLOW);if(S.checkpoints){cp={x:co.x,y:co.y};popup(co.x,co.y-32,'\u2691 CHECKPOINT',ACC)}refreshHud();return false}return true});
   erPicks.forEach(q=>{if(q.got||Math.hypot(q.x-P.x,q.y-P.y)>=20)return;q.got=true;addScore(15);sfx('collect');popup(q.x,q.y-18,'+'+q.er.toUpperCase(),q.er==='gems'?'#4de3ff':q.er==='stars'?'#B98BFF':'#FFD34D');if(q.er==='keys'){try{parent.postMessage({type:'game_key',key_id:q.key_id||q.id||('pickup-'+q.i),stage:stageIdx+1,title:st.title||''},'*')}catch(e){}}else{try{parent.postMessage({type:'game_resource',resource_key:q.er,pickup_index:q.i,stage:stageIdx+1},'*')}catch(e){}}});
  if(!cores.length&&!portal)portal={x:c.width-36,y:36};
@@ -667,7 +677,7 @@ function td(st){const c=mkCanvas(0),g=c.getContext('2d');
   if(inv>0)inv-=dt;
   if(portal&&Math.hypot(portal.x-P.x,portal.y-P.y)<26){over=true;burst(P.x,P.y,'#C26BFF',24,160);setTimeout(()=>fb(true,(st.title||'Zone')+' cleared!'+unlockMsg(),next),300);return}
   g.save();if(shake>0.4&&!CTRL.reduced_motion){g.translate((Math.random()-0.5)*shake,(Math.random()-0.5)*shake);shake*=0.86}
-  drawEnv(g,c.width,c.height,env,t,0.25);
+  drawBg(g,c.width,c.height,env,t,0.25);
   g.strokeStyle=GLOW+'40';g.strokeRect(1,1,c.width-2,c.height-2);
   obs.forEach(o=>{g.fillStyle='rgba(138,147,166,0.3)';g.fillRect(o.x,o.y,o.w,o.h);
    g.strokeStyle=GLOW+'33';g.strokeRect(o.x,o.y,o.w,o.h)});
@@ -3188,6 +3198,19 @@ export default function GameRuntime({ spec, onScore, height = 460, gameId, contr
     const h = () => setNativeFs(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", h);
     return () => document.removeEventListener("fullscreenchange", h);
+  }, []);
+  useEffect(() => {
+    // Mobile landscape with a short viewport: parent chrome would push touch
+    // controls below the fold — auto-enter the full-viewport container.
+    const check = () => {
+      const touch = window.matchMedia("(pointer: coarse)").matches;
+      if (touch && window.innerWidth > window.innerHeight && window.innerHeight < 520 &&
+          !document.fullscreenElement) setCssFs(true);
+    };
+    check();
+    window.addEventListener("resize", check);
+    window.addEventListener("orientationchange", check);
+    return () => { window.removeEventListener("resize", check); window.removeEventListener("orientationchange", check); };
   }, []);
   useEffect(() => {
     document.body.style.overflow = cssFs ? "hidden" : "";
