@@ -105,13 +105,48 @@ async def presence(body: dict, current: CurrentUser):
         {"zone_id": zone_id, "ts": {"$gt": cutoff}, "user_id": {"$ne": current["id"]}},
         {"_id": 0, "user_id": 1, "username": 1, "x": 1, "y": 1, "z": 1, "ry": 1, "anim": 1}
     ).to_list(64)
-    return {"players": others, "online": await _online_count(), "self": {"x": x, "z": z}}
+    chats = await db.nexus_chat.find(
+        {"zone_id": zone_id, "ts": {"$gt": now - 8}},
+        {"_id": 0, "id": 1, "user_id": 1, "username": 1, "x": 1, "z": 1, "text": 1, "ts": 1}
+    ).to_list(40)
+    near = [c for c in chats if math.hypot(c["x"] - x, c["z"] - z) <= CHAT_RADIUS]
+    return {"players": others, "online": await _online_count(), "self": {"x": x, "z": z},
+            "chats": near, "pv": doc["published_version"]}
 
 
 @router.post("/presence/leave")
 async def presence_leave(current: CurrentUser):
     await db.nexus_presence.delete_one({"user_id": current["id"]})
     return {"ok": True}
+
+
+CHAT_RADIUS = 18
+_last_chat = {}
+
+
+@router.post("/chat")
+async def nexus_chat(body: dict, current: CurrentUser):
+    now = time.time()
+    if now - _last_chat.get(current["id"], 0) < 2.0:
+        raise HTTPException(status_code=429, detail="You're chatting too fast")
+    u = await db.users.find_one({"id": current["id"]}, {"_id": 0, "muted_until": 1, "suspended_until": 1})
+    for k in ("muted_until", "suspended_until"):
+        if u and u.get(k) and str(u[k]) > _iso():
+            raise HTTPException(status_code=403, detail="Chat is unavailable for this account")
+    text = "".join(ch for ch in str(body.get("text") or "") if ch.isprintable()).strip()[:160]
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty message")
+    pres = await db.nexus_presence.find_one({"user_id": current["id"]}, {"_id": 0})
+    if not pres or now - pres.get("ts", 0) > 12:
+        raise HTTPException(status_code=400, detail="You must be in the world to chat")
+    _last_chat[current["id"]] = now
+    msg = {"id": uuid.uuid4().hex[:10], "user_id": current["id"],
+           "username": current.get("username"), "zone_id": pres["zone_id"],
+           "x": pres["x"], "z": pres["z"], "text": text, "ts": now, "at": _iso()}
+    await db.nexus_chat.insert_one({**msg})
+    await db.nexus_chat.delete_many({"ts": {"$lt": now - 30}})
+    msg.pop("_id", None)
+    return {"ok": True, "message": msg}
 
 
 @router.get("/position")

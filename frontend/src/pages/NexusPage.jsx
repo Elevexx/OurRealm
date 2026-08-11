@@ -1,5 +1,5 @@
 /* /nexus — public presentation + signed-in world entry. */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,6 +16,9 @@ export default function NexusPage() {
   const [info, setInfo] = useState(null);
   const [world, setWorld] = useState(null);
   const [playing, setPlaying] = useState(false);
+  const [zoneId, setZoneId] = useState("plaza");
+  const [worldVersion, setWorldVersion] = useState(0);
+  const syncingRef = useRef(false);
 
   useEffect(() => {
     const load = () => axios.get(`${API}/api/nexus/public`).then((r) => setInfo(r.data)).catch(() => {});
@@ -30,20 +33,58 @@ export default function NexusPage() {
 
   const enter = async () => {
     if (!user) { nav("/signin"); return; }
-    const r = await apiClient.get("/nexus/world");
-    setWorld(r.data.world);
+    const [wr, pr] = await Promise.all([
+      apiClient.get("/nexus/world"),
+      apiClient.get("/nexus/position").catch(() => ({ data: {} })),
+    ]);
+    const nextWorld = wr.data.world;
+    const savedZone = pr.data?.position?.zone_id;
+    const validZone = nextWorld.zones?.some((z) => z.id === savedZone);
+    setZoneId(validZone ? savedZone : (nextWorld.zones?.[0]?.id || "plaza"));
+    setWorld(nextWorld);
+    setWorldVersion(Number(wr.data.version || 0));
     setPlaying(true);
   };
   const onPortal = (e) => {
-    if (e.props?.action === "game" && e.props?.game_id) nav(`/games?play=${e.props.game_id}`);
+    if (e.props?.action === "zone" && e.props?.target_zone) {
+      const target = world?.zones?.find((z) => z.id === e.props.target_zone);
+      if (!target) {
+        toast.error("That Nexus zone is unavailable.");
+        return;
+      }
+      setZoneId(target.id);
+      toast.success(`Entering ${target.name}`);
+    } else if (e.props?.action === "game" && e.props?.game_id) nav(`/games?play=${e.props.game_id}`);
     else if (e.type === "npc") toast.message(e.props?.label || "NPC", { description: e.props?.dialog || "..." });
     else toast.message(e.props?.label || "Portal", { description: "This expansion zone opens in a future update." });
   };
 
+  const refreshPublished = useCallback(async (nextVersion) => {
+    if (!nextVersion || nextVersion === worldVersion || syncingRef.current) return;
+    syncingRef.current = true;
+    try {
+      const r = await apiClient.get("/nexus/world");
+      const nextWorld = r.data.world;
+      const version = Number(r.data.version || nextVersion);
+      if (version === worldVersion) return;
+      const zoneStillExists = nextWorld.zones?.some((z) => z.id === zoneId);
+      setWorld(nextWorld);
+      setWorldVersion(version);
+      if (!zoneStillExists) setZoneId(nextWorld.zones?.[0]?.id || "plaza");
+      toast.success("World Updated");
+    } catch {
+      // Keep the last complete published world and retry on the next presence poll.
+    } finally {
+      syncingRef.current = false;
+    }
+  }, [worldVersion, zoneId]);
+
   if (playing && world) {
     return (
       <div className="fixed inset-0 z-[100] bg-[#0a0f1e]" data-testid="nexus-play-shell">
-        <NexusWorld mode="play" world={world} username={user?.username} onPortal={onPortal} />
+        <NexusWorld key={`${zoneId}:${worldVersion}`} mode="play" world={world}
+          zoneId={zoneId} username={user?.username} onPortal={onPortal}
+          onPublishedVersion={refreshPublished} />
         <button onClick={() => setPlaying(false)} data-testid="nexus-exit-btn"
           className="absolute top-2 left-1/2 -translate-x-1/2 text-xs font-semibold text-white/90 bg-black/50 rounded-lg px-3 py-1.5">✕ Leave World</button>
       </div>

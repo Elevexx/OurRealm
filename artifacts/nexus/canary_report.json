@@ -1,0 +1,65 @@
+{
+ "started_at": "2026-08-11T01:28:18.995802+00:00",
+ "assets": {
+  "plaza_kit": {
+   "task_ids": {
+    "preview": "019fee6f-4c7f-7f47-a237-0f7d7b8d3f92",
+    "refine": "019fee70-9e55-7eae-8e5d-fbc892305861"
+   },
+   "credits": 30,
+   "final_task": "019fee70-9e55-7eae-8e5d-fbc892305861",
+   "final_wf": "text_refine",
+   "master_url": "/api/media/models/6dc13e3eba41fc767d04b7d21d83e3af.glb",
+   "master_meta": {
+    "bytes": 41065156,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 4,
+    "skins": 0,
+    "animations": []
+   },
+   "runtime_url": "/api/media/models/0290e61dd5c4cad798d795e0a5f808f3.glb",
+   "runtime_meta": {
+    "bytes": 4141056,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 4,
+    "skins": 0,
+    "animations": []
+   }
+  },
+  "starter_avatar": {
+   "task_ids": {
+    "preview": "see meshy_tasks nexus-canary-starter_avatar-prev-v1",
+    "refine": "see meshy_tasks nexus-canary-starter_avatar-ref-v1",
+    "rig": "019fee71-5dc0-7f83-8aad-989da63b9cac"
+   },
+   "master_url": "/api/media/models/acde5fdeb23d3f2bd38db53ef57a2ada.glb",
+   "master_meta": {
+    "bytes": 16312004,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 2,
+    "skins": 1,
+    "animations": [
+     "Armature|clip0|baselayer"
+    ]
+   },
+   "runtime_url": "/api/media/models/4039b8b9581693e65629d90d6152ecce.glb",
+   "runtime_meta": {
+    "bytes": 10013652,
+    "meshes": 1,
+    "materials": 1,
+    "textures": 1,
+    "skins": 1,
+    "animations": [
+     "Armature|clip0|baselayer"
+    ]
+   },
+   "credits": 35
+  }
+ },
+ "balance_start": 5147,
+ "balance_end": 5082,
+ "finished_at": "2026-08-11T01:32:34.333229+00:00"
+}

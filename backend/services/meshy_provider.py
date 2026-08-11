@@ -108,7 +108,13 @@ async def poll_task(db, workflow: str, task_id: str) -> dict:
         "thumbnail_url": t.get("thumbnail_url"),
         "updated_at": datetime.now(timezone.utc).isoformat()}})
     safe = {k: t.get(k) for k in ("id", "status", "progress", "task_error",
-                                  "thumbnail_url", "consumed_credits", "model_urls")}
+                                  "thumbnail_url", "consumed_credits")}
+    model_urls = t.get("model_urls") or {}
+    animation_result = t.get("result") or {}
+    animation_glb = animation_result.get("animation_glb_url")
+    if workflow == "animation" and animation_glb:
+        model_urls = {**model_urls, "glb": animation_glb}
+    safe["model_urls"] = model_urls or None
     return safe
 
 
