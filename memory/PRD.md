@@ -1,4 +1,36 @@
-# OurRealm — Product Requirements (UPDATED 2026-06 — ARCANE PROD GATE DONE, NEXUS QUEUED)
+# OurRealm — Product Requirements (UPDATED 2026-06 — NEXUS CHECKPOINT A COMPLETE, AWAITING FOUNDER GATE)
+
+## NEXUS V1 — CHECKPOINT A COMPLETE ✅ (iteration_141: backend 24/24 PASS, frontend pass)
+- Routes LIVE: /nexus (public landing + signed-in world entry) and /admin/nexus (founder-only,
+  guarded in frontend via useAuth admin_role AND backend require_founder on every endpoint).
+- REAL multiplayer PROVEN with 2 simultaneous browser sessions (stealth + tftwo): both see each
+  other's named avatar, movement syncs (300ms presence poll + lerp interpolation), join/move/
+  stop/disconnect (remotes→0, HUD 1 online)/reconnect (remotes→1) all verified. Online counts
+  are real DB values (nexus_presence ts>now-12s). Server rejects: out-of-bounds 400, teleports
+  (snap-back), spam <120ms 429. Position persists (nexus_positions, 5s save + unmount save).
+- World editor: add box/ramp/pillar/light/portal/npc, select/drag-move/numeric pos-rot-scale/
+  color/duplicate/remove/undo (inverse-ops), Draft→Publish (snapshot)→Rollback-to-draft,
+  audit trail. Draft/published isolation asserted in tests (rollback never touches published).
+- ORAi World Architect LIVE: propose (gpt-5-mini json_mode, max_tokens=4000 — was 600, fixed)
+  → plan + structured ops diff → founder approve applies to DRAFT only / reject. Dry-run
+  validation via nw.apply_ops before saving proposal. Never touches published world.
+- Controls: PC WASD (+arrows), pointer lock, Space jump, Shift sprint, E interact, wheel zoom,
+  sensitivity + invert H/V (localStorage). Mobile: left joystick, right cam drag, pinch zoom,
+  JUMP/E/RUN buttons (gate: pointer:coarse OR maxTouchPoints>0, reactive to resize/orientation).
+  Portrait 390x844 + landscape 844x390 verified, canvas matches viewport (no stretch).
+- BUG FIXED this session: W/S was inverted relative to camera (dx/dz basis signs) — W now
+  moves -z at yaw=0, verified with yaw exposed on window.__NEXUS.
+- Files: backend/routers/nexus.py, backend/services/nexus_world.py,
+  frontend/src/components/nexus/NexusWorld.jsx, pages/NexusPage.jsx, pages/AdminNexus.jsx,
+  routes in App.js. Regression suite: backend/tests/test_nexus_phase1.py (24 cases).
+- ZERO paid media used (greybox primitives only). Meshy credits used this session: 0.
+- DB: nexus_worlds (draft+published), nexus_versions, nexus_presence, nexus_positions,
+  nexus_proposals, nexus_audit. World cleaned post-test: published v4 = original 13-entity plaza.
+- Known headless-only limitations (NOT product bugs): RAF throttling slows movement, Esc
+  doesn't release pointer lock (use document.exitPointerLock()), pointer:coarse needs touch emu.
+- NEXT (founder gate): Checkpoint B — 1 Meshy env asset + 1 rigged avatar canary w/ cost report;
+  then Checkpoint C — 2 streetwear avatars + polished plaza. Chat/voice/media tools Phase B.
+
 
 ## STARTING GATE RESULTS (Nexus directive received — gate executed, PAUSED pre-Nexus)
 - Production (ourrealm.social): backend healthy; ALL 10 runtime GLB URLs return 307→R2 publicly

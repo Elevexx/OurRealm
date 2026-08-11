@@ -285,6 +285,8 @@ from routers import meshy_admin as meshy_admin_router_mod  # noqa: E402
 app.include_router(meshy_admin_router_mod.admin)
 from routers import realm_keys as realm_keys_router_mod  # noqa: E402
 app.include_router(realm_keys_router_mod.router)
+from routers import nexus as nexus_router_mod  # noqa: E402
+app.include_router(nexus_router_mod.router)
 app.include_router(orai_access_router_mod.router)
 
 
@@ -462,6 +464,8 @@ async def global_auth_guard(request, call_next):
             # headers — read-only GET/HEAD serving, filenames are checksums
             or (request.method in ("GET", "HEAD")
                 and path.startswith("/api/media/models/"))
+            # public Nexus presentation info (real online count, zone list)
+            or (request.method == "GET" and path == "/api/nexus/public")
             # resource visual icons (UI decoration only, never sensitive):
             # <img> tags send no auth headers — read-only GET/HEAD allowed
             or (request.method in ("GET", "HEAD")

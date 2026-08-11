@@ -1,0 +1,43 @@
+{
+  "summary": "Full-stack test of OurRealm Nexus V1 Phase 1. Backend: 24/24 pytest cases pass covering public/world/presence (bounds, teleport snap-back, rate-limit, multi-user visibility), position round-trip, founder gating on all admin+ORAi endpoints, admin ops/publish/rollback/audit invariants, and a real ORAi propose→reject and propose→approve cycle (verified draft version bumps while published_version stays fixed). Frontend: /nexus landing renders with real online count and 'Sign in to Enter' → /signin. As stealth: nexus-play-shell + canvas + HUD render, __NEXUS debug hook exposes {x,y,z,remotes}, spawn is (0, 0, 16). Admin builder as stealth loads all controls (add box/ramp/pillar/light/portal/npc, publish, undo, playtest, mobile-preview, ORAi input+propose btn, Versions with Restore) and draft version chip bumps v7→v8 after +box. Member tftwo correctly denied at /admin/nexus (nexus-admin-denied).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "W/S forward-direction verification",
+        "issue": "In headless Chromium, pressing W (keydown 'KeyW' → event.key='w') for 30 iterations from spawn (0,16) resulted in position (-13.11, 23.88) — i.e. +z delta. Code path (NexusWorld.jsx L262/L268): iz = keys.s - keys.w so W → iz=-1; at yaw=0, dz = iz*cos(yaw) = -1*speed*dt (moves toward -z, correct). The +z observation is almost certainly due to headless mouse/pointer-lock interactions perturbing yaw during the test (x also changed by -13 which cannot happen at yaw=0 with W-only). Movement math in source appears correct; unable to conclusively verify direction in headless due to yaw perturbation. Recommend manual verification in a real browser or a test that clamps yaw=0 before pressing W.",
+        "affected_selectors": ["canvas", "window.__NEXUS"]
+      },
+      {
+        "flow": "Mobile controls (JUMP / E / RUN / joystick ring)",
+        "issue": "Controls are gated on `window.matchMedia('(pointer: coarse)').matches` (NexusWorld.jsx L353). Playwright viewport resize alone does not set pointer:coarse, so jump/interact/sprint testids render 0. This is a testing-env limitation, not a product bug — real mobile browsers report pointer:coarse and the controls will render. Suggest adding a fallback like `... || window.innerWidth <= 640` to make it robust for narrow desktop windows and testable in headless.",
+        "affected_selectors": ["nexus-jump-btn", "nexus-interact-btn", "nexus-sprint-btn"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_nexus_phase1.py",
+    "/app/test_reports/pytest/nexus_phase1.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Broaden mobile-controls gate to also match narrow viewports (e.g. window.innerWidth <= 640) so testing agents and desktop-window previews can see the touch UI. Currently gated only on pointer:coarse media query.",
+    "OPTIONAL: Expose current yaw on window.__NEXUS so testing agents can reset/assert yaw=0 before validating WASD direction in headless."
+  ],
+  "critical_code_review_comments": [
+    "nexus.py L21: module-level _last_presence dict grows unbounded (one entry per user id ever seen). Add a periodic prune or use TTL cache.",
+    "nexus.py L82 raises HTTPException inside a `try/except (TypeError, ValueError)` — since HTTPException is not caught here it propagates fine, but the try/except only wraps the float parses; nested clarity is OK. Note: `raise HTTPException` inside except would swallow the original; here it doesn't. No action.",
+    "nexus_world.py L164: float(fields['ambient']) with no try — a bad payload sends 500. Wrap in try/except → 400.",
+    "NexusWorld.jsx L353 mob detection: single-check at render time and never updated on resize; orientation change won't re-toggle controls. Consider a resize listener.",
+    "Console shows several 401s from unauthenticated probes to other platform endpoints on /nexus — pre-existing platform-wide behavior, out of scope for this checkpoint."
+  ],
+  "updated_files": ["/app/backend/tests/test_nexus_phase1.py"],
+  "success_rate": {"backend": "100% (24/24)", "frontend": "~90% (all critical selectors present; mobile touch controls not renderable in headless; WASD direction inconclusive in headless due to yaw perturbation)"},
+  "test_credentials": "founder stealth / Password1$, member tftwo / pass1234 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Backend test inserted temporary boxes labeled TEST_pytest_box into DRAFT and issued publish + rollback. Draft is left with the ORAi-added 'small green box near fountain'. Main agent noted this cleanup is expected.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_nexus_phase1.py is the single source of truth for Nexus V1 backend regression. It uses two real user sessions (stealth+tftwo) for the multi-user presence assertion; ORAi tests make 2 real gpt-5-mini calls (~40s total). If ORAi model behaviour changes and ops become empty, the assertion `len(ops) >= 1` will trip. Frontend: known headless limitations — (a) pointer lock keeps mouse captured; call `document.exitPointerLock()` before UI clicks in play mode, (b) yaw drifts under headless mouse events so verifying WASD direction is unreliable, (c) mobile control DOM only renders when pointer:coarse matches. Draft/published divergence is the invariant that matters most: rollback must not touch published_version — this is asserted in test_full_flow.",
+  "rca of the issue": "N/A — no product bugs blocking checkpoint. Two testing-env caveats documented above (WASD direction cannot be conclusively asserted headless; mobile controls hidden without pointer:coarse). Backend passed all 24 assertions including presence bounds/teleport/rate-limit, draft-vs-published isolation, ORAi propose+approve applying to draft only, and audit trail."
+}
