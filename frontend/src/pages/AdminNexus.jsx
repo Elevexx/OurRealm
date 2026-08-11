@@ -1,8 +1,12 @@
-/* /admin/nexus — founder-only living world builder (Image 1 reference layout). */
+/* /admin/nexus — founder-only living world builder (Checkpoint A.5 polish + AI Magic Loop). */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import apiClient from "@/api/client";
 import NexusWorld from "@/components/nexus/NexusWorld";
+import { MagicLoop } from "@/components/nexus/MagicLoop";
+import { ActiveRuns } from "@/components/nexus/ActiveRuns";
+import { OraiArchitect } from "@/components/nexus/OraiArchitect";
 import { toast } from "sonner";
 
 const ENT_PRESETS = {
@@ -13,21 +17,23 @@ const ENT_PRESETS = {
   portal: { type: "portal", pos: [0, 0, 8], rot: [0, 0, 0], scale: [1, 1, 1], color: "#37c8ff", props: { label: "New Portal", action: "expansion" } },
   npc: { type: "npc", pos: [2, 0, 2], rot: [0, 0, 0], scale: [1, 1, 1], color: "#e8c07a", props: { label: "New NPC", dialog: "Hello!" } },
 };
+const TABS = [["build", "Builder"], ["magic", "Magic Loop"], ["orai", "ORAi"], ["runs", "Runs"], ["system", "System"]];
 
 export default function AdminNexus() {
   const { user, isLoading: authLoading } = useAuth();
   const [world, setWorld] = useState(null);
+  const [pubWorld, setPubWorld] = useState(null);
   const [meta, setMeta] = useState({ draft_version: 0, published_version: 0 });
   const [denied, setDenied] = useState(false);
   const [zoneId, setZoneId] = useState("plaza");
   const [sel, setSel] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [versions, setVersions] = useState([]);
-  const [playTest, setPlayTest] = useState(false);
+  const [viewMode, setViewMode] = useState("build"); // build | play_draft | play_published
   const [mobilePrev, setMobilePrev] = useState(false);
-  const [oraiReq, setOraiReq] = useState("");
-  const [proposal, setProposal] = useState(null);
-  const [oraiBusy, setOraiBusy] = useState(false);
+  const [tab, setTab] = useState("build");
+  const [presence, setPresence] = useState({ online: 0, players: [] });
+  const [audit, setAudit] = useState([]);
   const undoStack = useRef([]);
 
   const load = useCallback(() => {
@@ -37,8 +43,16 @@ export default function AdminNexus() {
       setRefreshKey((k) => k + 1);
     }).catch((e) => { if (e?.response?.status === 403) setDenied(true); });
     apiClient.get("/nexus/admin/versions").then((r) => setVersions(r.data.versions || [])).catch(() => {});
+    apiClient.get("/nexus/admin/audit").then((r) => setAudit(r.data.audit || [])).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const t = setInterval(() => {
+      apiClient.get("/nexus/admin/presence").then((r) => setPresence(r.data)).catch(() => {});
+    }, 5000);
+    apiClient.get("/nexus/admin/presence").then((r) => setPresence(r.data)).catch(() => {});
+    return () => clearInterval(t);
+  }, []);
 
   const zone = world?.zones?.find((z) => z.id === zoneId) || world?.zones?.[0];
   const selEnt = zone?.entities?.find((e) => e.id === sel);
@@ -49,10 +63,7 @@ export default function AdminNexus() {
       undoStack.current.push(r.data.inverse_ops);
       load();
       return true;
-    } catch (e) {
-      toast.error(e?.response?.data?.detail || "Edit failed");
-      return false;
-    }
+    } catch (e) { toast.error(e?.response?.data?.detail || "Edit failed"); return false; }
   };
   const undo = async () => {
     const inv = undoStack.current.pop();
@@ -67,54 +78,84 @@ export default function AdminNexus() {
       load();
     } catch (e) { toast.error(e?.response?.data?.detail || "Publish failed"); }
   };
+  const saveVersion = async () => {
+    const r = await apiClient.post("/nexus/admin/save-version", {});
+    toast.success(`Draft snapshot v${r.data.version} saved`);
+    load();
+  };
   const rollback = async (v) => {
     await apiClient.post("/nexus/admin/rollback", { version: v });
     toast.success(`Snapshot v${v} restored into draft`);
     load();
   };
-  const propose = async () => {
-    if (!oraiReq.trim()) return;
-    setOraiBusy(true);
-    try {
-      const r = await apiClient.post("/nexus/orai/propose", { request: oraiReq, zone_id: zone?.id, selected_entity: sel });
-      setProposal(r.data.proposal);
-    } catch (e) { toast.error(e?.response?.data?.detail || "ORAi proposal failed"); }
-    setOraiBusy(false);
+  const rollbackLatest = () => {
+    if (!versions.length) { toast.message("No snapshots yet"); return; }
+    rollback(versions[0].version);
   };
-  const decide = async (approve) => {
-    try {
-      await apiClient.post("/nexus/orai/decide", { proposal_id: proposal.id, approve });
-      toast.success(approve ? "Applied to draft" : "Rejected");
-      setProposal(null); setOraiReq(""); load();
-    } catch (e) { toast.error(e?.response?.data?.detail || "Decision failed"); }
+  const togglePlayPublished = async () => {
+    if (viewMode === "play_published") { setViewMode("build"); return; }
+    const r = await apiClient.get("/nexus/world");
+    setPubWorld(r.data.world);
+    setViewMode("play_published");
+    setRefreshKey((k) => k + 1);
   };
 
-  if (denied || (!authLoading && (!user || (user.admin_role !== "founder" && user.username !== "stealth")))) {
+  const checklist = zone ? [
+    ["Zones & spawns valid", (world.zones || []).every((z) => z.spawn && Array.isArray(z.entities))],
+    ["Entity budget (≤400/zone)", (world.zones || []).every((z) => z.entities.length <= 400)],
+    ["Portals labeled", (world.zones || []).every((z) => z.entities.filter((e) => e.type === "portal").every((e) => e.props?.label))],
+    ["Rollback checkpoint exists", versions.length > 0],
+  ] : [];
+
+  if (denied || (!authLoading && (!user || (user.role || user.admin_role) !== "founder"))) {
     return <div className="p-10 text-center text-white/70" data-testid="nexus-admin-denied">Founder only.</div>;
   }
-  if (!world) return <div className="p-10 text-center text-white/60">Loading Nexus builder…</div>;
+  if (!world) return <div className="p-10 text-center text-white/60 bg-[#0a0f1e] min-h-screen">Loading Nexus builder…</div>;
+
+  const viewportWorld = viewMode === "play_published" ? pubWorld : world;
+  const show = (t) => (tab === t ? "block" : "hidden") + " lg:block";
 
   return (
-    <div className="min-h-screen bg-[#0a0f1e] text-white p-4" data-testid="admin-nexus">
-      <div className="flex items-center gap-3 flex-wrap mb-3">
-        <h1 className="text-xl font-black">NEXUS <span className="text-cyan-300">World Builder</span></h1>
-        <span className="text-xs bg-white/10 rounded px-2 py-1" data-testid="nexus-draft-version">Draft v{meta.draft_version}</span>
-        <span className="text-xs bg-emerald-500/20 text-emerald-300 rounded px-2 py-1">Published v{meta.published_version}</span>
-        <button onClick={() => setPlayTest(!playTest)} data-testid="nexus-playtest-toggle"
-          className="text-xs font-bold bg-white/10 hover:bg-white/20 rounded-lg px-3 py-1.5">{playTest ? "◼ Build Mode" : "▶ Play Test Draft"}</button>
-        <button onClick={() => setMobilePrev(!mobilePrev)} data-testid="nexus-mobile-preview"
-          className="text-xs bg-white/10 hover:bg-white/20 rounded-lg px-3 py-1.5">{mobilePrev ? "🖥 Desktop" : "📱 Mobile"} preview</button>
-        <button onClick={undo} data-testid="nexus-undo-btn" className="text-xs bg-white/10 hover:bg-white/20 rounded-lg px-3 py-1.5">↶ Undo</button>
-        <button onClick={publish} data-testid="nexus-publish-btn"
-          className="text-xs font-bold bg-cyan-500 text-black hover:bg-cyan-400 rounded-lg px-4 py-1.5">Publish</button>
+    <div className="min-h-screen bg-[#080d1c] text-white" data-testid="admin-nexus">
+      {/* ── topbar ── */}
+      <div className="sticky top-0 z-30 bg-[#0a1022]/90 backdrop-blur border-b border-white/10 px-3 py-2 flex items-center gap-2 flex-wrap" data-testid="nexus-topbar">
+        <div className="font-black text-sm tracking-wide">◈ OURREALM <span className="text-cyan-300">NEXUS</span></div>
+        <Link to="/nexus" className="text-[10px] font-bold bg-white/5 hover:bg-white/15 border border-white/10 rounded-lg px-2.5 py-1.5" data-testid="nexus-nav-public">PUBLIC WORLD</Link>
+        <span className="text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 rounded-lg px-2.5 py-1.5">ADMIN BUILDER</span>
+        <span className="text-[10px] font-bold bg-amber-400/15 text-amber-300 rounded-lg px-2.5 py-1.5" data-testid="nexus-draft-version">● DRAFT v{meta.draft_version}</span>
+        <button onClick={togglePlayPublished} data-testid="nexus-live-preview-toggle"
+          className={`text-[10px] font-bold rounded-lg px-2.5 py-1.5 ${viewMode === "play_published" ? "bg-emerald-500 text-black" : "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/30"}`}>
+          ◉ LIVE PREVIEW v{meta.published_version}
+        </button>
+        <Link to="/nexus" className="text-[10px] font-bold bg-purple-500/15 text-purple-300 hover:bg-purple-500/30 rounded-lg px-2.5 py-1.5" data-testid="nexus-nav-mp">◎ MULTIPLAYER WORLD</Link>
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={publish} data-testid="nexus-publish-btn"
+            className="text-[11px] font-black bg-emerald-500 text-black hover:bg-emerald-400 rounded-lg px-4 py-1.5">PUBLISH UPDATE ⇧</button>
+          <button onClick={saveVersion} data-testid="nexus-save-version-btn"
+            className="text-[10px] font-bold bg-white/10 hover:bg-white/20 rounded-lg px-3 py-1.5">SAVE VERSION</button>
+          <button onClick={rollbackLatest} data-testid="nexus-rollback-latest-btn"
+            className="text-[10px] font-bold bg-white/10 hover:bg-white/20 rounded-lg px-3 py-1.5">↩ ROLL BACK</button>
+        </div>
       </div>
-      <div className="grid gap-3" style={{ gridTemplateColumns: "260px 1fr 300px", minHeight: "72vh" }}>
-        <div className="space-y-3 overflow-y-auto" style={{ maxHeight: "78vh" }}>
-          <div className="bg-white/5 rounded-xl p-3" data-testid="nexus-card-zones">
-            <div className="text-xs font-bold text-cyan-300 mb-2">WORLD & ZONES</div>
+
+      {/* ── mobile tabs ── */}
+      <div className="lg:hidden flex gap-1 px-3 pt-2 overflow-x-auto" data-testid="nexus-mobile-tabs">
+        {TABS.map(([k, lbl]) => (
+          <button key={k} onClick={() => setTab(k)} data-testid={`nexus-tab-${k}`}
+            className={`text-[11px] font-bold rounded-lg px-3 py-1.5 whitespace-nowrap ${tab === k ? "bg-cyan-500 text-black" : "bg-white/10 text-white/70"}`}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      <div className="p-3 grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)_330px]">
+        {/* ── left column ── */}
+        <div className={`space-y-3 ${show("system")}`}>
+          <div className="bg-white/5 backdrop-blur rounded-2xl border border-white/10 p-3" data-testid="nexus-card-zones">
+            <div className="text-xs font-black text-cyan-300 mb-2">🌐 WORLD & ZONES</div>
             {world.zones.map((z) => (
               <button key={z.id} onClick={() => setZoneId(z.id)}
-                className={`block w-full text-left text-xs rounded-lg px-2 py-1.5 mb-1 ${z.id === zone?.id ? "bg-cyan-500/25" : "bg-white/5"}`}
+                className={`block w-full text-left text-xs rounded-lg px-2 py-1.5 mb-1 ${z.id === zone?.id ? "bg-cyan-500/25" : "bg-white/5 hover:bg-white/10"}`}
                 data-testid={`nexus-zone-${z.id}`}>{z.name} <span className="text-white/40">({z.entities.length})</span></button>
             ))}
             <div className="text-[11px] text-white/50 mt-2 mb-1">Add entity:</div>
@@ -127,16 +168,16 @@ export default function AdminNexus() {
             </div>
           </div>
           {selEnt && (
-            <div className="bg-white/5 rounded-xl p-3" data-testid="nexus-card-selected">
-              <div className="text-xs font-bold text-cyan-300 mb-1">SELECTED: {selEnt.props?.label || selEnt.id}</div>
+            <div className="bg-white/5 backdrop-blur rounded-2xl border border-white/10 p-3" data-testid="nexus-card-selected">
+              <div className="text-xs font-black text-cyan-300 mb-1">SELECTED: {selEnt.props?.label || selEnt.id}</div>
               <div className="text-[11px] text-white/50 mb-2">{selEnt.type} · {selEnt.id}</div>
               {["pos", "rot", "scale"].map((f) => (
                 <div key={f} className="flex items-center gap-1 mb-1">
                   <span className="text-[10px] w-9 text-white/60">{f}</span>
                   {selEnt[f].map((v, i) => (
-                    <input key={i} type="number" step="0.5" defaultValue={v}
+                    <input key={`${sel}-${f}-${i}`} type="number" step="0.5" defaultValue={v}
                       data-testid={`nexus-${f}-${i}`}
-                      className="w-14 bg-black/40 rounded px-1 py-0.5 text-[11px]"
+                      className="w-14 bg-black/40 border border-white/10 rounded px-1 py-0.5 text-[11px]"
                       onBlur={(ev) => {
                         const arr = [...selEnt[f]]; arr[i] = parseFloat(ev.target.value) || 0;
                         updateSel({ [f]: arr });
@@ -147,73 +188,118 @@ export default function AdminNexus() {
               <div className="flex items-center gap-2 mt-2">
                 <input type="color" defaultValue={selEnt.color} data-testid="nexus-color"
                   onBlur={(ev) => updateSel({ color: ev.target.value })} />
-                <button data-testid="nexus-duplicate-btn" className="text-[11px] bg-white/10 rounded px-2 py-1"
+                <button data-testid="nexus-duplicate-btn" className="text-[11px] bg-white/10 hover:bg-white/20 rounded px-2 py-1"
                   onClick={() => applyOps([{ op: "add_entity", zone_id: zone.id, entity: { ...selEnt, id: undefined, pos: [selEnt.pos[0] + 2, selEnt.pos[1], selEnt.pos[2] + 2] } }])}>⧉ Duplicate</button>
-                <button data-testid="nexus-remove-btn" className="text-[11px] bg-red-500/30 rounded px-2 py-1"
+                <button data-testid="nexus-remove-btn" className="text-[11px] bg-red-500/30 hover:bg-red-500/50 rounded px-2 py-1"
                   onClick={() => { applyOps([{ op: "remove_entity", zone_id: zone.id, entity_id: sel }]); setSel(null); }}>🗑 Remove</button>
               </div>
             </div>
           )}
-          <div className="bg-white/5 rounded-xl p-3" data-testid="nexus-card-assets">
-            <div className="text-xs font-bold text-cyan-300 mb-1">3D ASSET STUDIO</div>
-            <div className="text-[11px] text-white/55">Meshy generation, uploads and library assignment arrive in Checkpoint B. Provider: Meshy — connected.</div>
+          <div className="bg-white/5 backdrop-blur rounded-2xl border border-white/10 p-3" data-testid="nexus-card-assets">
+            <div className="text-xs font-black text-cyan-300 mb-1">◇ 3D ASSET STUDIO <span className="text-[9px] font-bold bg-emerald-500/20 text-emerald-300 rounded px-1.5 py-0.5 ml-1">Meshy CONNECTED</span></div>
+            <div className="flex gap-1.5 mt-1.5">
+              {["GENERATE MODEL", "UPLOAD GLB", "ASSET LIBRARY"].map((b) => (
+                <button key={b} disabled title="Arrives in Checkpoint B (founder gate)"
+                  className="flex-1 text-[9px] font-bold bg-white/5 text-white/35 rounded-lg px-1 py-2 cursor-not-allowed">{b}</button>
+              ))}
+            </div>
+            <div className="text-[10px] text-white/45 mt-1.5">Checkpoint B — zero Meshy credits used this checkpoint.</div>
           </div>
-          <div className="bg-white/5 rounded-xl p-3" data-testid="nexus-card-systems">
-            <div className="text-xs font-bold text-cyan-300 mb-1">SYSTEMS</div>
-            {[["World runtime", "LIVE"], ["Multiplayer", "BETA (presence sync)"], ["ORAi Architect", "LIVE (text)"], ["Voice-to-voice", "Phase B"], ["Avatar Studio", "Phase C"]].map(([k, v]) => (
+          <div className="bg-white/5 backdrop-blur rounded-2xl border border-white/10 p-3" data-testid="nexus-card-systems">
+            <div className="text-xs font-black text-cyan-300 mb-1">⚙ SYSTEMS</div>
+            {[["World runtime", "LIVE"], ["Multiplayer", "BETA (presence sync)"], ["ORAi Architect", "LIVE (text + voice input)"], ["AI Magic Loop", "LIVE"], ["Voice-to-voice", "Phase B"], ["Avatar Studio", "Phase C"]].map(([k, v]) => (
               <div key={k} className="flex justify-between text-[11px] py-0.5"><span className="text-white/70">{k}</span><span className="text-white/45">{v}</span></div>
             ))}
           </div>
-          <div className="bg-white/5 rounded-xl p-3" data-testid="nexus-card-versions">
-            <div className="text-xs font-bold text-cyan-300 mb-1">VERSIONS</div>
+          <div className="bg-white/5 backdrop-blur rounded-2xl border border-white/10 p-3" data-testid="nexus-card-versions">
+            <div className="text-xs font-black text-cyan-300 mb-1">🕘 VERSIONS <span className="text-white/40 font-normal">DRAFT → TEST → PUBLISH</span></div>
             {versions.length === 0 && <div className="text-[11px] text-white/45">No snapshots yet — publishing creates one.</div>}
-            {versions.map((v) => (
-              <div key={v.version} className="flex justify-between items-center text-[11px] py-0.5">
-                <span className="text-white/70">v{v.version} · {String(v.created_at).slice(0, 16)}</span>
-                <button className="bg-white/10 rounded px-2 py-0.5" data-testid={`nexus-rollback-${v.version}`}
-                  onClick={() => rollback(v.version)}>Restore</button>
-              </div>
+            <div className="max-h-36 overflow-y-auto">
+              {versions.map((v) => (
+                <div key={v.version} className="flex justify-between items-center text-[11px] py-0.5">
+                  <span className="text-white/70 truncate">v{v.version} · {v.label || String(v.created_at).slice(0, 16)}</span>
+                  <button className="bg-white/10 hover:bg-white/20 rounded px-2 py-0.5 shrink-0" data-testid={`nexus-rollback-${v.version}`}
+                    onClick={() => rollback(v.version)}>Restore</button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bg-white/5 backdrop-blur rounded-2xl border border-white/10 p-3" data-testid="nexus-card-multiplayer">
+            <div className="text-xs font-black text-cyan-300 mb-1">👥 MULTIPLAYER USERS</div>
+            <div className="text-3xl font-black" data-testid="nexus-mp-online">{presence.online}</div>
+            <div className="text-[10px] text-emerald-300 font-bold">ONLINE NOW (real database count)</div>
+            {presence.players.slice(0, 6).map((p) => (
+              <div key={p.user_id} className="text-[11px] text-white/70 mt-1">● {p.username} <span className="text-white/35">{p.zone_id} · {p.anim}</span></div>
             ))}
           </div>
         </div>
-        <div className={`bg-black/40 rounded-xl overflow-hidden relative ${mobilePrev ? "mx-auto" : ""}`}
-          style={mobilePrev ? { width: 390, height: "72vh" } : { height: "78vh" }} data-testid="nexus-viewport">
-          <NexusWorld mode={playTest ? "play" : "build"} world={world} zoneId={zone?.id}
-            username="founder" refreshKey={refreshKey} selectedId={sel}
-            onSelect={setSel}
-            onEntityMove={(id, pos) => applyOps([{ op: "update_entity", zone_id: zone.id, entity_id: id, fields: { pos } }], "drag")}
-            onPortal={(e) => toast.message(e.props?.label || e.type, { description: e.props?.dialog || e.props?.action || "" })} />
-          {!playTest && (
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-white/60 bg-black/50 rounded px-2 py-1">
-              Click: select · Drag: move on ground · Right-drag: orbit · Wheel: zoom
+
+        {/* ── center column ── */}
+        <div className={`space-y-3 min-w-0 ${show("build")} ${tab === "magic" ? "!block" : ""}`}>
+          <div className={`bg-black/40 rounded-2xl border border-white/10 overflow-hidden relative ${mobilePrev ? "mx-auto" : ""} ${tab === "magic" ? "hidden lg:block" : ""}`}
+            style={mobilePrev ? { width: 390, height: "62vh" } : { height: "56vh" }} data-testid="nexus-viewport">
+            <NexusWorld mode={viewMode === "build" ? "build" : "play"} world={viewportWorld} zoneId={zone?.id}
+              username="founder" refreshKey={refreshKey} selectedId={sel}
+              onSelect={setSel}
+              onEntityMove={(id, pos) => applyOps([{ op: "update_entity", zone_id: zone.id, entity_id: id, fields: { pos } }], "drag")}
+              onPortal={(e) => toast.message(e.props?.label || e.type, { description: e.props?.dialog || e.props?.action || "" })} />
+            <div className="absolute top-2 left-2 flex gap-1.5 flex-wrap">
+              <button onClick={() => { setViewMode(viewMode === "build" ? "play_draft" : "build"); setRefreshKey((k) => k + 1); }} data-testid="nexus-playtest-toggle"
+                className={`text-[10px] font-black rounded-lg px-3 py-1.5 ${viewMode !== "build" ? "bg-cyan-500 text-black" : "bg-black/60 text-white/85 hover:bg-black/80"}`}>
+                {viewMode === "build" ? "▶ PLAY TEST DRAFT" : "◼ BUILD MODE"}
+              </button>
+              <button onClick={undo} data-testid="nexus-undo-btn" className="text-[10px] font-bold bg-black/60 hover:bg-black/80 rounded-lg px-3 py-1.5">↶ Undo</button>
+              <button onClick={() => setMobilePrev(!mobilePrev)} data-testid="nexus-mobile-preview"
+                className="text-[10px] font-bold bg-black/60 hover:bg-black/80 rounded-lg px-3 py-1.5">{mobilePrev ? "🖥 Desktop" : "📱 Mobile"}</button>
+              {viewMode === "play_published" && <span className="text-[10px] font-black bg-emerald-500 text-black rounded-lg px-2 py-1.5">LIVE PREVIEW (published v{meta.published_version})</span>}
             </div>
-          )}
-        </div>
-        <div className="bg-white/5 rounded-xl p-3 flex flex-col" style={{ maxHeight: "78vh" }} data-testid="nexus-card-orai">
-          <div className="text-xs font-bold text-cyan-300 mb-2">ORAi WORLD ARCHITECT</div>
-          <textarea value={oraiReq} onChange={(e) => setOraiReq(e.target.value)}
-            placeholder='e.g. "Build a floating market beside the Emerald Portal" or "Make this zone brighter"'
-            className="bg-black/40 rounded-lg p-2 text-xs h-24 resize-none" data-testid="nexus-orai-input" />
-          <button onClick={propose} disabled={oraiBusy} data-testid="nexus-orai-propose-btn"
-            className="mt-2 text-xs font-bold bg-purple-500/70 hover:bg-purple-500 rounded-lg px-3 py-2 disabled:opacity-50">
-            {oraiBusy ? "Thinking…" : "Propose Edit"}
-          </button>
-          {proposal && (
-            <div className="mt-3 bg-black/40 rounded-lg p-2 overflow-y-auto" data-testid="nexus-orai-proposal">
-              <div className="text-[11px] font-bold text-purple-300 mb-1">PLAN</div>
-              <div className="text-[11px] text-white/80">{proposal.plan}</div>
-              <div className="text-[11px] font-bold text-purple-300 mt-2 mb-1">STRUCTURED DIFF ({proposal.ops.length} ops)</div>
-              <pre className="text-[10px] text-white/60 whitespace-pre-wrap max-h-48 overflow-y-auto">{JSON.stringify(proposal.ops, null, 1)}</pre>
-              <div className="flex gap-2 mt-2">
-                <button onClick={() => decide(true)} data-testid="nexus-orai-approve-btn"
-                  className="text-xs font-bold bg-emerald-500 text-black rounded-lg px-3 py-1.5">✓ Approve & Apply to Draft</button>
-                <button onClick={() => decide(false)} data-testid="nexus-orai-reject-btn"
-                  className="text-xs bg-white/10 rounded-lg px-3 py-1.5">Reject</button>
+            {viewMode === "build" && (
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-white/60 bg-black/50 rounded px-2 py-1 whitespace-nowrap">
+                Click: select · Drag: move · Right-drag: orbit · Wheel: zoom
               </div>
+            )}
+          </div>
+          <div className={show("magic")}>
+            <MagicLoop world={world} onStarted={() => setRefreshKey((k) => k + 1)} />
+          </div>
+          <div className={`bg-white/5 backdrop-blur rounded-2xl border border-white/10 p-3 ${show("build")}`} data-testid="nexus-card-avatar">
+            <div className="text-xs font-black text-cyan-300 mb-1">🧍 AVATAR STUDIO <span className="text-[9px] font-bold bg-white/10 text-white/50 rounded px-1.5 py-0.5 ml-1">PHASE C</span></div>
+            <div className="text-[11px] text-white/50">Two original rigged starter avatars (male/female streetwear) arrive after the Checkpoint B canary passes your gate. Players currently use greybox capsules — honest placeholder, zero paid generation.</div>
+          </div>
+        </div>
+
+        {/* ── right column ── */}
+        <div className="space-y-3">
+          <div className={show("orai")}>
+            <OraiArchitect zoneId={zone?.id} selectedId={sel} onApplied={load} />
+          </div>
+          <div className={show("runs")}>
+            <ActiveRuns refreshKey={refreshKey} onDraftChanged={load} />
+          </div>
+          <div className={`bg-white/5 backdrop-blur rounded-2xl border border-white/10 p-3 ${show("system")}`} data-testid="nexus-checklist">
+            <div className="text-xs font-black text-cyan-300 mb-1">✅ SAFE PUBLISH CHECKLIST</div>
+            {checklist.map(([k, ok]) => (
+              <div key={k} className="flex justify-between text-[11px] py-0.5">
+                <span className="text-white/70">{k}</span>
+                <span className={ok ? "text-emerald-300 font-bold" : "text-red-300 font-bold"}>{ok ? "PASS ✓" : "FAIL ✕"}</span>
+              </div>
+            ))}
+          </div>
+          <div className={`bg-white/5 backdrop-blur rounded-2xl border border-white/10 p-3 ${show("system")}`} data-testid="nexus-activity">
+            <div className="text-xs font-black text-cyan-300 mb-1">📜 ACTIVITY LOG</div>
+            <div className="max-h-40 overflow-y-auto">
+              {audit.slice(0, 10).map((a, i) => (
+                <div key={i} className="text-[10px] text-white/60 py-0.5 truncate">
+                  <span className="text-emerald-300">✓</span> {String(a.at).slice(11, 19)} · <b className="text-white/80">{a.action}</b> — {a.actor}
+                </div>
+              ))}
+              {audit.length === 0 && <div className="text-[10px] text-white/40">No activity yet.</div>}
             </div>
-          )}
-          <div className="mt-auto pt-2 text-[10px] text-white/40">
-            ORAi never edits the published world directly. Every edit: Understand → Plan → Diff → Your approval → Draft.
+            <div className="text-[9px] text-white/35 mt-1.5 flex gap-2 flex-wrap">
+              <span>✓ Rollback checkpoint {versions.length ? "ready" : "missing"}</span>
+              <span>✓ Server-side keys (never sent to browser)</span>
+              <span>✓ Full audit log</span>
+            </div>
           </div>
         </div>
       </div>

@@ -291,7 +291,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "plaza", use
         // interactions
         let prompt = "";
         for (const p of portals) {
-          p.mesh.rotation.z += dt * 0.8;
+          p.mesh.rotation.z += dt * (p.e.props?.spin ?? 0.8);
           const d = Math.hypot(p.e.pos[0] - player.position.x, p.e.pos[2] - player.position.z);
           if (d < 3) prompt = `E — ${p.e.props?.label || "Portal"}`;
           if (d < 3 && interactReq) onPortal?.(p.e);
@@ -308,7 +308,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "plaza", use
           r2.grp.rotation.y += (r2.ry - r2.grp.rotation.y) * 0.2;
         });
       } else {
-        for (const p of portals) p.mesh.rotation.z += dt * 0.8;
+        for (const p of portals) p.mesh.rotation.z += dt * (p.e.props?.spin ?? 0.8);
       }
       if (selRef.current && entMeshes[selRef.current]) {
         entMeshes[selRef.current].traverse?.(() => {});

@@ -1,4 +1,37 @@
-# OurRealm — Product Requirements (UPDATED 2026-06 — NEXUS CHECKPOINT A COMPLETE, AWAITING FOUNDER GATE)
+# OurRealm — Product Requirements (UPDATED 2026-06 — NEXUS A + A.5 COMPLETE, AWAITING CHECKPOINT B GATE)
+
+## NEXUS V1 — CHECKPOINT A.5 COMPLETE ✅ (iteration_142: backend 26/26 + full frontend pass)
+- /admin/nexus rebuilt to founder reference: dark-glass 3-col layout, topbar (Public World /
+  Admin Builder, DRAFT chip, LIVE PREVIEW toggle [plays PUBLISHED world in viewport],
+  Multiplayer World link, Publish Update / Save Version / Roll Back), left cards (World&Zones,
+  3D Asset Studio [Meshy connected, buttons honestly disabled until Checkpoint B], Systems,
+  Versions, Multiplayer Users [real /admin/presence count]), center (viewport + AI Magic Loop +
+  Avatar Studio Phase C placeholder), right (ORAi Architect w/ browser voice input +
+  Checkpoint-B-labeled upload buttons, Active Runs, Safe Publish Checklist [real computed],
+  Activity Log [real audit]). Mobile = 5 tabs (build/magic/orai/runs/system), no overflow,
+  portrait+landscape verified.
+- AI MAGIC LOOP (REAL, founder-only, Mongo-backed): modes improve_draft / clone_variant /
+  animation_style / runtime_style / living_editor. Stages Build→Review→Compare→Improve→Verify
+  as async engine (services/nexus_magic.py); pause/resume/stop + pause-all/stop-all; runs
+  survive refresh (stall detector marks interrupted runs honestly); results are approvable
+  proposals → Approve applies to DRAFT ONLY (published isolation test-asserted); dry runs
+  cannot be applied; clone creates recoverable variants (load→draft makes auto-backup first);
+  scores are HONEST deterministic heuristics (labeled), never invented; Founder Max unlocks
+  stop-score≤99/attempts≤5/cycles≤3 (bounded, audited, never infinite); estimate endpoint
+  reports 0-credit deterministic plan; only supported animation (portal spin via props.spin —
+  renderer support added; light intensity) / runtime (zone lighting presets) styles selectable,
+  unsupported ones honestly labeled+rejected 400. living_editor real mode = LLM; mock mode for
+  tests. save-version = manual draft snapshots (v1001+); audit covers all magic_* actions.
+- Endpoints: /api/nexus/magic/{config,estimate,start,runs,runs/{id}/control,control-all,
+  runs/{id}/decide,variants,variants/{id}/load}, /api/nexus/admin/{presence,save-version}.
+- Regression suites: backend/tests/test_nexus_magic.py (26) + test_nexus_phase1.py (23+1 LLM
+  deselected) — 49/49 green. WARNING: running these suites dirties the live draft/published
+  world (they publish/rollback) — clean up after (published v8 = original 13-entity plaza).
+- Credits used in A.5: Meshy 0, image 0, real LLM 0 (magic modes are deterministic-local).
+- BUG FIXED: AdminNexus founder guard — auth user object exposes `role` (not `admin_role`);
+  guard now checks (user.role || user.admin_role) === 'founder'. tftwo denial re-verified.
+- AWAITING founder gate for Checkpoint B (Meshy env asset + rigged avatar canary + cost report).
+
 
 ## NEXUS V1 — CHECKPOINT A COMPLETE ✅ (iteration_141: backend 24/24 PASS, frontend pass)
 - Routes LIVE: /nexus (public landing + signed-in world entry) and /admin/nexus (founder-only,
