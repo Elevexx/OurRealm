@@ -42,7 +42,7 @@ export const GameMakerCTA = () => {
           <span aria-hidden="true" className="relative inline-block w-4 h-4 rounded-full"
             style={{
               border: "2px solid #B45CFF",
-              background: "radial-gradient(circle, #20D8FF 20%, #20D8FF 43%, #8B36E8 68%, transparent 72%)",
+              background: "radial-gradient(circle, #071832 20%, #20D8FF 43%, #8B36E8 68%, transparent 72%)",
               boxShadow: "0 0 8px #A94DFF, inset 0 0 5px #20D8FF",
             }} />
         </span>

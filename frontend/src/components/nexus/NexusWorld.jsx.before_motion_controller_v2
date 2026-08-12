@@ -64,19 +64,6 @@ function fitToHeight(obj, targetH) {
   obj.updateMatrixWorld(true);
 }
 
-function signSprite(text, color = "#37c8ff", widthUnits = 20) {
-  const c = document.createElement("canvas"); c.width = 1024; c.height = 256;
-  const g = c.getContext("2d");
-  g.font = "900 110px 'Arial Black', sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
-  g.shadowColor = color; g.shadowBlur = 46;
-  g.fillStyle = color; g.fillText(String(text).slice(0, 26).toUpperCase(), 512, 128);
-  g.shadowBlur = 14; g.fillStyle = "#eaf6ff"; g.fillText(String(text).slice(0, 26).toUpperCase(), 512, 128);
-  const t = new THREE.CanvasTexture(c);
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthWrite: false, transparent: true }));
-  s.scale.set(widthUnits, widthUnits / 4, 1);
-  return s;
-}
-
 function chatSprite(text) {
   const c = document.createElement("canvas"); c.width = 512; c.height = 160;
   const g = c.getContext("2d");
@@ -106,7 +93,7 @@ function nameSprite(text) {
   s.scale.set(2.2, 0.55, 1); s.position.y = 2.35; return s;
 }
 
-function makeAvatar(color, label, avatarUrl, motionUrls, mixers) {
+function makeAvatar(color, label, avatarUrl, mixers) {
   const grp = new THREE.Group();
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.38, 0.9, 6, 12),
     new THREE.MeshStandardMaterial({ color }));
@@ -125,92 +112,29 @@ function makeAvatar(color, label, avatarUrl, motionUrls, mixers) {
       fitToHeight(holder, 1.8);
       grp.remove(body); grp.remove(nose);
       grp.add(holder);
-      const mixer = new THREE.AnimationMixer(inst);
-      const actions = {};
-
-      const addAction = (name, clip) => {
-        if (!clip || actions[name]) return;
-        const action = mixer.clipAction(clip);
-        action.enabled = true;
-        action.setLoop(THREE.LoopRepeat, Infinity);
-        action.setEffectiveWeight(0);
+      if (g.animations?.length) {
+        const mixer = new THREE.AnimationMixer(inst);
+        const action = mixer.clipAction(g.animations[0]);
         action.play();
-        actions[name] = action;
-      };
-
-      addAction("idle", g.animations?.[0]);
-
-      const mix = {
-        mixer,
-        actions,
-        current: "idle",
-        currentAction: actions.idle || null,
-      };
-
-      if (actions.idle) {
-        actions.idle.setEffectiveWeight(1);
-        actions.idle.setEffectiveTimeScale(1);
+        action.timeScale = 0;
+        grp.userData.mix = { mixer, action };
+        mixers.push(grp.userData.mix);
       }
-
-      grp.userData.mix = mix;
-      mixers.push(mix);
-
-      const pack = motionUrls || {};
-
-      Promise.all([
-        pack.walk
-          ? loadGLB(pack.walk).catch(() => null)
-          : Promise.resolve(null),
-        pack.run
-          ? loadGLB(pack.run).catch(() => null)
-          : Promise.resolve(null),
-      ]).then(([walkFile, runFile]) => {
-        if (grp.userData.disposed) return;
-        addAction("walk", walkFile?.animations?.[0]);
-        addAction("run", runFile?.animations?.[0]);
-      });
     }).catch((err) => { console.error("[nexus] avatar GLB load failed:", avatarUrl, err?.message || err); });
   }
   return grp;
 }
 
 function setAvatarAnim(grp, state) {
-  const mix = grp.userData.mix;
-  if (!mix?.actions) return;
-
-  const wanted =
-    state === "run" ? "run" :
-    state === "walk" ? "walk" :
-    "idle";
-
-  const next =
-    mix.actions[wanted] ||
-    (wanted === "run" ? mix.actions.walk : null) ||
-    mix.actions.idle;
-
-  if (!next || mix.currentAction === next) return;
-
-  if (mix.currentAction) {
-    mix.currentAction.fadeOut(0.18);
-  }
-
-  next.enabled = true;
-  next.reset();
-  next.setEffectiveWeight(1);
-  next.setEffectiveTimeScale(
-    wanted === "walk" ? 1.25 :
-    wanted === "run" ? 1.15 :
-    1
-  );
-  next.fadeIn(0.18);
-  next.play();
-
-  mix.current = wanted;
-  mix.currentAction = next;
+  const m = grp.userData.mix;
+  if (!m) return;
+  if (state === "walk") m.action.timeScale = 1;
+  else if (state === "run") m.action.timeScale = 1.7;
+  else m.action.timeScale = 0.06;
 }
 
-export default function NexusWorld({ mode = "play", world, zoneId = "nexus_central", username = "you",
-  avatarUrl = null, avatarMotion = null, onSelect, selectedId, onEntityMove, onPortal, onPublishedVersion, travelRef, refreshKey = 0 }) {
+export default function NexusWorld({ mode = "play", world, zoneId = "plaza", username = "you",
+  avatarUrl = null, onSelect, selectedId, onEntityMove, onPortal, onPublishedVersion, travelRef, refreshKey = 0 }) {
   const mountRef = useRef(null);
   const [hud, setHud] = useState({ online: 1, zone: "", prompt: "", locked: false });
   const [showSet, setShowSet] = useState(false);
@@ -231,15 +155,12 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     let disposed = false;
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.18;
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.shadowMap.enabled = true;
     mount.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(zone.sky || "#101a30");
-    const _zd = (zone.size || [80, 80])[1];
-    scene.fog = new THREE.Fog(zone.sky || "#101a30", Math.max(60, _zd * 0.5), Math.max(160, _zd * 1.4));
+    scene.fog = new THREE.Fog(zone.sky || "#101a30", 60, 160);
     const camera = new THREE.PerspectiveCamera(60, mount.clientWidth / mount.clientHeight, 0.1, 300);
     scene.add(new THREE.AmbientLight(0x9fb2d8, zone.ambient ?? 0.55));
     scene.add(new THREE.HemisphereLight(0xcfe4ff, 0x2a2416, 0.6));
@@ -250,7 +171,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     scene.add(sun);
     const [ZW, ZD] = zone.size || [80, 80];
     const ground = new THREE.Mesh(new THREE.BoxGeometry(ZW, 1, ZD),
-      new THREE.MeshStandardMaterial({ color: zone.ground_color || "#2c3450", roughness: 0.22, metalness: 0.55 }));
+      new THREE.MeshStandardMaterial({ color: zone.ground_color || "#2c3450", roughness: 0.95 }));
     ground.position.y = -0.5; ground.receiveShadow = true; scene.add(ground);
     const grid = new THREE.GridHelper(Math.max(ZW, ZD), Math.max(ZW, ZD) / 2, 0x3a4a6a, 0x28324e);
     grid.position.y = 0.01; scene.add(grid);
@@ -258,10 +179,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     const colliders = []; const portals = []; const npcs = []; const pickables = [];
     const entMeshes = {};
     const mixers = [];
-    const ambient = [];
-    const _m4 = new THREE.Matrix4();
     const defaultAvatarUrl = avatarUrl || world?.meta?.starter_avatar_url || null;
-    const defaultAvatarMotion = avatarMotion || {};
     zone.entities.forEach((e) => {
       let m = null;
       const [sx, sy, sz] = e.scale;
@@ -286,7 +204,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
         const pl = new THREE.PointLight(e.color, 12, 10, 1.8);
         pl.position.set(e.pos[0], 2.2, e.pos[2]); scene.add(pl);
       } else if (e.type === "npc") {
-        m = makeAvatar(e.color || "#e8c07a", e.props?.label || "NPC", null, defaultAvatarMotion, mixers);
+        m = makeAvatar(e.color || "#e8c07a", e.props?.label || "NPC", null, mixers);
         m.position.set(e.pos[0], 0, e.pos[2]); m.rotation.y = e.rot[1] || 0;
         npcs.push({ e, mesh: m });
         colliders.push({ x: e.pos[0], z: e.pos[2], hw: 0.6, hd: 0.6, top: 1.9 });
@@ -306,51 +224,17 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
         }).catch(() => { ph.material.wireframe = false; ph.material.opacity = 0.85; });
         m.position.set(e.pos[0], e.pos[1], e.pos[2]); m.rotation.y = e.rot[1] || 0;
         colliders.push({ x: e.pos[0], z: e.pos[2], hw: sx / 2, hd: sz / 2, top: e.pos[1] + sy });
-      } else if (e.type === "sign") {
-        m = signSprite(e.props?.text || e.props?.label || "NEXUS", e.color || "#37c8ff", Math.max(6, sx));
-        m.position.set(e.pos[0], e.pos[1] + sy / 2, e.pos[2]);
-      } else if (e.type === "ring") {
-        const rr = Math.max(6, Number(e.props?.radius) || 36);
-        m = new THREE.Mesh(new THREE.TorusGeometry(rr, Math.max(0.6, sy / 4), 12, 80),
-          new THREE.MeshStandardMaterial({ color: e.color || "#37c8ff", emissive: e.color || "#37c8ff", emissiveIntensity: 1.6, metalness: 0.4, roughness: 0.3 }));
-        m.rotation.x = Math.PI / 2;
-        m.position.set(e.pos[0], e.pos[1], e.pos[2]);
-        ambient.push({ kind: "ring", mesh: m });
-      } else if (e.type === "crowd") {
-        const n = Math.min(80, Math.max(4, Math.round(Number(e.props?.count) || 30)));
-        const body = new THREE.InstancedMesh(new THREE.CapsuleGeometry(0.3, 0.85, 4, 8),
-          new THREE.MeshStandardMaterial({ color: "#2b3558", roughness: 0.6, metalness: 0.25, emissive: "#131b38", emissiveIntensity: 0.7 }), n);
-        const trim = new THREE.InstancedMesh(new THREE.SphereGeometry(0.16, 8, 8),
-          new THREE.MeshStandardMaterial({ color: "#ffffff", emissive: "#ffffff", emissiveIntensity: 1.2 }), n);
-        const cols = ["#37c8ff", "#2ee87a", "#c26bff", "#ff9a5c", "#5cffe2"];
-        const span = Number(e.props?.radius) || sz || 120;
-        const walkers = [];
-        for (let i = 0; i < n; i++) {
-          const lane = (i % 6) - 2.5;
-          walkers.push({ x: e.pos[0] + lane * 7 + (Math.random() - 0.5) * 4, z: e.pos[2] + (Math.random() - 0.5) * span, s: 0.5 + Math.random() * 0.9, dir: Math.random() > 0.5 ? 1 : -1 });
-          trim.setColorAt(i, new THREE.Color(cols[i % cols.length]));
-        }
-        const grp2 = new THREE.Group(); grp2.add(body); grp2.add(trim); m = grp2;
-        ambient.push({ kind: "crowd", body, trim, walkers, halfZ: span / 2, cz: e.pos[2] });
-      } else if (e.type === "traffic") {
-        const n = Math.min(24, Math.max(2, Math.round(Number(e.props?.count) || 10)));
-        const ships = new THREE.InstancedMesh(new THREE.BoxGeometry(3.2, 0.5, 1.1),
-          new THREE.MeshStandardMaterial({ color: "#0e1830", emissive: e.color || "#37c8ff", emissiveIntensity: 0.9 }), n);
-        const lanes = [];
-        for (let i = 0; i < n; i++) lanes.push({ y: 34 + (i % 4) * 8, z: -90 + (i % 5) * 36, x: (Math.random() - 0.5) * 190, s: 4 + Math.random() * 6, dir: i % 2 ? 1 : -1 });
-        m = ships;
-        ambient.push({ kind: "traffic", ships, lanes });
       }
       if (m) { scene.add(m); m.userData.entityId = e.id; entMeshes[e.id] = m; pickables.push(m); }
     });
 
-    const player = makeAvatar("#37c8ff", mode === "play" ? username : null, mode === "play" ? defaultAvatarUrl : null, defaultAvatarMotion, mixers);
+    const player = makeAvatar("#37c8ff", mode === "play" ? username : null, mode === "play" ? defaultAvatarUrl : null, mixers);
     scene.add(player);
     const spawn = zone.spawn || { x: 0, z: 0 };
     player.position.set(spawn.x, 0, spawn.z);
     player.visible = mode === "play";
     let vy = 0; let grounded = true; let sprint = false;
-    let yaw = 0; let pitch = 0.16; let dist = 9;
+    let yaw = 0; let pitch = 0.42; let dist = 7;
     const keys = {}; const touch = { x: 0, y: 0 }; let jumpReq = false; let interactReq = false;
     const remotes = {};
 
@@ -501,7 +385,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
           (r.data.players || []).forEach((pl) => {
             seen.add(pl.user_id);
             if (!remotes[pl.user_id]) {
-              remotes[pl.user_id] = { grp: makeAvatar("#ff9a5c", pl.username, pl.avatar_url || defaultAvatarUrl, pl.avatar_motion || defaultAvatarMotion, mixers), tgt: new THREE.Vector3(pl.x, pl.y, pl.z), ry: pl.ry, anim: pl.anim };
+              remotes[pl.user_id] = { grp: makeAvatar("#ff9a5c", pl.username, pl.avatar_url || defaultAvatarUrl, mixers), tgt: new THREE.Vector3(pl.x, pl.y, pl.z), ry: pl.ry, anim: pl.anim };
               scene.add(remotes[pl.user_id].grp);
               remotes[pl.user_id].grp.position.set(pl.x, pl.y, pl.z);
             }
@@ -604,35 +488,6 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
         focus.y + 1.6 + Math.sin(pitch) * dist,
         focus.z + Math.cos(yaw) * Math.cos(pitch) * dist);
       camera.lookAt(focus.x, focus.y + 1.4, focus.z);
-      const tNow = clock.elapsedTime;
-      for (const a of ambient) {
-        if (a.kind === "ring") a.mesh.rotation.z += dt * 0.04;
-        else if (a.kind === "crowd") {
-          for (let i = 0; i < a.walkers.length; i++) {
-            const w = a.walkers[i];
-            w.z += w.dir * w.s * dt;
-            if (w.z > a.cz + a.halfZ) w.z = a.cz - a.halfZ;
-            if (w.z < a.cz - a.halfZ) w.z = a.cz + a.halfZ;
-            const bob = Math.sin(tNow * 6 + i) * 0.05;
-            _m4.makeTranslation(w.x, 0.95 + bob, w.z);
-            a.body.setMatrixAt(i, _m4);
-            _m4.makeTranslation(w.x, 1.75 + bob, w.z);
-            a.trim.setMatrixAt(i, _m4);
-          }
-          a.body.instanceMatrix.needsUpdate = true;
-          a.trim.instanceMatrix.needsUpdate = true;
-        } else if (a.kind === "traffic") {
-          for (let i = 0; i < a.lanes.length; i++) {
-            const l = a.lanes[i];
-            l.x += l.dir * l.s * dt;
-            if (l.x > 110) l.x = -110;
-            if (l.x < -110) l.x = 110;
-            _m4.makeTranslation(l.x, l.y, l.z);
-            a.ships.setMatrixAt(i, _m4);
-          }
-          a.ships.instanceMatrix.needsUpdate = true;
-        }
-      }
       renderer.render(scene, camera);
       window.__NEXUS = { x: player.position.x, y: player.position.y, z: player.position.z, yaw, online: hud.online, mode, zone: zone.id, remotes: Object.keys(remotes).length, avatarReady: !!player.userData.mix };
     };

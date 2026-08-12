@@ -1,4 +1,25 @@
-# OurRealm — Product Requirements (UPDATED 2026-06 — NEXUS V1 CORE COMPLETE, deploy-ready checkpoint)
+# OurRealm — PRD (UPDATED 2026-06 — NEXUS V1 CORE COMPLETE + SPAWN ZONE VISUAL PASS v15)
+
+## SPAWN ZONE VISUAL DIRECTIVE (latest pass; published v15, 140 ents in nexus_central)
+- Renderer upgrades (NexusWorld.jsx): ACES tone mapping (exposure 1.18), glossy reflective ground
+  (metal 0.55/rough 0.22), fog scaled to zone size, default camera pitch 0.16 dist 9 (cinematic
+  entry), new entity types rendered: sign (glowing canvas text sprite), ring (emissive torus
+  canopy, slow spin), crowd (InstancedMesh walkers w/ neon-glow heads, props.count+radius span),
+  traffic (instanced flying vehicles). Ambient anim loop updates walkers/ships/rings.
+- Backend: ENTITY_TYPES += sign/ring/crowd/traffic; props += text/count/radius.
+- nexus_central content: spawn moved to (0,72) facing boulevard; 3 canopy rings (cyan/purple/
+  green), 'NEXUS SPAWN ZONE' title, 'ORAi CORE ONLINE' sign, 6 district signs (GAMING/GAMEMAKER/
+  EVENTS/BUSINESS/LIVE CLUB/SOCIAL TERRACE), 46-walker crowd, 12 flying vehicles, orange/green
+  accent lanes, 8 boulevard trees, 4 decorative Nexus Arch portals, fill lights at spawn.
+  Scripts: scripts/nexus_central_build.py + nexus_central_pass2.py.
+- HONEST visual critic score vs photoreal reference: ~72/100 (composition 88, signage 85,
+  portals 85, lighting 80, scale 78, density 72, polish 70, architecture 55). The 95/100 target
+  needs Meshy modular building/canopy families, real crowd characters and bloom post-processing
+  — NOT achievable with procedural primitives alone; reported as blocker, work preserved.
+- /games: single 'ENTER NEXUS' purple CTA (games-nexus-cta, from earlier fork) below Game Maker
+  CTA — agent's duplicate removed. Avatars untouched this pass per directive.
+- Rollback: nexus_versions snapshots v13/v14 (pre-pass states), spawn positions cleared once.
+
 
 ## NEXUS V1 STATUS (final directive pass; iteration_143 backend 16/16 + regression 42/42 green)
 - WORLD (published v12, draft=published, clean): zones = nexus_central (117 ents, DEFAULT entry,

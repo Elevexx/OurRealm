@@ -96,19 +96,15 @@ async def presence(body: dict, current: CurrentUser):
         if math.hypot(x - prev["x"], z - prev["z"]) > dt * 16 + 3:
             x, z = prev["x"], prev["z"]  # reject teleports: snap back
     anim = str(body.get("anim") or "idle")[:12]
-    avatar_data = await _user_avatar_data(current["id"])
-    avatar_url = avatar_data.get("url")
+    avatar_url = await _user_avatar_url(current["id"])
     await db.nexus_presence.update_one({"user_id": current["id"]}, {"$set": {
         "user_id": current["id"], "username": current.get("username"),
         "zone_id": zone_id, "x": round(x, 2), "y": round(y, 2), "z": round(z, 2),
-        "ry": round(ry, 2), "anim": anim, "avatar_url": avatar_url,
-        "avatar_motion": avatar_data.get("animation_urls") or {},
-        "ts": now, "updated_at": _iso()}}, upsert=True)
+        "ry": round(ry, 2), "anim": anim, "avatar_url": avatar_url, "ts": now, "updated_at": _iso()}}, upsert=True)
     cutoff = now - 8
     others = await db.nexus_presence.find(
         {"zone_id": zone_id, "ts": {"$gt": cutoff}, "user_id": {"$ne": current["id"]}},
-        {"_id": 0, "user_id": 1, "username": 1, "x": 1, "y": 1, "z": 1,
-         "ry": 1, "anim": 1, "avatar_url": 1, "avatar_motion": 1}
+        {"_id": 0, "user_id": 1, "username": 1, "x": 1, "y": 1, "z": 1, "ry": 1, "anim": 1, "avatar_url": 1}
     ).to_list(64)
     chats = await db.nexus_chat.find(
         {"zone_id": zone_id, "ts": {"$gt": now - 8}},
@@ -131,53 +127,20 @@ _avatar_cache = {}  # user_id -> (url, fetched_ts)
 _RUN_TASKS = set()
 
 
-async def _user_avatar_data(user_id):
+async def _user_avatar_url(user_id):
     now = time.time()
     hit = _avatar_cache.get(user_id)
     if hit and now - hit[1] < 30:
         return hit[0]
-
-    u = await db.users.find_one(
-        {"id": user_id},
-        {"_id": 0, "nexus_avatar_id": 1},
-    )
-
+    u = await db.users.find_one({"id": user_id}, {"_id": 0, "nexus_avatar_id": 1})
     av = None
     if u and u.get("nexus_avatar_id"):
-        av = await db.nexus_avatars.find_one(
-            {"id": u["nexus_avatar_id"], "status": "active"},
-            {
-                "_id": 0,
-                "id": 1,
-                "url": 1,
-                "rigged_base_url": 1,
-                "animation_urls": 1,
-            },
-        )
-
+        av = await db.nexus_avatars.find_one({"id": u["nexus_avatar_id"], "status": "active"}, {"_id": 0, "url": 1})
     if not av:
-        av = await db.nexus_avatars.find_one(
-            {"is_default": True, "status": "active"},
-            {
-                "_id": 0,
-                "id": 1,
-                "url": 1,
-                "rigged_base_url": 1,
-                "animation_urls": 1,
-            },
-        )
-
-    data = {
-        "id": (av or {}).get("id"),
-        "url": (av or {}).get("rigged_base_url") or (av or {}).get("url"),
-        "animation_urls": (av or {}).get("animation_urls") or {},
-    }
-    _avatar_cache[user_id] = (data, now)
-    return data
-
-
-async def _user_avatar_url(user_id):
-    return (await _user_avatar_data(user_id)).get("url")
+        av = await db.nexus_avatars.find_one({"is_default": True, "status": "active"}, {"_id": 0, "url": 1})
+    url = (av or {}).get("url")
+    _avatar_cache[user_id] = (url, now)
+    return url
 
 
 @router.post("/chat")
@@ -732,19 +695,3 @@ async def orai_proposals(current: CurrentUser):
     require_founder(current)
     items = await db.nexus_proposals.find({}, {"_id": 0}).sort("created_at", -1).to_list(30)
     return {"proposals": items}
-
-
-# NEXUS_PRODUCTION_FIXTURE_SYNC_V12
-@router.on_event("startup")
-async def _sync_nexus_production_fixture_v12():
-    try:
-        from services.nexus_fixtures import sync_nexus_fixture
-
-        result = await sync_nexus_fixture()
-        print("NEXUS FIXTURE SYNC:", result)
-    except Exception as exc:
-        print(
-            "NEXUS FIXTURE SYNC FAILED:",
-            type(exc).__name__,
-            str(exc)[:300],
-        )
