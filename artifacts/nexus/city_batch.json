@@ -1,0 +1,36 @@
+{
+ "canopy_ring": {
+  "runtime_url": "/api/media/models/af24a26ae3c18a56ee544020ee357499.glb",
+  "kb": 3886,
+  "task": "019ff813-8bff-7cb8-8c77-a47e4d8f04e6"
+ },
+ "tower_blue": {
+  "runtime_url": "/api/media/models/da16590d1ca173860a7edc775e7e7bbe.glb",
+  "kb": 1232,
+  "task": "019ff816-47e1-7d0e-84ee-d0da17b5dfcf"
+ },
+ "tower_green": {
+  "runtime_url": "/api/media/models/1286a8e47fdcf1a862cde9ba314d18a2.glb",
+  "kb": 1082,
+  "task": "019ff818-3bb8-7844-bdb6-4b17ecb331be"
+ },
+ "orai_tower": {
+  "runtime_url": "/api/media/models/553432310253ff37af54e078ec50e8aa.glb",
+  "kb": 1353,
+  "task": "019ff819-f0ea-78ac-b6c7-34cd0cdda58f"
+ },
+ "storefront": {
+  "runtime_url": "/api/media/models/7abaa4c65b7a02b8e4b3ba2ec927da0f.glb",
+  "kb": 4840,
+  "task": "019ff81c-1e3e-78cd-af94-afce3d1e65d4"
+ },
+ "portal_arch": {
+  "runtime_url": "/api/media/models/ba5a9521e6906a96b412962c7b3ba1c2.glb",
+  "kb": 2197,
+  "task": "019ff81f-c4d0-7f14-91f7-8969eb04583d"
+ },
+ "_balance": {
+  "start": 4864,
+  "end": 4684
+ }
+}

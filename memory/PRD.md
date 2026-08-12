@@ -1,4 +1,35 @@
-# OurRealm — PRD (UPDATED 2026-06 — NEXUS V1 CORE COMPLETE + SPAWN ZONE VISUAL PASS v15)
+# OurRealm — PRD (UPDATED 2026-06 — SPAWN ZONE PASS **IN PROGRESS** @ published v16)
+
+## RESUME CHECKPOINT (exact — next agent starts here)
+- NOTE: spawn later moved to (0,60) in draft+published (past platform edge — entry frame now
+  lands on lit boulevard; verified good). Old 'Leave World' overlay now sr-only (HUD EXIT is
+  the visible control; nexus-exit-btn testid preserved).
+- Published v16 = draft. nexus_central 145 ents incl. 6 NEW Meshy city models integrated by
+  scripts/nexus_city_integrate.py: canopy_ring, tower_blue, tower_green, orai_tower, storefront,
+  portal_arch (runtime draco URLs in /app/artifacts/nexus/city_batch.json; masters in
+  asset_library; batch used 330 Meshy credits, balance 5014→4684; task IDs in log
+  /app/artifacts/nexus/city_batch.log, idem keys nx-city-*-v1).
+- Mobile HUD REBUILT to founder's portrait target (verified all testids on 390x844): top-left
+  EXIT (onExit prop), top-center zone+online pill, top-right ⚙, big JUMP (80px) + ✋ INTERACT,
+  ◎ recenter (resets yaw/pitch/dist), 💬 chat toggle (input collapsed by default on mobile),
+  joystick ring w/ full-deflection auto-run (mag>0.78 = run, RUN button removed), safe-area
+  insets everywhere. Pitch clamped [-0.25,1.25] (no flip), roll always 0, pinch/dist clamped.
+- HONEST STATUS vs 95/100 target: **IN PROGRESS, NOT PASSED**. Last desktop critique (~76/100):
+  (1) bottom 40% of entry frame = dark unlit arrival platform (light it or start camera past it),
+  (2) integrated GLB models render as wireframe placeholders for several seconds (loading UX) and
+  scale/placement of storefront/tower models UNREVIEWED after integration — inspect + tune
+  heights/positions in nexus_city_integrate.py mapping, (3) no bloom post-processing yet
+  (EffectComposer+UnrealBloomPass, desktop only), (4) crowd = capsules w/ glow heads (rigged
+  low-poly crowd character generation NOT started), (5) avatar clips still single walk-clip
+  (idle/jump/landing/greeting pending; avatarMotion prop exists from earlier fork), (6) top-center
+  pill overlaps NexusPage's old 'Leave World' button — remove that old button (NexusPage.jsx
+  ~line 100) since HUD EXIT replaced it, (7) mandatory test sizes 393x852/430x932/tablet/1920
+  not yet run, FPS not measured.
+- NEXT STEPS in order: fix (6)+(1), review model placement screenshot, bloom, crowd characters
+  (Meshy rigged low-poly + instанcing), avatar motion pack, repeat critic loop to ≥95.
+- /games: exactly ONE ENTER NEXUS button ✓. Other zones/systems untouched ✓. Rollback:
+  snapshots v13/v14/v15 in nexus_versions.
+
 
 ## SPAWN ZONE VISUAL DIRECTIVE (latest pass; published v15, 140 ents in nexus_central)
 - Renderer upgrades (NexusWorld.jsx): ACES tone mapping (exposure 1.18), glossy reflective ground

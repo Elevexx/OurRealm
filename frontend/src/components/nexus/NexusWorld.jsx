@@ -210,11 +210,12 @@ function setAvatarAnim(grp, state) {
 }
 
 export default function NexusWorld({ mode = "play", world, zoneId = "nexus_central", username = "you",
-  avatarUrl = null, avatarMotion = null, onSelect, selectedId, onEntityMove, onPortal, onPublishedVersion, travelRef, refreshKey = 0 }) {
+  avatarUrl = null, avatarMotion = null, onSelect, selectedId, onEntityMove, onPortal, onPublishedVersion, travelRef, onExit, refreshKey = 0 }) {
   const mountRef = useRef(null);
   const [hud, setHud] = useState({ online: 1, zone: "", prompt: "", locked: false });
   const [showSet, setShowSet] = useState(false);
   const [chatText, setChatText] = useState("");
+  const [chatOpen, setChatOpen] = useState(false);
   const [chatError, setChatError] = useState("");
   const chatApiRef = useRef(null);
   const [cam, setCam] = useState({ sens: CAMS().sens ?? 1, invH: !!CAMS().invH, invV: !!CAMS().invV });
@@ -454,7 +455,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     renderer.domElement.addEventListener("touchstart", onTS, { passive: true });
     renderer.domElement.addEventListener("touchmove", onTM, { passive: true });
     renderer.domElement.addEventListener("touchend", onTE, { passive: true });
-    window.__NEXUS_MOB = { jump: () => { jumpReq = true; }, interact: () => { interactReq = true; }, sprint: (v) => { sprint = v; } };
+    window.__NEXUS_MOB = { jump: () => { jumpReq = true; }, interact: () => { interactReq = true; }, sprint: (v) => { sprint = v; }, recenter: () => { yaw = player.rotation.y; pitch = 0.16; dist = 9; } };
 
     // presence loop (real multiplayer, server-validated)
     let presTimer = null; let saveTimer = null;
@@ -474,7 +475,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       holder.add(s);
       bubbles[uid] = { id, sprite: s, holder, at: Date.now() };
     };
-    const anim = () => (!grounded ? "jump" : (Math.hypot(touch.x, touch.y) > 0.1 || keys.w || keys.a || keys.s || keys.d || keys.arrowup || keys.arrowdown || keys.arrowleft || keys.arrowright) ? (sprint || keys.shift ? "run" : "walk") : "idle");
+    const anim = () => (!grounded ? "jump" : (Math.hypot(touch.x, touch.y) > 0.1 || keys.w || keys.a || keys.s || keys.d || keys.arrowup || keys.arrowdown || keys.arrowleft || keys.arrowright) ? (sprint || keys.shift || Math.hypot(touch.x, touch.y) > 0.78 ? "run" : "walk") : "idle");
     let lastPv = 0;
     if (mode === "play") {
       chatApiRef.current = async (text) => {
@@ -544,7 +545,8 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
         let ix = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0) + touch.x;
         let iz = (keys.s || keys.arrowdown ? 1 : 0) - (keys.w || keys.arrowup ? 1 : 0) + touch.y;
         const mag = Math.hypot(ix, iz);
-        const spd = (sprint || keys.shift ? 9.5 : 5.5);
+        const joyMag = Math.hypot(touch.x, touch.y);
+        const spd = (sprint || keys.shift || joyMag > 0.78 ? 9.5 : 5.5);
         if (mag > 0.06) {
           ix /= Math.max(1, mag); iz /= Math.max(1, mag);
           const dx = (ix * Math.cos(yaw) + iz * Math.sin(yaw)) * spd * dt;
@@ -689,12 +691,24 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       <div ref={mountRef} className="absolute inset-0" data-testid="nexus-canvas-mount" />
       {mode === "play" && (
         <>
-          <div className="absolute top-2 left-3 text-xs font-semibold text-white/90 bg-black/45 rounded-lg px-3 py-1.5" data-testid="nexus-hud">
-            {hud.zone} · <span data-testid="nexus-online">{hud.online} online</span>
+          <div className="absolute left-0 right-0 top-0 flex items-center gap-2 px-3"
+            style={{ paddingTop: "max(env(safe-area-inset-top), 8px)" }}>
+            {onExit && (
+              <button onClick={onExit} data-testid="nexus-hud-exit"
+                className="text-xs font-black text-white bg-red-500/70 hover:bg-red-500 rounded-xl px-4 py-2.5 shrink-0">✕ EXIT</button>
+            )}
+            <div className="mx-auto text-xs font-semibold text-white/90 bg-black/50 rounded-xl px-4 py-2.5 truncate" data-testid="nexus-hud">
+              {hud.zone} · <span data-testid="nexus-online">{hud.online} online</span>
+            </div>
+            <button data-testid="nexus-settings-btn" onClick={() => setShowSet(!showSet)}
+              className="text-sm text-white/90 bg-black/50 rounded-xl px-3.5 py-2 shrink-0">⚙</button>
           </div>
           {hud.prompt && (
-            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 text-sm font-bold text-white bg-black/60 rounded-xl px-4 py-2" data-testid="nexus-prompt">{hud.prompt}</div>
+            <div className="absolute bottom-32 left-1/2 -translate-x-1/2 text-sm font-bold text-white bg-black/70 border border-cyan-400/40 rounded-xl px-5 py-3 text-center" data-testid="nexus-prompt">
+              {hud.prompt}
+            </div>
           )}
+          {(!mob || chatOpen) && (
           <form
             onSubmit={async (ev) => {
               ev.preventDefault();
@@ -704,11 +718,12 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
               try {
                 await chatApiRef.current(value);
                 setChatText("");
+                if (mob) setChatOpen(false);
               } catch (err) {
                 setChatError(err?.response?.data?.detail || "Chat failed");
               }
             }}
-            className={`absolute z-20 ${mob ? "bottom-36" : "bottom-12"} left-1/2 -translate-x-1/2 flex gap-1 w-[min(88vw,420px)]`}
+            className={`absolute z-20 ${mob ? "bottom-40" : "bottom-12"} left-1/2 -translate-x-1/2 flex gap-1 w-[min(88vw,420px)]`}
             data-testid="nexus-chat-form">
             {chatError && (
               <span className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-red-200 bg-red-950/80 rounded px-2 py-1">
@@ -728,15 +743,16 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
               className="rounded-lg bg-cyan-500 px-3 py-2 text-xs font-black text-black"
               data-testid="nexus-chat-send">SEND</button>
           </form>
+          )}
           {!hud.locked && !mob && (
             <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] text-white/70 bg-black/40 rounded-lg px-3 py-1.5">
               Click to lock camera · WASD move · Space jump · Shift sprint · E interact · Wheel zoom · Esc release
             </div>
           )}
-          <button data-testid="nexus-settings-btn" onClick={() => setShowSet(!showSet)}
-            className="absolute top-2 right-3 text-xs text-white/90 bg-black/45 rounded-lg px-3 py-1.5">⚙ Camera</button>
+          <button data-testid="nexus-settings-btn-legacy" style={{ display: "none" }} onClick={() => setShowSet(!showSet)} />
           {showSet && (
-            <div className="absolute top-10 right-3 bg-black/75 rounded-xl p-3 text-xs text-white/90 space-y-2 w-52" data-testid="nexus-settings">
+            <div className="absolute right-3 bg-black/80 rounded-xl p-3 text-xs text-white/90 space-y-2 w-52 z-30"
+              style={{ top: "max(calc(env(safe-area-inset-top) + 52px), 60px)" }} data-testid="nexus-settings">
               <label className="block">Sensitivity {cam.sens.toFixed(1)}
                 <input type="range" min="0.3" max="2.5" step="0.1" value={cam.sens} className="w-full"
                   onChange={(e) => saveCam({ ...cam, sens: parseFloat(e.target.value) })} data-testid="nexus-sens" />
@@ -749,14 +765,22 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
           )}
           {mob && (
             <>
-              <button className="absolute bottom-6 right-4 w-16 h-16 rounded-full bg-cyan-500/70 text-white font-bold"
+              <button className="absolute right-4 w-20 h-20 rounded-full bg-cyan-500/75 active:bg-cyan-400 text-white font-black text-sm shadow-lg"
+                style={{ bottom: "max(env(safe-area-inset-bottom), 12px)" }}
                 onTouchStart={() => window.__NEXUS_MOB?.jump()} data-testid="nexus-jump-btn">JUMP</button>
-              <button className="absolute bottom-24 right-6 w-12 h-12 rounded-full bg-emerald-500/70 text-white font-bold"
-                onTouchStart={() => window.__NEXUS_MOB?.interact()} data-testid="nexus-interact-btn">E</button>
-              <button className="absolute bottom-6 right-24 w-12 h-12 rounded-full bg-orange-500/60 text-white text-xs font-bold"
-                onTouchStart={() => window.__NEXUS_MOB?.sprint(true)} onTouchEnd={() => window.__NEXUS_MOB?.sprint(false)}
-                data-testid="nexus-sprint-btn">RUN</button>
-              <div className="absolute bottom-8 left-6 w-24 h-24 rounded-full border-2 border-white/25 pointer-events-none" />
+              <button className="absolute right-28 w-16 h-16 rounded-full bg-emerald-500/75 active:bg-emerald-400 text-white font-black text-xl shadow-lg"
+                style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 8px), 20px)" }}
+                onTouchStart={() => window.__NEXUS_MOB?.interact()} data-testid="nexus-interact-btn">✋</button>
+              <button className="absolute right-6 w-11 h-11 rounded-full bg-white/15 text-white text-lg"
+                style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 96px), 108px)" }}
+                onTouchStart={() => window.__NEXUS_MOB?.recenter()} data-testid="nexus-recenter-btn">◎</button>
+              <button className={`absolute left-1/2 -translate-x-1/2 w-12 h-12 rounded-full text-lg ${chatOpen ? "bg-cyan-500/80" : "bg-white/15"}`}
+                style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 8px), 20px)" }}
+                onTouchStart={() => setChatOpen((v) => !v)} data-testid="nexus-chat-toggle">💬</button>
+              <div className="absolute left-5 w-28 h-28 rounded-full border-2 border-white/30 bg-white/5 pointer-events-none"
+                style={{ bottom: "max(env(safe-area-inset-bottom), 12px)" }} data-testid="nexus-joystick-ring" />
+              <div className="absolute left-9 text-[9px] text-white/40 pointer-events-none text-center w-20"
+                style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 120px), 132px)" }}>push far = run</div>
             </>
           )}
         </>

@@ -96,10 +96,10 @@ export default function NexusPage() {
       <div className="fixed inset-0 z-[100] bg-[#0a0f1e]" data-testid="nexus-play-shell">
         <NexusWorld key={`${zoneId}:${worldVersion}`} mode="play" world={world}
           zoneId={zoneId} username={user?.username} avatarUrl={myAvatarUrl}
-          avatarMotion={myAvatarMotion} onPortal={onPortal}
+          avatarMotion={myAvatarMotion} onPortal={onPortal} onExit={() => setPlaying(false)}
           onPublishedVersion={refreshPublished} travelRef={travelRef} />
         <button onClick={() => setPlaying(false)} data-testid="nexus-exit-btn"
-          className="absolute top-2 left-1/2 -translate-x-1/2 text-xs font-semibold text-white/90 bg-black/50 rounded-lg px-3 py-1.5">✕ Leave World</button>
+          className="sr-only">Leave World</button>
       </div>
     );
   }
