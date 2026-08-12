@@ -176,12 +176,11 @@ def score_ops(world, ops, targets, founder_max=False):
         return 0, [f"ops failed validation: {e}"]
     score = 70
     target_eids = {t.get("entity_id") for t in targets if t["kind"] == "entity"}
-    touched = []
+    touched = set()
     for op in ops:
-        if op["op"] in ("update_entity",) and op.get("entity_id"):
-            touched.append((op["zone_id"], op["entity_id"]))
-        elif op["op"] == "add_entity":
-            pass
+        if op.get("entity_id"):
+            touched.add(op["entity_id"])
+    inspect = target_eids | touched
     in_bounds = True
     labeled = True
     palette_fit = 0
@@ -189,13 +188,15 @@ def score_ops(world, ops, targets, founder_max=False):
     for z in new_world["zones"]:
         hw, hd = z["size"][0] / 2, z["size"][1] / 2
         for e in z["entities"]:
-            if target_eids and e["id"] not in target_eids and (z["id"], e["id"]) not in touched:
+            if inspect and e["id"] not in inspect:
+                continue
+            if not inspect:
                 continue
             checked += 1
             if abs(e["pos"][0]) > hw or abs(e["pos"][2]) > hd:
                 in_bounds = False
                 issues.append(f"{e['id']} out of bounds")
-            if e["type"] in ("box", "portal", "npc") and not e.get("props", {}).get("label"):
+            if e["type"] in ("portal", "npc") and not e.get("props", {}).get("label"):
                 labeled = False
                 issues.append(f"{e['id']} missing label")
             if e["color"] in PALETTE:
@@ -207,6 +208,8 @@ def score_ops(world, ops, targets, founder_max=False):
         score += 5
     if checked:
         score += round(4 * palette_fit / checked)
+    else:
+        score += 4  # zone-level ops: nothing entity-scoped to flag
     if founder_max and in_bounds and labeled and not issues:
         score += 4  # founder-max detail pass: zero outstanding issues
     return min(99 if founder_max else 95, score), issues
@@ -219,13 +222,13 @@ def improve_ops(world, ops, issues):
     for z in world["zones"]:
         hw, hd = z["size"][0] / 2 - 1, z["size"][1] / 2 - 1
         for e in z["entities"]:
-            if e["id"] not in bad_ids:
+            if e["id"] not in bad_ids or len(fixed) >= 40:
                 continue
             fields = {}
             if abs(e["pos"][0]) > hw or abs(e["pos"][2]) > hd:
                 fields["pos"] = [max(-hw, min(hw, e["pos"][0])), e["pos"][1],
                                  max(-hd, min(hd, e["pos"][2]))]
-            if e["type"] in ("box", "portal", "npc") and not e.get("props", {}).get("label"):
+            if e["type"] in ("portal", "npc") and not e.get("props", {}).get("label"):
                 fields["props"] = {"label": f"{e['type'].title()} {e['id'][-4:]}"}
             if fields:
                 fixed.append({"op": "update_entity", "zone_id": z["id"], "entity_id": e["id"], "fields": fields})

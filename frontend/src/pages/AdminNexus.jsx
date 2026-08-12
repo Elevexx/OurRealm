@@ -7,6 +7,7 @@ import NexusWorld from "@/components/nexus/NexusWorld";
 import { MagicLoop } from "@/components/nexus/MagicLoop";
 import { ActiveRuns } from "@/components/nexus/ActiveRuns";
 import { OraiArchitect } from "@/components/nexus/OraiArchitect";
+import { NexusStudios } from "@/components/nexus/NexusStudios";
 import { toast } from "sonner";
 
 const ENT_PRESETS = {
@@ -196,18 +197,12 @@ export default function AdminNexus() {
             </div>
           )}
           <div className="bg-white/5 backdrop-blur rounded-2xl border border-white/10 p-3" data-testid="nexus-card-assets">
-            <div className="text-xs font-black text-cyan-300 mb-1">◇ 3D ASSET STUDIO <span className="text-[9px] font-bold bg-emerald-500/20 text-emerald-300 rounded px-1.5 py-0.5 ml-1">Meshy CONNECTED</span></div>
-            <div className="flex gap-1.5 mt-1.5">
-              {["GENERATE MODEL", "UPLOAD GLB", "ASSET LIBRARY"].map((b) => (
-                <button key={b} disabled title="Arrives in Checkpoint B (founder gate)"
-                  className="flex-1 text-[9px] font-bold bg-white/5 text-white/35 rounded-lg px-1 py-2 cursor-not-allowed">{b}</button>
-              ))}
-            </div>
-            <div className="text-[10px] text-white/45 mt-1.5">Checkpoint B — zero Meshy credits used this checkpoint.</div>
+            <div className="text-xs font-black text-cyan-300 mb-1">◇ MESHY PROVIDER <span className="text-[9px] font-bold bg-emerald-500/20 text-emerald-300 rounded px-1.5 py-0.5 ml-1">CONNECTED</span></div>
+            <div className="text-[10px] text-white/45">Generate, upload, rig and assign in the 3D Asset Studio panel (center column).</div>
           </div>
           <div className="bg-white/5 backdrop-blur rounded-2xl border border-white/10 p-3" data-testid="nexus-card-systems">
             <div className="text-xs font-black text-cyan-300 mb-1">⚙ SYSTEMS</div>
-            {[["World runtime", "LIVE"], ["Multiplayer", "BETA (presence sync)"], ["ORAi Architect", "LIVE (text + voice input)"], ["AI Magic Loop", "LIVE"], ["Voice-to-voice", "Phase B"], ["Avatar Studio", "Phase C"]].map(([k, v]) => (
+            {[["World runtime", "LIVE"], ["Multiplayer", "LIVE (server presence + chat)"], ["Proximity chat", "LIVE"], ["Live publish sync", "LIVE"], ["ORAi Architect", "LIVE (text + voice)"], ["AI Magic Loop", "LIVE"], ["3D Asset Studio", "LIVE (Meshy)"], ["Avatar Studio", "LIVE (2 starter avatars)"]].map(([k, v]) => (
               <div key={k} className="flex justify-between text-[11px] py-0.5"><span className="text-white/70">{k}</span><span className="text-white/45">{v}</span></div>
             ))}
           </div>
@@ -262,16 +257,16 @@ export default function AdminNexus() {
           <div className={show("magic")}>
             <MagicLoop world={world} onStarted={() => setRefreshKey((k) => k + 1)} />
           </div>
-          <div className={`bg-white/5 backdrop-blur rounded-2xl border border-white/10 p-3 ${show("build")}`} data-testid="nexus-card-avatar">
-            <div className="text-xs font-black text-cyan-300 mb-1">🧍 AVATAR STUDIO <span className="text-[9px] font-bold bg-white/10 text-white/50 rounded px-1.5 py-0.5 ml-1">PHASE C</span></div>
-            <div className="text-[11px] text-white/50">Two original rigged starter avatars (male/female streetwear) arrive after the Checkpoint B canary passes your gate. Players currently use greybox capsules — honest placeholder, zero paid generation.</div>
+          <div className={show("build")}>
+            <NexusStudios zone={zone} sel={sel} applyOps={applyOps} />
           </div>
         </div>
 
         {/* ── right column ── */}
         <div className="space-y-3">
           <div className={show("orai")}>
-            <OraiArchitect zoneId={zone?.id} selectedId={sel} onApplied={load} />
+            <OraiArchitect zoneId={zone?.id} selectedId={sel} onApplied={load}
+              onAppliedInverse={(inv) => inv && undoStack.current.push(inv)} />
           </div>
           <div className={show("runs")}>
             <ActiveRuns refreshKey={refreshKey} onDraftChanged={load} />

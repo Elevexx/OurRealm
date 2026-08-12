@@ -4,13 +4,29 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
-import { makeGLTFLoader } from "@/components/games/three/questLevel";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import apiClient from "@/api/client";
+
+const _draco = new DRACOLoader();
+_draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/");
+const makeGLTFLoader = () => {
+  const l = new GLTFLoader();
+  l.setDRACOLoader(_draco);
+  return l;
+};
 
 const CAMS = () => { try { return JSON.parse(localStorage.getItem("nexus_cam") || "{}"); } catch { return {}; } };
 const GLB_CACHE = {};
-const loadGLB = (url) => {
-  if (!GLB_CACHE[url]) GLB_CACHE[url] = new Promise((res, rej) => makeGLTFLoader().load(url, res, undefined, rej));
+const loadGLB = (url, attempt = 0) => {
+  if (!GLB_CACHE[url]) {
+    GLB_CACHE[url] = new Promise((res, rej) => makeGLTFLoader().load(url, res, undefined, rej))
+      .catch((err) => {
+        delete GLB_CACHE[url];
+        if (attempt < 3) return new Promise((r) => setTimeout(r, 2500)).then(() => loadGLB(url, attempt + 1));
+        throw err;
+      });
+  }
   return GLB_CACHE[url];
 };
 
@@ -19,6 +35,11 @@ function geometryBounds(obj) {
   obj.updateMatrixWorld(true);
   obj.traverse((o) => {
     if (!o.isMesh || !o.geometry) return;
+    if (o.isSkinnedMesh) {
+      o.computeBoundingBox();
+      if (o.boundingBox && !o.boundingBox.isEmpty()) box.union(o.boundingBox.clone().applyMatrix4(o.matrixWorld));
+      return;
+    }
     if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
     if (!o.geometry.boundingBox || o.geometry.boundingBox.isEmpty()) return;
     box.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld));
@@ -33,7 +54,7 @@ function fitToHeight(obj, targetH) {
   const size = box.getSize(new THREE.Vector3());
   const rawScale = targetH / Math.max(0.01, size.y);
   const safeScale = Number.isFinite(rawScale)
-    ? THREE.MathUtils.clamp(rawScale, 0.0001, 5)
+    ? THREE.MathUtils.clamp(rawScale, 0.001, 20)
     : 1;
   obj.scale.setScalar(safeScale);
   obj.updateMatrixWorld(true);
@@ -85,10 +106,10 @@ function makeAvatar(color, label, avatarUrl, mixers) {
     loadGLB(avatarUrl).then((g) => {
       if (grp.userData.disposed) return;
       const inst = skeletonClone(g.scene);
+      inst.traverse((o) => { if (o.isMesh || o.isSkinnedMesh) { o.castShadow = true; o.frustumCulled = false; } });
       const holder = new THREE.Group();
       holder.add(inst);
       fitToHeight(holder, 1.8);
-      holder.traverse((o) => { if (o.isMesh) o.castShadow = true; });
       grp.remove(body); grp.remove(nose);
       grp.add(holder);
       if (g.animations?.length) {
@@ -99,7 +120,7 @@ function makeAvatar(color, label, avatarUrl, mixers) {
         grp.userData.mix = { mixer, action };
         mixers.push(grp.userData.mix);
       }
-    }).catch(() => { /* keep capsule fallback */ });
+    }).catch((err) => { console.error("[nexus] avatar GLB load failed:", avatarUrl, err?.message || err); });
   }
   return grp;
 }
@@ -109,11 +130,11 @@ function setAvatarAnim(grp, state) {
   if (!m) return;
   if (state === "walk") m.action.timeScale = 1;
   else if (state === "run") m.action.timeScale = 1.7;
-  else m.action.timeScale = 0;
+  else m.action.timeScale = 0.06;
 }
 
 export default function NexusWorld({ mode = "play", world, zoneId = "plaza", username = "you",
-  onSelect, selectedId, onEntityMove, onPortal, onPublishedVersion, travelRef, refreshKey = 0 }) {
+  avatarUrl = null, onSelect, selectedId, onEntityMove, onPortal, onPublishedVersion, travelRef, refreshKey = 0 }) {
   const mountRef = useRef(null);
   const [hud, setHud] = useState({ online: 1, zone: "", prompt: "", locked: false });
   const [showSet, setShowSet] = useState(false);
@@ -158,7 +179,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "plaza", use
     const colliders = []; const portals = []; const npcs = []; const pickables = [];
     const entMeshes = {};
     const mixers = [];
-    const avatarUrl = world?.meta?.starter_avatar_url || null;
+    const defaultAvatarUrl = avatarUrl || world?.meta?.starter_avatar_url || null;
     zone.entities.forEach((e) => {
       let m = null;
       const [sx, sy, sz] = e.scale;
@@ -168,7 +189,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "plaza", use
           new THREE.MeshStandardMaterial({ color: e.color || "#4a4f66", roughness: 0.85 }));
         m.position.set(e.pos[0], e.pos[1] + sy / 2, e.pos[2]);
         m.rotation.y = e.rot[1] || 0; m.castShadow = true; m.receiveShadow = true;
-        colliders.push({ x: e.pos[0], z: e.pos[2], hw: Math.max(sx, sz) / 2, hd: Math.max(sx, sz) / 2, top: e.pos[1] + sy });
+        if (e.pos[1] < 2 && sy > 0.35) colliders.push({ x: e.pos[0], z: e.pos[2], hw: Math.max(sx, sz) / 2, hd: Math.max(sx, sz) / 2, top: e.pos[1] + sy });
       } else if (e.type === "light") {
         const l = new THREE.PointLight(e.color || "#ffd9a0", e.props?.intensity ?? 18, 18, 1.9);
         l.position.set(e.pos[0], 3.2, e.pos[2]); scene.add(l);
@@ -207,7 +228,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "plaza", use
       if (m) { scene.add(m); m.userData.entityId = e.id; entMeshes[e.id] = m; pickables.push(m); }
     });
 
-    const player = makeAvatar("#37c8ff", mode === "play" ? username : null, mode === "play" ? avatarUrl : null, mixers);
+    const player = makeAvatar("#37c8ff", mode === "play" ? username : null, mode === "play" ? defaultAvatarUrl : null, mixers);
     scene.add(player);
     const spawn = zone.spawn || { x: 0, z: 0 };
     player.position.set(spawn.x, 0, spawn.z);
@@ -364,7 +385,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "plaza", use
           (r.data.players || []).forEach((pl) => {
             seen.add(pl.user_id);
             if (!remotes[pl.user_id]) {
-              remotes[pl.user_id] = { grp: makeAvatar("#ff9a5c", pl.username, avatarUrl, mixers), tgt: new THREE.Vector3(pl.x, pl.y, pl.z), ry: pl.ry, anim: pl.anim };
+              remotes[pl.user_id] = { grp: makeAvatar("#ff9a5c", pl.username, pl.avatar_url || defaultAvatarUrl, mixers), tgt: new THREE.Vector3(pl.x, pl.y, pl.z), ry: pl.ry, anim: pl.anim };
               scene.add(remotes[pl.user_id].grp);
               remotes[pl.user_id].grp.position.set(pl.x, pl.y, pl.z);
             }
@@ -467,9 +488,8 @@ export default function NexusWorld({ mode = "play", world, zoneId = "plaza", use
         focus.y + 1.6 + Math.sin(pitch) * dist,
         focus.z + Math.cos(yaw) * Math.cos(pitch) * dist);
       camera.lookAt(focus.x, focus.y + 1.4, focus.z);
-      mixers.forEach((m) => m.mixer.update(dt));
       renderer.render(scene, camera);
-      window.__NEXUS = { x: player.position.x, y: player.position.y, z: player.position.z, yaw, online: hud.online, mode, zone: zone.id, remotes: Object.keys(remotes).length };
+      window.__NEXUS = { x: player.position.x, y: player.position.y, z: player.position.z, yaw, online: hud.online, mode, zone: zone.id, remotes: Object.keys(remotes).length, avatarReady: !!player.userData.mix };
     };
     step();
     const ro = new ResizeObserver(() => {
@@ -489,8 +509,14 @@ export default function NexusWorld({ mode = "play", world, zoneId = "plaza", use
       Object.keys(bubbles).forEach(dropBubble);
       mixers.forEach((m) => m.mixer.stopAllAction());
       if (mode === "play") {
-        apiClient.post("/nexus/position/save", { zone_id: zone.id, x: player.position.x, y: player.position.y, z: player.position.z, ry: player.rotation.y }).catch(() => {});
-        apiClient.post("/nexus/presence/leave").catch(() => {});
+        const tv = travelRef?.current;
+        if (tv) {
+          apiClient.post("/nexus/position/save", { zone_id: tv.zone_id, x: tv.x, y: 0, z: tv.z, ry: 0 }).catch(() => {});
+          travelRef.current = null;
+        } else {
+          apiClient.post("/nexus/position/save", { zone_id: zone.id, x: player.position.x, y: player.position.y, z: player.position.z, ry: player.rotation.y }).catch(() => {});
+          apiClient.post("/nexus/presence/leave").catch(() => {});
+        }
       }
       window.removeEventListener("keydown", kd); window.removeEventListener("keyup", ku);
       document.removeEventListener("mousemove", onMouseMove);

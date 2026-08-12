@@ -62,9 +62,9 @@ async def public_info():
     return {"name": "OurRealm Nexus", "online": await _online_count(),
             "zones": [{"id": z["id"], "name": z["name"]} for z in zones],
             "published_version": doc["published_version"],
-            "systems": {"multiplayer": "beta", "world": "live",
-                        "orai_architect": "live", "asset_studio": "phase_b_pending",
-                        "avatar_studio": "phase_c_pending", "voice": "phase_b_pending"}}
+            "systems": {"multiplayer": "live", "world": "live", "proximity_chat": "live",
+                        "live_publish_sync": "live", "orai_architect": "live",
+                        "asset_studio": "live", "avatar_studio": "live"}}
 
 
 @router.post("/presence")
@@ -96,14 +96,15 @@ async def presence(body: dict, current: CurrentUser):
         if math.hypot(x - prev["x"], z - prev["z"]) > dt * 16 + 3:
             x, z = prev["x"], prev["z"]  # reject teleports: snap back
     anim = str(body.get("anim") or "idle")[:12]
+    avatar_url = await _user_avatar_url(current["id"])
     await db.nexus_presence.update_one({"user_id": current["id"]}, {"$set": {
         "user_id": current["id"], "username": current.get("username"),
         "zone_id": zone_id, "x": round(x, 2), "y": round(y, 2), "z": round(z, 2),
-        "ry": round(ry, 2), "anim": anim, "ts": now, "updated_at": _iso()}}, upsert=True)
+        "ry": round(ry, 2), "anim": anim, "avatar_url": avatar_url, "ts": now, "updated_at": _iso()}}, upsert=True)
     cutoff = now - 8
     others = await db.nexus_presence.find(
         {"zone_id": zone_id, "ts": {"$gt": cutoff}, "user_id": {"$ne": current["id"]}},
-        {"_id": 0, "user_id": 1, "username": 1, "x": 1, "y": 1, "z": 1, "ry": 1, "anim": 1}
+        {"_id": 0, "user_id": 1, "username": 1, "x": 1, "y": 1, "z": 1, "ry": 1, "anim": 1, "avatar_url": 1}
     ).to_list(64)
     chats = await db.nexus_chat.find(
         {"zone_id": zone_id, "ts": {"$gt": now - 8}},
@@ -122,6 +123,24 @@ async def presence_leave(current: CurrentUser):
 
 CHAT_RADIUS = 18
 _last_chat = {}
+_avatar_cache = {}  # user_id -> (url, fetched_ts)
+_RUN_TASKS = set()
+
+
+async def _user_avatar_url(user_id):
+    now = time.time()
+    hit = _avatar_cache.get(user_id)
+    if hit and now - hit[1] < 30:
+        return hit[0]
+    u = await db.users.find_one({"id": user_id}, {"_id": 0, "nexus_avatar_id": 1})
+    av = None
+    if u and u.get("nexus_avatar_id"):
+        av = await db.nexus_avatars.find_one({"id": u["nexus_avatar_id"], "status": "active"}, {"_id": 0, "url": 1})
+    if not av:
+        av = await db.nexus_avatars.find_one({"is_default": True, "status": "active"}, {"_id": 0, "url": 1})
+    url = (av or {}).get("url")
+    _avatar_cache[user_id] = (url, now)
+    return url
 
 
 @router.post("/chat")
@@ -131,7 +150,8 @@ async def nexus_chat(body: dict, current: CurrentUser):
         raise HTTPException(status_code=429, detail="You're chatting too fast")
     u = await db.users.find_one({"id": current["id"]}, {"_id": 0, "muted_until": 1, "suspended_until": 1})
     for k in ("muted_until", "suspended_until"):
-        if u and u.get(k) and str(u[k]) > _iso():
+        v = (u or {}).get(k)
+        if v and str(v) > _iso():
             raise HTTPException(status_code=403, detail="Chat is unavailable for this account")
     text = "".join(ch for ch in str(body.get("text") or "") if ch.isprintable()).strip()[:160]
     if not text:
@@ -330,7 +350,9 @@ async def magic_start(body: dict, current: CurrentUser):
                  {"run_id": rid, "mode": mode, "targets": len(targets),
                   "founder_max": settings["founder_max"], "dry_run": settings["dry_run"]})
     import asyncio as _aio
-    _aio.create_task(nm.execute_run(rid))
+    t = _aio.create_task(nm.execute_run(rid))
+    _RUN_TASKS.add(t)
+    t.add_done_callback(_RUN_TASKS.discard)
     run.pop("_id", None)
     return {"run": run}
 
@@ -410,6 +432,166 @@ async def magic_variants(current: CurrentUser):
     require_founder(current)
     items = await db.nexus_variants.find({}, {"_id": 0, "world": 0}).sort("created_at", -1).to_list(30)
     return {"variants": items}
+
+
+# ───────────────────── Avatar Studio ─────────────────────
+@router.get("/avatars")
+async def avatars_list(current: CurrentUser):
+    items = await db.nexus_avatars.find({"status": "active"}, {"_id": 0}).to_list(20)
+    u = await db.users.find_one({"id": current["id"]}, {"_id": 0, "nexus_avatar_id": 1})
+    default = next((a["id"] for a in items if a.get("is_default")), None)
+    return {"avatars": items, "my_id": (u or {}).get("nexus_avatar_id") or default, "default_id": default}
+
+
+@router.post("/avatars/select")
+async def avatars_select(body: dict, current: CurrentUser):
+    aid = str(body.get("id") or "")
+    av = await db.nexus_avatars.find_one({"id": aid, "status": "active"}, {"_id": 0})
+    if not av:
+        raise HTTPException(status_code=404, detail="Avatar not available")
+    if av.get("eligibility") == "assigned" and current["id"] not in (av.get("assigned_user_ids") or []):
+        raise HTTPException(status_code=403, detail="This avatar is not available to your account")
+    await db.users.update_one({"id": current["id"]}, {"$set": {"nexus_avatar_id": aid}})
+    _avatar_cache.pop(current["id"], None)
+    return {"ok": True, "id": aid}
+
+
+@router.get("/admin/avatars")
+async def admin_avatars(current: CurrentUser):
+    require_founder(current)
+    items = await db.nexus_avatars.find({}, {"_id": 0}).to_list(30)
+    return {"avatars": items}
+
+
+@router.post("/admin/avatars")
+async def admin_avatar_upsert(body: dict, current: CurrentUser):
+    require_founder(current)
+    aid = str(body.get("id") or ("av_" + uuid.uuid4().hex[:8]))[:24]
+    fields = {}
+    for k in ("label", "gender", "url", "master_url", "status", "eligibility"):
+        if k in body:
+            fields[k] = str(body[k])[:200]
+    if "assigned_user_ids" in body:
+        fields["assigned_user_ids"] = [str(x)[:64] for x in (body["assigned_user_ids"] or [])][:50]
+    if body.get("is_default"):
+        await db.nexus_avatars.update_many({}, {"$set": {"is_default": False}})
+        fields["is_default"] = True
+    elif "is_default" in body:
+        fields["is_default"] = False
+    fields["updated_at"] = _iso()
+    await db.nexus_avatars.update_one({"id": aid}, {"$set": {"id": aid, **fields}}, upsert=True)
+    _avatar_cache.clear()
+    await _audit(current.get("username"), "avatar_upsert", {"id": aid, **{k: v for k, v in fields.items() if k != "assigned_user_ids"}})
+    return {"ok": True, "id": aid}
+
+
+# ───────────────────── 3D Asset Studio ─────────────────────
+@router.get("/admin/assets/library")
+async def assets_library(current: CurrentUser):
+    require_founder(current)
+    items = await db.asset_library.find({"kind": "model_glb"}, {"_id": 0, "meta.checksum": 0}).sort("created_at", -1).to_list(40)
+    return {"assets": items}
+
+
+@router.get("/admin/assets/tasks")
+async def assets_tasks(current: CurrentUser):
+    require_founder(current)
+    items = await db.meshy_tasks.find({"context.project": "nexus"},
+                                      {"_id": 0, "idem_key": 1, "workflow": 1, "meshy_task_id": 1,
+                                       "status": 1, "progress": 1, "consumed_credits": 1,
+                                       "context": 1, "stored_asset_id": 1, "created_at": 1}).sort("created_at", -1).to_list(20)
+    return {"tasks": items}
+
+
+@router.post("/admin/assets/generate")
+async def assets_generate(body: dict, current: CurrentUser):
+    require_founder(current)
+    from services import meshy_provider as mp
+    wf = str(body.get("workflow") or "text_preview")
+    if wf not in ("text_preview", "image", "multi_image"):
+        raise HTTPException(status_code=400, detail="workflow must be text_preview|image|multi_image")
+    name = str(body.get("name") or "nexus asset")[:60]
+    if wf == "text_preview":
+        prompt = str(body.get("prompt") or "").strip()[:600]
+        if len(prompt) < 10:
+            raise HTTPException(status_code=400, detail="Prompt too short")
+        payload = {"mode": "preview", "prompt": prompt, "art_style": "realistic", "ai_model": "latest"}
+    elif wf == "image":
+        payload = {"image_url": str(body.get("image_url") or ""), "ai_model": "latest", "should_texture": True, "enable_pbr": True}
+    else:
+        payload = {"image_urls": [str(u) for u in (body.get("image_urls") or [])][:4], "ai_model": "latest", "should_texture": True, "enable_pbr": True}
+    try:
+        r = await mp.create_task(db, current, wf, payload, f"nexus-studio-{uuid.uuid4().hex[:10]}",
+                                 {"project": "nexus", "name": name, "source": "asset_studio"})
+    except mp.MeshyError as e:
+        raise HTTPException(status_code=502, detail=f"Meshy: {e.message}")
+    await _audit(current.get("username"), "asset_generate", {"workflow": wf, "task_id": r["task_id"], "name": name})
+    return {"task": r}
+
+
+@router.post("/admin/assets/advance")
+async def assets_advance(body: dict, current: CurrentUser):
+    """Advance a task: refine (after text preview), rig, store (download+validate+optimize)."""
+    require_founder(current)
+    from services import meshy_provider as mp
+    action = str(body.get("action") or "")
+    tid = str(body.get("task_id") or "")
+    try:
+        if action == "refine":
+            r = await mp.create_task(db, current, "text_refine",
+                                     {"mode": "refine", "preview_task_id": tid, "enable_pbr": True},
+                                     f"nexus-studio-ref-{tid[:12]}", {"project": "nexus", "source": "asset_studio"})
+            out = {"task": r}
+        elif action == "rig":
+            r = await mp.create_task(db, current, "rig", {"input_task_id": tid, "character_height": float(body.get("height") or 1.7)},
+                                     f"nexus-studio-rig-{tid[:12]}", {"project": "nexus", "source": "asset_studio"})
+            out = {"task": r}
+        elif action == "poll":
+            wf = str(body.get("workflow") or "text_preview")
+            out = {"status": await mp.poll_task(db, wf, tid)}
+        elif action == "store":
+            wf = str(body.get("workflow") or "text_refine")
+            name = str(body.get("name") or "nexus asset")[:60]
+            asset = await mp.store_glb(db, current, wf, tid, name, {"project": "nexus", "source": "asset_studio"})
+            out = {"asset": {k: asset[k] for k in ("id", "name", "url", "meta")}}
+        else:
+            raise HTTPException(status_code=400, detail="action must be refine|rig|poll|store")
+    except mp.MeshyError as e:
+        raise HTTPException(status_code=502, detail=f"Meshy: {e.message}")
+    await _audit(current.get("username"), f"asset_{action}", {"task_id": tid})
+    return out
+
+
+@router.post("/admin/assets/upload")
+async def assets_upload(body: dict, current: CurrentUser):
+    require_founder(current)
+    import base64
+    from services import meshy_provider as mp
+    from services.storage import media_dir
+    from services.storage_adapter import get_storage_adapter
+    b64 = str(body.get("data_b64") or "")
+    if not b64 or len(b64) > 80 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Missing or oversized upload")
+    try:
+        raw = base64.b64decode(b64)
+        meta = mp.validate_glb(raw)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail=f"Invalid GLB: {e}")
+    fname = meta["checksum"][:32] + ".glb"
+    loc = media_dir("models") / fname
+    loc.write_bytes(raw)
+    try:
+        get_storage_adapter().put("models", fname, loc)
+    except Exception:  # noqa: BLE001
+        pass
+    url = f"/api/media/models/{fname}"
+    name = str(body.get("name") or "uploaded GLB")[:60]
+    await db.asset_library.update_one({"id": meta["checksum"][:32]}, {"$set": {
+        "id": meta["checksum"][:32], "kind": "model_glb", "name": name, "url": url, "meta": meta,
+        "provider": "upload", "context": {"project": "nexus", "source": "upload"},
+        "created_by": current.get("id"), "created_at": _iso()}}, upsert=True)
+    await _audit(current.get("username"), "asset_upload", {"name": name, "bytes": meta["bytes"]})
+    return {"asset": {"url": url, "meta": meta, "name": name}}
 
 
 @router.post("/magic/variants/{vid}/load")

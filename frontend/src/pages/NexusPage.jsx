@@ -19,6 +19,7 @@ export default function NexusPage() {
   const [zoneId, setZoneId] = useState("plaza");
   const [worldVersion, setWorldVersion] = useState(0);
   const syncingRef = useRef(false);
+  const travelRef = useRef(null);
 
   useEffect(() => {
     const load = () => axios.get(`${API}/api/nexus/public`).then((r) => setInfo(r.data)).catch(() => {});
@@ -31,6 +32,17 @@ export default function NexusPage() {
     return () => document.body.classList.remove("or3d-css-fs");
   }, [playing]);
 
+  const [avInfo, setAvInfo] = useState(null);
+  useEffect(() => {
+    if (user) apiClient.get("/nexus/avatars").then((r) => setAvInfo(r.data)).catch(() => {});
+  }, [user]);
+  const pickAvatar = async (id) => {
+    await apiClient.post("/nexus/avatars/select", { id });
+    setAvInfo((p) => ({ ...p, my_id: id }));
+    toast.success("Avatar saved to your account");
+  };
+  const myAvatarUrl = avInfo?.avatars?.find((a) => a.id === avInfo.my_id)?.url || null;
+
   const enter = async () => {
     if (!user) { nav("/signin"); return; }
     const [wr, pr] = await Promise.all([
@@ -40,7 +52,9 @@ export default function NexusPage() {
     const nextWorld = wr.data.world;
     const savedZone = pr.data?.position?.zone_id;
     const validZone = nextWorld.zones?.some((z) => z.id === savedZone);
-    setZoneId(validZone ? savedZone : (nextWorld.zones?.[0]?.id || "plaza"));
+    const defZone = nextWorld.meta?.default_zone;
+    const defValid = nextWorld.zones?.some((z) => z.id === defZone);
+    setZoneId(validZone ? savedZone : (defValid ? defZone : (nextWorld.zones?.[0]?.id || "plaza")));
     setWorld(nextWorld);
     setWorldVersion(Number(wr.data.version || 0));
     setPlaying(true);
@@ -52,6 +66,7 @@ export default function NexusPage() {
         toast.error("That Nexus zone is unavailable.");
         return;
       }
+      travelRef.current = { zone_id: target.id, x: target.spawn?.x ?? 0, z: target.spawn?.z ?? 0 };
       setZoneId(target.id);
       toast.success(`Entering ${target.name}`);
     } else if (e.props?.action === "game" && e.props?.game_id) nav(`/games?play=${e.props.game_id}`);
@@ -83,8 +98,8 @@ export default function NexusPage() {
     return (
       <div className="fixed inset-0 z-[100] bg-[#0a0f1e]" data-testid="nexus-play-shell">
         <NexusWorld key={`${zoneId}:${worldVersion}`} mode="play" world={world}
-          zoneId={zoneId} username={user?.username} onPortal={onPortal}
-          onPublishedVersion={refreshPublished} />
+          zoneId={zoneId} username={user?.username} avatarUrl={myAvatarUrl} onPortal={onPortal}
+          onPublishedVersion={refreshPublished} travelRef={travelRef} />
         <button onClick={() => setPlaying(false)} data-testid="nexus-exit-btn"
           className="absolute top-2 left-1/2 -translate-x-1/2 text-xs font-semibold text-white/90 bg-black/50 rounded-lg px-3 py-1.5">✕ Leave World</button>
       </div>
@@ -110,6 +125,17 @@ export default function NexusPage() {
             <b className="text-cyan-300">{info?.online ?? 0}</b> member{(info?.online ?? 0) === 1 ? "" : "s"} online now
           </div>
         </div>
+        {user && avInfo?.avatars?.length > 0 && (
+          <div className="mt-5 flex items-center gap-2 flex-wrap" data-testid="nexus-avatar-picker">
+            <span className="text-xs text-white/60 font-bold">YOUR AVATAR:</span>
+            {avInfo.avatars.map((a) => (
+              <button key={a.id} onClick={() => pickAvatar(a.id)} data-testid={`nexus-avatar-pick-${a.id}`}
+                className={`text-xs font-bold rounded-lg px-3 py-1.5 ${avInfo.my_id === a.id ? "bg-cyan-500 text-black" : "bg-white/10 text-white/75 hover:bg-white/20"}`}>
+                {a.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="mt-10 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Object.entries(info?.systems || {}).map(([k, v]) => (
             <div key={k} className="bg-white/5 rounded-xl p-4 flex items-center justify-between" data-testid={`nexus-system-${k}`}>
@@ -121,7 +147,7 @@ export default function NexusPage() {
           ))}
         </div>
         <div className="mt-8 text-xs text-white/45">
-          Multiplayer is in Beta — positions sync through server-validated presence. Online counts are real database values.
+          Multiplayer is live — positions, avatars and chat sync through server-validated presence. Online counts are real database values.
         </div>
       </div>
     </div>

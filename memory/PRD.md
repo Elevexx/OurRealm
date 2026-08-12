@@ -1,4 +1,50 @@
-# OurRealm — Product Requirements (UPDATED 2026-06 — NEXUS A + A.5 COMPLETE, AWAITING CHECKPOINT B GATE)
+# OurRealm — Product Requirements (UPDATED 2026-06 — NEXUS V1 CORE COMPLETE, deploy-ready checkpoint)
+
+## NEXUS V1 STATUS (final directive pass; iteration_143 backend 16/16 + regression 42/42 green)
+- WORLD (published v12, draft=published, clean): zones = nexus_central (117 ents, DEFAULT entry,
+  futuristic city: arrival platform spawn 0,84 → boulevard w/ nav lights → crown ring (floating,
+  colliders skipped for y≥2 objects) → ORAi monument+guide NPC → portals: plaza/gardens (working)
+  + Games/GameMaker/Events/Business (expansion) + terraces w/ Meshy pavilion GLBs + buildings +
+  skyline), plaza (14), emerald_gardens (9). Two-way portal travel incl. return portals to central.
+- AVATARS: nexus_avatars registry — starter_m (male streetwear, DEFAULT, walk-in-place clip
+  'Armature|Casual_Walk_inplace', url 2d71459092a9...glb) + starter_f (female streetwear, rigged,
+  url c398c4cf7085...glb, corrective T-pose attempt after 1st rig failed pose estimation).
+  Landing avatar picker (nexus-avatar-picker) saves selection server-side (users.nexus_avatar_id),
+  synced cross-device; remote players render each other's avatar (presence.avatar_url, 30s cache).
+  Anim states: walk=1x, run=1.7x, idle=0.06x slow-mo, GLB load retries 3x w/ cache eviction,
+  capsule fallback + console.error on failure. window.__NEXUS.avatarReady debug flag.
+- CHAT: proximity (18u server-enforced), 160 chars, 2s rate limit, muted/suspended blocked,
+  bubbles above avatars (6s), input bottom-center, radius inclusion/exclusion test-proven.
+- LIVE SYNC: presence returns pv → 'World Updated' toast + atomic world swap without re-entry.
+- ADMIN: NexusStudios.jsx = 3D Asset Studio (text-to-3D generate, upload GLB w/ validation 422,
+  refine/rig/poll/store advance, library w/ assign→entity (model type) / →avatar) + Avatar Studio
+  (set default, hide/activate, eligibility 'assigned', assign users). ORAi: spoken replies
+  (speechSynthesis + mute/stop/volume), voice input, undo of approved ops (inverse_ops→undo stack),
+  zone isolation (proposals target founder-selected zone only). Magic Loop scorer fixed: only
+  inspects targeted/touched entities (was flooding repair ops >40 in big zones), labels required
+  only for portal/npc, repair ops capped at 40. asyncio task refs kept (_RUN_TASKS).
+- Meshy usage this directive: ~133 credits (balance 5147→5014): plaza kit env 30, male avatar
+  chain 35, female avatar 68 (2 attempts). Task IDs in /app/artifacts/nexus/canary_report.json +
+  meshy_tasks (idem keys nexus-canary-*, nexus-avatar-f-*-v2). Masters+draco 2K runtime derivs.
+- ROLLBACK IDS: nexus_versions v1-v12 snapshots + WP1 baseline v2029 + wp1_snapshot.json.
+- HONEST LIMITATIONS (remaining backlog): WebSocket transport NOT built (300ms polling is the
+  verified transport; WS+fallback deferred); avatar clips: single walk clip per avatar mapped to
+  idle/walk/run via timeScale — distinct idle/jump/landing/greeting clips + crossfades deferred
+  (needs Meshy animation action_id API + clip merge pipeline); ORAi media uploads disabled
+  (honest label); tablet viewport not separately verified; Meshy remesh/animate/cancel buttons
+  not in studio UI (rig/refine/store are). Headless-only flakiness: platform service worker
+  'controllerchange' reload can abort GLB/chunk loads in automated tests (auto-retry added;
+  real-browser proof: male avatar rendered 02:23 run, female 02:28 run).
+- FILES: backend routers/nexus.py (chat/avatars/assets/magic), services/nexus_magic.py,
+  services/nexus_world.py (model type, url/spin props), scripts/nexus_central_build.py,
+  scripts/nexus_canary*.py, scripts/nexus_avatar_f.py; frontend NexusWorld.jsx (GLB avatars,
+  chat, inline draco loader), NexusPage.jsx (picker, default zone, travel, live sync),
+  AdminNexus.jsx, NexusStudios.jsx, OraiArchitect.jsx, MagicLoop.jsx, ActiveRuns.jsx.
+- TESTS: tests/test_nexus_phase1.py (24), test_nexus_magic.py (26), test_nexus_central_iter143.py
+  (16) — ALL GREEN. WARNING: suites mutate live draft/published — clean after running.
+- NEXT: WebSockets, multi-clip avatar state machine, ORAi multimodal uploads, remesh/animate UI,
+  friend-instance capacity, production deploy (founder action via Deploy button after approval).
+
 
 ## NEXUS V1 — CHECKPOINT A.5 COMPLETE ✅ (iteration_142: backend 26/26 + full frontend pass)
 - /admin/nexus rebuilt to founder reference: dark-glass 3-col layout, topbar (Public World /
