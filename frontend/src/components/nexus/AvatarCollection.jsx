@@ -59,7 +59,17 @@ const AvatarPreview = ({ url }) => {
     step();
     return () => {
       disposed = true; cancelAnimationFrame(raf);
-      renderer.dispose(); draco.dispose();
+      holder.traverse((o) => {
+        if (!o.isMesh && !o.isSkinnedMesh) return;
+        o.geometry?.dispose();
+        (Array.isArray(o.material) ? o.material : [o.material]).forEach((mm) => {
+          if (!mm) return;
+          Object.values(mm).forEach((v) => { if (v && v.isTexture) v.dispose(); });
+          mm.dispose();
+        });
+      });
+      mixer?.stopAllAction();
+      renderer.dispose(); renderer.forceContextLoss?.(); draco.dispose();
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
     };
   }, [url]);

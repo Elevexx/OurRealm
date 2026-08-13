@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
 import { ArrowLeft, Map as MapIcon, Settings as GearIcon, Crosshair, ArrowUp, Hand, MessageSquare, Smile, Mic, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Gamepad2, DoorOpen } from "lucide-react";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
@@ -15,25 +16,32 @@ import apiClient from "@/api/client";
 
 const _draco = new DRACOLoader();
 _draco.setDecoderPath("/draco/");
+const IS_TOUCH = typeof window !== "undefined" && (window.matchMedia?.("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);
+const IS_IOS = typeof navigator !== "undefined" && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+const GLB_CONCURRENCY = IS_TOUCH ? ((IS_IOS || (navigator.deviceMemory || 4) <= 4) ? 1 : 2) : 4;
+let _ktx2 = null; // configured once against the live renderer (self-hosted /basis/ transcoder)
 const makeGLTFLoader = () => {
   const l = new GLTFLoader();
   l.setDRACOLoader(_draco);
+  if (_ktx2) l.setKTX2Loader(_ktx2);
   return l;
 };
 
 const CAMS = () => { try { return JSON.parse(localStorage.getItem("nexus_cam") || "{}"); } catch { return {}; } };
 const GLB_CACHE = {};
-// bandwidth-aware loader: max 3 concurrent GLB downloads, lowest priority number first
+const GLB_DIAG = { bytes: 0, loaded: 0, failed: 0, ctxLost: 0 };
+// bandwidth/memory-aware loader: 1 concurrent decode on iOS/low-end, 2 on stronger mobile, 4 desktop
 const _glbQueue = [];
 let _glbActive = 0;
 const _pumpGLB = () => {
-  while (_glbActive < 4 && _glbQueue.length) {
+  while (_glbActive < GLB_CONCURRENCY && _glbQueue.length) {
     _glbQueue.sort((a, b) => a.priority - b.priority);
     const job = _glbQueue.shift();
     _glbActive += 1;
-    new Promise((res, rej) => makeGLTFLoader().load(job.url, res, undefined, rej))
-      .then((g) => { _glbActive -= 1; _pumpGLB(); job.resolve(g); })
-      .catch((err) => { _glbActive -= 1; _pumpGLB(); job.reject(err); });
+    let bytes = 0;
+    new Promise((res, rej) => makeGLTFLoader().load(job.url, res, (ev) => { if (ev?.loaded) bytes = ev.loaded; }, rej))
+      .then((g) => { _glbActive -= 1; GLB_DIAG.bytes += bytes; GLB_DIAG.loaded += 1; _pumpGLB(); job.resolve(g); })
+      .catch((err) => { _glbActive -= 1; GLB_DIAG.failed += 1; _pumpGLB(); job.reject(err); });
   }
 };
 const loadGLB = (url, priority = 5, attempt = 0) => {
@@ -41,12 +49,35 @@ const loadGLB = (url, priority = 5, attempt = 0) => {
     GLB_CACHE[url] = new Promise((resolve, reject) => { _glbQueue.push({ url, priority, resolve, reject }); _pumpGLB(); })
       .catch((err) => {
         delete GLB_CACHE[url];
+        if (err?.aborted) throw err;
         if (attempt < 3) return new Promise((r) => setTimeout(r, 2500)).then(() => loadGLB(url, priority, attempt + 1));
         throw err;
       });
   }
   return GLB_CACHE[url];
 };
+// abortable queue: anything not yet downloading is cancelled on world exit / context loss
+const abortGLBQueue = () => {
+  _glbQueue.splice(0).forEach((j) => j.reject(Object.assign(new Error("aborted"), { aborted: true })));
+};
+const disposeGLTF = (g) => {
+  g?.scene?.traverse((o) => {
+    if (!o.isMesh && !o.isSkinnedMesh) return;
+    o.geometry?.dispose();
+    (Array.isArray(o.material) ? o.material : [o.material]).forEach((mm) => {
+      if (!mm) return;
+      Object.values(mm).forEach((v) => { if (v && v.isTexture) v.dispose(); });
+      mm.dispose();
+    });
+  });
+};
+const releaseGLB = (url) => {
+  const p = GLB_CACHE[url];
+  if (!p) return;
+  delete GLB_CACHE[url];
+  p.then(disposeGLTF).catch(() => {});
+};
+const evictGLBCache = () => { Object.keys(GLB_CACHE).forEach(releaseGLB); };
 
 function geometryBounds(obj) {
   const box = new THREE.Box3();
@@ -124,17 +155,18 @@ function nameSprite(text) {
   s.scale.set(2.2, 0.55, 1); s.position.y = 2.35; return s;
 }
 
-function makeAvatar(color, label, avatarUrl, motionUrls, mixers) {
+function makeAvatar(color, label, avatarUrl, motionUrls, mixers, priority = 3.5) {
   const grp = new THREE.Group();
+  // polished dark silhouette while the real avatar streams (never a bright debug capsule)
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.38, 0.9, 6, 12),
-    new THREE.MeshStandardMaterial({ color }));
+    new THREE.MeshStandardMaterial({ color: "#0d1830", emissive: "#1c3564", emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.4, transparent: true, opacity: 0.92 }));
   body.position.y = 1.0; body.castShadow = true; grp.add(body);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.34, 8),
-    new THREE.MeshStandardMaterial({ color: "#ffffff" }));
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.24, 8),
+    new THREE.MeshStandardMaterial({ color: "#37c8ff", emissive: "#37c8ff", emissiveIntensity: 0.5, transparent: true, opacity: 0.8 }));
   nose.rotation.x = Math.PI / 2; nose.position.set(0, 1.45, 0.42); grp.add(nose);
   if (label) grp.add(nameSprite(label));
   if (avatarUrl) {
-    loadGLB(avatarUrl, 3.5).then((g) => {
+    loadGLB(avatarUrl, priority).then((g) => {
       if (grp.userData.disposed) return;
       const inst = skeletonClone(g.scene);
       let skinned = 0;
@@ -232,7 +264,21 @@ function setAvatarAnim(grp, state) {
 export default function NexusWorld({ mode = "play", world, zoneId = "nexus_central", username = "you",
   avatarUrl = null, avatarMotion = null, onSelect, selectedId, onEntityMove, onPortal, onPublishedVersion, travelRef, onExit, refreshKey = 0, instanceId = "public-1" }) {
   const mountRef = useRef(null);
-  const [hud, setHud] = useState({ online: 1, zone: "", prompt: "", locked: false, portal: "" });
+  const [hud, setHud] = useState({ online: 1, zone: "", prompt: "", locked: false, portal: "", ctxLost: false });
+  const [epoch, setEpoch] = useState(0);
+  const [diagOn] = useState(() => typeof window !== "undefined"
+    && (localStorage.getItem("nexus_diag") === "1" || new URLSearchParams(window.location.search).get("diag") === "1"));
+  const [diagSnap, setDiagSnap] = useState(null);
+  useEffect(() => {
+    if (!diagOn) return undefined;
+    const t = setInterval(() => setDiagSnap({ ...(window.__NEXUS?.diag || {}), tier: window.__NEXUS?.tier, fps: window.__NEXUS?.fps, ktx2: window.__NEXUS?.ktx2, lowGfx: window.__NEXUS?.lowGfx }), 1000);
+    return () => clearInterval(t);
+  }, [diagOn]);
+  const retryAfterCrash = () => {
+    localStorage.setItem("nexus_gfx", "low");
+    setHud((h) => ({ ...h, ctxLost: false }));
+    setEpoch((v) => v + 1);
+  };
   const [showSet, setShowSet] = useState(false);
   const [reactOpen, setReactOpen] = useState(false);
   const voiceEnabled = typeof window !== "undefined" && localStorage.getItem("nexus_voice") === "on";
@@ -260,14 +306,22 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     if (!mount || !world) return undefined;
     const zone = world.zones.find((z) => z.id === zoneId) || world.zones[0];
     let disposed = false;
-    const lowGfx = localStorage.getItem("nexus_gfx") === "low";
-    const renderer = new THREE.WebGLRenderer({ antialias: !lowGfx });
-    renderer.setPixelRatio(lowGfx ? 0.7 : Math.min(window.devicePixelRatio, 2));
+    const savedGfx = localStorage.getItem("nexus_gfx");
+    // conservative-by-default: unknown/mobile devices boot in the safe Low tier BEFORE any benchmark
+    const lowGfx = savedGfx === "low" || (IS_TOUCH && savedGfx !== "high");
+    const renderer = new THREE.WebGLRenderer({ antialias: !lowGfx, powerPreference: lowGfx ? "low-power" : "default" });
+    renderer.setPixelRatio(lowGfx ? Math.min(0.75, window.devicePixelRatio || 1) : Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.18;
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.shadowMap.enabled = !lowGfx;
     mount.appendChild(renderer.domElement);
+    if (!_ktx2) {
+      try {
+        _ktx2 = new KTX2Loader().setTranscoderPath("/basis/").detectSupport(renderer);
+      } catch { _ktx2 = null; }
+    } else { try { _ktx2.detectSupport(renderer); } catch { /* keep prior support flags */ } }
+    const ktxOK = !!_ktx2;
     const usePost = !(window.matchMedia?.("(pointer: coarse)").matches || navigator.maxTouchPoints > 0)
       && localStorage.getItem("nexus_bloom") !== "off";
     const scene = new THREE.Scene();
@@ -299,7 +353,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xaac6ff, size: 1.5, sizeAttenuation: false, transparent: true, opacity: 0.8, fog: false }));
     scene.add(stars);
     const sun = new THREE.DirectionalLight(0xffeecc, zone.sun ?? 1.1);
-    sun.position.set(24, 40, 18); sun.castShadow = true;
+    sun.position.set(24, 40, 18); sun.castShadow = !lowGfx;
     sun.shadow.camera.left = -50; sun.shadow.camera.right = 50;
     sun.shadow.camera.top = 50; sun.shadow.camera.bottom = -50;
     scene.add(sun);
@@ -315,6 +369,10 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     const mixers = [];
     const ambient = [];
     const modelStats = { total: 0, loaded: 0, failed: 0 };
+    const lod2Refs = {}; // NAVS: refcount lod2 URLs so the low LOD is disposed once every user upgraded
+    let liveLights = 0;
+    const spawnRef0 = zone.spawn || { x: 0, z: 0 };
+    const LIGHT_CAP = lowGfx ? 10 : 64;
     const _m4 = new THREE.Matrix4();
     const defaultAvatarUrl = avatarUrl || world?.meta?.starter_avatar_url || null;
     const defaultAvatarMotion = avatarMotion || {};
@@ -329,18 +387,25 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
         m.rotation.y = e.rot[1] || 0; m.castShadow = true; m.receiveShadow = true;
         if (e.pos[1] < 2 && sy > 0.35) colliders.push({ x: e.pos[0], z: e.pos[2], hw: Math.max(sx, sz) / 2, hd: Math.max(sx, sz) / 2, top: e.pos[1] + sy });
       } else if (e.type === "light") {
-        const l = new THREE.PointLight(e.color || "#ffd9a0", e.props?.intensity ?? 18, 18, 1.9);
-        l.position.set(e.pos[0], 3.2, e.pos[2]); scene.add(l);
+        const dL = Math.hypot(e.pos[0] - spawnRef0.x, e.pos[2] - spawnRef0.z);
+        if (liveLights < LIGHT_CAP && (!lowGfx || dL < 46)) {
+          const l = new THREE.PointLight(e.color || "#ffd9a0", e.props?.intensity ?? 18, 18, 1.9);
+          l.position.set(e.pos[0], 3.2, e.pos[2]); scene.add(l);
+          liveLights += 1;
+        }
         m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 10),
-          new THREE.MeshStandardMaterial({ color: e.color, emissive: e.color, emissiveIntensity: 1.4 }));
+          new THREE.MeshStandardMaterial({ color: e.color, emissive: e.color, emissiveIntensity: 1.6 }));
         m.position.set(e.pos[0], 3.2, e.pos[2]);
       } else if (e.type === "portal") {
         m = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.18, 12, 36),
           new THREE.MeshStandardMaterial({ color: e.color, emissive: e.color, emissiveIntensity: 0.9 }));
         m.position.set(e.pos[0], 2.0, e.pos[2]); m.rotation.y = e.rot[1] || 0;
         portals.push({ e, mesh: m });
-        const pl = new THREE.PointLight(e.color, 12, 10, 1.8);
-        pl.position.set(e.pos[0], 2.2, e.pos[2]); scene.add(pl);
+        if (!lowGfx || liveLights < LIGHT_CAP) {
+          const pl = new THREE.PointLight(e.color, 12, 10, 1.8);
+          pl.position.set(e.pos[0], 2.2, e.pos[2]); scene.add(pl);
+          liveLights += 1;
+        }
       } else if (e.type === "npc") {
         m = makeAvatar(e.color || "#e8c07a", e.props?.label || "NPC", null, defaultAvatarMotion, mixers);
         m.position.set(e.pos[0], 0, e.pos[2]); m.rotation.y = e.rot[1] || 0;
@@ -371,14 +436,25 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
           currentHolder = grow;
           ambient.push({ kind: "grow", grp: grow, t: 0 });
         };
-        // NAVS: distant entities stream a lightweight LOD first; hero quality upgrades later
-        if (e.props.lod2 && distSpawn > 60) {
-          loadGLB(e.props.lod2, pr - 0.8).then((g) => { modelStats.loaded += 1; attach(g); })
-            .catch((err) => { modelStats.failed += 1; console.error("[nexus] lod2 failed:", e.props.lod2, err?.message || err); ph.material.opacity = 0.7; });
-          loadGLB(e.props.url, 9 + pr).then(attach).catch(() => {});
+        // NAVS mobile-safe streaming: Low tier keeps LOD2 only (no hero download at all);
+        // higher tiers stream distant LOD2 first, upgrade to hero at idle priority, then
+        // dispose the replaced LOD once nothing else references it (never both resident).
+        const mainUrl = (ktxOK && e.props.ktx2) ? e.props.ktx2 : e.props.url;
+        const lod2Url = (ktxOK && e.props.lod2k) ? e.props.lod2k : e.props.lod2;
+        if (lod2Url && (lowGfx || distSpawn > 60)) {
+          lod2Refs[lod2Url] = (lod2Refs[lod2Url] || 0) + 1;
+          loadGLB(lod2Url, pr - 0.8).then((g) => { modelStats.loaded += 1; attach(g); })
+            .catch((err) => { if (err?.aborted) return; modelStats.failed += 1; console.error("[nexus] lod2 failed:", lod2Url, err?.message || err); ph.material.opacity = 0.7; });
+          if (!lowGfx) {
+            loadGLB(mainUrl, 9 + pr).then((g) => {
+              attach(g);
+              lod2Refs[lod2Url] -= 1;
+              if (lod2Refs[lod2Url] <= 0) releaseGLB(lod2Url);
+            }).catch(() => {});
+          }
         } else {
-          loadGLB(e.props.url, pr).then((g) => { modelStats.loaded += 1; attach(g); })
-            .catch((err) => { modelStats.failed += 1; console.error("[nexus] model GLB failed:", e.props.url, err?.message || err); ph.material.opacity = 0.7; });
+          loadGLB(mainUrl, pr).then((g) => { modelStats.loaded += 1; attach(g); })
+            .catch((err) => { if (err?.aborted) return; modelStats.failed += 1; console.error("[nexus] model GLB failed:", mainUrl, err?.message || err); ph.material.opacity = 0.7; });
         }
         m.position.set(e.pos[0], e.pos[1], e.pos[2]);
         m.rotation.set((e.rot && e.rot[0]) || 0, (e.rot && e.rot[1]) || 0, (e.rot && e.rot[2]) || 0);
@@ -477,7 +553,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       if (m) { scene.add(m); m.userData.entityId = e.id; entMeshes[e.id] = m; pickables.push(m); }
     });
 
-    const player = makeAvatar("#37c8ff", mode === "play" ? username : null, mode === "play" ? defaultAvatarUrl : null, defaultAvatarMotion, mixers);
+    const player = makeAvatar("#37c8ff", mode === "play" ? username : null, mode === "play" ? defaultAvatarUrl : null, defaultAvatarMotion, mixers, 0);
     scene.add(player);
     const spawn = zone.spawn || { x: 0, z: 0 };
     player.position.set(spawn.x, 0, spawn.z);
@@ -698,6 +774,23 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     };
     const clock = new THREE.Clock();
     let raf = 0;
+    let paused = false;
+    // Safari stability: explicit context-loss handling — stop everything, offer branded recovery
+    const onCtxLost = (ev) => {
+      ev.preventDefault();
+      GLB_DIAG.ctxLost += 1;
+      abortGLBQueue();
+      cancelAnimationFrame(raf);
+      paused = true;
+      setHud((h) => ({ ...h, ctxLost: true }));
+    };
+    renderer.domElement.addEventListener("webglcontextlost", onCtxLost, false);
+    // pause render + animation work while Safari backgrounds the tab
+    const onVis = () => {
+      if (document.hidden) { cancelAnimationFrame(raf); paused = true; }
+      else if (paused && !disposed) { paused = false; clock.getDelta(); step(); }
+    };
+    document.addEventListener("visibilitychange", onVis);
     const step = () => {
       if (disposed) return;
       raf = requestAnimationFrame(step);
@@ -856,7 +949,8 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
           }
         }
       }
-      window.__NEXUS = { x: player.position.x, y: player.position.y, z: player.position.z, yaw, online: hud.online, mode, zone: zone.id, remotes: Object.keys(remotes).length, avatarReady: !!player.userData.mix, fps: fpsVal, bloom: !!composer, tier: qualityTier, models: { ...modelStats } };
+      window.__NEXUS = { x: player.position.x, y: player.position.y, z: player.position.z, yaw, online: hud.online, mode, zone: zone.id, remotes: Object.keys(remotes).length, avatarReady: !!player.userData.mix, fps: fpsVal, bloom: !!composer, tier: qualityTier, lowGfx, ktx2: ktxOK, models: { ...modelStats },
+        diag: { textures: renderer.info.memory.textures, geometries: renderer.info.memory.geometries, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, queue: _glbQueue.length, active: _glbActive, loadedMB: Math.round(GLB_DIAG.bytes / 1048576 * 10) / 10, glbLoaded: GLB_DIAG.loaded, glbFailed: GLB_DIAG.failed, ctxLost: GLB_DIAG.ctxLost, mixers: mixers.length, pixelRatio: renderer.getPixelRatio() } };
     };
     step();
     const ro = new ResizeObserver(() => {
@@ -869,6 +963,9 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
+      abortGLBQueue();
+      renderer.domElement.removeEventListener("webglcontextlost", onCtxLost);
+      document.removeEventListener("visibilitychange", onVis);
       if (presTimer) clearInterval(presTimer);
       if (saveTimer) clearInterval(saveTimer);
       chatApiRef.current = null;
@@ -892,12 +989,25 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       window.removeEventListener("mousemove", onBuildMove);
       window.removeEventListener("mouseup", onUp);
       ro.disconnect();
+      // full teardown: dispose every scene resource, evict the shared GLB cache and drop the GL context
+      scene.traverse((o) => {
+        if (o.isMesh || o.isSkinnedMesh || o.isPoints || o.isSprite || o.isInstancedMesh) {
+          o.geometry?.dispose();
+          (Array.isArray(o.material) ? o.material : [o.material]).forEach((mm) => {
+            if (!mm) return;
+            Object.values(mm).forEach((v) => { if (v && v.isTexture) v.dispose(); });
+            mm.dispose();
+          });
+        }
+      });
+      evictGLBCache();
       composer?.dispose?.();
       renderer.dispose();
+      renderer.forceContextLoss?.();
       mount.removeChild(renderer.domElement);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [world, zoneId, mode, refreshKey]);
+  }, [world, zoneId, mode, refreshKey, epoch]);
 
   const [mob, setMob] = useState(() => typeof window !== "undefined"
     && (window.matchMedia?.("(pointer: coarse)").matches || navigator.maxTouchPoints > 0));
@@ -911,6 +1021,27 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
   return (
     <div className="relative w-full h-full" data-testid="nexus-world">
       <div ref={mountRef} className="absolute inset-0" data-testid="nexus-canvas-mount" />
+      {hud.ctxLost && (
+        <div className="absolute inset-0 z-[60] bg-[#060a16] flex flex-col items-center justify-center gap-5 px-8 text-center" data-testid="nexus-recovery-screen">
+          <div className="text-[10px] tracking-[0.34em] text-cyan-300/80 font-bold">OURREALM NEXUS</div>
+          <div className="text-xl font-black">GRAPHICS PAUSED</div>
+          <p className="text-sm text-white/65 max-w-xs">Your device ran low on graphics resources. We saved your spot — restart in safe quality mode.</p>
+          <button onClick={retryAfterCrash} data-testid="nexus-recovery-retry"
+            className="w-full max-w-xs h-13 min-h-[48px] rounded-2xl font-black tracking-widest text-white bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500">RETRY</button>
+          {onExit && (
+            <button onClick={onExit} data-testid="nexus-recovery-exit"
+              className="w-full max-w-xs min-h-[48px] rounded-2xl font-bold text-sm text-white/80 bg-white/10 border border-white/20">RETURN TO NEXUS</button>
+          )}
+        </div>
+      )}
+      {diagOn && diagSnap && (
+        <div className="absolute left-2 z-[55] text-[9px] leading-snug font-mono text-emerald-300/90 bg-black/70 rounded-lg px-2 py-1.5 pointer-events-none whitespace-pre"
+          style={{ bottom: "max(env(safe-area-inset-bottom), 8px)" }} data-testid="nexus-diag-overlay">
+          {`tier:${diagSnap.tier} fps:${diagSnap.fps} pr:${diagSnap.pixelRatio} ktx2:${diagSnap.ktx2 ? 1 : 0} low:${diagSnap.lowGfx ? 1 : 0}
+tex:${diagSnap.textures} geo:${diagSnap.geometries} calls:${diagSnap.calls} tri:${Math.round((diagSnap.triangles || 0) / 1000)}k
+glb:${diagSnap.glbLoaded}/${diagSnap.glbFailed}f q:${diagSnap.queue}+${diagSnap.active} ${diagSnap.loadedMB}MB mix:${diagSnap.mixers} ctxLost:${diagSnap.ctxLost}`}
+        </div>
+      )}
       {mode === "play" && (
         <>
           <div className="absolute left-0 right-0 top-0 flex items-center gap-2 px-3"
@@ -921,8 +1052,9 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
                 <ArrowLeft className="w-5 h-5" strokeWidth={2.6} /> EXIT
               </button>
             )}
-            <div className="mx-auto flex items-center gap-2 min-h-[44px] text-xs font-bold text-white bg-black/45 backdrop-blur-md border border-white/25 rounded-full px-5 py-2.5 truncate" data-testid="nexus-hud">
-              <span className="truncate tracking-wide">{(hud.zone || "").toUpperCase()}</span>
+            <div className="mx-auto flex items-center gap-2 min-h-[44px] text-xs font-bold text-white bg-black/45 backdrop-blur-md border border-white/25 rounded-full px-4 sm:px-5 py-2.5" data-testid="nexus-hud">
+              <span className="tracking-wide whitespace-nowrap sm:hidden">{(hud.zone || "").split("—")[0].trim().toUpperCase()}</span>
+              <span className="tracking-wide whitespace-nowrap hidden sm:inline">{(hud.zone || "").toUpperCase()}</span>
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               <span className="text-emerald-300 whitespace-nowrap" data-testid="nexus-online">{hud.online} ONLINE</span>
             </div>

@@ -1,5 +1,38 @@
 # OurRealm — PRD (UPDATED 2026-06 — CONTINUOUS PRODUCTION RUN COMPLETE @ published v24)
 
+## RESUME CHECKPOINT v27 — FOUNDER MOBILE P0 REPAIR (latest)
+- Published v27 (v25=batch3, v26=ktx partial, v27=ktx complete; all snapshots in nexus_versions).
+  Meshy 3,965 — ZERO credits spent in this repair. Masters untouched.
+- ROOT CAUSES of iPhone crash (v25): duplicate LOD residency (lod2+hero both downloaded, nothing
+  disposed), 4-way parallel GLB decode, 38+ live PointLights + shadows + dpr2 before benchmark,
+  no disposal on exit (re-entry accumulation), no webglcontextlost handling, ORAi FAB overlapping
+  CTA, HUD pill truncation.
+- FIXES (NexusWorld.jsx): safe Low tier DEFAULT on touch (nexus_gfx=high opts out), pixelRatio
+  0.75 / no AA / no shadows / light cap 10 on low; GLB concurrency 1 (iOS/low-mem) / 2 (mobile) /
+  4 (desktop); Low tier loads LOD2 ONLY (no hero download); non-low upgrades dispose lod2 via
+  refcount (releaseGLB); abortable queue (abortGLBQueue); webglcontextlost → branded recovery
+  screen (nexus-recovery-screen, RETRY forces low + remount via epoch state, RETURN TO NEXUS);
+  visibilitychange pauses raf; full teardown on exit (scene traverse dispose + evictGLBCache +
+  renderer.forceContextLoss); avatar fallback = dark silhouette capsule (never bright debug);
+  player avatar priority 0 (loads first); mobile passes avatar lod1; diag overlay
+  (?diag=1 / localStorage nexus_diag=1) shows tier/fps/pr/tex/geo/calls/tri/glb/queue/MB/ctxLost.
+- KTX2 PASS: KTX-Software arm64 installed (toktx); scripts/nexus_ktx2_pass.py derives
+  etc1s+draco runtimes (26/26 unique city GLBs), asset_library registered, entities carry
+  props.ktx2 (72) / lod2k (44); _clean_entity whitelist += ktx2, lod2k; KTX2Loader with
+  self-hosted /basis/ transcoder (public/basis/); automatic fallback to original draco+PNG URLs
+  when KTX2 unsupported. NOTE: local media files for old assets may need re-download from
+  http://localhost:8001/api/media/... before offline processing (R2-only).
+- LANDING: hero has radial-gradient placeholder + onError fallback + lighter overlay; ORAi FAB
+  hidden on all /nexus routes; HUD zone pill shows short label (<sm) — no truncation.
+- TESTED: iteration_147 ALL PASS — v27 world, ktx2 URLs 200, basis 200, 6 avatars intact,
+  mobile emulation (maxTouchPoints init script): lowGfx/tier=low/ktx2=true, 0 failed GLBs,
+  3 enter/exit cycles: textures 31→31→31, geometries 137→138 (no accumulation), ctxLost 0.
+  HONESTY: emulation only — real-iPhone verification still owed to founder at
+  https://realm-deploy.preview.emergentagent.com/nexus (?diag=1 for overlay).
+- FILE CORRUPTION LESSON: a search_replace batch once duplicated the file tail of
+  NexusWorld.jsx — after batches, grep for marker strings to confirm all edits landed.
+
+
 ## RESUME CHECKPOINT v25 (exact — next agent starts here)
 - FINAL CONTINUOUS RUN (founder-approved, no checkpoints): published v25. Meshy 4377→3965
   (412cr of 1,078 available; floor 3299 never approached; margin 666).

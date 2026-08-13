@@ -1,0 +1,25 @@
+{
+  "summary": "Founder Mobile P0 (v26/v27) regression PASS full-stack. BACKEND (7/7 pytest test_nexus_mobile_p0_iter147.py): login auditcheckreal OK; GET /api/nexus/world version=27; nexus_central zone has 206 entities of which 72 carry props.ktx2 as /api/media/models/*.glb strings (spec: >=15) and 44 carry props.lod2k; sampled ktx2 GLB HTTP 200 within 100KB-4MB range; /basis/basis_transcoder.js and .wasm both 200 (served from frontend origin); GET /api/nexus/avatars/collection returns exactly 6 avatars each with 7 animation_urls; POST /api/nexus/join 200; GET /api/nexus/public 200. FRONTEND (Playwright, mobile viewport 390x780 + maxTouchPoints=5 init script): /nexus landing renders nexus-hero-img visible naturalWidth=389; nexus-enter-btn present; orai-assistant-fab count on /nexus = 0 (OraiAssistantPanel correctly returns null on /nexus routes). World entry: within ~10s of clicking nexus-enter-btn window.__NEXUS reports tier=low, lowGfx=true, ktx2=true, diag.glbFailed=0, diag.ctxLost=0, and models.loaded reaches 32/72 (>10) with glbLoaded=6 and steadily climbing; nexus-diag-overlay visible; HUD 'NEXUS CENTRAL — SPAWN ZONE' text present with textOverflow=clip (not ellipsis-truncated); nexus-jump-btn, nexus-interact-btn, and nexus-hud-exit all visible on mobile; canvas rendered with real content (triangles=757k, calls=130). Resource release across 3 enter/exit cycles (~20s each): textures 31→31→31 (ratio 1.00), geometries 137→137→138 (ratio 1.01), loadedMB 20.8→20.8→24.3 — NOT monotonically exploding; ctxLost=0 throughout. Avatar collection regression (desktop 1920x1080): nexus-avatar-collection renders all 6 cards with thumbnails naturalWidth=248; opening avatar-thumb-av_realm_guardian shows avatar-preview-dialog and avatar-preview-close cleanly removes it; no runtime error overlay, no pageerrors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_nexus_mobile_p0_iter147.py",
+    "/app/test_reports/pytest/nexus_mobile_p0_iter147.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "During world entry a benign console error is logged: '[nexus] avatar GLB load failed: /api/media/models/2d71459092a9ffe023237e69df0fcacc.glb aborted' — this is the abortable load queue firing on the starter-avatar GLB before the retry succeeds. Not user-visible and diag.glbFailed remains 0, but consider downgrading to console.warn or filtering AbortError so mobile devtools don't show a red error on the first frame.",
+    "During cycle 1 the mobile boot pipeline first spends ~4s with models.loaded=0 while glbLoaded ramps 0→2→4 (GLB_CONCURRENCY=1-2 on mobile as designed). Verified working, but if a user aborts here nothing is on screen yet — an early low-poly skybox/floor placeholder before the first GLB resolves would improve perceived startup on very slow devices.",
+    "loadedMB grew slightly across cycles (20.8 → 20.8 → 24.3) — well within noise but the 3rd cycle happened to stream 2 more entities before the 20s snapshot; not a leak (textures/geometries stable) but flag for the record."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_nexus_mobile_p0_iter147.py"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% of requested mobile P0 + desktop avatar checks"},
+  "test_credentials": "auditcheckreal / Password1$ (from /app/memory/test_credentials.md).",
+  "seed_data_creation": "None. No Meshy tasks created. World version already at 27 from prior nexus_ktx2_pass.py run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_nexus_mobile_p0_iter147.py is a fast (~2s) read-only backend regression covering world v27+ktx2/lod2k, avatars collection, /basis/ transcoder assets, and one ktx2 GLB fetch. Safe to re-run. Frontend mobile P0 evidence: on mobile emulation (390x780 + maxTouchPoints=5) tier=low, ktx2=true, glbFailed=0, ctxLost=0; models.loaded reached 32/72 within ~20s; nexus-jump-btn/interact-btn/hud-exit/diag-overlay all render; NEXUS CENTRAL zone label not ellipsis-truncated. 3-cycle enter/exit shows textures 31/31/31 and geoms 137/137/138 (stable, cleanup working). Desktop avatar preview open/close works with no error overlay. orai-assistant-fab is correctly absent on /nexus routes.",
+  "rca of the issue": "N/A — no product-side failures. Only cosmetic call-outs (aborted-load noisy console error and slow first-4s black frame on cold mobile boot) noted for main agent."
+}

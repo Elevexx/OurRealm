@@ -222,6 +222,8 @@ export default function OraiAssistantPanel() {
 
   // Unauthorized users get absolutely nothing — no button, no placeholder.
   if (!user || !access?.allowed) return null;
+  // Immersive Nexus routes: never overlap ENTER NEXUS / world HUD controls
+  if (location.pathname.startsWith("/nexus")) return null;
 
   // Portaled to <body>: fixed positioning can never be hijacked by a
   // transformed/filtered ancestor (the desktop top-left clipping bug).

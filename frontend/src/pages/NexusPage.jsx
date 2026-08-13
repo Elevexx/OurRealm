@@ -66,7 +66,10 @@ export default function NexusPage() {
     toast.success("Avatar saved to your account");
   };
   const myAvatar = avInfo?.avatars?.find((a) => a.id === avInfo.my_id) || null;
-  const myAvatarUrl = myAvatar?.rigged_base_url || myAvatar?.url || null;
+  const isTouch = typeof window !== "undefined" && (window.matchMedia?.("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);
+  // mobile boots with the optimized LOD so the equipped avatar appears before city decoration
+  const myAvatarUrl = (isTouch && (myAvatar?.lod_urls?.lod1 || myAvatar?.lod_urls?.lod2))
+    || myAvatar?.rigged_base_url || myAvatar?.url || null;
   const myAvatarMotion = myAvatar?.animation_urls || null;
 
   const enter = async (targetZone) => {
@@ -153,16 +156,17 @@ export default function NexusPage() {
   return (
     <div className="min-h-screen bg-[#060a16] text-white overflow-x-hidden" data-testid="nexus-page">
       {/* HERO */}
-      <div className="relative">
+      <div className="relative" style={{ background: "radial-gradient(120% 90% at 50% 0%, #14224a 0%, #0a1226 55%, #060a16 100%)" }}>
         <picture>
           <source type="image/webp"
             srcSet="/nexus/hero_480.webp 480w, /nexus/hero_960.webp 960w, /nexus/hero_1440.webp 1440w"
             sizes="100vw" />
           <img src="/nexus/hero_960.jpg" alt="Nexus Central Spawn Zone"
             className="w-full h-[54vh] landscape:h-[44vh] min-h-[340px] landscape:min-h-[200px] max-h-[620px] object-cover object-top"
-            fetchPriority="high" data-testid="nexus-hero-img" />
+            fetchPriority="high" loading="eager" decoding="async" data-testid="nexus-hero-img"
+            onError={(ev) => { ev.currentTarget.onerror = null; ev.currentTarget.src = "/nexus/hero_480.webp"; }} />
         </picture>
-        <div className="absolute inset-0 bg-gradient-to-b from-[#060a16]/55 via-transparent to-[#060a16]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#060a16]/35 via-transparent to-[#060a16]" />
         <div className="absolute top-0 left-0 right-0 flex items-center gap-2.5 px-5"
           style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
           <Hexagon className="w-7 h-7 text-cyan-300" strokeWidth={2.4} />
