@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 WORLD_ID = "nexus-v1"
-ENTITY_TYPES = {"box", "ramp", "pillar", "light", "portal", "npc", "model", "sign", "ring", "crowd", "traffic"}
+ENTITY_TYPES = {"box", "ramp", "pillar", "light", "portal", "npc", "model", "sign", "ring", "crowd", "traffic", "tree"}
 MAX_ENTITIES_PER_ZONE = 400
 MAX_ZONE_SIZE = 400
 
@@ -82,10 +82,20 @@ def _clean_entity(e):
     if not isinstance(props, dict):
         raise ValueError("props must be object")
     safe_props = {}
-    for k in ("label", "action", "game_id", "target_zone", "dialog", "intensity", "spin", "url", "text", "count", "radius"):
+    for k in ("label", "action", "game_id", "target_zone", "dialog", "intensity", "spin", "url", "text", "count", "radius", "no_collide"):
         if k in props:
             v = props[k]
-            safe_props[k] = float(v) if k in ("intensity", "spin", "count", "radius") else str(v)[:200]
+            safe_props[k] = float(v) if k in ("intensity", "spin", "count", "radius", "no_collide") else str(v)[:200]
+    if isinstance(props.get("rigs"), list):
+        rigs = []
+        for r in props["rigs"][:4]:
+            if isinstance(r, dict) and r.get("url"):
+                item = {"url": str(r["url"])[:300]}
+                if r.get("walk"):
+                    item["walk"] = str(r["walk"])[:300]
+                rigs.append(item)
+        if rigs:
+            safe_props["rigs"] = rigs
     color = str(e.get("color") or "#888888")[:9]
     if not color.startswith("#"):
         raise ValueError("bad color")

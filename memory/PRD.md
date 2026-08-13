@@ -1,34 +1,27 @@
-# OurRealm — PRD (UPDATED 2026-06 — SPAWN ZONE PASS **IN PROGRESS** @ published v16)
+# OurRealm — PRD (UPDATED 2026-06 — SPAWN ZONE ASSET AUDIT COMPLETE @ published v19)
 
 ## RESUME CHECKPOINT (exact — next agent starts here)
-- NOTE: spawn later moved to (0,60) in draft+published (past platform edge — entry frame now
-  lands on lit boulevard; verified good). Old 'Leave World' overlay now sr-only (HUD EXIT is
-  the visible control; nexus-exit-btn testid preserved).
-- Published v16 = draft. nexus_central 145 ents incl. 6 NEW Meshy city models integrated by
-  scripts/nexus_city_integrate.py: canopy_ring, tower_blue, tower_green, orai_tower, storefront,
-  portal_arch (runtime draco URLs in /app/artifacts/nexus/city_batch.json; masters in
-  asset_library; batch used 330 Meshy credits, balance 5014→4684; task IDs in log
-  /app/artifacts/nexus/city_batch.log, idem keys nx-city-*-v1).
-- Mobile HUD REBUILT to founder's portrait target (verified all testids on 390x844): top-left
-  EXIT (onExit prop), top-center zone+online pill, top-right ⚙, big JUMP (80px) + ✋ INTERACT,
-  ◎ recenter (resets yaw/pitch/dist), 💬 chat toggle (input collapsed by default on mobile),
-  joystick ring w/ full-deflection auto-run (mag>0.78 = run, RUN button removed), safe-area
-  insets everywhere. Pitch clamped [-0.25,1.25] (no flip), roll always 0, pinch/dist clamped.
-- HONEST STATUS vs 95/100 target: **IN PROGRESS, NOT PASSED**. Last desktop critique (~76/100):
-  (1) bottom 40% of entry frame = dark unlit arrival platform (light it or start camera past it),
-  (2) integrated GLB models render as wireframe placeholders for several seconds (loading UX) and
-  scale/placement of storefront/tower models UNREVIEWED after integration — inspect + tune
-  heights/positions in nexus_city_integrate.py mapping, (3) no bloom post-processing yet
-  (EffectComposer+UnrealBloomPass, desktop only), (4) crowd = capsules w/ glow heads (rigged
-  low-poly crowd character generation NOT started), (5) avatar clips still single walk-clip
-  (idle/jump/landing/greeting pending; avatarMotion prop exists from earlier fork), (6) top-center
-  pill overlaps NexusPage's old 'Leave World' button — remove that old button (NexusPage.jsx
-  ~line 100) since HUD EXIT replaced it, (7) mandatory test sizes 393x852/430x932/tablet/1920
-  not yet run, FPS not measured.
-- NEXT STEPS in order: fix (6)+(1), review model placement screenshot, bloom, crowd characters
-  (Meshy rigged low-poly + instанcing), avatar motion pack, repeat critic loop to ≥95.
-- /games: exactly ONE ENTER NEXUS button ✓. Other zones/systems untouched ✓. Rollback:
-  snapshots v13/v14/v15 in nexus_versions.
+- PUBLISHED v19 (147 ents). Snapshots v17/v18 recoverable in nexus_versions. Meshy balance 4684 (audit used 0).
+- ASSET AUDIT COMPLETE (founder-ordered): all 6 Meshy city GLBs verified real/detailed/200-OK and now
+  VISIBLY integrated — full report in /app/memory/spawn_zone_asset_audit.md. Root causes fixed:
+  gstatic draco → self-hosted /draco/; simultaneous GLB downloads starving each other → priority queue
+  (max 4 concurrent, nearest-first, 16MB avatar files deprioritized); model collider bug (y>=2/no_collide);
+  wireframe placeholders → silhouette+grow-in; bloom overexposure → 0.32/0.4/0.85 + auto-disable <20fps
+  + localStorage nexus_bloom=off + nexus_gfx=low (no shadows, 0.7 DPR); box trees → 'tree' entity type
+  (8 neon holo trees); canopy_ring reused as 2 walk-through boulevard gates; storefronts moved to ±30
+  flanking boulevard (rot ±1.57 UNVERIFIED from side view yet); towers ±50.
+- New: /admin/nexus/model-test?url=...&h=N — isolated GLB audit viewer (stats overlay, capsule reference).
+- Proven in-world: models 29/29 loaded, avatarReady true, bloom on w/o clipping (640x360 lowgfx shots;
+  this container is software-GL, real devices much faster).
+- Spawn zone remaining: storefront facade check, rigged-crowd visual confirm on real GPU, device matrix
+  (393x852/430x932/tablet/1920) + FPS, final critic loop vs references to >=95.
+- QUEUED PHASES (order): 1) finish Spawn Zone pass → 2) AAA landing page redesign
+  (/app/memory/nexus_landing_directive.md, reference image URL inside) → 3) AVATAR COLLECTION only on
+  explicit "START AVATAR PHASE" (/app/memory/avatar_collection_directive.md: canary Streetwear first,
+  reference sheet MANDATORY — if asset missing STOP and ask re-upload). Unity importer on hold.
+- FOUNDER RULE: ZERO new Meshy generations until founder approves the proposed canary
+  (one low-poly rigged crowd citizen). Do NOT generate.
+
 
 
 ## SPAWN ZONE VISUAL DIRECTIVE (latest pass; published v15, 140 ents in nexus_central)
