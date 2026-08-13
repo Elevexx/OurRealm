@@ -1,4 +1,38 @@
-# OurRealm — PRD (UPDATED 2026-06 — CONTINUOUS PRODUCTION RUN COMPLETE @ published v24)
+# OurRealm — PRD (UPDATED 2026-06 — V32 FINAL NEXUS FIXES COMPLETE, REPUBLISH READY)
+
+## RESUME CHECKPOINT — nexus-v32-final (REPUBLISH READY — FOUNDER CLICKS REPUBLISH, latest)
+- ALL SIX V32 DIRECTIVES DONE, TESTED (iteration_150: backend 9/9 pytest PASS, frontend E2E 100%),
+  deployment_agent PASS. ZERO Meshy credits spent (balance stays 3,505).
+- 1) LEGACY STREETWEAR STARTERS: starter_m/starter_f/av_d5b60b3e stay archived + excluded from
+  /api/nexus/avatars, /avatars/collection, release manifest. Gender-preserving user migration in
+  services/nexus_release.py (starter_f→av_ninja_f, starter_m/av_d5b60b3e→av_ninja, lime glow) runs
+  idempotently at startup in every env keyed by release_id nexus-v32-final. av_ninja is_default.
+- 2) WALK ANIMATION FIXED (ZERO CREDIT): root cause = walk clip was Meshy action_id 1
+  "Walking_Woman" (catwalk crossover) + 5.5 m/s walk speed vs ~1.3 m/s clip stride = severe
+  foot-slide "drift". Fix: scripts/v32_walk_retarget.js (node, gltf-transform) transplanted the
+  archived starter's natural "walking_man" forward clip onto all 8 rigs by bone name — kept each
+  avatar's OWN bone-length translation tracks (no proportion distortion), rebased hips bob to each
+  avatar's mean, FK-solved hips-Y offset so toe ground contact exactly matches the old clip.
+  Verified analytically via scripts/v32_walk_fk.js (stride along +Z, matches known-good run axis).
+  Applied by scripts/nexus_v32_apply.py (store→R2, animation_urls.walk swap, walk_prev kept for
+  rollback, audit doc id v32-walk-retarget, ledger /app/artifacts/nexus/v32_ledger.json).
+  NexusWorld pacing: walk timescale 1.25→1.6, walk speed 5.5→4.6 (run 9.5/1.15 UNTOUCHED).
+- 3) PREMIUM PREVIEW/EQUIP: v31 AvatarPreview (LOADING: NAME → PREVIEWING, LOAD FAILED+RETRY, no
+  ninja substitution) re-verified; SELECT saves exact ID; glow picker exists ONLY for starter
+  ninjas; NEW: AvatarCollection onEquipped callback refreshes the YOUR AVATAR summary card
+  instantly (verified STARTER NINJA → LEGENDARY VOID WIZARD → restore, no reload).
+- 4) GRAPHICS QUALITY ON LANDING: NexusPage selector (nexus-landing-gfx, tiers low/bal/high/
+  ultra/max) between ENTER NEXUS and YOUR AVATAR. Default BALANCED; precedence localStorage
+  nexus_gfx5 > account my_gfx > "bal"; writes localStorage + POST /api/nexus/prefs when signed in.
+  In-world FIG.01 boot-LOW-then-restore stability logic untouched.
+- 5) PORTRAIT HUD: NexusWorld duplicate JSX closer removed (compile fix); Map (nexus-map-btn) and
+  Settings (nexus-settings-btn) verified fully visible/clickable at 390px portrait.
+- 6) RELEASE: manifest rebuilt (nexus-v32-final v32, 132/132 DURABLE incl. 8 new walk GLBs,
+  meshy_balance_frozen 3505); /api/nexus/public returns nexus-v32-final; /api/nexus/admin/release
+  republish_ready=true. Startup migration applied in preview (avatars 11 upserted, users 0 — prod
+  computes own counts on Republish boot). deployment_agent: PASS, no blockers.
+- DEFERRED (per directive, do NOT start unprompted): Unity Bridge + admin simulator, ORAi prompt
+  reference generator, malware scanner interface, voice foundation / NPC machine.
 
 ## RESUME CHECKPOINT — nexus-v31-avatar-repair (FOUNDER REVIEW READY, latest)
 - ROOT CAUSES FIXED: (1) green-stuck glow = emissive color baked green in ninja masters' emissive

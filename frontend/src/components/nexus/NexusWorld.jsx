@@ -267,7 +267,7 @@ function setAvatarAnim(grp, state) {
   next.reset();
   next.setEffectiveWeight(1);
   next.setEffectiveTimeScale(
-    wanted === "walk" ? 1.25 :
+    wanted === "walk" ? 1.6 :
     wanted === "run" ? 1.15 :
     1
   );
@@ -885,7 +885,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
         let iz = (keys.s || keys.arrowdown ? 1 : 0) - (keys.w || keys.arrowup ? 1 : 0) + touch.y;
         const mag = Math.hypot(ix, iz);
         const joyMag = Math.hypot(touch.x, touch.y);
-        const spd = (sprint || keys.shift || joyMag > 0.78 ? 9.5 : 5.5);
+        const spd = (sprint || keys.shift || joyMag > 0.78 ? 9.5 : 4.6);
         if (mag > 0.06) {
           ix /= Math.max(1, mag); iz /= Math.max(1, mag);
           const dx = (ix * Math.cos(yaw) + iz * Math.sin(yaw)) * spd * dt;
@@ -1167,11 +1167,11 @@ glb:${diagSnap.glbLoaded}/${diagSnap.glbFailed}f q:${diagSnap.queue}+${diagSnap.
                 <ArrowLeft className="w-5 h-5" strokeWidth={2.6} /> EXIT
               </button>
             )}
-            <div className="mx-auto flex items-center gap-2 min-h-[44px] text-xs font-bold text-white bg-black/45 backdrop-blur-md border border-white/25 rounded-full px-4 sm:px-5 py-2.5" data-testid="nexus-hud">
-              <span className="tracking-wide whitespace-nowrap sm:hidden">{(hud.zone || "").split("—")[0].trim().toUpperCase()}</span>
+            <div className="mx-auto flex items-center gap-1.5 min-h-[44px] min-w-0 flex-1 justify-center text-xs font-bold text-white bg-black/45 backdrop-blur-md border border-white/25 rounded-full px-2.5 sm:px-5 py-2.5" data-testid="nexus-hud">
+              <span className="tracking-wide truncate min-w-0 sm:hidden">{(hud.zone || "").split("—")[0].trim().toUpperCase()}</span>
               <span className="tracking-wide whitespace-nowrap hidden sm:inline">{(hud.zone || "").toUpperCase()}</span>
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <span className="text-emerald-300 whitespace-nowrap" data-testid="nexus-online">{hud.online} ONLINE</span>
+              <span className="text-emerald-300 whitespace-nowrap shrink-0" data-testid="nexus-online">{hud.online}</span>
             </div>
             <button data-testid="nexus-map-btn" onClick={() => setShowMap(!showMap)} aria-label="Toggle map" aria-pressed={showMap}
               className={`flex items-center justify-center w-11 h-11 rounded-2xl backdrop-blur-md border shrink-0 active:scale-95 focus-visible:ring-2 focus-visible:ring-cyan-400 outline-none transition-transform ${showMap ? "bg-cyan-500/80 border-cyan-300/60 text-black" : "bg-black/45 border-white/25 text-white"}`}>

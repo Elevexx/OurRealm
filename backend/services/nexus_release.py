@@ -48,13 +48,15 @@ async def apply_nexus_release(db):
             "draft": man["world"], "draft_version": (doc or {}).get("draft_version", 0) + 1,
             "updated_at": _iso()}}, upsert=True)
         counts["world_promoted_to"] = wv
-    # 3) starter migration — legacy/empty users only; premium selections preserved
-    r1 = await db.users.update_many({"nexus_avatar_id": {"$in": LEGACY_STARTERS}},
-                                    {"$set": {"nexus_avatar_id": "av_ninja"}})
+    # 3) starter migration — legacy/empty users only, gender-preserving; premium selections preserved
+    r1f = await db.users.update_many({"nexus_avatar_id": "starter_f"},
+                                     {"$set": {"nexus_avatar_id": "av_ninja_f", "nexus_glow": "lime"}})
+    r1m = await db.users.update_many({"nexus_avatar_id": {"$in": ["starter_m", "av_d5b60b3e"]}},
+                                     {"$set": {"nexus_avatar_id": "av_ninja", "nexus_glow": "lime"}})
     r2 = await db.users.update_many({"nexus_avatar_id": {"$in": [None, ""]}},
                                     {"$set": {"nexus_avatar_id": "av_ninja"}})
     await db.users.update_many({"nexus_glow": {"$in": [None, ""]}}, {"$set": {"nexus_glow": "lime"}})
-    counts["users_migrated_legacy"] = r1.modified_count
+    counts["users_migrated_legacy"] = r1f.modified_count + r1m.modified_count
     counts["users_migrated_empty"] = r2.modified_count
     # 4) founder vault backfill — role-based, idempotent, zero burn
     premium_ids = [a["id"] for a in man.get("avatars", []) if a.get("eligibility") == "unlock"]

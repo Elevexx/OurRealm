@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, "/app/backend")
 from dotenv import load_dotenv; load_dotenv("/app/backend/.env")
 
-RELEASE_ID = "nexus-v29-parity"
+RELEASE_ID = "nexus-v32-final"
 WORLD_VERSION_MIN = 28
 
 def iso(): return datetime.now(timezone.utc).isoformat()
@@ -73,7 +73,7 @@ async def main():
                               "status": "BUNDLED" if p.exists() else "MISSING"})
 
     manifest = {
-        "release_id": RELEASE_ID, "version": 29, "built_at": iso(),
+        "release_id": RELEASE_ID, "version": 32, "built_at": iso(),
         "world_version": max(doc["published_version"], WORLD_VERSION_MIN),
         "world": doc["published"],
         "avatars": [a for a in avatars],
@@ -82,13 +82,13 @@ async def main():
         "counts": {"runtime_files": len(files), "durable": ok, "uploaded_now": uploaded,
                    "failed": failed, "missing_local": missing_local},
         "decoders": {"draco": "/draco/", "ktx2_transcoder": "/basis/"},
-        "meshy_balance_frozen": 3529,
+        "meshy_balance_frozen": 3505,
     }
     out = "/app/backend/release/nexus_release.json"
     import os; os.makedirs("/app/backend/release", exist_ok=True)
     json.dump(manifest, open(out, "w"), default=str)
     await db.nexus_release.update_one({"release_id": RELEASE_ID}, {"$set": {
-        "release_id": RELEASE_ID, "version": 29, "built_at": manifest["built_at"],
+        "release_id": RELEASE_ID, "version": 32, "built_at": manifest["built_at"],
         "counts": manifest["counts"], "world_version": manifest["world_version"]}}, upsert=True)
     print(f"[rel] {RELEASE_ID}: files={len(files)} durable={ok} uploaded_now={uploaded} failed={failed} -> {out}", flush=True)
 

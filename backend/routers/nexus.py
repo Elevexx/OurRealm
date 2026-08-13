@@ -64,7 +64,7 @@ async def public_info():
     return {"name": "OurRealm Nexus", "online": await _online_count(),
             "zones": [{"id": z["id"], "name": z["name"]} for z in zones],
             "published_version": doc["published_version"],
-            "release_id": "nexus-v29-parity",
+            "release_id": "nexus-v32-final",
             "systems": {"multiplayer": "live", "world": "live", "proximity_chat": "live",
                         "live_publish_sync": "live", "orai_architect": "live",
                         "asset_studio": "live", "avatar_studio": "live"}}
@@ -596,10 +596,14 @@ async def magic_variants(current: CurrentUser):
 @router.get("/avatars")
 async def avatars_list(current: CurrentUser):
     items = await db.nexus_avatars.find({"status": "active"}, {"_id": 0}).to_list(20)
-    u = await db.users.find_one({"id": current["id"]}, {"_id": 0, "nexus_avatar_id": 1, "nexus_glow": 1})
+    u = await db.users.find_one({"id": current["id"]}, {"_id": 0, "nexus_avatar_id": 1, "nexus_glow": 1, "nexus_gfx": 1})
+    my_id = (u or {}).get("nexus_avatar_id")
+    if my_id and not any(a["id"] == my_id for a in items):
+        mine = await db.nexus_avatars.find_one({"id": my_id, "status": {"$in": ["active", "premium"]}}, {"_id": 0})
+        if mine: items.append(mine)
     default = next((a["id"] for a in items if a.get("is_default")), None)
-    return {"avatars": items, "my_id": (u or {}).get("nexus_avatar_id") or default, "default_id": default,
-            "my_glow": (u or {}).get("nexus_glow") or "lime"}
+    return {"avatars": items, "my_id": my_id or default, "default_id": default,
+            "my_glow": (u or {}).get("nexus_glow") or "lime", "my_gfx": (u or {}).get("nexus_gfx")}
 
 
 AVATAR_FP_COSTS = {"av_streetwear": 1000, "av_tech_operative": 5000, "av_realm_guardian": 10000,
@@ -653,6 +657,15 @@ async def admin_release(current: CurrentUser):
         "republish_ready": bool(man and state and state.get("release_id") == (man or {}).get("release_id")
                                 and all(f.get("status") == "DURABLE" for f in files)),
     }
+
+
+@router.post("/prefs")
+async def nexus_prefs(body: dict, current: CurrentUser):
+    gfx = str(body.get("gfx") or "").lower()
+    if gfx not in ("low", "bal", "high", "ultra", "max"):
+        raise HTTPException(status_code=422, detail="Unknown quality tier")
+    await db.users.update_one({"id": current["id"]}, {"$set": {"nexus_gfx": gfx}})
+    return {"ok": True, "gfx": gfx}
 
 
 @router.post("/avatars/starter")

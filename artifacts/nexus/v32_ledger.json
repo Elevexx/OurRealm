@@ -1,0 +1,21 @@
+{
+ "balance_start": 3505,
+ "directive": "nexus-v32-final-fixes",
+ "credits_spent": 0,
+ "walks": {
+  "av_ninja": "/api/media/models/e8375dc82a439d05fe61d9d13f117c83.glb",
+  "av_ninja_f": "/api/media/models/a0bb8db3c1c4a0d9813943a0bfa48250.glb",
+  "av_streetwear": "/api/media/models/2f1fe1efa8664eb9e1040aa896d397da.glb",
+  "av_tech_operative": "/api/media/models/f1262807c37a6dfd722984d5d7e5ff8c.glb",
+  "av_realm_guardian": "/api/media/models/5b50e8349bbae9ed573fa60800b72ab4.glb",
+  "av_aether_champion": "/api/media/models/d14e5dc3e8c838918eb865bd50eecce5.glb",
+  "av_arcane_sovereign": "/api/media/models/362b1b21d074c9413b49c8b00a82c50c.glb",
+  "av_void_wizard": "/api/media/models/862006082f8a8bb753e4b5994bad1e10.glb"
+ },
+ "users_migrated": {
+  "female": 0,
+  "male": 0,
+  "empty": 0
+ },
+ "balance_end": 3505
+}

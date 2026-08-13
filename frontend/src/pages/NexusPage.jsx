@@ -58,9 +58,25 @@ export default function NexusPage() {
 
   const [avInfo, setAvInfo] = useState(null);
   useEffect(() => {
-    if (user) apiClient.get("/nexus/avatars").then((r) => { setAvInfo(r.data); setGlowPick(r.data.my_glow || "lime"); if (String(r.data.my_id || "").startsWith("av_ninja")) setBodyPick(r.data.my_id); }).catch(() => {});
+    if (user) apiClient.get("/nexus/avatars").then((r) => {
+      setAvInfo(r.data); setGlowPick(r.data.my_glow || "lime");
+      if (String(r.data.my_id || "").startsWith("av_ninja")) setBodyPick(r.data.my_id);
+      try {
+        if (!localStorage.getItem("nexus_gfx5")) {
+          const t = ["low", "bal", "high", "ultra", "max"].includes(r.data.my_gfx) ? r.data.my_gfx : "bal";
+          setGfxPick(t); localStorage.setItem("nexus_gfx5", t);
+        }
+      } catch { /* private mode */ }
+    }).catch(() => {});
   }, [user]);
   const GLOWS = { lime: "#a3ff12", cyan: "#22d3ee", blue: "#3b82f6", violet: "#8b5cf6", magenta: "#ec4899", red: "#ef4444", orange: "#f97316", yellow: "#eab308", white: "#f8fafc" };
+  const GFX_TIERS = [["low", "LOW"], ["bal", "BALANCED"], ["high", "HIGH"], ["ultra", "ULTRA"], ["max", "MAX"]];
+  const [gfxPick, setGfxPick] = useState(() => { try { return localStorage.getItem("nexus_gfx5") || "bal"; } catch { return "bal"; } });
+  const pickGfx = (t) => {
+    setGfxPick(t);
+    try { localStorage.setItem("nexus_gfx5", t); } catch { /* private mode */ }
+    if (user) apiClient.post("/nexus/prefs", { gfx: t }).catch(() => {});
+  };
   const [glowPick, setGlowPick] = useState("lime");
   const [bodyPick, setBodyPick] = useState("av_ninja");
   const [glowSaving, setGlowSaving] = useState(false);
@@ -239,6 +255,30 @@ export default function NexusPage() {
                 <button onClick={() => enter()} className="font-bold text-white bg-red-500/40 rounded-lg px-3 py-1.5" data-testid="nexus-retry-btn">RETRY</button>
               </div>
             )}
+
+            {/* GRAPHICS QUALITY — saved to account + localStorage, applied when entering the world */}
+            <div className="mt-4 w-full lg:max-w-md rounded-2xl bg-white/[0.05] border border-white/10 backdrop-blur-md p-4" data-testid="nexus-landing-gfx">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] tracking-[0.28em] font-bold text-cyan-300">GRAPHICS QUALITY</span>
+                <span className="text-[10px] font-black text-emerald-300" data-testid="nexus-landing-gfx-current">
+                  {(GFX_TIERS.find(([t]) => t === gfxPick) || [])[1] || "BALANCED"}
+                </span>
+              </div>
+              <div className="mt-2.5 flex gap-1" role="radiogroup" aria-label="Graphics quality" data-testid="nexus-landing-gfx-slider">
+                {GFX_TIERS.map(([t, label]) => (
+                  <button key={t} role="radio" aria-checked={gfxPick === t} aria-label={`Graphics quality ${label}`}
+                    onClick={() => pickGfx(t)} data-testid={`nexus-landing-gfx-${t}`}
+                    className={`flex-1 min-h-[44px] rounded-lg text-[9px] font-black tracking-wider uppercase border transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400 outline-none ${gfxPick === t
+                      ? "bg-cyan-500/25 border-cyan-300 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.5)]"
+                      : "bg-white/5 border-white/15 text-white/60"}`}>
+                    {t === "bal" ? "BAL" : t}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[9px] text-white/40 font-bold tracking-wider">
+                {user ? "SAVED TO YOUR ACCOUNT · APPLIES WHEN YOU ENTER THE NEXUS" : "SAVED ON THIS DEVICE · APPLIES WHEN YOU ENTER THE NEXUS"}
+              </p>
+            </div>
           </div>
 
           {/* YOUR AVATAR */}
@@ -351,7 +391,7 @@ export default function NexusPage() {
           ))}
         </div>
 
-        {user && <AvatarCollection />}
+        {user && <AvatarCollection onEquipped={() => apiClient.get("/nexus/avatars").then((r) => setAvInfo(r.data)).catch(() => {})} />}
 
         {/* EXPLORE — real zones from the published world */}
         <div className="mt-9">

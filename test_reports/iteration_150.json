@@ -1,0 +1,26 @@
+{
+  "summary": "V32 Nexus final verification complete. Backend pytest 9/9 PASSED (/app/backend/tests/test_v32_nexus_final.py): catalog excludes legacy starter_m/starter_f/av_d5b60b3e, default_id=av_ninja, my_gfx field present; POST /api/nexus/prefs roundtrip works, invalid gfx returns 422; GET /avatars/collection returns 6 premiums all available=true; GET /admin/release confirms release_id=nexus-v32-final version=32 republish_ready=true files_durable=132/132 8 avatars each with anims=7; all 8 walk GLBs return HTTP 200 (with browser UA); POST /avatars/select av_void_wizard persists exact id and starter restore works; POST /avatars/starter with legacy id returns 422; member auditcheckreal not on any legacy avatar id. Frontend E2E (desktop 1920x1080 + portrait 390x844): logged-out /nexus shows Graphics Quality selector between ENTER NEXUS and YOUR AVATAR, default BALANCED, click MAX updates localStorage nexus_gfx5='max' and label. Founder login → ULTRA click fires POST /api/nexus/prefs, localStorage='ultra', persists across reload. Void Wizard preview: LOADING then PREVIEWING states observed with correct 'LEGENDARY VOID WIZARD' name, no glow picker present inside premium dialog, EQUIP button visible for founder; equip persists (collection card shows EQUIPPED badge + backend my_id=av_void_wizard confirmed). Rapid switch av_streetwear → close → av_tech_operative shows only TECH OPERATIVE with zero streetwear bleed. Portrait 390x844: nexus-map-btn (x=282) and nexus-settings-btn (x=334) fully visible/clickable inside viewport. Founder restored to av_ninja/lime via API at end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Equip premium from AvatarCollection", "issue": "Top 'YOUR AVATAR' summary card on the /nexus landing does NOT optimistically refresh after equipping a premium avatar from the collection dialog — it continues to display 'STARTER NINJA · Equipped' until the page is reloaded. The collection card itself correctly flips to EQUIPPED badge, and the backend (my_id) is updated. Minor UX polish, not blocking. Consider re-fetching /api/nexus/avatars (or updating local state) inside the equip success handler so the summary card stays in sync.", "affected_selectors": ["YOUR AVATAR summary card on NexusPage"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_v32_nexus_final.py", "/app/test_reports/pytest/v32_results.xml"],
+  "action_items": [
+    "(Minor, non-blocking) Refresh top YOUR AVATAR summary card on NexusPage after AvatarCollection equip succeeds so the label/thumb update without requiring a full page reload."
+  ],
+  "critical_code_review_comments": [
+    "Duplicate data-testid='avatar-preview-state' exists in DOM whenever both the starter LIVE PREVIEW block and the collection dialog are open — selectors relying on this testid must always use .first or scope by an ancestor. Documented in iter149; still true in iter150.",
+    "GET /api/nexus/avatars returns my_gfx=null when the user has never set gfx — this is fine, but consider defaulting to 'bal' server-side so clients don't have to duplicate the default in JS."
+  ],
+  "updated_files": ["/app/backend/tests/test_v32_nexus_final.py", "/app/test_reports/pytest/v32_results.xml", "/app/test_reports/iteration_150.json"],
+  "success_rate": {"backend": "100%", "frontend": "100% (all required assertions PASSED; one minor UX polish item logged separately)"},
+  "test_credentials": "stealth / Password1$ (founder), auditcheckreal / Password1$ (member)",
+  "seed_data_creation": "None. Toggled founder gfx to high then restored; equipped av_void_wizard then restored to av_ninja/lime via POST /api/nexus/avatars/starter. Meshy/FP wallets untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "V32 test suite at /app/backend/tests/test_v32_nexus_final.py — 9 tests, ~7s, covers catalog cleanup, gfx prefs, collection, release manifest, walk GLB reachability (uses browser UA), and avatar select/starter. If premium avatar tests time out on the EQUIP button, first check whether that avatar is already equipped (button label becomes 'EQUIPPED' and data-testid=avatar-preview-equip is not rendered). Rapid-switch race requires explicit Close button click (dlg internal 'X' at aria-label='Close') between thumbs — pressing Escape alone can cause the next thumb click to be swallowed by the closing animation. Portrait HUD testids: nexus-map-btn (x=282,44x44) and nexus-settings-btn (x=334,44x44) at y=10 in a 390px viewport."
+}

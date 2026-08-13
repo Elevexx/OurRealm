@@ -115,7 +115,7 @@ export const AvatarPreview = ({ url, glow = null, label = "" }) => {
   );
 };
 
-export const AvatarCollection = () => {
+export const AvatarCollection = ({ onEquipped }) => {
   const [data, setData] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -133,7 +133,7 @@ export const AvatarCollection = () => {
     } catch (e) { toast.error(e?.response?.data?.detail || "Unlock failed"); } finally { setBusy(false); }
   };
   const equip = async (av) => {
-    try { await apiClient.post("/nexus/avatars/select", { id: av.id }); toast.success("Equipped"); setPreview(null); load(); }
+    try { await apiClient.post("/nexus/avatars/select", { id: av.id }); toast.success("Equipped"); setPreview(null); load(); onEquipped?.(av.id); }
     catch (e) { toast.error(e?.response?.data?.detail || "Cannot equip"); }
   };
   const previewUrl = (av) => av.lod_urls?.lod1 || av.rigged_base_url || av.url;
