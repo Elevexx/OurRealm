@@ -1,5 +1,24 @@
 # OurRealm — PRD (UPDATED 2026-06 — CONTINUOUS PRODUCTION RUN COMPLETE @ published v24)
 
+## RESUME CHECKPOINT — nexus-v29-parity (REPUBLISH READY, latest)
+- DEPLOYMENT PARITY DONE (zero credits, balance 3,529): canonical release manifest at
+  /app/backend/release/nexus_release.json (release_id nexus-v29-parity, world v28, 132 runtime
+  GLBs + 13 static assets, checksums/sizes/categories/LOD/ktx2 flags). ALL 132 verified DURABLE
+  in R2; 145/145 URLs return 200 + correct MIME through the deployed preview host (curl UA —
+  python-urllib gets 403 from ingress bot-blocking, don't be fooled).
+- STARTUP MIGRATION: services/nexus_release.py apply_nexus_release() runs from server.py startup
+  in EVERY environment (idempotent, release-versioned via db.nexus_release_state). Seeds avatar
+  catalog, archives legacy starters, promotes world if published_version < release, migrates
+  legacy/empty users → av_ninja/lime, backfills founder vault BY ROLE (all founder-role users).
+  Preview apply: avatars 11 upserted, founder grants +5, users 0 (already migrated). Production
+  will compute its own counts on next Republish boot.
+- ADMIN: GET /api/nexus/admin/release (founder) + release strip in /admin/nexus
+  (nexus-release-panel: REPUBLISH READY · 132/132 DURABLE · KTX2 26 · AVATARS 8×7 anims ·
+  FOUNDER VAULT 6/6 · rollbacks · migration state). /api/nexus/public now returns release_id.
+- No service worker in app; JS bundles content-hashed by build; media filenames are content
+  hashes (immutable-cache safe). Republish = platform action (founder clicks it; we never do).
+- STATUS LABEL: REPUBLISH READY — FOUNDER VERIFICATION REQUIRED.
+
 ## RESUME CHECKPOINT v28 — FOUNDER AAA REBUILD + FIG.01-06 (FOUNDER REVIEW READY)
 - Published v28 (v25 batch3, v26/v27 ktx2 city, v28 Master-A composition). All snapshots preserved.
   Meshy: 3,965 → 3,529 (436 spent: image-to-3d 35/avatar ×8, remesh 5, rig 5, anims 3; champion+

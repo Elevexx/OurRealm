@@ -64,6 +64,7 @@ async def public_info():
     return {"name": "OurRealm Nexus", "online": await _online_count(),
             "zones": [{"id": z["id"], "name": z["name"]} for z in zones],
             "published_version": doc["published_version"],
+            "release_id": "nexus-v29-parity",
             "systems": {"multiplayer": "live", "world": "live", "proximity_chat": "live",
                         "live_publish_sync": "live", "orai_architect": "live",
                         "asset_studio": "live", "avatar_studio": "live"}}
@@ -622,6 +623,36 @@ async def avatars_glow(body: dict, current: CurrentUser):
     await db.users.update_one({"id": current["id"]}, {"$set": {"nexus_glow": color}})
     _avatar_cache.pop(current["id"], None)
     return {"ok": True, "color": color, "hex": GLOW_COLORS[color]}
+
+
+@router.get("/admin/release")
+async def admin_release(current: CurrentUser):
+    require_founder(current)
+    state = await db.nexus_release_state.find_one({"_id": "state"}, {"_id": 0})
+    import json as _json
+    from services.nexus_release import MANIFEST_PATH
+    man = _json.loads(MANIFEST_PATH.read_text()) if MANIFEST_PATH.exists() else None
+    doc = await db.nexus_worlds.find_one({"world_id": nw.WORLD_ID}, {"_id": 0, "published_version": 1})
+    rollbacks = await db.nexus_versions.find({}, {"_id": 0, "version": 1, "label": 1}).sort("version", -1).to_list(10)
+    avs = await db.nexus_avatars.find({"status": {"$in": ["active", "premium"]}}, {"_id": 0, "id": 1, "label": 1, "status": 1, "gen": 1, "ktx2": 1, "animation_urls": 1, "lod_urls": 1, "eligibility": 1}).to_list(20)
+    founder_unlocks = await db.nexus_avatar_unlocks.count_documents({"user_id": current["id"]})
+    files = (man or {}).get("files", [])
+    return {
+        "release_id": (man or {}).get("release_id"), "version": (man or {}).get("version"),
+        "built_at": (man or {}).get("built_at"), "world_version_live": (doc or {}).get("published_version"),
+        "world_version_release": (man or {}).get("world_version"),
+        "applied": state, "counts": (man or {}).get("counts"),
+        "files_total": len(files),
+        "files_durable": sum(1 for f in files if f.get("status") == "DURABLE"),
+        "ktx2_files": sum(1 for f in files if f.get("ktx2")),
+        "static_assets": (man or {}).get("static_assets"),
+        "avatars": [{"id": a["id"], "label": a.get("label"), "status": a["status"], "gen": a.get("gen", "v1"),
+                     "ktx2": bool(a.get("ktx2")), "anims": len(a.get("animation_urls") or {}),
+                     "lods": len(a.get("lod_urls") or {}), "eligibility": a.get("eligibility")} for a in avs],
+        "founder_unlocks": founder_unlocks, "rollbacks": rollbacks,
+        "republish_ready": bool(man and state and state.get("release_id") == (man or {}).get("release_id")
+                                and all(f.get("status") == "DURABLE" for f in files)),
+    }
 
 
 @router.post("/avatars/starter")

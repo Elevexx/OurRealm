@@ -660,6 +660,12 @@ async def _safe_startup():
         await _economy.reap_expired_holds()
         await _op.ensure_seed()
         await _rv.ensure_indexes()
+        try:
+            from services.nexus_release import apply_nexus_release
+            from core.db import db as _reldb
+            await apply_nexus_release(_reldb)
+        except Exception as e:
+            logger.error(f"[nexus.release] migration failed: {e}")
         from services import engine_registry as _er
         await _er.ensure_indexes()
         await _er.ensure_seed()

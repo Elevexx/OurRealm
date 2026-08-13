@@ -35,7 +35,9 @@ export default function AdminNexus() {
   const [tab, setTab] = useState("build");
   const [presence, setPresence] = useState({ online: 0, players: [] });
   const [audit, setAudit] = useState([]);
+  const [rel, setRel] = useState(null);
   const undoStack = useRef([]);
+  useEffect(() => { apiClient.get("/nexus/admin/release").then((r) => setRel(r.data)).catch(() => {}); }, []);
 
   const load = useCallback(() => {
     apiClient.get("/nexus/world?draft=1").then((r) => {
@@ -138,6 +140,21 @@ export default function AdminNexus() {
             className="text-[10px] font-bold bg-white/10 hover:bg-white/20 rounded-lg px-3 py-1.5">↩ ROLL BACK</button>
         </div>
       </div>
+      {rel && (
+        <div className="px-3 py-2 bg-[#0b132b] border-b border-white/10 flex items-center gap-2 flex-wrap text-[10px] font-bold" data-testid="nexus-release-panel">
+          <span className={`rounded-lg px-2.5 py-1.5 border ${rel.republish_ready ? "bg-emerald-500/15 text-emerald-300 border-emerald-400/40" : "bg-amber-400/15 text-amber-300 border-amber-400/40"}`} data-testid="nexus-release-status">
+            {rel.republish_ready ? "◉ REPUBLISH READY" : "◌ RELEASE INCOMPLETE"}
+          </span>
+          <span className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5" data-testid="nexus-release-id">RELEASE {rel.release_id} · WORLD v{rel.world_version_live}</span>
+          <span className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5" data-testid="nexus-release-files">ASSETS {rel.files_durable}/{rel.files_total} DURABLE · KTX2 {rel.ktx2_files}</span>
+          <span className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5" data-testid="nexus-release-avatars">
+            AVATARS {rel.avatars?.length} ({rel.avatars?.filter((a) => a.anims === 7).length}×7 ANIMS)
+          </span>
+          <span className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5" data-testid="nexus-release-vault">FOUNDER VAULT {rel.founder_unlocks}/6</span>
+          <span className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5" data-testid="nexus-release-rollbacks">ROLLBACKS {rel.rollbacks?.map((r) => `v${r.version}`).slice(0, 4).join(" ")}</span>
+          {rel.applied && <span className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5">MIGRATION {rel.applied.release_id} ✓</span>}
+        </div>
+      )}
 
       {/* ── mobile tabs ── */}
       <div className="lg:hidden flex gap-1 px-3 pt-2 overflow-x-auto" data-testid="nexus-mobile-tabs">
