@@ -105,14 +105,14 @@ async def presence(body: dict, current: CurrentUser):
         "user_id": current["id"], "username": current.get("username"),
         "zone_id": zone_id, "instance_id": instance_id,
         "x": round(x, 2), "y": round(y, 2), "z": round(z, 2),
-        "ry": round(ry, 2), "anim": anim, "avatar_url": avatar_url,
+        "ry": round(ry, 2), "anim": anim, "avatar_url": avatar_url, "glow": avatar_data.get("glow"),
         "avatar_motion": avatar_data.get("animation_urls") or {},
         "ts": now, "updated_at": _iso()}}, upsert=True)
     cutoff = now - 8
     others = await db.nexus_presence.find(
         {"zone_id": zone_id, "instance_id": instance_id, "ts": {"$gt": cutoff}, "user_id": {"$ne": current["id"]}},
         {"_id": 0, "user_id": 1, "username": 1, "x": 1, "y": 1, "z": 1,
-         "ry": 1, "anim": 1, "avatar_url": 1, "avatar_motion": 1}
+         "ry": 1, "anim": 1, "avatar_url": 1, "avatar_motion": 1, "glow": 1}
     ).to_list(64)
     chats = await db.nexus_chat.find(
         {"zone_id": zone_id, "ts": {"$gt": now - 8}},
@@ -258,7 +258,7 @@ async def _user_avatar_data(user_id):
 
     u = await db.users.find_one(
         {"id": user_id},
-        {"_id": 0, "nexus_avatar_id": 1},
+        {"_id": 0, "nexus_avatar_id": 1, "nexus_glow": 1},
     )
 
     av = None
@@ -290,6 +290,7 @@ async def _user_avatar_data(user_id):
         "id": (av or {}).get("id"),
         "url": (av or {}).get("rigged_base_url") or (av or {}).get("url"),
         "animation_urls": (av or {}).get("animation_urls") or {},
+        "glow": ((u or {}).get("nexus_glow") or "lime") if (av or {}).get("glow_channel") else None,
     }
     _avatar_cache[user_id] = (data, now)
     return data
@@ -594,13 +595,50 @@ async def magic_variants(current: CurrentUser):
 @router.get("/avatars")
 async def avatars_list(current: CurrentUser):
     items = await db.nexus_avatars.find({"status": "active"}, {"_id": 0}).to_list(20)
-    u = await db.users.find_one({"id": current["id"]}, {"_id": 0, "nexus_avatar_id": 1})
+    u = await db.users.find_one({"id": current["id"]}, {"_id": 0, "nexus_avatar_id": 1, "nexus_glow": 1})
     default = next((a["id"] for a in items if a.get("is_default")), None)
-    return {"avatars": items, "my_id": (u or {}).get("nexus_avatar_id") or default, "default_id": default}
+    return {"avatars": items, "my_id": (u or {}).get("nexus_avatar_id") or default, "default_id": default,
+            "my_glow": (u or {}).get("nexus_glow") or "lime"}
 
 
 AVATAR_FP_COSTS = {"av_streetwear": 1000, "av_tech_operative": 5000, "av_realm_guardian": 10000,
                    "av_aether_champion": 25000, "av_arcane_sovereign": 50000, "av_void_wizard": 100000}
+
+
+GLOW_COLORS = {"lime": "#a3ff12", "cyan": "#22d3ee", "blue": "#3b82f6", "violet": "#8b5cf6",
+               "magenta": "#ec4899", "red": "#ef4444", "orange": "#f97316", "yellow": "#eab308", "white": "#f8fafc"}
+
+
+async def _is_founder_user(user_id: str) -> bool:
+    u = await db.users.find_one({"id": user_id}, {"_id": 0, "is_founder": 1, "role": 1})
+    return bool(u and (u.get("is_founder") or u.get("role") == "founder"))
+
+
+@router.post("/avatars/glow")
+async def avatars_glow(body: dict, current: CurrentUser):
+    color = str(body.get("color") or "").lower()
+    if color not in GLOW_COLORS:
+        raise HTTPException(status_code=422, detail="Unknown glow color")
+    await db.users.update_one({"id": current["id"]}, {"$set": {"nexus_glow": color}})
+    _avatar_cache.pop(current["id"], None)
+    return {"ok": True, "color": color, "hex": GLOW_COLORS[color]}
+
+
+@router.post("/avatars/starter")
+async def avatars_starter(body: dict, current: CurrentUser):
+    """FIG.06 atomic save: starter body style + glow color in one write. Always free."""
+    aid = str(body.get("id") or "")
+    color = str(body.get("color") or "lime").lower()
+    if aid not in ("av_ninja", "av_ninja_f"):
+        raise HTTPException(status_code=422, detail="Unknown starter body style")
+    if color not in GLOW_COLORS:
+        raise HTTPException(status_code=422, detail="Unknown glow color")
+    av = await db.nexus_avatars.find_one({"id": aid, "status": "active"}, {"_id": 0, "id": 1})
+    if not av:
+        raise HTTPException(status_code=409, detail="Starter not available yet")
+    await db.users.update_one({"id": current["id"]}, {"$set": {"nexus_avatar_id": aid, "nexus_glow": color}})
+    _avatar_cache.pop(current["id"], None)
+    return {"ok": True, "id": aid, "color": color}
 
 
 @router.get("/avatars/collection")
@@ -609,13 +647,14 @@ async def avatars_collection(current: CurrentUser):
     owned = {u["avatar_id"] async for u in db.nexus_avatar_unlocks.find({"user_id": current["id"]}, {"_id": 0, "avatar_id": 1})}
     wallet = await db.fire_wallets.find_one({"user_id": current["id"]}, {"_id": 0, "vault_balance": 1})
     me = await db.users.find_one({"id": current["id"]}, {"_id": 0, "nexus_avatar_id": 1})
+    founder = await _is_founder_user(current["id"])  # FOUNDER VAULT: role-based, covers all future avatars
     out = []
     for aid, cost in AVATAR_FP_COSTS.items():
         av = next((a for a in avs if a["id"] == aid), None) or {"id": aid, "status": "pending_model"}
-        out.append({**av, "fp_cost": cost, "unlocked": aid in owned,
+        out.append({**av, "fp_cost": cost, "unlocked": founder or (aid in owned),
                     "equipped": (me or {}).get("nexus_avatar_id") == aid,
                     "available": bool(av.get("rigged_base_url") or av.get("url"))})
-    return {"avatars": out, "fire_balance": (wallet or {}).get("vault_balance", 0)}
+    return {"avatars": out, "fire_balance": (wallet or {}).get("vault_balance", 0), "founder_vault": founder}
 
 
 @router.post("/avatars/{avatar_id}/unlock")
@@ -627,6 +666,13 @@ async def avatar_unlock(avatar_id: str, current: CurrentUser):
     existing = await db.nexus_avatar_unlocks.find_one({"user_id": current["id"], "avatar_id": avatar_id})
     if existing:
         return {"ok": True, "already_unlocked": True}
+    if await _is_founder_user(current["id"]):
+        # FOUNDER VAULT: server-authoritative grant, zero burn, idempotent, works for future avatars
+        await db.nexus_avatar_unlocks.update_one(
+            {"user_id": current["id"], "avatar_id": avatar_id},
+            {"$setOnInsert": {"user_id": current["id"], "avatar_id": avatar_id, "fp_burned": 0,
+                              "founder_grant": True, "tx_id": "founder-vault", "at": _iso()}}, upsert=True)
+        return {"ok": True, "founder_vault": True, "burned": 0}
     av = await db.nexus_avatars.find_one({"id": avatar_id}, {"_id": 0, "status": 1})
     if not av or av.get("status") not in ("active", "premium"):
         raise HTTPException(status_code=409, detail="Avatar is not available yet")
@@ -659,7 +705,7 @@ async def avatars_select(body: dict, current: CurrentUser):
         raise HTTPException(status_code=403, detail="This avatar is not available to your account")
     if aid in AVATAR_FP_COSTS:
         owned = await db.nexus_avatar_unlocks.find_one({"user_id": current["id"], "avatar_id": aid})
-        if not owned:
+        if not owned and not await _is_founder_user(current["id"]):
             raise HTTPException(status_code=403, detail="Unlock this avatar with Fire Power first")
     await db.users.update_one({"id": current["id"]}, {"$set": {"nexus_avatar_id": aid}})
     _avatar_cache.pop(current["id"], None)

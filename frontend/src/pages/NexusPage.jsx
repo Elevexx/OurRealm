@@ -58,8 +58,27 @@ export default function NexusPage() {
 
   const [avInfo, setAvInfo] = useState(null);
   useEffect(() => {
-    if (user) apiClient.get("/nexus/avatars").then((r) => setAvInfo(r.data)).catch(() => {});
+    if (user) apiClient.get("/nexus/avatars").then((r) => { setAvInfo(r.data); setGlowPick(r.data.my_glow || "lime"); if (String(r.data.my_id || "").startsWith("av_ninja")) setBodyPick(r.data.my_id); }).catch(() => {});
   }, [user]);
+  const GLOWS = { lime: "#a3ff12", cyan: "#22d3ee", blue: "#3b82f6", violet: "#8b5cf6", magenta: "#ec4899", red: "#ef4444", orange: "#f97316", yellow: "#eab308", white: "#f8fafc" };
+  const [glowPick, setGlowPick] = useState("lime");
+  const [bodyPick, setBodyPick] = useState("av_ninja");
+  const [glowSaving, setGlowSaving] = useState(false);
+  const saveStarter = async () => {
+    setGlowSaving(true);
+    try {
+      await apiClient.post("/nexus/avatars/starter", { id: bodyPick, color: glowPick });
+      toast.success("Starter Ninja saved");
+      const r = await apiClient.get("/nexus/avatars"); setAvInfo(r.data);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Could not save avatar"); }
+    finally { setGlowSaving(false); }
+  };
+  const saveGlow = async () => {
+    setGlowSaving(true);
+    try { await apiClient.post("/nexus/avatars/glow", { color: glowPick }); toast.success("Glow color saved"); }
+    catch { toast.error("Could not save glow color"); }
+    finally { setGlowSaving(false); }
+  };
   const pickAvatar = async (id) => {
     await apiClient.post("/nexus/avatars/select", { id });
     setAvInfo((p) => ({ ...p, my_id: id }));
@@ -136,7 +155,7 @@ export default function NexusPage() {
         style={{ height: "100dvh" }} data-testid="nexus-play-shell">
         <NexusWorld key={`${zoneId}:${worldVersion}:${instanceId}`} mode="play" world={world}
           zoneId={zoneId} username={user?.username} avatarUrl={myAvatarUrl} instanceId={instanceId}
-          avatarMotion={myAvatarMotion} onPortal={onPortal} onExit={exitWorld}
+          avatarMotion={myAvatarMotion} avatarGlow={myAvatar?.glow_channel ? glowPick : null} onPortal={onPortal} onExit={exitWorld}
           onPublishedVersion={refreshPublished} travelRef={travelRef} />
         <button onClick={exitWorld} data-testid="nexus-exit-btn" className="sr-only">Leave World</button>
       </div>
@@ -262,6 +281,45 @@ export default function NexusPage() {
                       </button>
                     ))}
                     {(avInfo?.avatars || []).length === 0 && <span className="text-xs text-white/50">No avatars available yet.</span>}
+                  </div>
+                )}
+                {(avInfo?.avatars || []).some((a) => a.id === "av_ninja") && (
+                  <div className="mt-5 rounded-2xl bg-white/[0.04] border border-white/10 p-4" data-testid="nexus-starter-chooser">
+                    <div className="text-xs font-black tracking-[0.22em] text-cyan-300">FREE STARTER NINJAS</div>
+                    <div className="mt-3 grid grid-cols-2 gap-2.5">
+                      {[["av_ninja", "MALE NINJA"], ["av_ninja_f", "FEMALE NINJA"]].map(([bid, blabel]) => {
+                        const avail = (avInfo?.avatars || []).some((a) => a.id === bid);
+                        return (
+                          <button key={bid} disabled={!avail} onClick={() => setBodyPick(bid)} data-testid={`nexus-starter-${bid}`}
+                            role="radio" aria-checked={bodyPick === bid} aria-label={blabel}
+                            className={`rounded-2xl border p-2.5 min-h-[44px] text-left transition-colors ${bodyPick === bid
+                              ? "border-lime-300/80 bg-lime-400/10 shadow-[0_0_14px_rgba(163,255,18,0.25)]"
+                              : "border-white/12 bg-white/[0.04]"} ${avail ? "" : "opacity-40"}`}>
+                            <img src={`/nexus/${bid}.webp`} alt={blabel} loading="lazy" className="w-full h-28 object-cover object-top rounded-xl bg-black/40" />
+                            <div className="mt-2 text-[11px] font-black tracking-widest">{blabel}</div>
+                            <div className="text-[10px] font-black text-lime-300">{avail ? "FREE" : "COMING ONLINE"}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-4 text-[10px] font-black tracking-[0.22em] text-white/70">CHOOSE YOUR GLOW</div>
+                    <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Avatar glow color" data-testid="nexus-glow-picker">
+                      {Object.entries(GLOWS).map(([name, hex]) => (
+                        <button key={name} role="radio" aria-checked={glowPick === name} aria-label={`Glow color ${name}`}
+                          onClick={() => setGlowPick(name)} data-testid={`nexus-glow-${name}`}
+                          className={`flex items-center gap-1.5 min-h-[44px] rounded-xl px-3 text-[10px] font-black tracking-widest uppercase border transition-colors ${glowPick === name
+                            ? "border-cyan-300 bg-cyan-500/15 text-white shadow-[0_0_10px_rgba(34,211,238,0.4)]"
+                            : "border-white/15 bg-white/5 text-white/65"}`}>
+                          <span className="w-3.5 h-3.5 rounded-full border border-white/40" style={{ background: hex, boxShadow: `0 0 8px ${hex}` }} aria-hidden="true" />
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={saveStarter} disabled={glowSaving} data-testid="nexus-starter-save"
+                      className="mt-4 min-h-[44px] rounded-xl px-6 font-black text-xs tracking-[0.2em] text-black bg-gradient-to-r from-lime-400 to-emerald-400 shadow-[0_0_16px_rgba(163,255,18,0.35)] disabled:opacity-60">
+                      {glowSaving ? "SAVING…" : "SAVE AVATAR"}
+                    </button>
+                    <p className="mt-2 text-[9px] text-white/40 font-bold tracking-wider">ONE GLOW COLOR AT A TIME · FREE FOR ALL USERS</p>
                   </div>
                 )}
               </>

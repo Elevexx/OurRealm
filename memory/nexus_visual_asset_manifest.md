@@ -52,3 +52,4 @@ Statuses: WORKING | NEEDS-REPAIR | IN-ENGINE | NEEDS-MODULAR-ASSET | NEEDS-PAID-
 
 ## Instance Director / Realms / voice / NPC Machine
 NOT STARTED this checkpoint (next in execution order). NPC Machine = separate later phase.
+MASTER A/B addendum received 2026-06; master_a_world.png = 31FD8BF5 artifact (world/landscape). Master B (mobile HUD, 3AD8533F) referenced from founder message.

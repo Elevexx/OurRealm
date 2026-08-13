@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
 import apiClient from "@/api/client";
 import { toast } from "sonner";
-import { Flame, Lock, Check, X, Eye } from "lucide-react";
+import { Flame, Lock, Check, X, Eye, ShieldCheck } from "lucide-react";
 
 const NAMES = { av_streetwear: "STREETWEAR", av_tech_operative: "TECH OPERATIVE", av_realm_guardian: "REALM GUARDIAN",
   av_aether_champion: "AETHER CHAMPION", av_arcane_sovereign: "ARCANE SOVEREIGN", av_void_wizard: "LEGENDARY VOID WIZARD" };
@@ -28,7 +29,8 @@ const AvatarPreview = ({ url }) => {
     const key = new THREE.DirectionalLight(0xffffff, 2.4); key.position.set(3, 6, 4); scene.add(key);
     const rim = new THREE.DirectionalLight(0x66d9ff, 1.4); rim.position.set(-4, 3, -3); scene.add(rim);
     const draco = new DRACOLoader(); draco.setDecoderPath("/draco/");
-    const loader = new GLTFLoader(); loader.setDRACOLoader(draco);
+    const ktx2 = new KTX2Loader(); ktx2.setTranscoderPath("/basis/"); ktx2.detectSupport(renderer);
+    const loader = new GLTFLoader(); loader.setDRACOLoader(draco); loader.setKTX2Loader(ktx2);
     let disposed = false; let raf = 0; let mixer = null;
     const holder = new THREE.Group(); scene.add(holder);
     loader.load(url, (g) => {
@@ -69,7 +71,7 @@ const AvatarPreview = ({ url }) => {
         });
       });
       mixer?.stopAllAction();
-      renderer.dispose(); renderer.forceContextLoss?.(); draco.dispose();
+      renderer.dispose(); renderer.forceContextLoss?.(); draco.dispose(); ktx2.dispose();
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
     };
   }, [url]);
@@ -111,6 +113,15 @@ export const AvatarCollection = () => {
           <Flame className="w-4 h-4" /> {data.fire_balance.toLocaleString()}
         </span>
       </div>
+      {data.founder_vault && (
+        <div className="mt-3 rounded-xl border border-yellow-400/40 bg-yellow-400/10 px-4 py-3 flex items-center gap-3" data-testid="founder-vault-banner">
+          <ShieldCheck className="w-5 h-5 text-yellow-300 shrink-0" />
+          <div>
+            <div className="text-xs font-black tracking-[0.22em] text-yellow-200">FOUNDER AVATAR VAULT</div>
+            <div className="text-[10px] text-yellow-100/70 font-bold mt-0.5">ALL AVATARS UNLOCKED — future avatars appear here automatically</div>
+          </div>
+        </div>
+      )}
       <div className="mt-4 grid grid-cols-2 lg:grid-cols-3 gap-3">
         {data.avatars.map((av) => (
           <div key={av.id} className="relative rounded-2xl border border-white/10 bg-gradient-to-b from-[#101a33] to-[#070b18] overflow-hidden flex flex-col" data-testid={`avatar-card-${av.id}`}>

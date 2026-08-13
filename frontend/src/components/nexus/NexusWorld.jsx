@@ -7,7 +7,7 @@ import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.j
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
-import { ArrowLeft, Map as MapIcon, Settings as GearIcon, Crosshair, ArrowUp, Hand, MessageSquare, Smile, Mic, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Gamepad2, DoorOpen } from "lucide-react";
+import { ArrowLeft, Map as MapIcon, Settings as GearIcon, Crosshair, ArrowUp, Hand, MessageSquare, Smile, Mic, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Gamepad2, DoorOpen, TriangleAlert } from "lucide-react";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
@@ -155,7 +155,22 @@ function nameSprite(text) {
   s.scale.set(2.2, 0.55, 1); s.position.y = 2.35; return s;
 }
 
-function makeAvatar(color, label, avatarUrl, motionUrls, mixers, priority = 3.5) {
+const GLOW_HEX = { lime: "#a3ff12", cyan: "#22d3ee", blue: "#3b82f6", violet: "#8b5cf6", magenta: "#ec4899", red: "#ef4444", orange: "#f97316", yellow: "#eab308", white: "#f8fafc" };
+const applyGlowTint = (root, glowHex) => {
+  if (!glowHex) return;
+  root.traverse((o) => {
+    if (!o.isMesh && !o.isSkinnedMesh) return;
+    (Array.isArray(o.material) ? o.material : [o.material]).forEach((mm) => {
+      if (!mm || !mm.emissive) return;
+      if (mm.emissiveMap || (mm.emissiveIntensity || 0) > 0.01) {
+        mm.emissive.set(glowHex);
+        mm.emissiveIntensity = Math.max(mm.emissiveIntensity || 0, 1.1);
+      }
+    });
+  });
+};
+
+function makeAvatar(color, label, avatarUrl, motionUrls, mixers, priority = 3.5, glowHex = null) {
   const grp = new THREE.Group();
   // polished dark silhouette while the real avatar streams (never a bright debug capsule)
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.38, 0.9, 6, 12),
@@ -262,9 +277,34 @@ function setAvatarAnim(grp, state) {
 }
 
 export default function NexusWorld({ mode = "play", world, zoneId = "nexus_central", username = "you",
-  avatarUrl = null, avatarMotion = null, onSelect, selectedId, onEntityMove, onPortal, onPublishedVersion, travelRef, onExit, refreshKey = 0, instanceId = "public-1" }) {
+  avatarUrl = null, avatarMotion = null, avatarGlow = null, onSelect, selectedId, onEntityMove, onPortal, onPublishedVersion, travelRef, onExit, refreshKey = 0, instanceId = "public-1" }) {
   const mountRef = useRef(null);
-  const [hud, setHud] = useState({ online: 1, zone: "", prompt: "", locked: false, portal: "", ctxLost: false });
+  const [hud, setHud] = useState({ online: 1, zone: "", prompt: "", locked: false, portal: "", ctxLost: false, gfxNote: false });
+  const [gfxTier, setGfxTier] = useState(() => { try { return localStorage.getItem("nexus_gfx5") || "low"; } catch { return "low"; } });
+  const [rotateAsk, setRotateAsk] = useState(() => {
+    try {
+      return IS_TOUCH && window.matchMedia("(orientation: portrait)").matches
+        && sessionStorage.getItem("nexus_rotate_dismissed") !== "1";
+    } catch { return false; }
+  });
+  const dismissRotate = () => { try { sessionStorage.setItem("nexus_rotate_dismissed", "1"); } catch { /* private */ } setRotateAsk(false); };
+  const doRotate = async () => {
+    dismissRotate();
+    try {
+      if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+      if (window.screen?.orientation?.lock) await window.screen.orientation.lock("landscape");
+    } catch {
+      setHud((h) => ({ ...h, rotateHint: true }));
+      setTimeout(() => setHud((h) => ({ ...h, rotateHint: false })), 4000);
+    }
+  };
+  useEffect(() => {
+    if (!IS_TOUCH) return undefined;
+    const mq = window.matchMedia("(orientation: portrait)");
+    const onCh = () => { if (!mq.matches) setRotateAsk(false); };
+    mq.addEventListener?.("change", onCh);
+    return () => mq.removeEventListener?.("change", onCh);
+  }, []);
   const [epoch, setEpoch] = useState(0);
   const [diagOn] = useState(() => typeof window !== "undefined"
     && (localStorage.getItem("nexus_diag") === "1" || new URLSearchParams(window.location.search).get("diag") === "1"));
@@ -369,6 +409,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     const mixers = [];
     const ambient = [];
     const modelStats = { total: 0, loaded: 0, failed: 0 };
+    const heroQueue = []; // deferred hero-quality upgrades, drained when the user raises Graphics Quality
     const lod2Refs = {}; // NAVS: refcount lod2 URLs so the low LOD is disposed once every user upgraded
     let liveLights = 0;
     const spawnRef0 = zone.spawn || { x: 0, z: 0 };
@@ -451,6 +492,12 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
               lod2Refs[lod2Url] -= 1;
               if (lod2Refs[lod2Url] <= 0) releaseGLB(lod2Url);
             }).catch(() => {});
+          } else {
+            heroQueue.push(() => loadGLB(mainUrl, 9 + pr).then((g) => {
+              attach(g);
+              lod2Refs[lod2Url] -= 1;
+              if (lod2Refs[lod2Url] <= 0) releaseGLB(lod2Url);
+            }).catch(() => {}));
           }
         } else {
           loadGLB(mainUrl, pr).then((g) => { modelStats.loaded += 1; attach(g); })
@@ -553,7 +600,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       if (m) { scene.add(m); m.userData.entityId = e.id; entMeshes[e.id] = m; pickables.push(m); }
     });
 
-    const player = makeAvatar("#37c8ff", mode === "play" ? username : null, mode === "play" ? defaultAvatarUrl : null, defaultAvatarMotion, mixers, 0);
+    const player = makeAvatar("#37c8ff", mode === "play" ? username : null, mode === "play" ? defaultAvatarUrl : null, defaultAvatarMotion, mixers, 0, GLOW_HEX[avatarGlow] || null);
     scene.add(player);
     const spawn = zone.spawn || { x: 0, z: 0 };
     player.position.set(spawn.x, 0, spawn.z);
@@ -722,7 +769,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
           (r.data.players || []).forEach((pl) => {
             seen.add(pl.user_id);
             if (!remotes[pl.user_id]) {
-              remotes[pl.user_id] = { grp: makeAvatar("#ff9a5c", pl.username, pl.avatar_url || defaultAvatarUrl, pl.avatar_motion || defaultAvatarMotion, mixers), tgt: new THREE.Vector3(pl.x, pl.y, pl.z), ry: pl.ry, anim: pl.anim };
+              remotes[pl.user_id] = { grp: makeAvatar("#ff9a5c", pl.username, pl.avatar_url || defaultAvatarUrl, pl.avatar_motion || defaultAvatarMotion, mixers, 3.5, GLOW_HEX[pl.glow] || null), tgt: new THREE.Vector3(pl.x, pl.y, pl.z), ry: pl.ry, anim: pl.anim };
               scene.add(remotes[pl.user_id].grp);
               remotes[pl.user_id].grp.position.set(pl.x, pl.y, pl.z);
             }
@@ -762,6 +809,34 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     // NAVS adaptive tiers: benchmark first seconds of real frame time, then hysteresis-guarded switches
     let qualityTier = lowGfx ? "low" : "high";
     let tierAge = 0; let tierCooldown = 0; let benchDone = lowGfx;
+    // FIG.01 five-stop user Graphics Quality (world starts safely in LOW; saved stop restored after first stable render)
+    const GFX5 = {
+      low: { pr: 0.75, shadows: false, far: 260 },
+      bal: { pr: 1.0, shadows: false, far: 340 },
+      high: { pr: 1.25, shadows: true, far: 430 },
+      ultra: { pr: 1.5, shadows: true, far: 520 },
+      max: { pr: Math.min(window.devicePixelRatio || 1, 2), shadows: true, far: 620 },
+    };
+    let userTier = "low";
+    const applyUserTier = (t) => {
+      if (!GFX5[t] || disposed) return;
+      userTier = t;
+      try { localStorage.setItem("nexus_gfx5", t); } catch { /* private mode */ }
+      const g = GFX5[t];
+      renderer.setPixelRatio(g.pr);
+      renderer.shadowMap.enabled = g.shadows;
+      sun.castShadow = g.shadows;
+      camera.far = g.far; camera.updateProjectionMatrix();
+      if (scene.fog) scene.fog.far = g.far * 0.92;
+      if (t !== "low" && heroQueue.length) heroQueue.splice(0).forEach((fn) => fn());
+      scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; });
+      window.__NEXUS_USER_TIER = t;
+    };
+    window.__NEXUS_GFX = { set: applyUserTier, get: () => userTier };
+    const savedTier5 = localStorage.getItem("nexus_gfx5") || "low";
+    if (savedTier5 !== "low") {
+      setTimeout(() => { if (!disposed && GLB_DIAG.ctxLost === 0) applyUserTier(savedTier5); }, 6000);
+    }
     const applyTier = (t) => {
       qualityTier = t;
       tierCooldown = 8;
@@ -770,6 +845,10 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       else if (t === "high") { renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); }
       else { renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); }
       scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; });
+      if (benchDone && (t === "low" || t === "medium") && (userTier === "high" || userTier === "ultra" || userTier === "max" || userTier === "bal")) {
+        setHud((h) => (h.gfxNote ? h : { ...h, gfxNote: true }));
+        setTimeout(() => setHud((h) => ({ ...h, gfxNote: false })), 6000);
+      }
       console.warn("[nexus] NAVS quality tier:", t);
     };
     const clock = new THREE.Clock();
@@ -1034,6 +1113,40 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
           )}
         </div>
       )}
+      {hud.gfxNote && (
+        <div className="absolute left-1/2 -translate-x-1/2 z-[58] text-[11px] font-bold text-white bg-black/70 border border-cyan-400/30 rounded-full px-4 py-2"
+          style={{ top: "max(calc(env(safe-area-inset-top) + 58px), 66px)" }} data-testid="nexus-gfx-note">
+          Quality lowered to keep Nexus stable.
+        </div>
+      )}
+      {hud.rotateHint && (
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-24 z-[58] text-[11px] font-bold text-white bg-black/70 rounded-full px-4 py-2" data-testid="nexus-rotate-hint">
+          Turn your phone sideways for the full Nexus view.
+        </div>
+      )}
+      {rotateAsk && mode === "play" && (
+        <div className="absolute inset-x-4 z-[59] flex justify-center" style={{ top: "max(calc(env(safe-area-inset-top) + 64px), 72px)" }} data-testid="nexus-rotate-popup">
+          <div className="bg-[#0a1226]/90 backdrop-blur-md border border-cyan-400/25 rounded-2xl p-4 max-w-xs w-full text-center">
+            <div className="text-xs font-black tracking-[0.2em] text-cyan-200">ROTATE FOR FULL VIEW</div>
+            <p className="mt-1 text-[11px] text-white/65">Landscape shows more of the Nexus.</p>
+            <div className="mt-3 flex items-center justify-center gap-3" aria-hidden="true">
+              <div className="flex flex-col items-center gap-1">
+                <div className="w-7 h-12 rounded-md border-2 border-white/50 bg-gradient-to-b from-cyan-900/60 to-indigo-900/60" />
+                <span className="text-[8px] font-bold text-white/50 tracking-widest">PORTRAIT</span>
+              </div>
+              <svg width="34" height="22" viewBox="0 0 34 22" className="text-cyan-300"><path d="M3 18 C 8 4, 26 4, 31 18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /><path d="M31 18 l-5.5 -1.4 M31 18 l1.2 -5.4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
+              <div className="flex flex-col items-center gap-1">
+                <div className="w-14 h-8 rounded-md border-2 border-cyan-300/80 bg-gradient-to-r from-cyan-800/60 to-emerald-800/60 shadow-[0_0_10px_rgba(34,211,238,0.4)]" />
+                <span className="text-[8px] font-bold text-cyan-200 tracking-widest">LANDSCAPE</span>
+              </div>
+            </div>
+            <div className="mt-3.5 flex gap-2.5">
+              <button onClick={dismissRotate} className="flex-1 min-h-[44px] rounded-xl bg-white/10 border border-white/20 text-[11px] font-bold text-white/80" data-testid="nexus-rotate-notnow">NOT NOW</button>
+              <button onClick={doRotate} className="flex-1 min-h-[44px] rounded-xl bg-cyan-500 text-black text-[11px] font-black tracking-widest" data-testid="nexus-rotate-btn">ROTATE</button>
+            </div>
+          </div>
+        </div>
+      )}
       {diagOn && diagSnap && (
         <div className="absolute left-2 z-[55] text-[9px] leading-snug font-mono text-emerald-300/90 bg-black/70 rounded-lg px-2 py-1.5 pointer-events-none whitespace-pre"
           style={{ bottom: "max(env(safe-area-inset-bottom), 8px)" }} data-testid="nexus-diag-overlay">
@@ -1184,6 +1297,23 @@ glb:${diagSnap.glbLoaded}/${diagSnap.glbFailed}f q:${diagSnap.queue}+${diagSnap.
                 onChange={(e) => saveCam({ ...cam, invH: e.target.checked })} data-testid="nexus-invert-h" /> Invert Horizontal</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={cam.invV}
                 onChange={(e) => saveCam({ ...cam, invV: e.target.checked })} data-testid="nexus-invert-v" /> Invert Vertical</label>
+              <div className="pt-2 border-t border-white/15">
+                <div className="font-bold tracking-widest text-[10px] text-white/70 mb-1.5">GRAPHICS QUALITY</div>
+                <div className="flex gap-1" role="radiogroup" aria-label="Graphics quality" data-testid="nexus-gfx-slider">
+                  {["low", "bal", "high", "ultra", "max"].map((t) => (
+                    <button key={t} role="radio" aria-checked={gfxTier === t} aria-label={`Graphics quality ${t}`}
+                      onClick={() => { setGfxTier(t); window.__NEXUS_GFX?.set(t); }}
+                      className={`flex-1 min-h-[44px] rounded-lg text-[9px] font-black tracking-wider uppercase border transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400 outline-none ${gfxTier === t
+                        ? "bg-cyan-500/25 border-cyan-300 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.5)]"
+                        : "bg-white/5 border-white/15 text-white/60"}`}
+                      data-testid={`nexus-gfx-${t}`}>{t}</button>
+                  ))}
+                </div>
+                <p className="mt-1.5 flex items-start gap-1.5 text-[10px] text-amber-300/90" data-testid="nexus-gfx-warning">
+                  <TriangleAlert className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
+                  <span role="note">Higher quality may load slower or crash.</span>
+                </p>
+              </div>
             </div>
           )}
           {mob && (

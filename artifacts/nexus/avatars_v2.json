@@ -1,0 +1,118 @@
+{
+ "balance_start": 3605,
+ "av_arcane_sovereign": {
+  "error": "Pose estimation failed, please provide a valid model"
+ },
+ "av_aether_champion": {
+  "error": "Pose estimation failed, please provide a valid model"
+ },
+ "av_void_wizard": {
+  "rig": "019ffa10-c5c0-720a-ab8f-9a2b940d5d2a",
+  "anims": [
+   "fall",
+   "greet",
+   "idle",
+   "jump",
+   "land",
+   "run",
+   "walk"
+  ],
+  "lods": {
+   "lod0": "/api/media/models/929a0adbde174ddf3f0a9d93f074df65.glb",
+   "lod1": "/api/media/models/9dd83378d58291fe621082ae5d757e1f.glb",
+   "lod2": "/api/media/models/799b912ae7de3364e01c7b0bf28c7f28.glb"
+  },
+  "img_task": "019ffa0b-56b3-7129-858d-67df9ff7cbfd"
+ },
+ "av_realm_guardian": {
+  "rig": "019ffa10-c5a9-7209-a6de-0f21283e255f",
+  "anims": [
+   "fall",
+   "greet",
+   "idle",
+   "jump",
+   "land",
+   "run",
+   "walk"
+  ],
+  "lods": {
+   "lod0": "/api/media/models/fc7711ea3a867f48a2f74121c990d3b4.glb",
+   "lod1": "/api/media/models/919e3895f6514f1096adc21e14ca8574.glb",
+   "lod2": "/api/media/models/0b80bf50be731e3f7d97e485505a08ab.glb"
+  },
+  "img_task": "019ffa0b-56ac-7c25-998c-cd25225bf193"
+ },
+ "av_tech_operative": {
+  "rig": "019ffa10-36b2-78e0-97f5-425b20b7e385",
+  "anims": [
+   "fall",
+   "greet",
+   "idle",
+   "jump",
+   "land",
+   "run",
+   "walk"
+  ],
+  "lods": {
+   "lod0": "/api/media/models/cba6854626a4c8a70d756b75bba7230d.glb",
+   "lod1": "/api/media/models/f9aa3cb9d9daedc218add3be3cd63135.glb",
+   "lod2": "/api/media/models/1280127d383c203f87ecfdee3f307947.glb"
+  },
+  "img_task": "019ffa0b-56ac-77f9-b9bd-6c924a289ecc"
+ },
+ "av_streetwear": {
+  "rig": "019ffa10-6664-7d07-a771-34776ab0c302",
+  "anims": [
+   "fall",
+   "greet",
+   "idle",
+   "jump",
+   "land",
+   "run",
+   "walk"
+  ],
+  "lods": {
+   "lod0": "/api/media/models/fe59ed71ebde0f6ed51c393269bd7da7.glb",
+   "lod1": "/api/media/models/931ec328247b9a7d62a376232dffb524.glb",
+   "lod2": "/api/media/models/5e9ce0f7e15c38dec6510f782c9eeb00.glb"
+  },
+  "img_task": "019ffa0b-56ae-7129-a6c4-b613cea8cf81"
+ },
+ "av_ninja": {
+  "rig": "019ffa10-0386-78da-9491-e6a1629336cd",
+  "anims": [
+   "fall",
+   "greet",
+   "idle",
+   "jump",
+   "land",
+   "run",
+   "walk"
+  ],
+  "lods": {
+   "lod0": "/api/media/models/45d3c60d9c8ee9a65efecc89600eda18.glb",
+   "lod1": "/api/media/models/9512e894b25524331f7266ef0c9668cf.glb",
+   "lod2": "/api/media/models/eb501499ddb3ba40a58fcf5bb7a687c1.glb"
+  },
+  "img_task": "019ffa0b-56aa-77f9-8b12-ae4a80f5981f"
+ },
+ "av_ninja_f": {
+  "rig": "019ffa1b-dd21-73aa-880d-7814ee90ecf4",
+  "anims": [
+   "fall",
+   "greet",
+   "idle",
+   "jump",
+   "land",
+   "run",
+   "walk"
+  ],
+  "lods": {
+   "lod0": "/api/media/models/29f6d31530d9cf527cf76c987b53d82f.glb",
+   "lod1": "/api/media/models/2a166c1e0df683b7d9c91d28fe30ab1c.glb",
+   "lod2": "/api/media/models/64c3cc83056715ca98f5ceae97371f5b.glb"
+  },
+  "img_task": "019ffa16-8f66-7e47-97c4-2cbe95fcc666"
+ },
+ "balance_end": 3529
+}

@@ -1,5 +1,41 @@
 # OurRealm — PRD (UPDATED 2026-06 — CONTINUOUS PRODUCTION RUN COMPLETE @ published v24)
 
+## RESUME CHECKPOINT v28 — FOUNDER AAA REBUILD + FIG.01-06 (FOUNDER REVIEW READY)
+- Published v28 (v25 batch3, v26/v27 ktx2 city, v28 Master-A composition). All snapshots preserved.
+  Meshy: 3,965 → 3,529 (436 spent: image-to-3d 35/avatar ×8, remesh 5, rig 5, anims 3; champion+
+  sovereign rigs FAILED "pose estimation" on caped/gowned image-to-3d models — kept v1 runtimes per
+  no-blind-retry rule; task ids in /app/artifacts/nexus/avatars_v2.json).
+- STARTER NINJAS (FIG.03/06): av_ninja (male, default) + av_ninja_f (female) — image-to-3d from
+  founder crops (/tmp/ref_av_ninja*.png, thumbs /nexus/av_ninja*.webp), 7 anims each, LOD0/1/2,
+  glow_channel=true, status active/free. Legacy starters starter_m/starter_f/av_d5b60b3e ARCHIVED
+  (masters intact, nexus_avatars_archive holds v1 docs). Migration script
+  scripts/nexus_starter_migration.py (idempotent): migrated 2 legacy + 247 empty users → av_ninja;
+  premium-equipped users untouched.
+- PREMIUM v2 SWAPS: streetwear/tech_operative/realm_guardian/void_wizard now v2 (image-to-3d from
+  transparent sheet xf98rh5w_EE4B449F). aether_champion + arcane_sovereign remain v1 (known
+  limitation). Catalog IDs/prices/ownership unchanged.
+- FOUNDER VAULT (FIG.05): _is_founder_user() role check in collection/unlock/select — all current
+  AND FUTURE premium avatars auto-unlocked for founder, zero burns, idempotent grants, backfilled
+  6 ownership docs. UI banner founder-vault-banner.
+- GLOW (FIG.04/06): 9 colors, POST /api/nexus/avatars/glow + atomic POST /api/nexus/avatars/starter
+  {id, color}; users.nexus_glow; presence broadcasts glow when avatar glow_channel; runtime emissive
+  tint (applyGlowTint) — ONE master per body, 9 runtime variants, zero credits.
+- FIG.01 GRAPHICS QUALITY: 5 stops LOW/BAL/HIGH/ULTRA/MAX in settings (nexus-gfx-*), LOW first-use
+  default, saved in localStorage nexus_gfx5, boot always LOW then restore after 6s stable,
+  window.__NEXUS_GFX.set() live-applies pr/shadows/far + drains heroQueue (deferred hero GLBs);
+  NAVS auto-downgrade shows "Quality lowered to keep Nexus stable." banner. Warning triangle text
+  under slider (exact founder copy).
+- FIG.02 ROTATE POPUP: portrait+touch only, sessionStorage dismiss, fullscreen+orientation lock
+  attempt with graceful physical-rotation hint fallback.
+- AVATAR KTX2: scripts/nexus_avatar_ktx2.py converted all active/premium avatar LODs+anims to
+  etc1s+draco (9 OK). NOTE: /usr/bin/ktx binary does NOT persist container restarts — reinstall
+  KTX-Software-4.3.2-Linux-arm64.deb before offline encoding (runtime needs only /basis/ files).
+- MASTER REFS: /app/artifacts/nexus/references/master_b_mobile.png (sha in checksums.txt); Master A
+  world artwork + FIG06 board (8b27hoy9_0E5144BC) + FIG board (ikes27ma_6593BF9E) in artifacts CDN.
+- TESTED: iteration_148 ALL PASS (15/15 backend + full frontend: starter chooser, vault banner,
+  gfx slider live-apply, rotate popup, 7 anims × 8 avatars). World streams 72/72 models 0 failed.
+  HONEST STATUS: FOUNDER REVIEW READY — emulation-verified only, no physical-device claim.
+
 ## RESUME CHECKPOINT v27 — FOUNDER MOBILE P0 REPAIR (latest)
 - Published v27 (v25=batch3, v26=ktx partial, v27=ktx complete; all snapshots in nexus_versions).
   Meshy 3,965 — ZERO credits spent in this repair. Masters untouched.
