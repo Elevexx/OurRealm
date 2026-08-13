@@ -1,26 +1,39 @@
-# OurRealm — PRD (UPDATED 2026-06 — SPAWN ZONE ASSET AUDIT COMPLETE @ published v19)
+# OurRealm — PRD (UPDATED 2026-06 — MOBILE FOUNDATION PASS COMPLETE @ published v20)
 
 ## RESUME CHECKPOINT (exact — next agent starts here)
-- PUBLISHED v19 (147 ents). Snapshots v17/v18 recoverable in nexus_versions. Meshy balance 4684 (audit used 0).
-- ASSET AUDIT COMPLETE (founder-ordered): all 6 Meshy city GLBs verified real/detailed/200-OK and now
-  VISIBLY integrated — full report in /app/memory/spawn_zone_asset_audit.md. Root causes fixed:
-  gstatic draco → self-hosted /draco/; simultaneous GLB downloads starving each other → priority queue
-  (max 4 concurrent, nearest-first, 16MB avatar files deprioritized); model collider bug (y>=2/no_collide);
-  wireframe placeholders → silhouette+grow-in; bloom overexposure → 0.32/0.4/0.85 + auto-disable <20fps
-  + localStorage nexus_bloom=off + nexus_gfx=low (no shadows, 0.7 DPR); box trees → 'tree' entity type
-  (8 neon holo trees); canopy_ring reused as 2 walk-through boulevard gates; storefronts moved to ±30
-  flanking boulevard (rot ±1.57 UNVERIFIED from side view yet); towers ±50.
-- New: /admin/nexus/model-test?url=...&h=N — isolated GLB audit viewer (stats overlay, capsule reference).
-- Proven in-world: models 29/29 loaded, avatarReady true, bloom on w/o clipping (640x360 lowgfx shots;
-  this container is software-GL, real devices much faster).
-- Spawn zone remaining: storefront facade check, rigged-crowd visual confirm on real GPU, device matrix
-  (393x852/430x932/tablet/1920) + FPS, final critic loop vs references to >=95.
-- QUEUED PHASES (order): 1) finish Spawn Zone pass → 2) AAA landing page redesign
-  (/app/memory/nexus_landing_directive.md, reference image URL inside) → 3) AVATAR COLLECTION only on
-  explicit "START AVATAR PHASE" (/app/memory/avatar_collection_directive.md: canary Streetwear first,
-  reference sheet MANDATORY — if asset missing STOP and ask re-upload). Unity importer on hold.
-- FOUNDER RULE: ZERO new Meshy generations until founder approves the proposed canary
-  (one low-poly rigged crowd citizen). Do NOT generate.
+- PUBLISHED v20. Snapshots v17/v18/v19 recoverable in nexus_versions. Meshy balance 4684 (LOCKED —
+  zero credits used in audit + foundation pass; founder must approve any generation).
+- MASTER REFERENCES (permanent visual targets): /app/memory/nexus_master_references.md
+  (Reference A = landing page, Reference B = mobile gameplay target).
+- FOUNDATION PASS DONE (testing agent iteration_144.json ALL PASS):
+  1) ASSET OPTIMIZATION (zero credit, gltf-transform): 6 city models simplified 0.35 + draco + 1K
+     textures (e.g. storefront 4.9MB→2.5MB, canopy 3.9MB→2.0MB); starter avatars 15.9MB→2.6-3.1MB each
+     (skins+anims verified intact in /admin/nexus/model-test). Masters preserved in asset_library +
+     nexus_avatars.master_rigged_url/master_animation_urls. Mapping:
+     /app/artifacts/nexus/mobile_optimize.json. World payload ~60MB→~15MB. v20 swapped 31 URLs.
+  2) LANDING PAGE (Reference A) rebuilt in NexusPage.jsx: hero webp crops (/public/nexus/hero_*.webp),
+     real online/zones/systems from /api/nexus/public (5s poll), YOUR AVATAR card w/ real thumbs
+     (/public/nexus/av_starter_f.webp, av_starter_m.webp) + CHANGE picker, feature chips, explore cards,
+     footer. Landscape-phone CTA above fold (landscape:max-lg utilities).
+  3) PLAYER SHELL (Reference B): fixed 100dvh shell, browser-Back exits world first, exit releases
+     pointer lock/fullscreen, retry on load error, orientation swap WITHOUT world remount (verified),
+     minimap overlay (nexus-map-btn, real SVG from zone entities + player), emoji quick bar, contextual
+     portal card w/ ENTER (nexus-portal-card), camera anti-clip (collider-aware dist), adaptive quality
+     (bloom auto-off <20fps, then pixel-ratio steps to 0.6; localStorage nexus_bloom=off / nexus_gfx=low).
+- Earlier audit findings (see /app/memory/spawn_zone_asset_audit.md): draco self-hosted /draco/,
+  priority GLB queue (4 concurrent, nearest-first), model collider y<2/no_collide rule, 'tree' entity
+  type, canopy gates, storefronts at ±30 rot ±1.57.
+- TESTING HONESTY: all device-matrix tests were BROWSER EMULATION (playwright); no real hardware.
+  This container is software-GL (fps 0.4-21); real devices will be much faster.
+- REMAINING GAPS: no per-distance LOD tiers yet (single optimized runtime per asset); Reference B
+  visual parity NOT claimed (needs architecture batch 2, street detail, crowd characters, vehicles,
+  final lighting — ALL awaiting founder approval); mic button intentionally absent (no real voice);
+  storefront facade rotation verified from spawn view only.
+- QUEUED: crowd canary (one low-poly rigged citizen) — PROPOSED, NOT APPROVED. Architecture Batch 2 —
+  NOT APPROVED. AVATAR COLLECTION only on explicit "START AVATAR PHASE"
+  (/app/memory/avatar_collection_directive.md: canary Streetwear first, reference sheet MANDATORY).
+  Unity importer + NPC Machine on hold.
+
 
 
 

@@ -1,0 +1,110 @@
+{
+ "canopy_ring": {
+  "src": "af24a26ae3c18a56ee544020ee357499.glb",
+  "url": "/api/media/models/5d8f138f841cb291478397e66d0c0ec6.glb",
+  "before_kb": 3886,
+  "after_kb": 2091,
+  "skins": 0,
+  "animations": []
+ },
+ "tower_blue": {
+  "src": "da16590d1ca173860a7edc775e7e7bbe.glb",
+  "url": "/api/media/models/c5cd02281f6f2a26abbe0fb293b7d065.glb",
+  "before_kb": 1232,
+  "after_kb": 875,
+  "skins": 0,
+  "animations": []
+ },
+ "tower_green": {
+  "src": "1286a8e47fdcf1a862cde9ba314d18a2.glb",
+  "url": "/api/media/models/227a3fe4a3d08191f30549d5b4f6c443.glb",
+  "before_kb": 1082,
+  "after_kb": 841,
+  "skins": 0,
+  "animations": []
+ },
+ "orai_tower": {
+  "src": "553432310253ff37af54e078ec50e8aa.glb",
+  "url": "/api/media/models/a8d5d140a72e65cfb884ea40bdc08cf9.glb",
+  "before_kb": 1353,
+  "after_kb": 889,
+  "skins": 0,
+  "animations": []
+ },
+ "storefront": {
+  "src": "7abaa4c65b7a02b8e4b3ba2ec927da0f.glb",
+  "url": "/api/media/models/691acf9ed3b3223195019c5af7099382.glb",
+  "before_kb": 4840,
+  "after_kb": 2627,
+  "skins": 0,
+  "animations": []
+ },
+ "portal_arch": {
+  "src": "ba5a9521e6906a96b412962c7b3ba1c2.glb",
+  "url": "/api/media/models/5744fd74b00e70bd1460d08a5220f092.glb",
+  "before_kb": 2197,
+  "after_kb": 1299,
+  "skins": 0,
+  "animations": []
+ },
+ "starter_m_rig": {
+  "src": "acde5fdeb23d3f2bd38db53ef57a2ada.glb",
+  "url": "/api/media/models/9cb970817ea3b43182b1d2f99f943686.glb",
+  "before_kb": 15929,
+  "after_kb": 2947,
+  "skins": 1,
+  "animations": [
+   "Armature|clip0|baselayer"
+  ]
+ },
+ "starter_m_walk": {
+  "src": "9c4823f971c88d0ee474125430fac724.glb",
+  "url": "/api/media/models/36054212edc88d17c660af3973a4f471.glb",
+  "before_kb": 15942,
+  "after_kb": 2960,
+  "skins": 1,
+  "animations": [
+   "Armature|walking_man|baselayer"
+  ]
+ },
+ "starter_m_run": {
+  "src": "0f9242a00befd06d8a6ca689c0b3b99e.glb",
+  "url": "/api/media/models/c247300737aeb2f143428266e087f59e.glb",
+  "before_kb": 15937,
+  "after_kb": 2955,
+  "skins": 1,
+  "animations": [
+   "Armature|running|baselayer"
+  ]
+ },
+ "starter_f_rig": {
+  "src": "4809d6f3faf71a7e7f36a84036cd952b.glb",
+  "url": "/api/media/models/c72bc851e687424765a0f9b823a42f9c.glb",
+  "before_kb": 15569,
+  "after_kb": 2601,
+  "skins": 1,
+  "animations": [
+   "Armature|clip0|baselayer"
+  ]
+ },
+ "starter_f_walk": {
+  "src": "72a0285b3fcdc10cd361b01716855c77.glb",
+  "url": "/api/media/models/e03f0bf0cfbdba98918ff2fd61add7ab.glb",
+  "before_kb": 15582,
+  "after_kb": 2614,
+  "skins": 1,
+  "animations": [
+   "Armature|walking_man|baselayer"
+  ]
+ },
+ "starter_f_run": {
+  "src": "427f33ee91e4fb19db666f913600d3c6.glb",
+  "url": "/api/media/models/ca19135a91b2c2e0a84ec0cd2adae5ac.glb",
+  "before_kb": 15577,
+  "after_kb": 2609,
+  "skins": 1,
+  "animations": [
+   "Armature|running|baselayer"
+  ]
+ }
+}

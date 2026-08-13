@@ -239,8 +239,16 @@ function setAvatarAnim(grp, state) {
 export default function NexusWorld({ mode = "play", world, zoneId = "nexus_central", username = "you",
   avatarUrl = null, avatarMotion = null, onSelect, selectedId, onEntityMove, onPortal, onPublishedVersion, travelRef, onExit, refreshKey = 0 }) {
   const mountRef = useRef(null);
-  const [hud, setHud] = useState({ online: 1, zone: "", prompt: "", locked: false });
+  const [hud, setHud] = useState({ online: 1, zone: "", prompt: "", locked: false, portal: "" });
   const [showSet, setShowSet] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [mapTick, setMapTick] = useState(0);
+  const nearPortalRef = useRef(null);
+  useEffect(() => {
+    if (!showMap) return undefined;
+    const t = setInterval(() => setMapTick((v) => v + 1), 500);
+    return () => clearInterval(t);
+  }, [showMap]);
   const [chatText, setChatText] = useState("");
   const [chatOpen, setChatOpen] = useState(false);
   const [chatError, setChatError] = useState("");
@@ -690,19 +698,22 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
         setAvatarAnim(player, anim());
         // interactions
         let prompt = "";
+        let nearP = null;
         for (const p of portals) {
           p.mesh.rotation.z += dt * (p.e.props?.spin ?? 0.8);
           const d = Math.hypot(p.e.pos[0] - player.position.x, p.e.pos[2] - player.position.z);
-          if (d < 3) prompt = `E — ${p.e.props?.label || "Portal"}`;
+          if (d < 3) { prompt = `E — ${p.e.props?.label || "Portal"}`; nearP = p.e; }
           if (d < 3 && interactReq) onPortal?.(p.e);
         }
+        nearPortalRef.current = nearP;
+        const portalLabel = nearP ? (nearP.props?.label || "Portal") : "";
         for (const n of npcs) {
           const d = Math.hypot(n.e.pos[0] - player.position.x, n.e.pos[2] - player.position.z);
           if (d < 2.6) prompt = `E — talk to ${n.e.props?.label || "NPC"}`;
           if (d < 2.6 && interactReq) onPortal?.(n.e);
         }
         interactReq = false;
-        setHud((h) => (h.prompt === prompt ? h : { ...h, prompt }));
+        setHud((h) => (h.prompt === prompt && h.portal === portalLabel ? h : { ...h, prompt, portal: portalLabel }));
         Object.values(remotes).forEach((r2) => {
           r2.grp.position.lerp(r2.tgt, 0.16);
           r2.grp.rotation.y += (r2.ry - r2.grp.rotation.y) * 0.2;
@@ -715,10 +726,19 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
         entMeshes[selRef.current].traverse?.(() => {});
       }
       const focus = mode === "play" ? player.position : new THREE.Vector3(0, 0, 0);
-      camera.position.set(
-        focus.x + Math.sin(yaw) * Math.cos(pitch) * dist,
-        focus.y + 1.6 + Math.sin(pitch) * dist,
-        focus.z + Math.cos(yaw) * Math.cos(pitch) * dist);
+      let camD = dist;
+      for (let ci = 0; ci < 5; ci++) {
+        const cx = focus.x + Math.sin(yaw) * Math.cos(pitch) * camD;
+        const cy = Math.max(0.35, focus.y + 1.6 + Math.sin(pitch) * camD);
+        const cz = focus.z + Math.cos(yaw) * Math.cos(pitch) * camD;
+        let blocked = false;
+        for (const c of colliders) {
+          if (Math.abs(cx - c.x) < c.hw + 0.35 && Math.abs(cz - c.z) < c.hd + 0.35 && cy < c.top + 0.25) { blocked = true; break; }
+        }
+        if (!blocked || camD <= 2.2) { camera.position.set(cx, cy, cz); break; }
+        camD *= 0.72;
+        if (ci === 4) camera.position.set(cx, cy, cz);
+      }
       camera.lookAt(focus.x, focus.y + 1.4, focus.z);
       const tNow = clock.elapsedTime;
       for (const a of ambient) {
@@ -769,7 +789,14 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
         fpsVal = Math.round(fpsFrames / fpsAcc); fpsFrames = 0; fpsAcc = 0;
         if (composer) {
           lowFpsSecs = fpsVal < 20 ? lowFpsSecs + 1 : 0;
-          if (lowFpsSecs >= 3) { composer = null; console.warn("[nexus] bloom auto-disabled (sustained low fps)"); }
+          if (lowFpsSecs >= 3) { composer = null; lowFpsSecs = 0; console.warn("[nexus] bloom auto-disabled (sustained low fps)"); }
+        } else {
+          lowFpsSecs = fpsVal < 18 ? lowFpsSecs + 1 : 0;
+          if (lowFpsSecs >= 3) {
+            lowFpsSecs = 0;
+            const pr = renderer.getPixelRatio();
+            if (pr > 0.6) { renderer.setPixelRatio(Math.max(0.6, pr - 0.25)); console.warn("[nexus] pixel ratio reduced for performance:", renderer.getPixelRatio()); }
+          }
         }
       }
       window.__NEXUS = { x: player.position.x, y: player.position.y, z: player.position.z, yaw, online: hud.online, mode, zone: zone.id, remotes: Object.keys(remotes).length, avatarReady: !!player.userData.mix, fps: fpsVal, bloom: !!composer, models: { ...modelStats } };
@@ -838,9 +865,55 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
             <div className="mx-auto text-xs font-semibold text-white/90 bg-black/50 rounded-xl px-4 py-2.5 truncate" data-testid="nexus-hud">
               {hud.zone} · <span data-testid="nexus-online">{hud.online} online</span>
             </div>
+            <button data-testid="nexus-map-btn" onClick={() => setShowMap(!showMap)}
+              className={`text-sm rounded-xl px-3.5 py-2 shrink-0 ${showMap ? "bg-cyan-500/70 text-black" : "text-white/90 bg-black/50"}`}>🗺</button>
             <button data-testid="nexus-settings-btn" onClick={() => setShowSet(!showSet)}
               className="text-sm text-white/90 bg-black/50 rounded-xl px-3.5 py-2 shrink-0">⚙</button>
           </div>
+          {showMap && (() => {
+            const zn = world?.zones?.find((zx) => zx.id === zoneId) || world?.zones?.[0];
+            if (!zn) return null;
+            const [mw, md] = zn.size || [80, 80];
+            const px = window.__NEXUS?.x ?? 0; const pz = window.__NEXUS?.z ?? 0; const pyaw = window.__NEXUS?.yaw ?? 0;
+            void mapTick;
+            return (
+              <div className="absolute left-1/2 -translate-x-1/2 z-30 bg-black/85 border border-cyan-400/30 rounded-2xl p-3"
+                style={{ top: "max(calc(env(safe-area-inset-top) + 52px), 60px)" }} data-testid="nexus-map-overlay">
+                <div className="text-[10px] font-bold tracking-[0.25em] text-cyan-300 mb-1.5 text-center">{zn.name?.toUpperCase()}</div>
+                <svg width="228" height="228" viewBox={`${-mw / 2} ${-md / 2} ${mw} ${md}`} className="rounded-lg bg-[#0a1226]">
+                  {zn.entities.filter((ee) => ["box", "model", "pillar"].includes(ee.type) && ee.scale[1] > 3).map((ee) => (
+                    <rect key={ee.id} x={ee.pos[0] - ee.scale[0] / 2} y={ee.pos[2] - ee.scale[2] / 2}
+                      width={Math.max(2, ee.scale[0])} height={Math.max(2, ee.scale[2])} fill="#22304e" />
+                  ))}
+                  {zn.entities.filter((ee) => ee.type === "tree").map((ee) => (
+                    <circle key={ee.id} cx={ee.pos[0]} cy={ee.pos[2]} r="1.6" fill="#1d7a4d" />
+                  ))}
+                  {zn.entities.filter((ee) => ee.type === "portal").map((ee) => (
+                    <circle key={ee.id} cx={ee.pos[0]} cy={ee.pos[2]} r="3" fill={ee.color || "#37c8ff"} opacity="0.9" />
+                  ))}
+                  <g transform={`translate(${px} ${pz}) rotate(${180 - (pyaw * 180) / Math.PI})`}>
+                    <polygon points="0,-4.5 3,3.5 -3,3.5" fill="#37c8ff" stroke="#eaffff" strokeWidth="0.7" />
+                  </g>
+                </svg>
+                <div className="mt-1.5 flex justify-center gap-3 text-[9px] text-white/55">
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-cyan-400 mr-1" />You</span>
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-emerald-400 mr-1" />Portals</span>
+                  <span><span className="inline-block w-2 h-2 rounded-sm bg-[#22304e] mr-1" />Structures</span>
+                </div>
+              </div>
+            );
+          })()}
+          {hud.portal && (
+            <div className="absolute right-3 bottom-56 sm:bottom-40 z-20 bg-black/80 border border-emerald-400/40 rounded-2xl p-3.5 w-48" data-testid="nexus-portal-card">
+              <div className="text-[10px] tracking-[0.2em] font-bold text-white/60">PORTAL</div>
+              <div className="font-black text-sm mt-0.5 leading-tight">{hud.portal}</div>
+              <button data-testid="nexus-portal-enter-btn"
+                onClick={() => { if (nearPortalRef.current) onPortal?.(nearPortalRef.current); }}
+                className="mt-2.5 w-full h-11 rounded-xl bg-emerald-500 text-black font-black text-sm tracking-widest active:scale-95 transition-transform">
+                ENTER
+              </button>
+            </div>
+          )}
           {hud.prompt && (
             <div className="absolute bottom-32 left-1/2 -translate-x-1/2 text-sm font-bold text-white bg-black/70 border border-cyan-400/40 rounded-xl px-5 py-3 text-center" data-testid="nexus-prompt">
               {hud.prompt}
@@ -880,10 +953,17 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
             <button type="submit"
               className="rounded-lg bg-cyan-500 px-3 py-2 text-xs font-black text-black"
               data-testid="nexus-chat-send">SEND</button>
+            <div className="absolute -top-9 left-1/2 -translate-x-1/2 flex gap-1.5" data-testid="nexus-emoji-bar">
+              {["👋", "😄", "🔥", "💚"].map((em) => (
+                <button key={em} type="button" onClick={() => setChatText((t) => (t + " " + em).trim().slice(0, 160))}
+                  className="w-9 h-9 rounded-full bg-black/60 border border-white/15 text-base active:scale-90 transition-transform"
+                  data-testid={`nexus-emoji-${em}`}>{em}</button>
+              ))}
+            </div>
           </form>
           )}
           {!hud.locked && !mob && (
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] text-white/70 bg-black/40 rounded-lg px-3 py-1.5">
+            <div className="hidden sm:block absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] text-white/70 bg-black/40 rounded-lg px-3 py-1.5 whitespace-nowrap">
               Click to lock camera · WASD move · Space jump · Shift sprint · E interact · Wheel zoom · Esc release
             </div>
           )}
