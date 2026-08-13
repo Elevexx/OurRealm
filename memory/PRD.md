@@ -1,6 +1,30 @@
-# OurRealm — PRD (UPDATED 2026-06 — CHECKPOINT 2 @ published v23)
+# OurRealm — PRD (UPDATED 2026-06 — CONTINUOUS PRODUCTION RUN COMPLETE @ published v24)
 
 ## RESUME CHECKPOINT (exact — next agent starts here)
+- FINAL RUN RESULT: published v24, rollback v17-v23. Meshy 4499→4456 (43cr of 1200 ceiling: citizen v2
+  preview10+refine20+remesh5+rig5+walk3; both earlier rig failures uncharged; floor 3299 never approached).
+- CITIZEN V2 (living crowd): nx-cz2-* task chain SUCCEEDED. LOD0 2.0MB(41.5k tris)/LOD1 606KB/LOD2
+  203KB/walk 756KB, skins=1, Walking_Woman clip. Crowd = citizen LOD1 + starter_f, HSL clothing
+  variations, staggered timing, 18 rigged + instanced far capsules. NOTE: Meshy animation API needs
+  action_id INT (1=walking), not action string. Masters: /app/artifacts/nexus/citizen_v2_*_master.glb.
+  v1 remesh 30k proved unriggable twice (pose estimation) — replacement path was founder-authorized.
+- INSTANCE DIRECTOR HARDENED: expiring non-guessable invites (POST /api/nexus/invite, 15min,
+  join {invite:token}, 410 invalid), duplicate-join 429 (1.5s), realm creation requires accept_terms
+  (428), presence_friends filters nexus_presence_hidden/invisible users, presence paused when tab
+  hidden. LOAD SIM PASSED: 50/100/250/500/1000 SIMULATED users → 46 instances, max pop 22<=24, zero
+  over-capacity, p95 join 113ms (logical capacity only — NOT physical autoscaling proof).
+- LEGAL/PROVENANCE: /app/THIRD_PARTY_NOTICES.md created (three/draco/gltf-transform/meshopt/lucide/
+  meshy); asset_library backfilled license+owner on 65 assets. Voice: architecture doc
+  /app/memory/nexus_voice_architecture.md, flag OFF — SFU infrastructure dependency (needs founder
+  authorization to provision). Under-13 block preserved; benchmark stores only coarse tier, no GPU ids.
+- TESTING: iteration_145 ALL PASS (11/11 backend incl. invite/realm/party/429/409/410/428/403 +
+  frontend landing/world/HUD/map/exit/routes/regression). All testing = emulation/simulation; real
+  device + physical load still pending founder hardware.
+- REMAINING GAPS (honest): KTX2/Basis + meshopt encodings, distant animated impostors, occlusion
+  culling, voice SFU, real-device perf, 20-30min soak test, richer ORAi hologram, more terrace/
+  storefront variation, portal-to-specific-instance routing UI, guardian/teen granular permissions,
+  qualified legal review. Reference B visual parity NOT claimed — founder approval still required.
+
 - CK2 DONE (published v23; rollback v17-v22 snapshots preserved). Meshy 4504→4499 (remesh 5cr only).
 - CROWD CANARY STATUS: remesh→30k SUCCEEDED (task 019ff908-9313-7d89-84c4-eca30495a8b2, master saved
   /app/artifacts/nexus/citizen30k_remesh_master.glb, 20MB). RIG FAILED "Pose estimation failed" (NOT

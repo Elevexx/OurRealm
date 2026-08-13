@@ -61,18 +61,11 @@ async def main():
     ref_id = ref["meshy_task_id"]
     out = {"refine_task": ref_id}
 
-    rm = await mp.create_task(db, founder, "remesh",
-                              {"input_task_id": ref_id, "target_formats": ["glb"], "topology": "triangle",
-                               "target_polycount": 30000},
-                              "nx-b2-citizen-remesh-v1", {"project": "nexus", "slot": "b2_crowd_citizen"})
-    st = await wait(mp, db, "remesh", rm["task_id"])
-    if st.get("status") != "SUCCEEDED":
-        raise RuntimeError(f"remesh {st.get('status')}: {st.get('task_error')} — STOPPING, no paid retry")
+    rm = {"task_id": "019ff908-9313-7d89-84c4-eca30495a8b2"}  # existing successful remesh
     out["remesh_task"] = rm["task_id"]
-    print(f"[cz] remesh OK {rm['task_id']}", flush=True)
 
     rig = await mp.create_task(db, founder, "rig", {"input_task_id": rm["task_id"], "character_height": 1.7},
-                               "nx-b2-citizen-rig30k-v1", {"project": "nexus", "slot": "b2_crowd_citizen"})
+                               "nx-b2-citizen-rig30k-v2", {"project": "nexus", "slot": "b2_crowd_citizen"})
     st = await wait(mp, db, "rig", rig["task_id"])
     if st.get("status") != "SUCCEEDED":
         raise RuntimeError(f"rig {st.get('status')}: {st.get('task_error')} — STOPPING, no paid retry")
@@ -85,7 +78,7 @@ async def main():
     print(f"[cz] rig OK {rig['task_id']}", flush=True)
 
     anim = await mp.create_task(db, founder, "animation", {"rig_task_id": rig["task_id"], "action": "walking"},
-                                "nx-b2-citizen-walk30k-v1", {"project": "nexus", "slot": "b2_crowd_citizen"})
+                                "nx-b2-citizen-walk30k-v2", {"project": "nexus", "slot": "b2_crowd_citizen"})
     st = await wait(mp, db, "animation", anim["task_id"])
     walk_master = None
     if st.get("status") == "SUCCEEDED":

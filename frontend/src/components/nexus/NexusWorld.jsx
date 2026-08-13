@@ -636,6 +636,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
         }
       }).catch(() => {});
       presTimer = setInterval(() => {
+        if (document.hidden) return;
         apiClient.post("/nexus/presence", {
           zone_id: zone.id, instance_id: instanceId, x: player.position.x, y: player.position.y, z: player.position.z,
           ry: player.rotation.y, anim: anim(),

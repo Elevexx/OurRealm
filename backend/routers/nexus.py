@@ -20,6 +20,7 @@ from services import nexus_instances as ni
 log = logging.getLogger("ourrealm.nexus")
 router = APIRouter(prefix="/api/nexus", tags=["nexus"])
 _last_presence = {}  # user_id -> monotonic ts (rate limit)
+_last_join = {}  # user_id -> ts (duplicate join protection)
 
 
 def _iso():
@@ -131,15 +132,42 @@ async def presence_leave(current: CurrentUser):
 
 @router.post("/join")
 async def join_nexus(body: dict, current: CurrentUser):
-    """Server-authoritative smart join. Body: {instance_id?|realm_slug?|friend?}. Never trusts client permissions."""
+    """Server-authoritative smart join. Body: {invite?|instance_id?|realm_slug?|friend?}."""
+    now = time.time()
+    if now - _last_join.get(current["id"], 0) < 1.5:
+        raise HTTPException(status_code=429, detail="Join already in progress")
+    _last_join[current["id"]] = now
     user = await db.users.find_one({"id": current["id"]}, {"_id": 0, "id": 1, "username": 1, "friends": 1})
+    target = {"instance_id": body.get("instance_id"), "realm_slug": body.get("realm_slug"),
+              "friend": body.get("friend")}
+    if body.get("invite"):
+        inv = await db.nexus_invites.find_one({"token": str(body["invite"])[:64], "expires": {"$gt": now}}, {"_id": 0})
+        if not inv:
+            raise HTTPException(status_code=410, detail="Invitation is invalid or expired")
+        target = {"instance_id": inv["instance_id"], "invited": True}
+        await db.nexus_instances.update_one({"instance_id": inv["instance_id"]},
+                                            {"$addToSet": {"invited_ids": current["id"]}})
     try:
-        res = await ni.resolve_join(db, user, {
-            "instance_id": body.get("instance_id"), "realm_slug": body.get("realm_slug"),
-            "friend": body.get("friend")})
+        res = await ni.resolve_join(db, user, target)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     return {"world_id": "nexus-v1", **res}
+
+
+@router.post("/invite")
+async def create_invite(body: dict, current: CurrentUser):
+    """Non-guessable expiring invite to a specific instance (default: caller's current instance)."""
+    iid = str(body.get("instance_id") or "")[:40]
+    if not iid:
+        pres = await db.nexus_presence.find_one({"user_id": current["id"]}, {"_id": 0, "instance_id": 1})
+        iid = (pres or {}).get("instance_id") or "public-1"
+    inst = await db.nexus_instances.find_one({"instance_id": iid, "lifecycle": {"$in": ["active", "sleeping"]}}, {"_id": 0})
+    if not inst:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    token = uuid.uuid4().hex + uuid.uuid4().hex[:8]
+    await db.nexus_invites.insert_one({"token": token, "instance_id": iid, "created_by": current["id"],
+                                       "expires": time.time() + 900, "created_at": _iso()})
+    return {"invite": token, "instance_id": iid, "expires_in": 900}
 
 
 @router.get("/presence/friends")
@@ -152,6 +180,10 @@ async def presence_friends(current: CurrentUser):
     rows = await db.nexus_presence.find(
         {"user_id": {"$in": fids}, "ts": {"$gt": time.time() - 12}},
         {"_id": 0, "user_id": 1, "username": 1, "instance_id": 1, "zone_id": 1}).to_list(30)
+    hidden = {u["id"] async for u in db.users.find(
+        {"id": {"$in": [r["user_id"] for r in rows]},
+         "$or": [{"nexus_presence_hidden": True}, {"invisible": True}]}, {"_id": 0, "id": 1})}
+    rows = [r for r in rows if r["user_id"] not in hidden]
     out = []
     for r in rows:
         inst = await db.nexus_instances.find_one(
@@ -179,6 +211,8 @@ async def create_realm_instance(body: dict, current: CurrentUser):
     slug = str(body.get("realm_slug") or "").strip()[:40]
     if not slug:
         raise HTTPException(status_code=400, detail="realm_slug required")
+    if body.get("accept_terms") is not True:
+        raise HTTPException(status_code=428, detail="Terms acceptance and content-rights representation required (accept_terms: true)")
     mode = body.get("access_mode") if body.get("access_mode") in ("public", "realm", "invite", "private") else "realm"
     existing = await db.nexus_instances.find_one({"realm_slug": slug}, {"_id": 0})
     if existing:

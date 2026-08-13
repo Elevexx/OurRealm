@@ -21,7 +21,7 @@ Statuses: WORKING | NEEDS-REPAIR | IN-ENGINE | NEEDS-MODULAR-ASSET | NEEDS-PAID-
 | Flying vehicles | INTEGRATED (v22: 3 static m_b2_fv0-2; flight animation = IN-ENGINE todo) + traffic streaks WORKING |
 | Holographic signage/billboards | WORKING (sign entities: GAMING REALM / BUSINESS REALM etc); richer displays IN-ENGINE |
 | NEXUS SPAWN ZONE sky title | IN-ENGINE (sign entity, optional) |
-| Living crowds | BLOCKED — crowd_citizen canary FAILED at Meshy rig stage (refine = 535k faces > 320k rig limit). Fix path: ONE paid Remesh (~10cr) → rig → walk. AWAITING FOUNDER APPROVAL (no-paid-repair rule). Interim: rigged starter clones WORKING |
+| Living crowds | INTEGRATED-VERIFIED (v24): citizen v2 GENERATED (A-pose prompt, remesh 40k, rig+walk OK; task nx-cz2-* chain; LOD0 2.0MB/41.5k tris, LOD1 606KB, LOD2 203KB, walk 756KB). Crowd rigs = [citizen LOD1 + walk, starter_f] w/ HSL clothing variations + staggered timing, 18 rigged + instanced capsule far-fill. Distant impostor tier = PENDING |
 | White boulevard center strip | INTEGRATED (v22: nc_strip0-13) |
 | Star field / night sky depth | WORKING (gradient dome + 700 stars) |
 | Player avatar scale/camera | WORKING (third-person, pitch clamped, anti-clip) |

@@ -1,0 +1,27 @@
+{
+ "rig_task": "019ff93b-a7ec-759d-b72a-3ccf37732276",
+ "walk_task": "019ff941-9af5-7d82-9b78-7447c1ec35fd",
+ "lod0": {
+  "url": "/api/media/models/325e76ea0d7c92ceb21be1ddde82df8e.glb",
+  "kb": 2051,
+  "skins": 1
+ },
+ "lod1": {
+  "url": "/api/media/models/c7dd5b24f12d9628157a635f22e99305.glb",
+  "kb": 606,
+  "skins": 1
+ },
+ "lod2": {
+  "url": "/api/media/models/2b8caa8259a6fe7cb025d7c0dff0ad2f.glb",
+  "kb": 203,
+  "skins": 1
+ },
+ "walk": {
+  "url": "/api/media/models/08bbf05ee1aa490a36fcd70c709e655d.glb",
+  "kb": 756,
+  "anims": [
+   "Armature|Walking_Woman|baselayer"
+  ]
+ },
+ "balance_end": 4456
+}
