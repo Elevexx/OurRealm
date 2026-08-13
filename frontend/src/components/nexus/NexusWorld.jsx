@@ -238,7 +238,7 @@ function setAvatarAnim(grp, state) {
 }
 
 export default function NexusWorld({ mode = "play", world, zoneId = "nexus_central", username = "you",
-  avatarUrl = null, avatarMotion = null, onSelect, selectedId, onEntityMove, onPortal, onPublishedVersion, travelRef, onExit, refreshKey = 0 }) {
+  avatarUrl = null, avatarMotion = null, onSelect, selectedId, onEntityMove, onPortal, onPublishedVersion, travelRef, onExit, refreshKey = 0, instanceId = "public-1" }) {
   const mountRef = useRef(null);
   const [hud, setHud] = useState({ online: 1, zone: "", prompt: "", locked: false, portal: "" });
   const [showSet, setShowSet] = useState(false);
@@ -388,7 +388,12 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
           loadGLB(e.props.url, pr).then((g) => { modelStats.loaded += 1; attach(g); })
             .catch((err) => { modelStats.failed += 1; console.error("[nexus] model GLB failed:", e.props.url, err?.message || err); ph.material.opacity = 0.7; });
         }
-        m.position.set(e.pos[0], e.pos[1], e.pos[2]); m.rotation.y = e.rot[1] || 0;
+        m.position.set(e.pos[0], e.pos[1], e.pos[2]);
+        m.rotation.set((e.rot && e.rot[0]) || 0, (e.rot && e.rot[1]) || 0, (e.rot && e.rot[2]) || 0);
+        if (e.props?.flight) {
+          ambient.push({ kind: "flight", grp: m, cx: e.pos[0], cy: e.pos[1], cz: e.pos[2],
+            r: parseFloat(e.props.fradius) || 10, sp: parseFloat(e.props.fspeed) || 0.05, ph: Math.random() * 6.28 });
+        }
         if (e.pos[1] < 2 && !e.props?.no_collide) colliders.push({ x: e.pos[0], z: e.pos[2], hw: sx / 2, hd: sz / 2, top: e.pos[1] + sy });
       } else if (e.type === "tree") {
         const th = Math.max(3, sy);
@@ -445,7 +450,13 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
               const [baseG, walkG] = ok[i % ok.length];
               const inst = skeletonClone(baseG.scene);
               let skinned = 0;
-              inst.traverse((o) => { if (o.isSkinnedMesh) skinned += 1; if (o.isMesh || o.isSkinnedMesh) { o.frustumCulled = false; o.castShadow = false; } });
+              inst.traverse((o) => {
+                if (o.isSkinnedMesh) skinned += 1;
+                if (o.isMesh || o.isSkinnedMesh) {
+                  o.frustumCulled = false; o.castShadow = false;
+                  if (o.material) { o.material = o.material.clone(); o.material.color.offsetHSL((Math.random() - 0.5) * 0.16, 0, (Math.random() - 0.5) * 0.12); }
+                }
+              });
               if (!skinned) continue;
               const holder = new THREE.Group(); holder.add(inst);
               fitToHeight(holder, 1.62 + Math.random() * 0.22);
@@ -626,7 +637,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       }).catch(() => {});
       presTimer = setInterval(() => {
         apiClient.post("/nexus/presence", {
-          zone_id: zone.id, x: player.position.x, y: player.position.y, z: player.position.z,
+          zone_id: zone.id, instance_id: instanceId, x: player.position.x, y: player.position.y, z: player.position.z,
           ry: player.rotation.y, anim: anim(),
         }).then((r) => {
           setHud((h) => ({ ...h, online: r.data.online }));
@@ -775,6 +786,11 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       const tNow = clock.elapsedTime;
       for (const a of ambient) {
         if (a.kind === "ring") a.mesh.rotation.z += dt * 0.04;
+        else if (a.kind === "flight") {
+          a.ph += dt * a.sp;
+          a.grp.position.set(a.cx + Math.cos(a.ph) * a.r, a.cy + Math.sin(tNow * 0.4 + a.ph) * 0.9, a.cz + Math.sin(a.ph) * a.r);
+          a.grp.rotation.y = -a.ph;
+        }
         else if (a.kind === "grow") {
           if (a.t < 0.6) {
             a.t += dt;

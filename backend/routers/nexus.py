@@ -15,6 +15,7 @@ from core.db import db
 from core.deps import CurrentUser
 from core.permissions import require_founder
 from services import nexus_world as nw
+from services import nexus_instances as ni
 
 log = logging.getLogger("ourrealm.nexus")
 router = APIRouter(prefix="/api/nexus", tags=["nexus"])
@@ -79,6 +80,7 @@ async def presence(body: dict, current: CurrentUser):
             _last_presence.pop(k, None)
     doc = await _world_doc()
     zone_id = str(body.get("zone_id") or "plaza")[:24]
+    instance_id = str(body.get("instance_id") or "public-1")[:40]
     zone = next((z for z in doc["published"]["zones"] if z["id"] == zone_id), None)
     if not zone:
         raise HTTPException(status_code=400, detail="Unknown zone")
@@ -100,13 +102,14 @@ async def presence(body: dict, current: CurrentUser):
     avatar_url = avatar_data.get("url")
     await db.nexus_presence.update_one({"user_id": current["id"]}, {"$set": {
         "user_id": current["id"], "username": current.get("username"),
-        "zone_id": zone_id, "x": round(x, 2), "y": round(y, 2), "z": round(z, 2),
+        "zone_id": zone_id, "instance_id": instance_id,
+        "x": round(x, 2), "y": round(y, 2), "z": round(z, 2),
         "ry": round(ry, 2), "anim": anim, "avatar_url": avatar_url,
         "avatar_motion": avatar_data.get("animation_urls") or {},
         "ts": now, "updated_at": _iso()}}, upsert=True)
     cutoff = now - 8
     others = await db.nexus_presence.find(
-        {"zone_id": zone_id, "ts": {"$gt": cutoff}, "user_id": {"$ne": current["id"]}},
+        {"zone_id": zone_id, "instance_id": instance_id, "ts": {"$gt": cutoff}, "user_id": {"$ne": current["id"]}},
         {"_id": 0, "user_id": 1, "username": 1, "x": 1, "y": 1, "z": 1,
          "ry": 1, "anim": 1, "avatar_url": 1, "avatar_motion": 1}
     ).to_list(64)
@@ -122,7 +125,89 @@ async def presence(body: dict, current: CurrentUser):
 @router.post("/presence/leave")
 async def presence_leave(current: CurrentUser):
     await db.nexus_presence.delete_one({"user_id": current["id"]})
+    await ni.maintain(db)
     return {"ok": True}
+
+
+@router.post("/join")
+async def join_nexus(body: dict, current: CurrentUser):
+    """Server-authoritative smart join. Body: {instance_id?|realm_slug?|friend?}. Never trusts client permissions."""
+    user = await db.users.find_one({"id": current["id"]}, {"_id": 0, "id": 1, "username": 1, "friends": 1})
+    try:
+        res = await ni.resolve_join(db, user, {
+            "instance_id": body.get("instance_id"), "realm_slug": body.get("realm_slug"),
+            "friend": body.get("friend")})
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"world_id": "nexus-v1", **res}
+
+
+@router.get("/presence/friends")
+async def presence_friends(current: CurrentUser):
+    """Friends currently inside Nexus (public instances only; never reveals hidden users)."""
+    user = await db.users.find_one({"id": current["id"]}, {"_id": 0, "friends": 1})
+    fids = user.get("friends") or []
+    if not fids:
+        return {"friends": []}
+    rows = await db.nexus_presence.find(
+        {"user_id": {"$in": fids}, "ts": {"$gt": time.time() - 12}},
+        {"_id": 0, "user_id": 1, "username": 1, "instance_id": 1, "zone_id": 1}).to_list(30)
+    out = []
+    for r in rows:
+        inst = await db.nexus_instances.find_one(
+            {"instance_id": r.get("instance_id") or "public-1", "access_mode": "public", "lifecycle": "active"},
+            {"_id": 0, "instance_id": 1, "name": 1})
+        if inst:
+            out.append({"username": r["username"], "instance_id": inst["instance_id"],
+                        "instance_name": inst.get("name"), "zone_id": r.get("zone_id")})
+    return {"friends": out}
+
+
+@router.get("/instances")
+async def list_instances(current: CurrentUser):
+    require_founder(current)
+    await ni.ensure_default_instance(db)
+    insts = await db.nexus_instances.find({}, {"_id": 0}).to_list(100)
+    for i in insts:
+        i["population"] = await ni._population(db, i["instance_id"])
+    return {"instances": insts}
+
+
+@router.post("/instances/realm")
+async def create_realm_instance(body: dict, current: CurrentUser):
+    require_founder(current)
+    slug = str(body.get("realm_slug") or "").strip()[:40]
+    if not slug:
+        raise HTTPException(status_code=400, detail="realm_slug required")
+    mode = body.get("access_mode") if body.get("access_mode") in ("public", "realm", "invite", "private") else "realm"
+    existing = await db.nexus_instances.find_one({"realm_slug": slug}, {"_id": 0})
+    if existing:
+        await db.nexus_instances.update_one({"realm_slug": slug},
+                                            {"$set": {"lifecycle": "active", "access_mode": mode, "_empty_since": None}})
+        return {"instance_id": existing["instance_id"], "woke": True}
+    inst = {"instance_id": f"realm-{uuid.uuid4().hex[:8]}", "world_id": "nexus-v1", "realm_slug": slug,
+            "name": str(body.get("name") or slug)[:60], "owner_id": current["id"], "region": "default",
+            "capacity": 24, "health": "healthy", "access_mode": mode, "visibility": "listed",
+            "lifecycle": "active", "member_ids": [], "invited_ids": [], "created_at": _iso(), "last_active_at": _iso()}
+    await db.nexus_instances.insert_one(dict(inst))
+    await _audit(current.get("username"), "realm_instance_create", {"slug": slug, "instance_id": inst["instance_id"]})
+    return {"instance_id": inst["instance_id"], "woke": False}
+
+
+@router.post("/party/reserve")
+async def party_reserve(body: dict, current: CurrentUser):
+    """Short-lived capacity reservation so friend groups enter together."""
+    iid = str(body.get("instance_id") or "")[:40]
+    size = max(1, min(8, int(body.get("size") or 2)))
+    inst = await db.nexus_instances.find_one({"instance_id": iid, "lifecycle": "active"}, {"_id": 0})
+    if not inst:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    if not await ni._has_space(db, inst, size, respect_headroom=False):
+        raise HTTPException(status_code=409, detail="Not enough space for the party")
+    rid = uuid.uuid4().hex[:10]
+    await db.nexus_reservations.insert_one({"id": rid, "instance_id": iid, "user_id": current["id"],
+                                            "size": size, "expires": time.time() + 60, "created_at": _iso()})
+    return {"reservation_id": rid, "instance_id": iid, "expires_in": 60}
 
 
 CHAT_RADIUS = 18

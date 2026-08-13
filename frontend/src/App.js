@@ -263,6 +263,9 @@ function App() {
             <Route path="/admin/orai" element={<OraiHome />} />
             <Route path="/admin/meshy" element={<AdminMeshy />} />
             <Route path="/nexus" element={<Lazy><NexusPage /></Lazy>} />
+            <Route path="/nexus/nexus-central" element={<Lazy><NexusPage /></Lazy>} />
+            <Route path="/nexus/nexus-central/instance/:instanceId" element={<Lazy><NexusPage /></Lazy>} />
+            <Route path="/nexus/nexus-central/realm/:realmSlug" element={<Lazy><NexusPage /></Lazy>} />
             <Route path="/admin/nexus" element={<Lazy><AdminNexus /></Lazy>} />
             <Route path="/admin/nexus/model-test" element={<Lazy><NexusModelTest /></Lazy>} />
             <Route path="/admin/orai-projects" element={<Navigate to="/admin/gamemaker/studio" replace />} />

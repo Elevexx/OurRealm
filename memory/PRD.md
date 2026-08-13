@@ -1,6 +1,33 @@
-# OurRealm — PRD (UPDATED 2026-06 — PRODUCTION DIRECTIVE CHECKPOINT 1 @ published v22)
+# OurRealm — PRD (UPDATED 2026-06 — CHECKPOINT 2 @ published v23)
 
 ## RESUME CHECKPOINT (exact — next agent starts here)
+- CK2 DONE (published v23; rollback v17-v22 snapshots preserved). Meshy 4504→4499 (remesh 5cr only).
+- CROWD CANARY STATUS: remesh→30k SUCCEEDED (task 019ff908-9313-7d89-84c4-eca30495a8b2, master saved
+  /app/artifacts/nexus/citizen30k_remesh_master.glb, 20MB). RIG FAILED "Pose estimation failed" (NOT
+  charged). STOPPED per founder no-paid-retry rule. Next needs founder approval: one rig re-attempt
+  (5cr) on remesh output (or remesh at higher polycount first). Budget used 5/20. Idem keys:
+  nx-b2-citizen-remesh-v1 / -rig30k-v1 (burned; use -v2 for approved retry).
+- CK2 zero-credit shipped:
+  1) X/Z rotation support for model entities; canopy now OVERHEAD (m_canopy rot.x=90° y=26 scale46;
+     m_canopy2 tilted y=33 z=-52) — visual confirm on real GPU pending (software-GL too slow to catch).
+  2) Flight paths: props flight/fspeed/fradius (whitelisted) + renderer orbit anim w/ gentle bob +
+     heading; applied to bship/gship/fv0-2 (v23).
+  3) Crowd clothing-color variations (HSL offset per clone) + staggered anim timing (existing).
+  4) INSTANCE DIRECTOR v1 (services/nexus_instances.py + routers/nexus.py): nexus_instances collection,
+     smart join order (direct→realm→friend→friends-first→fullest-healthy-public w/ 2-slot party
+     headroom→create new), POST /api/nexus/join (server-authoritative, 409 on bad access),
+     GET /api/nexus/presence/friends (public instances only, hidden users never revealed),
+     POST /api/nexus/instances/realm (founder; persistent identity, sleep/wake), GET /api/nexus/instances
+     (founder), POST /api/nexus/party/reserve (60s reservations). Lazy maintain(): drain/close empty
+     publics (300s grace, public-1 kept), realm instances sleep not delete. Presence now carries
+     instance_id; peers filtered per instance. CURL-TESTED ALL PASS (smart/realm/direct/bad/reserve).
+  5) Frontend: routes /nexus/nexus-central[, /instance/:id, /realm/:slug] (backward compat /nexus kept),
+     enter() calls /join first, NexusWorld gets instanceId, landing shows JOIN FRIENDS button when
+     friends online (10s poll). BUG FIXED: async-generator sum in _reserved.
+- KNOWN GAPS: real proximity voice (flagged OFF, blocking), citizen rig (awaiting approval), canopy/
+  flight visual proof on real device, load tests 50-1000 users NOT run, invites/blocking/invisible
+  privacy checks minimal, KTX2/impostors pending, crowd 1/6/18 perf test pending real citizen.
+
 - FOUNDER MASTER GAMEPLAY REFERENCE is the permanent top-priority target:
   /app/memory/nexus_master_references.md (Reference B). Manifest with statuses:
   /app/memory/nexus_visual_asset_manifest.md. Full production directive was given 2026-06 (this session):

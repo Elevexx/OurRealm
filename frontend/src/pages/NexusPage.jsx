@@ -1,7 +1,7 @@
 /* /nexus — AAA landing (Reference A) + fullscreen world player shell (Reference B).
    All data is real: online count, zones, system statuses from /api/nexus/public. */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import apiClient from "@/api/client";
@@ -20,7 +20,10 @@ const ZONE_TAG = { nexus_central: "SPAWN ZONE", plaza: "COMMUNITY HUB", emerald_
 export default function NexusPage() {
   const { user } = useAuth();
   const nav = useNavigate();
+  const { instanceId: routeInstance, realmSlug: routeRealm } = useParams();
   const [info, setInfo] = useState(null);
+  const [instanceId, setInstanceId] = useState("public-1");
+  const [friendsIn, setFriendsIn] = useState([]);
   const [world, setWorld] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [entering, setEntering] = useState(false);
@@ -127,8 +130,8 @@ export default function NexusPage() {
     return (
       <div className="fixed inset-0 z-[100] bg-[#060a16] touch-none overscroll-none select-none"
         style={{ height: "100dvh" }} data-testid="nexus-play-shell">
-        <NexusWorld key={`${zoneId}:${worldVersion}`} mode="play" world={world}
-          zoneId={zoneId} username={user?.username} avatarUrl={myAvatarUrl}
+        <NexusWorld key={`${zoneId}:${worldVersion}:${instanceId}`} mode="play" world={world}
+          zoneId={zoneId} username={user?.username} avatarUrl={myAvatarUrl} instanceId={instanceId}
           avatarMotion={myAvatarMotion} onPortal={onPortal} onExit={exitWorld}
           onPublishedVersion={refreshPublished} travelRef={travelRef} />
         <button onClick={exitWorld} data-testid="nexus-exit-btn" className="sr-only">Leave World</button>
@@ -199,6 +202,13 @@ export default function NexusPage() {
               {entering ? <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : null}
               {entering ? "ENTERING…" : (user ? "ENTER NEXUS" : "SIGN IN TO ENTER")}
             </button>
+            {friendsIn.length > 0 && (
+              <button onClick={() => enter(null, { friend: friendsIn[0].username })} disabled={entering}
+                data-testid="nexus-join-friends-btn"
+                className="mt-3 w-full lg:max-w-md h-12 rounded-2xl font-bold text-sm tracking-[0.1em] text-emerald-200 bg-emerald-500/15 border border-emerald-400/40 active:scale-[0.985] transition-transform">
+                JOIN FRIENDS — {friendsIn[0].username}{friendsIn.length > 1 ? ` +${friendsIn.length - 1}` : ""} · {friendsIn[0].instance_name || friendsIn[0].instance_id}
+              </button>
+            )}
             {loadError && (
               <div className="mt-3 flex items-center gap-3 text-sm text-red-200 bg-red-950/60 border border-red-500/30 rounded-xl px-4 py-3" data-testid="nexus-load-error">
                 <span className="flex-1">{loadError}</span>
