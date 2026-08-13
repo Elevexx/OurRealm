@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { ArrowLeft, Map as MapIcon, Settings as GearIcon, Crosshair, ArrowUp, Hand, MessageSquare, Smile, Mic, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Gamepad2, DoorOpen } from "lucide-react";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
@@ -241,6 +242,8 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
   const mountRef = useRef(null);
   const [hud, setHud] = useState({ online: 1, zone: "", prompt: "", locked: false, portal: "" });
   const [showSet, setShowSet] = useState(false);
+  const [reactOpen, setReactOpen] = useState(false);
+  const voiceEnabled = typeof window !== "undefined" && localStorage.getItem("nexus_voice") === "on";
   const [showMap, setShowMap] = useState(false);
   const [mapTick, setMapTick] = useState(0);
   const nearPortalRef = useRef(null);
@@ -359,20 +362,32 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
         ph.position.y = sy / 2; m.add(ph);
         modelStats.total += 1;
         const spawnRef = zone.spawn || { x: 0, z: 0 };
-        const pr = 1 + Math.hypot(e.pos[0] - spawnRef.x, e.pos[2] - spawnRef.z) / 50;
-        loadGLB(e.props.url, pr).then((g) => {
+        const distSpawn = Math.hypot(e.pos[0] - spawnRef.x, e.pos[2] - spawnRef.z);
+        const pr = 1 + distSpawn / 50;
+        let currentHolder = null;
+        const attach = (g) => {
           if (disposed) return;
-          modelStats.loaded += 1;
           const inst = g.scene.clone(true);
           const holder = new THREE.Group();
           holder.add(inst);
           fitToHeight(holder, sy);
           holder.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
           const grow = new THREE.Group(); grow.add(holder);
+          if (currentHolder) { m.remove(currentHolder); currentHolder = grow; m.add(grow); return; }
           grow.scale.y = 0.05;
           m.add(grow); m.remove(ph);
+          currentHolder = grow;
           ambient.push({ kind: "grow", grp: grow, t: 0 });
-        }).catch(() => { ph.material.opacity = 0.7; });
+        };
+        // NAVS: distant entities stream a lightweight LOD first; hero quality upgrades later
+        if (e.props.lod2 && distSpawn > 60) {
+          loadGLB(e.props.lod2, pr - 0.8).then((g) => { modelStats.loaded += 1; attach(g); })
+            .catch((err) => { modelStats.failed += 1; console.error("[nexus] lod2 failed:", e.props.lod2, err?.message || err); ph.material.opacity = 0.7; });
+          loadGLB(e.props.url, 9 + pr).then(attach).catch(() => {});
+        } else {
+          loadGLB(e.props.url, pr).then((g) => { modelStats.loaded += 1; attach(g); })
+            .catch((err) => { modelStats.failed += 1; console.error("[nexus] model GLB failed:", e.props.url, err?.message || err); ph.material.opacity = 0.7; });
+        }
         m.position.set(e.pos[0], e.pos[1], e.pos[2]); m.rotation.y = e.rot[1] || 0;
         if (e.pos[1] < 2 && !e.props?.no_collide) colliders.push({ x: e.pos[0], z: e.pos[2], hw: sx / 2, hd: sz / 2, top: e.pos[1] + sy });
       } else if (e.type === "tree") {
@@ -562,7 +577,11 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     };
     const onTE = (ev) => {
       for (const t of ev.changedTouches) {
-        if (t.identifier === joy.id) { joy.id = null; touch.x = 0; touch.y = 0; }
+        if (t.identifier === joy.id) {
+          joy.id = null; touch.x = 0; touch.y = 0;
+          const th = document.getElementById("nexus-joy-thumb");
+          if (th) th.style.transform = "translate(0px, 0px)";
+        }
         if (t.identifier === camT.id) camT.id = null;
       }
     };
@@ -653,6 +672,19 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       composer.addPass(new OutputPass());
     }
     let fpsFrames = 0; let fpsAcc = 0; let fpsVal = 0; let lowFpsSecs = 0;
+    // NAVS adaptive tiers: benchmark first seconds of real frame time, then hysteresis-guarded switches
+    let qualityTier = lowGfx ? "low" : "high";
+    let tierAge = 0; let tierCooldown = 0; let benchDone = lowGfx;
+    const applyTier = (t) => {
+      qualityTier = t;
+      tierCooldown = 8;
+      if (t === "low") { renderer.setPixelRatio(0.7); renderer.shadowMap.enabled = false; composer = null; }
+      else if (t === "medium") { renderer.setPixelRatio(1); renderer.shadowMap.enabled = false; composer = null; }
+      else if (t === "high") { renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); }
+      else { renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); }
+      scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; });
+      console.warn("[nexus] NAVS quality tier:", t);
+    };
     const clock = new THREE.Clock();
     let raf = 0;
     const step = () => {
@@ -787,19 +819,28 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       fpsFrames += 1; fpsAcc += dt;
       if (fpsAcc >= 1) {
         fpsVal = Math.round(fpsFrames / fpsAcc); fpsFrames = 0; fpsAcc = 0;
+        tierAge += 1;
+        if (tierCooldown > 0) tierCooldown -= 1;
+        if (!benchDone && tierAge >= 4) {
+          benchDone = true;
+          if (fpsVal < 20) applyTier("low");
+          else if (fpsVal < 32) applyTier("medium");
+          else if (fpsVal < 50) applyTier("high");
+          else applyTier("ultra");
+        }
         if (composer) {
           lowFpsSecs = fpsVal < 20 ? lowFpsSecs + 1 : 0;
           if (lowFpsSecs >= 3) { composer = null; lowFpsSecs = 0; console.warn("[nexus] bloom auto-disabled (sustained low fps)"); }
-        } else {
+        } else if (benchDone && tierCooldown === 0) {
           lowFpsSecs = fpsVal < 18 ? lowFpsSecs + 1 : 0;
           if (lowFpsSecs >= 3) {
-            lowFpsSecs = 0;
+            lowFpsSecs = 0; tierCooldown = 8;
             const pr = renderer.getPixelRatio();
             if (pr > 0.6) { renderer.setPixelRatio(Math.max(0.6, pr - 0.25)); console.warn("[nexus] pixel ratio reduced for performance:", renderer.getPixelRatio()); }
           }
         }
       }
-      window.__NEXUS = { x: player.position.x, y: player.position.y, z: player.position.z, yaw, online: hud.online, mode, zone: zone.id, remotes: Object.keys(remotes).length, avatarReady: !!player.userData.mix, fps: fpsVal, bloom: !!composer, models: { ...modelStats } };
+      window.__NEXUS = { x: player.position.x, y: player.position.y, z: player.position.z, yaw, online: hud.online, mode, zone: zone.id, remotes: Object.keys(remotes).length, avatarReady: !!player.userData.mix, fps: fpsVal, bloom: !!composer, tier: qualityTier, models: { ...modelStats } };
     };
     step();
     const ro = new ResizeObserver(() => {
@@ -857,18 +898,26 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       {mode === "play" && (
         <>
           <div className="absolute left-0 right-0 top-0 flex items-center gap-2 px-3"
-            style={{ paddingTop: "max(env(safe-area-inset-top), 8px)" }}>
+            style={{ paddingTop: "max(env(safe-area-inset-top), 10px)" }}>
             {onExit && (
-              <button onClick={onExit} data-testid="nexus-hud-exit"
-                className="text-xs font-black text-white bg-red-500/70 hover:bg-red-500 rounded-xl px-4 py-2.5 shrink-0">✕ EXIT</button>
+              <button onClick={onExit} data-testid="nexus-hud-exit" aria-label="Exit Nexus"
+                className="flex items-center gap-2 min-h-[44px] text-sm font-black text-white bg-black/45 backdrop-blur-md border border-white/25 rounded-full pl-3.5 pr-5 py-2.5 shrink-0 active:scale-95 active:bg-white/15 focus-visible:ring-2 focus-visible:ring-cyan-400 outline-none transition-transform">
+                <ArrowLeft className="w-5 h-5" strokeWidth={2.6} /> EXIT
+              </button>
             )}
-            <div className="mx-auto text-xs font-semibold text-white/90 bg-black/50 rounded-xl px-4 py-2.5 truncate" data-testid="nexus-hud">
-              {hud.zone} · <span data-testid="nexus-online">{hud.online} online</span>
+            <div className="mx-auto flex items-center gap-2 min-h-[44px] text-xs font-bold text-white bg-black/45 backdrop-blur-md border border-white/25 rounded-full px-5 py-2.5 truncate" data-testid="nexus-hud">
+              <span className="truncate tracking-wide">{(hud.zone || "").toUpperCase()}</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="text-emerald-300 whitespace-nowrap" data-testid="nexus-online">{hud.online} ONLINE</span>
             </div>
-            <button data-testid="nexus-map-btn" onClick={() => setShowMap(!showMap)}
-              className={`text-sm rounded-xl px-3.5 py-2 shrink-0 ${showMap ? "bg-cyan-500/70 text-black" : "text-white/90 bg-black/50"}`}>🗺</button>
-            <button data-testid="nexus-settings-btn" onClick={() => setShowSet(!showSet)}
-              className="text-sm text-white/90 bg-black/50 rounded-xl px-3.5 py-2 shrink-0">⚙</button>
+            <button data-testid="nexus-map-btn" onClick={() => setShowMap(!showMap)} aria-label="Toggle map" aria-pressed={showMap}
+              className={`flex items-center justify-center w-11 h-11 rounded-2xl backdrop-blur-md border shrink-0 active:scale-95 focus-visible:ring-2 focus-visible:ring-cyan-400 outline-none transition-transform ${showMap ? "bg-cyan-500/80 border-cyan-300/60 text-black" : "bg-black/45 border-white/25 text-white"}`}>
+              <MapIcon className="w-5 h-5" strokeWidth={2.2} />
+            </button>
+            <button data-testid="nexus-settings-btn" onClick={() => setShowSet(!showSet)} aria-label="Settings" aria-pressed={showSet}
+              className={`flex items-center justify-center w-11 h-11 rounded-2xl backdrop-blur-md border shrink-0 active:scale-95 focus-visible:ring-2 focus-visible:ring-cyan-400 outline-none transition-transform ${showSet ? "bg-cyan-500/80 border-cyan-300/60 text-black" : "bg-black/45 border-white/25 text-white"}`}>
+              <GearIcon className="w-5 h-5" strokeWidth={2.2} />
+            </button>
           </div>
           {showMap && (() => {
             const zn = world?.zones?.find((zx) => zx.id === zoneId) || world?.zones?.[0];
@@ -904,12 +953,16 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
             );
           })()}
           {hud.portal && (
-            <div className="absolute right-3 bottom-56 sm:bottom-40 z-20 bg-black/80 border border-emerald-400/40 rounded-2xl p-3.5 w-48" data-testid="nexus-portal-card">
-              <div className="text-[10px] tracking-[0.2em] font-bold text-white/60">PORTAL</div>
-              <div className="font-black text-sm mt-0.5 leading-tight">{hud.portal}</div>
-              <button data-testid="nexus-portal-enter-btn"
+            <div className="absolute right-3 bottom-56 sm:bottom-40 z-20 bg-black/70 backdrop-blur-md border border-white/20 rounded-2xl p-3.5 w-52" data-testid="nexus-portal-card">
+              <div className="flex items-center gap-2.5">
+                <span className="w-10 h-10 rounded-xl bg-purple-500/25 border border-purple-400/40 flex items-center justify-center shrink-0">
+                  {/(game|gaming)/i.test(hud.portal) ? <Gamepad2 className="w-5 h-5 text-purple-300" /> : <DoorOpen className="w-5 h-5 text-purple-300" />}
+                </span>
+                <div className="font-black text-sm leading-tight">{hud.portal}</div>
+              </div>
+              <button data-testid="nexus-portal-enter-btn" aria-label={`Enter ${hud.portal}`}
                 onClick={() => { if (nearPortalRef.current) onPortal?.(nearPortalRef.current); }}
-                className="mt-2.5 w-full h-11 rounded-xl bg-emerald-500 text-black font-black text-sm tracking-widest active:scale-95 transition-transform">
+                className="mt-3 w-full h-11 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 text-black font-black text-sm tracking-widest shadow-[0_0_18px_rgba(52,211,153,0.5)] active:scale-95 focus-visible:ring-2 focus-visible:ring-emerald-300 outline-none transition-transform">
                 ENTER
               </button>
             </div>
@@ -950,17 +1003,21 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
               className="min-w-0 flex-1 rounded-lg border border-white/15 bg-black/65 px-3 py-2 text-xs text-white outline-none focus:border-cyan-400"
               data-testid="nexus-chat-input"
             />
-            <button type="submit"
-              className="rounded-lg bg-cyan-500 px-3 py-2 text-xs font-black text-black"
+            <button type="submit" aria-label="Send chat"
+              className="rounded-lg bg-cyan-500 px-3 py-2 text-xs font-black text-black active:scale-95 focus-visible:ring-2 focus-visible:ring-cyan-300 outline-none"
               data-testid="nexus-chat-send">SEND</button>
-            <div className="absolute -top-9 left-1/2 -translate-x-1/2 flex gap-1.5" data-testid="nexus-emoji-bar">
-              {["👋", "😄", "🔥", "💚"].map((em) => (
-                <button key={em} type="button" onClick={() => setChatText((t) => (t + " " + em).trim().slice(0, 160))}
-                  className="w-9 h-9 rounded-full bg-black/60 border border-white/15 text-base active:scale-90 transition-transform"
+          </form>
+          )}
+          {reactOpen && (
+            <div className="absolute z-30 left-1/2 -translate-x-1/2 flex gap-2 bg-black/70 backdrop-blur-md border border-white/20 rounded-full px-3 py-2"
+              style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 74px), 86px)" }} data-testid="nexus-emoji-bar">
+              {["👋", "😄", "🔥", "💚", "🎉"].map((em) => (
+                <button key={em} type="button" aria-label={`React ${em}`}
+                  onClick={async () => { try { await chatApiRef.current?.(em); } catch { /* offline */ } setReactOpen(false); }}
+                  className="w-11 h-11 rounded-full bg-white/10 border border-white/15 text-lg active:scale-90 focus-visible:ring-2 focus-visible:ring-cyan-400 outline-none transition-transform"
                   data-testid={`nexus-emoji-${em}`}>{em}</button>
               ))}
             </div>
-          </form>
           )}
           {!hud.locked && !mob && (
             <div className="hidden sm:block absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] text-white/70 bg-black/40 rounded-lg px-3 py-1.5 whitespace-nowrap">
@@ -983,22 +1040,58 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
           )}
           {mob && (
             <>
-              <button className="absolute right-4 w-20 h-20 rounded-full bg-cyan-500/75 active:bg-cyan-400 text-white font-black text-sm shadow-lg"
+              {/* right control column: recenter, JUMP, INTERACT */}
+              <button aria-label="Recenter camera"
+                className="absolute right-5 flex items-center justify-center w-12 h-12 rounded-full bg-black/40 backdrop-blur-md border border-white/25 text-white active:scale-90 active:bg-white/20 focus-visible:ring-2 focus-visible:ring-cyan-400 outline-none transition-transform"
+                style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 216px), 228px)" }}
+                onTouchStart={() => window.__NEXUS_MOB?.recenter()} data-testid="nexus-recenter-btn">
+                <Crosshair className="w-6 h-6" strokeWidth={2} />
+              </button>
+              <button aria-label="Jump"
+                className="absolute right-4 flex flex-col items-center justify-center w-[84px] h-[84px] rounded-full bg-black/40 backdrop-blur-md border-2 border-white/30 text-white shadow-[0_0_22px_rgba(52,211,153,0.25)] active:scale-95 active:bg-emerald-500/30 active:border-emerald-300/70 focus-visible:ring-2 focus-visible:ring-emerald-300 outline-none transition-transform"
+                style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 118px), 130px)" }}
+                onTouchStart={() => window.__NEXUS_MOB?.jump()} data-testid="nexus-jump-btn">
+                <ArrowUp className="w-7 h-7" strokeWidth={3} />
+                <span className="text-[11px] font-black tracking-widest mt-0.5">JUMP</span>
+              </button>
+              <button aria-label="Interact"
+                className="absolute right-3 flex flex-col items-center justify-center w-[96px] h-[96px] rounded-full bg-black/40 backdrop-blur-md border-2 border-white/30 text-white shadow-[0_0_22px_rgba(255,255,255,0.12)] active:scale-95 active:bg-cyan-500/30 active:border-cyan-300/70 focus-visible:ring-2 focus-visible:ring-cyan-300 outline-none transition-transform"
                 style={{ bottom: "max(env(safe-area-inset-bottom), 12px)" }}
-                onTouchStart={() => window.__NEXUS_MOB?.jump()} data-testid="nexus-jump-btn">JUMP</button>
-              <button className="absolute right-28 w-16 h-16 rounded-full bg-emerald-500/75 active:bg-emerald-400 text-white font-black text-xl shadow-lg"
-                style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 8px), 20px)" }}
-                onTouchStart={() => window.__NEXUS_MOB?.interact()} data-testid="nexus-interact-btn">✋</button>
-              <button className="absolute right-6 w-11 h-11 rounded-full bg-white/15 text-white text-lg"
-                style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 96px), 108px)" }}
-                onTouchStart={() => window.__NEXUS_MOB?.recenter()} data-testid="nexus-recenter-btn">◎</button>
-              <button className={`absolute left-1/2 -translate-x-1/2 w-12 h-12 rounded-full text-lg ${chatOpen ? "bg-cyan-500/80" : "bg-white/15"}`}
-                style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 8px), 20px)" }}
-                onTouchStart={() => setChatOpen((v) => !v)} data-testid="nexus-chat-toggle">💬</button>
-              <div className="absolute left-5 w-28 h-28 rounded-full border-2 border-white/30 bg-white/5 pointer-events-none"
-                style={{ bottom: "max(env(safe-area-inset-bottom), 12px)" }} data-testid="nexus-joystick-ring" />
-              <div className="absolute left-9 text-[9px] text-white/40 pointer-events-none text-center w-20"
-                style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 120px), 132px)" }}>push far = run</div>
+                onTouchStart={() => window.__NEXUS_MOB?.interact()} data-testid="nexus-interact-btn">
+                <Hand className="w-7 h-7" strokeWidth={2.4} />
+                <span className="text-[11px] font-black tracking-widest mt-0.5">INTERACT</span>
+              </button>
+              {/* bottom-center: chat / reactions / mic (mic behind feature flag) */}
+              <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-3"
+                style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 8px), 18px)" }}>
+                <button aria-label="Toggle chat" aria-pressed={chatOpen}
+                  className={`flex items-center justify-center w-12 h-12 rounded-full backdrop-blur-md border active:scale-90 focus-visible:ring-2 focus-visible:ring-cyan-400 outline-none transition-transform ${chatOpen ? "bg-cyan-500/80 border-cyan-300/60 text-black" : "bg-black/40 border-white/25 text-white"}`}
+                  onTouchStart={() => { setChatOpen((v) => !v); setReactOpen(false); }} data-testid="nexus-chat-toggle">
+                  <MessageSquare className="w-6 h-6" strokeWidth={2.2} />
+                </button>
+                <button aria-label="Reactions" aria-pressed={reactOpen}
+                  className={`flex items-center justify-center w-12 h-12 rounded-full backdrop-blur-md border active:scale-90 focus-visible:ring-2 focus-visible:ring-cyan-400 outline-none transition-transform ${reactOpen ? "bg-cyan-500/80 border-cyan-300/60 text-black" : "bg-black/40 border-white/25 text-white"}`}
+                  onTouchStart={() => { setReactOpen((v) => !v); setChatOpen(false); }} data-testid="nexus-react-toggle">
+                  <Smile className="w-6 h-6" strokeWidth={2.2} />
+                </button>
+                {voiceEnabled && (
+                  <button aria-label="Microphone (muted)" aria-pressed="false" disabled
+                    className="flex items-center justify-center w-12 h-12 rounded-full bg-black/40 backdrop-blur-md border border-white/25 text-white/40"
+                    data-testid="nexus-mic-btn">
+                    <Mic className="w-6 h-6" strokeWidth={2.2} />
+                  </button>
+                )}
+              </div>
+              {/* movement controller: ring + chevrons + glowing thumb */}
+              <div className="absolute left-4 w-32 h-32 rounded-full border-2 border-white/25 bg-black/30 backdrop-blur-sm pointer-events-none"
+                style={{ bottom: "max(env(safe-area-inset-bottom), 12px)" }} data-testid="nexus-joystick-ring">
+                <ChevronUp className="absolute top-1 left-1/2 -translate-x-1/2 w-4 h-4 text-white/60" />
+                <ChevronDown className="absolute bottom-1 left-1/2 -translate-x-1/2 w-4 h-4 text-white/60" />
+                <ChevronLeft className="absolute left-1 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
+                <ChevronRight className="absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
+                <div id="nexus-joy-thumb" data-testid="nexus-joystick-thumb"
+                  className="absolute left-1/2 top-1/2 -ml-7 -mt-7 w-14 h-14 rounded-full bg-gradient-to-b from-cyan-300 to-cyan-600 shadow-[0_0_24px_rgba(34,211,238,0.65)] border border-cyan-200/70 transition-transform duration-75" />
+              </div>
             </>
           )}
         </>

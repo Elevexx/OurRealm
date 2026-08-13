@@ -82,7 +82,7 @@ def _clean_entity(e):
     if not isinstance(props, dict):
         raise ValueError("props must be object")
     safe_props = {}
-    for k in ("label", "action", "game_id", "target_zone", "dialog", "intensity", "spin", "url", "text", "count", "radius", "no_collide"):
+    for k in ("label", "action", "game_id", "target_zone", "dialog", "intensity", "spin", "url", "text", "count", "radius", "no_collide", "lod2", "lod3"):
         if k in props:
             v = props[k]
             safe_props[k] = float(v) if k in ("intensity", "spin", "count", "radius", "no_collide") else str(v)[:200]

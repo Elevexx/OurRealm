@@ -1,0 +1,62 @@
+{
+ "/api/media/models/5d8f138f841cb291478397e66d0c0ec6.glb": {
+  "lod2": {
+   "url": "/api/media/models/ad3dc77b7066bdee4c8858d8ff174ac7.glb",
+   "kb": 845
+  },
+  "lod3": {
+   "url": "/api/media/models/632f22fb41301e4c0123f4139f2d33e5.glb",
+   "kb": 400
+  }
+ },
+ "/api/media/models/c5cd02281f6f2a26abbe0fb293b7d065.glb": {
+  "lod2": {
+   "url": "/api/media/models/563f09c4ca38816e2d57e76b230fdd28.glb",
+   "kb": 297
+  },
+  "lod3": {
+   "url": "/api/media/models/30ac126e0053e41dfabbaab48c499c0d.glb",
+   "kb": 110
+  }
+ },
+ "/api/media/models/227a3fe4a3d08191f30549d5b4f6c443.glb": {
+  "lod2": {
+   "url": "/api/media/models/ff675fd9f58fff087b01d68d10f8323b.glb",
+   "kb": 263
+  },
+  "lod3": {
+   "url": "/api/media/models/61e9684b8a3f5e7a7665b1d770b07c46.glb",
+   "kb": 92
+  }
+ },
+ "/api/media/models/a8d5d140a72e65cfb884ea40bdc08cf9.glb": {
+  "lod2": {
+   "url": "/api/media/models/3c880f0f6d45c13a77c90f827f60760f.glb",
+   "kb": 319
+  },
+  "lod3": {
+   "url": "/api/media/models/7d9e070c8740983be8b9737d6e9d7558.glb",
+   "kb": 129
+  }
+ },
+ "/api/media/models/691acf9ed3b3223195019c5af7099382.glb": {
+  "lod2": {
+   "url": "/api/media/models/a230e7646e004f5b9e7133259e35ae0c.glb",
+   "kb": 1146
+  },
+  "lod3": {
+   "url": "/api/media/models/09e1c25a5370fb098f21a7d49118a3d3.glb",
+   "kb": 608
+  }
+ },
+ "/api/media/models/5744fd74b00e70bd1460d08a5220f092.glb": {
+  "lod2": {
+   "url": "/api/media/models/d02ed8a0d036a3c470bb96caf9f7eac2.glb",
+   "kb": 479
+  },
+  "lod3": {
+   "url": "/api/media/models/44ec1bd0981e074762f04839301e66e3.glb",
+   "kb": 201
+  }
+ }
+}

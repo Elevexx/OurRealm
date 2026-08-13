@@ -1,6 +1,37 @@
-# OurRealm — PRD (UPDATED 2026-06 — MOBILE FOUNDATION PASS COMPLETE @ published v20)
+# OurRealm — PRD (UPDATED 2026-06 — PRODUCTION DIRECTIVE CHECKPOINT 1 @ published v22)
 
 ## RESUME CHECKPOINT (exact — next agent starts here)
+- FOUNDER MASTER GAMEPLAY REFERENCE is the permanent top-priority target:
+  /app/memory/nexus_master_references.md (Reference B). Manifest with statuses:
+  /app/memory/nexus_visual_asset_manifest.md. Full production directive was given 2026-06 (this session):
+  NAVS, exact HUD, Batch2, crowd canary, Instance Director, friend-first join, Realm instances,
+  network interest mgmt, load tests 50→1000 users, final founder approval required.
+- PUBLISHED v22. Rollback: v17-v21 snapshots in nexus_versions. Meshy 4684→4504 (Batch2 = 180 credits,
+  founder approved). NO further paid generations without approval.
+- DONE this checkpoint:
+  1) Batch 2 GENERATED+INTEGRATED (v22): bg_skyline x6, circular skywalks x2 (±34,8,-22), business_ship,
+     gaming_ship, flying_vehicle x3 (static), white boulevard center strip. Masters+runtimes in
+     asset_library (/app/artifacts/nexus/batch2.json).
+  2) CROWD CANARY BLOCKED: refine 535k faces > Meshy 320k rig limit → needs ONE paid remesh
+     (POST /openapi/v2/remesh target_polycount<=300k) then rig+walk. AWAITING FOUNDER APPROVAL.
+     Idem keys nx-b2-crowd_citizen-* (preview/refine already paid+stored).
+  3) NAVS v1: LOD2/LOD3 generated for 6 city assets (nexus_navs_lods.py, v21 tagged 27 entities,
+     lod2/lod3 props); renderer streams lod2 first for entities >60u from spawn then upgrades to hero
+     LOD at idle priority; adaptive tiers low/med/high/ultra via 4s real-frame benchmark + hysteresis
+     (8s cooldown) exposed at window.__NEXUS.tier. PENDING: KTX2/Basis, meshopt option, impostors,
+     occlusion culling, anim keyframe compression.
+  4) EXACT REFERENCE HUD rebuilt (lucide icons, no emojis for controls): glass EXIT pill w/ arrow,
+     zone pill w/ green dot + REAL online, map-pin + gear squares, Crosshair recenter, JUMP (ArrowUp),
+     INTERACT (Hand), joystick ring w/ 4 chevrons + glowing cyan thumb (tracks touch via
+     #nexus-joy-thumb), chat + Smile reactions (send real chat), portal card w/ Gamepad2 icon + glowing
+     green ENTER. All: aria-labels, active/focus states, >=44px. MIC = feature flag nexus_voice (OFF) —
+     real proximity voice NOT built = BLOCKING GAP for final approval.
+- NOT STARTED (next in execution order): Instance Director (provider-neutral, routes
+  /nexus/nexus-central[/instance/{id}|/realm/{slug}]), friend-first smart join, Realm-owned instances,
+  interest management, load tests 50-1000 simulated users, voice chat, 20-30min soak/memory tests,
+  founder real-device test.
+- Perf note: preview container is software-GL; fps 21 in low tier. All testing = emulation, no real device yet.
+
 - PUBLISHED v20. Snapshots v17/v18/v19 recoverable in nexus_versions. Meshy balance 4684 (LOCKED —
   zero credits used in audit + foundation pass; founder must approve any generation).
 - MASTER REFERENCES (permanent visual targets): /app/memory/nexus_master_references.md

@@ -1,0 +1,39 @@
+{
+ "_balance": {
+  "start": 4684,
+  "end": 4504
+ },
+ "bg_skyline": {
+  "runtime_url": "/api/media/models/a42c3c5011ee0a1674bd70b7f1a3910d.glb",
+  "master_url": "/api/media/models/5fe8408d850dd90c25d1dcdc2dd0e3b4.glb",
+  "kb": 2983,
+  "task": "019ff8eb-037c-7dc2-b1cf-c1d916492aec"
+ },
+ "sky_bridge": {
+  "runtime_url": "/api/media/models/a40f60ac2a1d4ed47b28b39e65ea19ca.glb",
+  "master_url": "/api/media/models/59d91abde5c48e051a8a8a542e778688.glb",
+  "kb": 3022,
+  "task": "019ff8ef-2288-7e81-9f9f-7956a1652399"
+ },
+ "business_ship": {
+  "runtime_url": "/api/media/models/088dd673844aba95a2ea13274801ca4d.glb",
+  "master_url": "/api/media/models/00e16e976f62e376175977b46732f345.glb",
+  "kb": 828,
+  "task": "019ff8f2-5208-70f3-8be2-adb472be45e3"
+ },
+ "gaming_ship": {
+  "runtime_url": "/api/media/models/a513736bd221c709c298065153eb75d3.glb",
+  "master_url": "/api/media/models/cd861d2e6a495fa2642205ec9ccb5dd9.glb",
+  "kb": 1264,
+  "task": "019ff8f4-4604-7149-a254-4d276972f662"
+ },
+ "flying_vehicle": {
+  "runtime_url": "/api/media/models/ab99380de2b588aba368eaed7a89479f.glb",
+  "master_url": "/api/media/models/af7b37466cdc312b85ac1d7118064088.glb",
+  "kb": 882,
+  "task": "019ff8f6-62bd-7005-8e34-82f945f324ed"
+ },
+ "crowd_citizen": {
+  "error": "The input model has 535,124 faces which exceeds the 320,000 face limit for rigging. Please use the Remesh API (POST /openapi/v2/remesh) with a target_polycount of 300000 or less before rigging."
+ }
+}
