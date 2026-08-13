@@ -1,4 +1,8 @@
-# NEXUS AVATAR COLLECTION — QUEUED DIRECTIVE (LOCKED until founder says exactly: "START AVATAR PHASE")
+# NEXUS AVATAR COLLECTION — COMPLETE (2026-06 continuous run, published v25)
+STATUS: All six avatars GENERATED, rigged, 7 animations each, LOD0/1/2, thumbnails, registered
+(status premium / eligibility unlock). Fire Power unlock + equip live and tested (iteration_146).
+Reference sheet: rp0vfdr3_8828913B (get_assets_tool). Anim action ids: idle 0, walk 1, run 6,
+jump 641 (640 broken server-side), fall 502, land 506, greet 28.
 
 PREREQUISITE GATE (reconfirmed 2026-06): Founder re-stated: do NOT begin any avatar backend,
 Meshy generation, inventory, Fire Power, database, or UI work until he explicitly says

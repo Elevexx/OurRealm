@@ -1,0 +1,106 @@
+{
+ "balance_start": 3984,
+ "av_realm_guardian": {
+  "rig": "019ff99c-45a3-79a7-bc4e-12c52d401d4a",
+  "anims": [
+   "fall",
+   "greet",
+   "idle",
+   "jump",
+   "land",
+   "run",
+   "walk"
+  ],
+  "lods": {
+   "lod0": "/api/media/models/ed1a12b01d3a29b623d02f55b7ac31a5.glb",
+   "lod1": "/api/media/models/7c6803ec9f27a272af9d6dcef6d378e8.glb",
+   "lod2": "/api/media/models/af07d08d16a6cd69029231612abcb6ae.glb"
+  }
+ },
+ "av_aether_champion": {
+  "rig": "019ff99c-5353-7956-872d-72a146365a53",
+  "anims": [
+   "fall",
+   "greet",
+   "idle",
+   "jump",
+   "land",
+   "run",
+   "walk"
+  ],
+  "lods": {
+   "lod0": "/api/media/models/f240bdcea267b75be68e73818797df42.glb",
+   "lod1": "/api/media/models/81c47553803f598b38133a3a5174fb4f.glb",
+   "lod2": "/api/media/models/9bfc2a94db85a48cb9d7a9d5d20d47b2.glb"
+  }
+ },
+ "av_tech_operative": {
+  "rig": "019ff995-742a-7855-84e5-3350eddb2484",
+  "anims": [
+   "fall",
+   "greet",
+   "idle",
+   "jump",
+   "land",
+   "run",
+   "walk"
+  ],
+  "lods": {
+   "lod0": "/api/media/models/2daffc66d2b9dfa1565183178abc337a.glb",
+   "lod1": "/api/media/models/8614906c9c13b5eb06ff54f000e6c6ed.glb",
+   "lod2": "/api/media/models/518834574b1844d0b5b252bc4350836f.glb"
+  }
+ },
+ "av_streetwear": {
+  "rig": "019ff98f-0f56-7ded-8b67-96666c6b2fd7",
+  "anims": [
+   "fall",
+   "greet",
+   "idle",
+   "jump",
+   "land",
+   "run",
+   "walk"
+  ],
+  "lods": {
+   "lod0": "/api/media/models/6016bf03a6b2c2392e855b80822a3c18.glb",
+   "lod1": "/api/media/models/638f289dfc54425fde5c297cc1e898f9.glb",
+   "lod2": "/api/media/models/138e03dbd9ecb5a133501f746432adb4.glb"
+  }
+ },
+ "av_void_wizard": {
+  "rig": "019ff99c-b259-7fed-bcb1-1cdfc40aaca2",
+  "anims": [
+   "fall",
+   "greet",
+   "idle",
+   "jump",
+   "land",
+   "run",
+   "walk"
+  ],
+  "lods": {
+   "lod0": "/api/media/models/a322bcf32cd29a40c2217641ee29b85f.glb",
+   "lod1": "/api/media/models/f8f8027faf0b18be8903087a9e966d9c.glb",
+   "lod2": "/api/media/models/6b55dbe9478cb0f68c8619d82a432d1d.glb"
+  }
+ },
+ "av_arcane_sovereign": {
+  "rig": "019ff99c-b243-79ba-909a-0ebd1c94b53f",
+  "anims": [
+   "fall",
+   "greet",
+   "idle",
+   "jump",
+   "land",
+   "run",
+   "walk"
+  ],
+  "lods": {
+   "lod0": "/api/media/models/707e7d1f3e249afa7217c00f2de84191.glb",
+   "lod1": "/api/media/models/52b71dd36a740271af3a0559e56a0fc4.glb",
+   "lod2": "/api/media/models/4c598b6be087498a297534745104389a.glb"
+  }
+ },
+ "balance_end": 3965
+}

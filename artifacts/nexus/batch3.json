@@ -1,0 +1,32 @@
+{
+ "_balance_start": 4094,
+ "led_tower": {
+  "task": "019ff9a2-fa0e-74bb-91d2-ff9fbd49515a",
+  "runtime_url": "/api/media/models/5a36d221587bab2c7f4264de8d4e9d4a.glb",
+  "runtime_kb": 2164,
+  "lod2_url": "/api/media/models/093e2a5477536adea4b425f581681264.glb",
+  "lod2_kb": 628
+ },
+ "spire_cluster": {
+  "task": "019ff9a2-fb42-7abb-ae6e-fce71d538343",
+  "runtime_url": "/api/media/models/6e626fc4f7c417f603c7ed7b9c95788e.glb",
+  "runtime_kb": 2009,
+  "lod2_url": "/api/media/models/7dced92ef6eace17c1641e2de20d5867.glb",
+  "lod2_kb": 605
+ },
+ "holo_club": {
+  "task": "019ff9a3-357e-7ac1-bed0-7fb01d1698ae",
+  "runtime_url": "/api/media/models/e41a6721b80f7aee50b0acb4d57e8db9.glb",
+  "runtime_kb": 2425,
+  "lod2_url": "/api/media/models/f49db7ce40aa4dceadc02be7227f9020.glb",
+  "lod2_kb": 739
+ },
+ "terrace_block": {
+  "task": "019ff9a5-4d9f-7149-bfd7-d94dccf69f02",
+  "runtime_url": "/api/media/models/9a1e6d5da20ac8c4f00734724ae03faa.glb",
+  "runtime_kb": 2960,
+  "lod2_url": "/api/media/models/61bc40142f83304375407116af884b93.glb",
+  "lod2_kb": 1212
+ },
+ "_balance_end": 3965
+}

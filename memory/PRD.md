@@ -1,5 +1,42 @@
 # OurRealm — PRD (UPDATED 2026-06 — CONTINUOUS PRODUCTION RUN COMPLETE @ published v24)
 
+## RESUME CHECKPOINT v25 (exact — next agent starts here)
+- FINAL CONTINUOUS RUN (founder-approved, no checkpoints): published v25. Meshy 4377→3965
+  (412cr of 1,078 available; floor 3299 never approached; margin 666).
+- SIX-AVATAR COLLECTION COMPLETE: av_streetwear/av_tech_operative/av_realm_guardian/
+  av_aether_champion/av_arcane_sovereign/av_void_wizard ALL generated (text-to-3d preview+refine →
+  remesh 40k → rig → 7 anims idle(0)/walk(1)/run(6)/jump(641)/fall(502)/land(506)/greet(28)).
+  action_id 640 is broken server-side (fails uncharged) — use 641. Masters:
+  /app/artifacts/nexus/av_*_rig_master.glb. LOD0/1/2 runtimes + thumb (/nexus/av_*.webp cropped from
+  founder sheet rp0vfdr3_8828913B). Registry docs status='premium', eligibility='unlock'.
+  Scripts: nexus_avatars6.py (batch) + nexus_avatars6_finish.py (consolidator — reuses succeeded
+  tasks by idem_key, immune to payload-hash conflicts; ALWAYS run finisher after batch).
+  LESSON: never launch the batch twice concurrently (duplicate rig charge 5cr happened once).
+- FIRE POWER UNLOCKS LIVE: POST /api/nexus/avatars/{id}/unlock (atomic find_one_and_update burn on
+  fire_wallets.vault_balance, duplicate-race refund, idempotent already_unlocked), select requires
+  entitlement (nexus_avatar_unlocks). FIXED: _user_avatar_data + avatars_select now allow status
+  premium (was active-only → premium could never equip/render).
+- AVATAR UI: AvatarCollection.jsx — thumbnails first, on-demand GLB preview modal (three.js, lod1),
+  burn dialog ('cannot be reversed'), SELECT/EQUIPPED states, LEGENDARY badge on wizard.
+- RENDERER: motion pack now loads walk/run/jump/fall/land/greet; anim state machine: airborne
+  vy>0.6→jump else fall; land window 320ms after hard landing (vy<-6); greet 1600ms on emoji
+  reaction (window.__NEXUS_MOB.greet). Remote players share anim strings via presence.
+- ARCHITECTURE BATCH 3 (v25, 120cr): led_tower x4, terrace_block x4, spire_cluster x7, holo_club x2
+  (runtime draco 1024 + lod2 256 in asset_library, masters immutable). Zero-credit: deep skyline
+  ring x8 (batch2 bg_skyline reused at r≈140-160), 5 extra orbit flying vehicles, OURREALM/NEXUS
+  billboard signs. Scripts: nexus_batch3.py + nexus_batch3_integrate.py. Artifacts:
+  /app/artifacts/nexus/batch3.json.
+- TESTING: iteration_146 ALL PASS (backend 10/10: collection order/7-anims/unlock burn/idempotent
+  repeat/402/404/403/equip/parallel-unlock-single-burn/join+public smoke; frontend: cards, preview
+  modal, burn flow, equip, world entry regression). Container is software-GL: world GLBs stream
+  slowly — visual parity vs founder references still requires founder real-device approval.
+- REMAINING GAPS (honest): Reference B/wide-shot parity NOT claimed (needs real-GPU look pass,
+  lighting/FX tuning); KTX2/meshopt encodings, animated distant impostors, occlusion culling still
+  pending; voice SFU flag OFF; jump clip is Jump_Over_Obstacle_1_inplace (641) — founder may prefer
+  another; ARCANE SOVEREIGN model has a horned headdress (acceptable interpretation, 1 replacement
+  slot unused if founder rejects).
+
+
 ## RESUME CHECKPOINT (exact — next agent starts here)
 - FINAL RUN RESULT: published v24, rollback v17-v23. Meshy 4499→4456 (43cr of 1200 ceiling: citizen v2
   preview10+refine20+remesh5+rig5+walk3; both earlier rig failures uncharged; floor 3299 never approached).

@@ -264,7 +264,7 @@ async def _user_avatar_data(user_id):
     av = None
     if u and u.get("nexus_avatar_id"):
         av = await db.nexus_avatars.find_one(
-            {"id": u["nexus_avatar_id"], "status": "active"},
+            {"id": u["nexus_avatar_id"], "status": {"$in": ["active", "premium"]}},
             {
                 "_id": 0,
                 "id": 1,
@@ -599,14 +599,68 @@ async def avatars_list(current: CurrentUser):
     return {"avatars": items, "my_id": (u or {}).get("nexus_avatar_id") or default, "default_id": default}
 
 
+AVATAR_FP_COSTS = {"av_streetwear": 1000, "av_tech_operative": 5000, "av_realm_guardian": 10000,
+                   "av_aether_champion": 25000, "av_arcane_sovereign": 50000, "av_void_wizard": 100000}
+
+
+@router.get("/avatars/collection")
+async def avatars_collection(current: CurrentUser):
+    avs = await db.nexus_avatars.find({"id": {"$in": list(AVATAR_FP_COSTS)}}, {"_id": 0}).to_list(10)
+    owned = {u["avatar_id"] async for u in db.nexus_avatar_unlocks.find({"user_id": current["id"]}, {"_id": 0, "avatar_id": 1})}
+    wallet = await db.fire_wallets.find_one({"user_id": current["id"]}, {"_id": 0, "vault_balance": 1})
+    me = await db.users.find_one({"id": current["id"]}, {"_id": 0, "nexus_avatar_id": 1})
+    out = []
+    for aid, cost in AVATAR_FP_COSTS.items():
+        av = next((a for a in avs if a["id"] == aid), None) or {"id": aid, "status": "pending_model"}
+        out.append({**av, "fp_cost": cost, "unlocked": aid in owned,
+                    "equipped": (me or {}).get("nexus_avatar_id") == aid,
+                    "available": bool(av.get("rigged_base_url") or av.get("url"))})
+    return {"avatars": out, "fire_balance": (wallet or {}).get("vault_balance", 0)}
+
+
+@router.post("/avatars/{avatar_id}/unlock")
+async def avatar_unlock(avatar_id: str, current: CurrentUser):
+    """Atomic, idempotent, server-priced Fire Power burn → permanent account-bound entitlement."""
+    cost = AVATAR_FP_COSTS.get(avatar_id)
+    if not cost:
+        raise HTTPException(status_code=404, detail="Unknown avatar")
+    existing = await db.nexus_avatar_unlocks.find_one({"user_id": current["id"], "avatar_id": avatar_id})
+    if existing:
+        return {"ok": True, "already_unlocked": True}
+    av = await db.nexus_avatars.find_one({"id": avatar_id}, {"_id": 0, "status": 1})
+    if not av or av.get("status") not in ("active", "premium"):
+        raise HTTPException(status_code=409, detail="Avatar is not available yet")
+    wallet = await db.fire_wallets.find_one_and_update(
+        {"user_id": current["id"], "vault_balance": {"$gte": cost}},
+        {"$inc": {"vault_balance": -cost}})
+    if not wallet:
+        raise HTTPException(status_code=402, detail="Not enough Fire Power in your Vault")
+    tx_id = uuid.uuid4().hex[:16]
+    try:
+        await db.nexus_avatar_unlocks.insert_one({
+            "user_id": current["id"], "avatar_id": avatar_id, "fp_burned": cost,
+            "tx_id": tx_id, "at": _iso()})
+    except Exception:  # duplicate race → refund the second burn
+        await db.fire_wallets.update_one({"user_id": current["id"]}, {"$inc": {"vault_balance": cost}})
+        return {"ok": True, "already_unlocked": True}
+    await db.fire_wallet_transactions.insert_one({
+        "id": tx_id, "user_id": current["id"], "type": "avatar_unlock_burn", "amount": -cost,
+        "avatar_id": avatar_id, "at": _iso()})
+    return {"ok": True, "tx_id": tx_id, "burned": cost}
+
+
 @router.post("/avatars/select")
 async def avatars_select(body: dict, current: CurrentUser):
     aid = str(body.get("id") or "")
-    av = await db.nexus_avatars.find_one({"id": aid, "status": "active"}, {"_id": 0})
+    av = await db.nexus_avatars.find_one({"id": aid, "status": {"$in": ["active", "premium"]}}, {"_id": 0})
     if not av:
         raise HTTPException(status_code=404, detail="Avatar not available")
     if av.get("eligibility") == "assigned" and current["id"] not in (av.get("assigned_user_ids") or []):
         raise HTTPException(status_code=403, detail="This avatar is not available to your account")
+    if aid in AVATAR_FP_COSTS:
+        owned = await db.nexus_avatar_unlocks.find_one({"user_id": current["id"], "avatar_id": aid})
+        if not owned:
+            raise HTTPException(status_code=403, detail="Unlock this avatar with Fire Power first")
     await db.users.update_one({"id": current["id"]}, {"$set": {"nexus_avatar_id": aid}})
     _avatar_cache.pop(current["id"], None)
     return {"ok": True, "id": aid}

@@ -10,15 +10,15 @@ Statuses: WORKING | NEEDS-REPAIR | IN-ENGINE | NEEDS-MODULAR-ASSET | NEEDS-PAID-
 | ORAi hologram + "AI CORE ONLINE" display | IN-ENGINE | build with emissive panel + sign entity (zero credit) |
 | Blue hero tower | INTEGRATED-VERIFIED | tower_blue |
 | Green hero tower | INTEGRATED-VERIFIED | tower_green |
-| Background skyscraper family / deep skyline | INTEGRATED (v22: 6 placements m_b2_sky0-5) — verify on real GPU |
-| Multi-level terraces + storefronts | INTEGRATED-VERIFIED (storefront model ±30) + NEEDS-MODULAR-ASSET for more variation |
+| Background skyscraper family / deep skyline | INTEGRATED (v22 m_b2_sky0-5 + v25 deep ring m_b3_dsky0-7 + spire clusters m_b3_spire0-6) — verify on real GPU |
+| Multi-level terraces + storefronts | INTEGRATED-VERIFIED (storefront ±30) + v25 terrace_block x4 (m_b3_ter0-3) + holo_club x2 + led_tower x4 |
 | Elevated bridges / balconies | INTEGRATED (v22: circular skywalks m_b2_bridge0/1 at ±34, model is ring-shaped — placed as side skywalks) |
 | Reflective central boulevard w/ blue/white/green path lighting | WORKING (in-engine lanes + reflective ground); white center dashed strip = IN-ENGINE todo |
 | Trees / planters / landscaping | WORKING (in-engine neon holo trees x8); more variation IN-ENGINE |
 | Multiple colored Realm portals | WORKING (4 portal rings + portal_arch models) |
 | Business Realm flying structure | INTEGRATED (v22: m_b2_bship at -46,24,8) |
 | Gaming Realm flying structure | INTEGRATED (v22: m_b2_gship at 46,24,8) |
-| Flying vehicles | INTEGRATED (v22: 3 static m_b2_fv0-2; flight animation = IN-ENGINE todo) + traffic streaks WORKING |
+| Flying vehicles | INTEGRATED (v23 orbit anim on fv0-2 + v25 five more m_b3_fv0-4 varied radii/heights) |
 | Holographic signage/billboards | WORKING (sign entities: GAMING REALM / BUSINESS REALM etc); richer displays IN-ENGINE |
 | NEXUS SPAWN ZONE sky title | IN-ENGINE (sign entity, optional) |
 | Living crowds | INTEGRATED-VERIFIED (v24): citizen v2 GENERATED (A-pose prompt, remesh 40k, rig+walk OK; task nx-cz2-* chain; LOD0 2.0MB/41.5k tris, LOD1 606KB, LOD2 203KB, walk 756KB). Crowd rigs = [citizen LOD1 + walk, starter_f] w/ HSL clothing variations + staggered timing, 18 rigged + instanced capsule far-fill. Distant impostor tier = PENDING |

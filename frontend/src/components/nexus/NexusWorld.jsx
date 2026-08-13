@@ -184,19 +184,12 @@ function makeAvatar(color, label, avatarUrl, motionUrls, mixers) {
       mixers.push(mix);
 
       const pack = motionUrls || {};
-
-      Promise.all([
-        pack.walk
-          ? loadGLB(pack.walk, 4).catch(() => null)
-          : Promise.resolve(null),
-        pack.run
-          ? loadGLB(pack.run, 4).catch(() => null)
-          : Promise.resolve(null),
-      ]).then(([walkFile, runFile]) => {
-        if (grp.userData.disposed) return;
-        addAction("walk", walkFile?.animations?.[0]);
-        addAction("run", runFile?.animations?.[0]);
-      });
+      const clipNames = ["walk", "run", "jump", "fall", "land", "greet"];
+      Promise.all(clipNames.map((n) => (pack[n] ? loadGLB(pack[n], 4).catch(() => null) : Promise.resolve(null))))
+        .then((files) => {
+          if (grp.userData.disposed) return;
+          files.forEach((f, i) => addAction(clipNames[i], f?.animations?.[0]));
+        });
     }).catch((err) => { console.error("[nexus] avatar GLB load failed:", avatarUrl, err?.message || err); });
   }
   return grp;
@@ -206,14 +199,13 @@ function setAvatarAnim(grp, state) {
   const mix = grp.userData.mix;
   if (!mix?.actions) return;
 
-  const wanted =
-    state === "run" ? "run" :
-    state === "walk" ? "walk" :
-    "idle";
+  const wanted = ["run", "walk", "jump", "fall", "land", "greet"].includes(state) ? state : "idle";
 
   const next =
     mix.actions[wanted] ||
     (wanted === "run" ? mix.actions.walk : null) ||
+    (wanted === "fall" ? mix.actions.jump : null) ||
+    (wanted === "land" ? mix.actions.jump : null) ||
     mix.actions.idle;
 
   if (!next || mix.currentAction === next) return;
@@ -490,7 +482,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     const spawn = zone.spawn || { x: 0, z: 0 };
     player.position.set(spawn.x, 0, spawn.z);
     player.visible = mode === "play";
-    let vy = 0; let grounded = true; let sprint = false;
+    let vy = 0; let grounded = true; let sprint = false; let landAt = 0; let greetAt = 0;
     let yaw = 0; let pitch = 0.16; let dist = 9;
     const keys = {}; const touch = { x: 0, y: 0 }; let jumpReq = false; let interactReq = false;
     const remotes = {};
@@ -599,7 +591,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     renderer.domElement.addEventListener("touchstart", onTS, { passive: true });
     renderer.domElement.addEventListener("touchmove", onTM, { passive: true });
     renderer.domElement.addEventListener("touchend", onTE, { passive: true });
-    window.__NEXUS_MOB = { jump: () => { jumpReq = true; }, interact: () => { interactReq = true; }, sprint: (v) => { sprint = v; }, recenter: () => { yaw = player.rotation.y; pitch = 0.16; dist = 9; } };
+    window.__NEXUS_MOB = { jump: () => { jumpReq = true; }, interact: () => { interactReq = true; }, sprint: (v) => { sprint = v; }, greet: () => { greetAt = Date.now(); }, recenter: () => { yaw = player.rotation.y; pitch = 0.16; dist = 9; } };
 
     // presence loop (real multiplayer, server-validated)
     let presTimer = null; let saveTimer = null;
@@ -619,7 +611,14 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       holder.add(s);
       bubbles[uid] = { id, sprite: s, holder, at: Date.now() };
     };
-    const anim = () => (!grounded ? "jump" : (Math.hypot(touch.x, touch.y) > 0.1 || keys.w || keys.a || keys.s || keys.d || keys.arrowup || keys.arrowdown || keys.arrowleft || keys.arrowright) ? (sprint || keys.shift || Math.hypot(touch.x, touch.y) > 0.78 ? "run" : "walk") : "idle");
+    const anim = () => {
+      if (!grounded) return vy > 0.6 ? "jump" : "fall";
+      if (Date.now() - landAt < 320) return "land";
+      const moving = Math.hypot(touch.x, touch.y) > 0.1 || keys.w || keys.a || keys.s || keys.d || keys.arrowup || keys.arrowdown || keys.arrowleft || keys.arrowright;
+      if (moving) return sprint || keys.shift || Math.hypot(touch.x, touch.y) > 0.78 ? "run" : "walk";
+      if (Date.now() - greetAt < 1600) return "greet";
+      return "idle";
+    };
     let lastPv = 0;
     if (mode === "play") {
       chatApiRef.current = async (text) => {
@@ -738,7 +737,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
         for (const c of colliders) {
           if (Math.abs(player.position.x - c.x) < c.hw + 0.3 && Math.abs(player.position.z - c.z) < c.hd + 0.3 && player.position.y >= c.top - 0.5 && c.top > floor) floor = c.top;
         }
-        if (player.position.y <= floor) { player.position.y = floor; vy = 0; grounded = true; }
+        if (player.position.y <= floor) { if (!grounded && vy < -6) landAt = Date.now(); player.position.y = floor; vy = 0; grounded = true; }
         setAvatarAnim(player, anim());
         // interactions
         let prompt = "";
@@ -1030,7 +1029,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
               style={{ bottom: "max(calc(env(safe-area-inset-bottom) + 74px), 86px)" }} data-testid="nexus-emoji-bar">
               {["👋", "😄", "🔥", "💚", "🎉"].map((em) => (
                 <button key={em} type="button" aria-label={`React ${em}`}
-                  onClick={async () => { try { await chatApiRef.current?.(em); } catch { /* offline */ } setReactOpen(false); }}
+                  onClick={async () => { try { window.__NEXUS_MOB?.greet?.(); await chatApiRef.current?.(em); } catch { /* offline */ } setReactOpen(false); }}
                   className="w-11 h-11 rounded-full bg-white/10 border border-white/15 text-lg active:scale-90 focus-visible:ring-2 focus-visible:ring-cyan-400 outline-none transition-transform"
                   data-testid={`nexus-emoji-${em}`}>{em}</button>
               ))}

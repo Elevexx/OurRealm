@@ -6,6 +6,7 @@ import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import apiClient from "@/api/client";
 import NexusWorld from "@/components/nexus/NexusWorld";
+import { AvatarCollection } from "@/components/nexus/AvatarCollection";
 import { toast } from "sonner";
 import { Users, DoorOpen, MessageCircle, RefreshCw, ChevronRight, Check, Hexagon } from "lucide-react";
 
@@ -279,6 +280,8 @@ export default function NexusPage() {
             </div>
           ))}
         </div>
+
+        {user && <AvatarCollection />}
 
         {/* EXPLORE — real zones from the published world */}
         <div className="mt-9">
