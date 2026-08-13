@@ -55,6 +55,7 @@ const AdminGames = React.lazy(() => import("@/pages/AdminGames"));
 const AdminMeshy = React.lazy(() => import("@/pages/AdminMeshy"));
 const NexusPage = React.lazy(() => import("@/pages/NexusPage"));
 const AdminNexus = React.lazy(() => import("@/pages/AdminNexus"));
+const AdminNexusAssets = React.lazy(() => import("@/pages/AdminNexusAssets"));
 const NexusModelTest = React.lazy(() => import("@/pages/NexusModelTest"));
 const GamesHub = React.lazy(() => import("@/pages/GamesHub"));
 const PublicGamePreview = React.lazy(() => import("@/pages/PublicGamePreview"));
@@ -267,6 +268,7 @@ function App() {
             <Route path="/nexus/nexus-central/instance/:instanceId" element={<Lazy><NexusPage /></Lazy>} />
             <Route path="/nexus/nexus-central/realm/:realmSlug" element={<Lazy><NexusPage /></Lazy>} />
             <Route path="/admin/nexus" element={<Lazy><AdminNexus /></Lazy>} />
+            <Route path="/admin/nexus/assets" element={<Lazy><AdminNexusAssets /></Lazy>} />
             <Route path="/admin/nexus/model-test" element={<Lazy><NexusModelTest /></Lazy>} />
             <Route path="/admin/orai-projects" element={<Navigate to="/admin/gamemaker/studio" replace />} />
             <Route path="/admin/orai/dashboard" element={<Navigate to="/admin/orai" replace />} />

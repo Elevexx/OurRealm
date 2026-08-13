@@ -287,6 +287,8 @@ from routers import realm_keys as realm_keys_router_mod  # noqa: E402
 app.include_router(realm_keys_router_mod.router)
 from routers import nexus as nexus_router_mod  # noqa: E402
 app.include_router(nexus_router_mod.router)
+from routers import nexus_assets as nexus_assets_router_mod  # noqa: E402
+app.include_router(nexus_assets_router_mod.router)
 app.include_router(orai_access_router_mod.router)
 
 

@@ -1,5 +1,37 @@
 # OurRealm — PRD (UPDATED 2026-06 — CONTINUOUS PRODUCTION RUN COMPLETE @ published v24)
 
+## RESUME CHECKPOINT — nexus-v30-asset-manager (FOUNDER REVIEW READY, latest)
+- ASSET MANAGER + AVATAR STUDIO live at /admin/nexus/assets (founder-only; linked from the v29
+  release strip). Backend: routers/nexus_assets.py (mounted in server.py).
+- CHUNKED UPLOADS: init/part/complete/abort at /api/nexus/assets/upload/*; 16MB parts streamed to
+  /data/nexus_uploads (never whole-file in memory), per-part sha, whole-file SHA-256 verify
+  (tested: mismatch → 422), content-hash dedupe, 4GB cap (NEXUS_MAX_UPLOAD_GB), resumable session
+  docs in db.nexus_uploads; client uploader has pause/resume/retry/progress/speed/ETA +
+  localStorage session. E2E verified (asset f49db7ce… stored durable + catalogued).
+- SECURITY: GLB magic+structure validation via mp.validate_glb; zip guards (traversal, symlink,
+  ratio 120x bomb cap, executable/nested-archive block); founder-only (regular user → 403);
+  avatar model versions require skins.
+- UNITY WEB BUILDS: zip-only validation (loader/framework/wasm/data(.br/.gz) + index via flexible
+  regex), staged extraction to /data/unity_stage, served at /api/nexus/assets/unity-stage/{id}/
+  with correct MIME/Content-Encoding + COOP/COEP + sandbox CSP + no-store html. LIMITATION: same
+  host origin (no separate staging domain available in this infra) — sandboxed via CSP; Three.js
+  Nexus remains the live runtime; no Unity bridge messages implemented yet (documented).
+- AVATAR STUDIO: /api/nexus/assets/catalog (8 avatars + owners/equipped/anims/lods/ktx2 stats);
+  version drafts (nexus_avatar_versions), publish = atomic pointer swap w/ rb-{aid} rollback
+  target (IDs/prices/ownership preserved), rollback endpoint; estimate (70cr) → generate REQUIRES
+  approve=true (else 428) + balance guard; jobs recorded in nexus_jobs (pipeline queued marker —
+  actual generation reuses scripts/nexus_avatars_v2 flow when run).
+- MAGIC LOOPS: optional adapter — config server-side in db.nexus_ml_config (token never returned),
+  emit_event() with event_id/idempotency_key/env/actor, delivery log + dead_letter in
+  db.nexus_ml_events, test-connection endpoint, founder panel with recent events. Core works
+  without it.
+- RIGHTS ATTESTATION: /api/nexus/assets/attest records 4 statements + admin + hash + version.
+- Meshy balance UNchanged: 3,529. v29 manifest/145 files untouched; rollbacks preserved.
+- LIMITATIONS (honest): no malware AV engine (signature/structure checks only); gltf-zip→glb
+  conversion pipeline stub; 3D inspector is the existing preview (no wireframe/skeleton tools);
+  reference-image prompt generation not wired (upload path works); Unity bridge (section 7) not
+  implemented; generation job runner is queued-marker (execute via existing scripts).
+
 ## RESUME CHECKPOINT — nexus-v29-parity (REPUBLISH READY, latest)
 - DEPLOYMENT PARITY DONE (zero credits, balance 3,529): canonical release manifest at
   /app/backend/release/nexus_release.json (release_id nexus-v29-parity, world v28, 132 runtime

@@ -152,6 +152,7 @@ export default function AdminNexus() {
           </span>
           <span className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5" data-testid="nexus-release-vault">FOUNDER VAULT {rel.founder_unlocks}/6</span>
           <span className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5" data-testid="nexus-release-rollbacks">ROLLBACKS {rel.rollbacks?.map((r) => `v${r.version}`).slice(0, 4).join(" ")}</span>
+          <a href="/admin/nexus/assets" className="bg-cyan-500/15 border border-cyan-400/40 text-cyan-200 rounded-lg px-2.5 py-1.5" data-testid="open-asset-manager">ASSET MANAGER →</a>
           {rel.applied && <span className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5">MIGRATION {rel.applied.release_id} ✓</span>}
         </div>
       )}
