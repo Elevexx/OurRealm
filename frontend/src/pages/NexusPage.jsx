@@ -6,7 +6,7 @@ import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import apiClient from "@/api/client";
 import NexusWorld from "@/components/nexus/NexusWorld";
-import { AvatarCollection } from "@/components/nexus/AvatarCollection";
+import { AvatarCollection, AvatarPreview } from "@/components/nexus/AvatarCollection";
 import { toast } from "sonner";
 import { Users, DoorOpen, MessageCircle, RefreshCw, ChevronRight, Check, Hexagon } from "lucide-react";
 
@@ -302,7 +302,15 @@ export default function NexusPage() {
                         );
                       })}
                     </div>
-                    <div className="mt-4 text-[10px] font-black tracking-[0.22em] text-white/70">CHOOSE YOUR GLOW</div>
+                    <div className="mt-4 text-[10px] font-black tracking-[0.22em] text-white/70">LIVE PREVIEW</div>
+                    <div className="mt-2">
+                      {(() => {
+                        const bavRaw = (avInfo?.avatars || []).find((a) => a.id === bodyPick);
+                        const burl = bavRaw && (bavRaw.lod_urls?.lod1 || bavRaw.rigged_base_url);
+                        return burl ? <AvatarPreview url={burl} glow={GLOWS[glowPick]} label={bodyPick === "av_ninja_f" ? "FEMALE NINJA" : "MALE NINJA"} /> : null;
+                      })()}
+                    </div>
+                    <div className="mt-4 text-[10px] font-black tracking-[0.22em] text-white/70">CHOOSE YOUR GLOW <span className="text-cyan-300">— {glowPick.toUpperCase()}</span></div>
                     <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Avatar glow color" data-testid="nexus-glow-picker">
                       {Object.entries(GLOWS).map(([name, hex]) => (
                         <button key={name} role="radio" aria-checked={glowPick === name} aria-label={`Glow color ${name}`}

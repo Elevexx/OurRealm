@@ -1,0 +1,71 @@
+{
+ "balance_start": 3529,
+ "directive": "nexus-v31-avatar-repair",
+ "tasks": [
+  {
+   "task": "019ffa96-e887-755c-b52a-538150f18d6a",
+   "avatar": "av_void_wizard",
+   "action_id": 659,
+   "purpose": "run repair",
+   "credits": 3,
+   "result": "ok"
+  },
+  {
+   "task": "019ffa96-e887-71f0-aea8-25db226b9c94",
+   "avatar": "av_aether_champion",
+   "action_id": 659,
+   "purpose": "run repair",
+   "credits": 3,
+   "result": "ok"
+  },
+  {
+   "task": "019ffa96-e885-71ef-b55f-5dc7489a1524",
+   "avatar": "av_ninja_f",
+   "action_id": 659,
+   "purpose": "run repair",
+   "credits": 3,
+   "result": "ok"
+  },
+  {
+   "task": "019ffa96-e888-79fe-8584-7b4d291e668b",
+   "avatar": "av_arcane_sovereign",
+   "action_id": 659,
+   "purpose": "run repair",
+   "credits": 3,
+   "result": "ok"
+  },
+  {
+   "task": "019ffa96-e888-75f2-a5fe-d96fdc9cb93c",
+   "avatar": "av_streetwear",
+   "action_id": 659,
+   "purpose": "run repair",
+   "credits": 3,
+   "result": "ok"
+  },
+  {
+   "task": "019ffa96-e888-75f0-a0ae-80979a5b317f",
+   "avatar": "av_tech_operative",
+   "action_id": 659,
+   "purpose": "run repair",
+   "credits": 3,
+   "result": "ok"
+  },
+  {
+   "task": "019ffa96-e888-71f1-aa32-7063867f333a",
+   "avatar": "av_ninja",
+   "action_id": 659,
+   "purpose": "run repair",
+   "credits": 3,
+   "result": "ok"
+  },
+  {
+   "task": "019ffa96-e887-755e-9c18-b84df0790e68",
+   "avatar": "av_realm_guardian",
+   "action_id": 659,
+   "purpose": "run repair",
+   "credits": 3,
+   "result": "ok"
+  }
+ ],
+ "balance_end": 3505
+}

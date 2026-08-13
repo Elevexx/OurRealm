@@ -1,5 +1,26 @@
 # OurRealm — PRD (UPDATED 2026-06 — CONTINUOUS PRODUCTION RUN COMPLETE @ published v24)
 
+## RESUME CHECKPOINT — nexus-v31-avatar-repair (FOUNDER REVIEW READY, latest)
+- ROOT CAUSES FIXED: (1) green-stuck glow = emissive color baked green in ninja masters' emissive
+  texture → zero-credit grayscale emissive-mask derivatives via scripts/ninja_mask.js
+  (@gltf-transform/core + sharp, node deps under backend/scripts/node_modules) applied to masters →
+  rebuilt lod0/1/2, docs updated with glow_mask:true (ktx2:false for ninjas now — masks are
+  draco+png; re-run avatar ktx2 pass later if wanted); (2) premium showing ninja/wrong tint =
+  applyGlowTint MUTATED SHARED CACHED MATERIALS → per-instance material clones everywhere;
+  (3) sideways run = action_id 6 (BackRight_Run strafe) → replaced with 659 run_fast_3_inplace,
+  paid animation-only repair for all 8 avatars (24cr, ledger /app/artifacts/nexus/v31_ledger.json,
+  audit doc id v31-approval). Balance 3,529 → 3,505.
+- PREVIEW STATE MODEL: AvatarPreview (exported) — LOADING/PREVIEWING badges, LOAD FAILED + RETRY
+  (no silent ninja fallback), per-instance materials, live glow prop; NexusPage starter chooser
+  has LIVE PREVIEW panel with instant glow switching + color-name label; collection dialog shows
+  id/gen/cost/OWNED/EQUIPPED/ANIMS chips.
+- TESTED: iteration_149 ALL PASS (glow persistence, rapid-switch race, wizard preview identity,
+  V30 catalog intact). Run direction verified by clip identity (659 forward in-place), NOT
+  visually frame-by-frame (software-GL) — founder should eyeball run in-world.
+- V31 NOT DONE (deferred per repair-priority order, report honestly): Unity Bridge + simulator,
+  ORAi prompt reference generator, real malware scanner interface, separate unity staging origin,
+  full inspector upgrades (wireframe/skeleton/texture-memory), Magic Loops wiring of new events.
+
 ## RESUME CHECKPOINT — nexus-v30-asset-manager (FOUNDER REVIEW READY, latest)
 - ASSET MANAGER + AVATAR STUDIO live at /admin/nexus/assets (founder-only; linked from the v29
   release strip). Backend: routers/nexus_assets.py (mounted in server.py).

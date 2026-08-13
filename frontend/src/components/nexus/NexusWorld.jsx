@@ -160,11 +160,13 @@ const applyGlowTint = (root, glowHex) => {
   if (!glowHex) return;
   root.traverse((o) => {
     if (!o.isMesh && !o.isSkinnedMesh) return;
+    // per-instance material clones — never mutate shared cached materials
+    o.material = Array.isArray(o.material) ? o.material.map((m) => m.clone()) : o.material.clone();
     (Array.isArray(o.material) ? o.material : [o.material]).forEach((mm) => {
       if (!mm || !mm.emissive) return;
       if (mm.emissiveMap || (mm.emissiveIntensity || 0) > 0.01) {
         mm.emissive.set(glowHex);
-        mm.emissiveIntensity = Math.max(mm.emissiveIntensity || 0, 1.1);
+        mm.emissiveIntensity = Math.max(mm.emissiveIntensity || 0, 1.4);
       }
     });
   });

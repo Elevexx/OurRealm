@@ -12,12 +12,15 @@ import { Flame, Lock, Check, X, Eye, ShieldCheck } from "lucide-react";
 const NAMES = { av_streetwear: "STREETWEAR", av_tech_operative: "TECH OPERATIVE", av_realm_guardian: "REALM GUARDIAN",
   av_aether_champion: "AETHER CHAMPION", av_arcane_sovereign: "ARCANE SOVEREIGN", av_void_wizard: "LEGENDARY VOID WIZARD" };
 
-const AvatarPreview = ({ url }) => {
+export const AvatarPreview = ({ url, glow = null, label = "" }) => {
   const ref = useRef(null);
+  const holderRef = useRef(null);
   const [state, setState] = useState("loading");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const mount = ref.current;
     if (!mount || !url) return undefined;
+    setState("loading");
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
@@ -33,8 +36,24 @@ const AvatarPreview = ({ url }) => {
     const loader = new GLTFLoader(); loader.setDRACOLoader(draco); loader.setKTX2Loader(ktx2);
     let disposed = false; let raf = 0; let mixer = null;
     const holder = new THREE.Group(); scene.add(holder);
+    holderRef.current = holder;
+    const tint = (hex) => {
+      if (!hex) return;
+      holder.traverse((o) => {
+        if (!o.isMesh && !o.isSkinnedMesh) return;
+        (Array.isArray(o.material) ? o.material : [o.material]).forEach((mm) => {
+          if (mm && mm.emissive && (mm.emissiveMap || (mm.emissiveIntensity || 0) > 0.01)) {
+            mm.emissive.set(hex); mm.emissiveIntensity = Math.max(mm.emissiveIntensity || 0, 1.5);
+          }
+        });
+      });
+    };
+    holder.userData.tint = tint;
     loader.load(url, (g) => {
       if (disposed) return;
+      g.scene.traverse((o) => {
+        if (o.isMesh || o.isSkinnedMesh) o.material = Array.isArray(o.material) ? o.material.map((m) => m.clone()) : o.material.clone();
+      });
       const box = new THREE.Box3().setFromObject(g.scene);
       const size = box.getSize(new THREE.Vector3());
       const s = 1.8 / Math.max(0.01, size.y);
@@ -44,6 +63,7 @@ const AvatarPreview = ({ url }) => {
       g.scene.position.set(-c.x, -b2.min.y - 0.9 + 1.0, -c.z);
       g.scene.traverse((o) => { if (o.isMesh || o.isSkinnedMesh) o.frustumCulled = false; });
       holder.add(g.scene);
+      tint(glow);
       if (g.animations?.length) {
         mixer = new THREE.AnimationMixer(g.scene);
         mixer.clipAction(g.animations[0]).play();
@@ -74,11 +94,23 @@ const AvatarPreview = ({ url }) => {
       renderer.dispose(); renderer.forceContextLoss?.(); draco.dispose(); ktx2.dispose();
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
     };
-  }, [url]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, attempt]);
+  useEffect(() => { holderRef.current?.userData?.tint?.(glow); }, [glow]);
   return (
     <div ref={ref} className="w-full h-64 rounded-xl bg-black/50 border border-white/10 relative overflow-hidden" data-testid="avatar-preview-canvas">
+      {label && (
+        <span className="absolute top-1.5 left-1.5 z-10 text-[9px] font-black tracking-widest bg-black/60 border border-cyan-400/30 text-cyan-200 rounded-full px-2 py-1" data-testid="avatar-preview-state">
+          {state === "loading" ? `LOADING: ${label}` : state === "error" ? "LOAD FAILED" : `PREVIEWING · ${label}`}
+        </span>
+      )}
       {state === "loading" && <div className="absolute inset-0 flex items-center justify-center text-xs text-cyan-300 font-bold tracking-widest">LOADING MODEL…</div>}
-      {state === "error" && <div className="absolute inset-0 flex items-center justify-center text-xs text-red-300 font-bold">PREVIEW UNAVAILABLE</div>}
+      {state === "error" && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+          <span className="text-xs text-red-300 font-black">LOAD FAILED — this avatar did not load</span>
+          <button onClick={() => setAttempt((a) => a + 1)} className="min-h-[40px] px-4 rounded-xl bg-white/10 border border-white/25 text-[11px] font-black tracking-widest" data-testid="avatar-preview-retry">RETRY</button>
+        </div>
+      )}
     </div>
   );
 };
@@ -179,7 +211,15 @@ export const AvatarCollection = () => {
               </button>
             </div>
             <div className="mt-3">
-              <AvatarPreview url={previewUrl(preview)} />
+              <AvatarPreview url={previewUrl(preview)} label={NAMES[preview.id]} />
+            </div>
+            <div className="mt-2 flex gap-1.5 flex-wrap text-[9px] font-black">
+              <span className="bg-white/10 rounded px-1.5 py-0.5">{preview.id}</span>
+              <span className="bg-white/10 rounded px-1.5 py-0.5">{preview.gen || "v1"}</span>
+              <span className="bg-orange-500/15 text-orange-300 rounded px-1.5 py-0.5">{preview.fp_cost.toLocaleString()}🔥</span>
+              {preview.equipped && <span className="bg-emerald-500/15 text-emerald-300 rounded px-1.5 py-0.5">EQUIPPED</span>}
+              {preview.unlocked && !preview.equipped && <span className="bg-cyan-500/15 text-cyan-300 rounded px-1.5 py-0.5">OWNED</span>}
+              <span className="bg-white/10 rounded px-1.5 py-0.5">ANIMS {Object.keys(preview.animation_urls || {}).length}</span>
             </div>
             <div className="mt-4 flex gap-3">
               {preview.equipped ? (

@@ -1,0 +1,21 @@
+{
+  "summary": "V31 avatar repair verification: 6/6 backend pytest passed and full frontend flow passed on desktop 1280x800. Starter glow rapid-switch (cyan→magenta) preserved LIVE PREVIEW canvas and updated label to MAGENTA, SAVE AVATAR fired 'Starter Ninja saved' toast. Legendary Void Wizard preview reached PREVIEWING state with correct av_void_wizard id chip and 100,000 fp cost chip; close works; rapid open/close of 3 avatars (av_streetwear, av_tech_operative, av_realm_guardian) produced no crash and final dialog matched av_realm_guardian. Regression /api/nexus/join and /api/nexus/assets/catalog (founder stealth, 8+ avatars) intact. auditcheckreal restored to starter av_ninja/lime at end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_v31_avatars.py",
+    "/app/test_reports/pytest/v31_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AvatarPreview badge test flow: for the void wizard preview the LOADING state was not observed — the first badge readback at t=0 already showed PREVIEWING. Likely because GLB was cached from earlier test or the state transition is too fast for the 2s polling. Consider surfacing an initial LOADING state for at least one render tick even on cache hits so the state machine (LOADING → PREVIEWING) is visually testable. Not a blocker.",
+    "Starter chooser 'Preview state' badge and the collection preview badge both use the same data-testid 'avatar-preview-state' — two badges are present in DOM at once when the dialog is open, so any consumer relying on this selector must handle multiple matches."
+  ],
+  "updated_files": ["/app/backend/tests/test_v31_avatars.py", "/app/test_reports/pytest/v31_results.xml"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "auditcheckreal / Password1$ ; stealth / Password1$",
+  "seed_data_creation": "None. Toggled auditcheckreal starter to av_ninja_f/red and av_ninja/MAGENTA during tests; final state restored to av_ninja/lime via API. Meshy balance untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend tests live at /app/backend/tests/test_v31_avatars.py. Two avatar-preview-state badges may coexist (starter LIVE PREVIEW + collection dialog); poll all visible matches. For rapid preview interactions, thumbnails found: av_streetwear, av_tech_operative, av_realm_guardian, plus av_void_wizard. FP cost chip in dialog is shown as e.g. '100,000🔥' (with fire emoji), not literal 'fp' string — the ANIMS chip shows 'ANIMS 7'."
+}
