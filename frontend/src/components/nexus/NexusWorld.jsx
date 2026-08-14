@@ -127,21 +127,39 @@ function signSprite(text, color = "#37c8ff", widthUnits = 20) {
 }
 
 function chatSprite(text) {
-  const c = document.createElement("canvas"); c.width = 512; c.height = 160;
+  // auto-sized bubble: width follows measured text (+padding), wraps at max width, height follows lines
+  const FONT = "bold 30px sans-serif";
+  const MAX_TEXT_W = 440, PAD_X = 22, PAD_Y = 16, LINE_H = 38, MAX_LINES = 4;
+  const meas = document.createElement("canvas").getContext("2d");
+  meas.font = FONT;
+  const words = String(text).trim().split(/\s+/);
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    const tryLn = cur ? cur + " " + w : w;
+    if (meas.measureText(tryLn).width <= MAX_TEXT_W || !cur) cur = tryLn;
+    else {
+      lines.push(cur); cur = w;
+      if (lines.length === MAX_LINES) break;
+    }
+  }
+  if (cur && lines.length < MAX_LINES) lines.push(cur);
+  else if (lines.length === MAX_LINES) lines[MAX_LINES - 1] += "…";
+  const textW = Math.min(MAX_TEXT_W, Math.max(...lines.map((ln) => meas.measureText(ln).width), 24));
+  const w = Math.ceil(textW + PAD_X * 2), h = Math.ceil(lines.length * LINE_H + PAD_Y * 2);
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
   const g = c.getContext("2d");
   g.fillStyle = "rgba(240,246,255,0.92)";
-  g.beginPath(); g.roundRect(6, 6, 500, 130, 22); g.fill();
-  g.fillStyle = "#101a30"; g.font = "bold 30px sans-serif"; g.textAlign = "center";
-  const words = String(text).split(" "); const lines = [""];
-  words.forEach((w) => {
-    if ((lines[lines.length - 1] + " " + w).length > 30 && lines.length < 3) lines.push(w);
-    else lines[lines.length - 1] = (lines[lines.length - 1] + " " + w).trim();
-  });
-  lines.forEach((ln, i) => g.fillText(ln.slice(0, 34), 256, 48 + i * 38));
+  g.beginPath(); g.roundRect(2, 2, w - 4, h - 4, Math.min(18, h / 2 - 2)); g.fill();
+  g.fillStyle = "#101a30"; g.font = FONT; g.textAlign = "center"; g.textBaseline = "middle";
+  lines.forEach((ln, i) => g.fillText(ln, w / 2, PAD_Y + LINE_H * (i + 0.5)));
   const t = new THREE.CanvasTexture(c);
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false }));
   s.userData.chatTexture = t;
-  s.scale.set(3.4, 1.06, 1); s.position.y = 3.1; return s;
+  const PX = 0.0066; // world units per canvas px (matches previous visual scale)
+  s.scale.set(w * PX, h * PX, 1);
+  s.position.y = 2.85 + (h * PX) / 2; // sits just above the nameplate, grows upward
+  return s;
 }
 
 function nameSprite(text) {
@@ -336,6 +354,8 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
   const [chatOpen, setChatOpen] = useState(false);
   const [chatError, setChatError] = useState("");
   const chatApiRef = useRef(null);
+  const chatInputRef = useRef(null);
+  const chatSendingRef = useRef(false);
   const [cam, setCam] = useState({ sens: CAMS().sens ?? 1, invH: !!CAMS().invH, invV: !!CAMS().invV });
   const camRef = useRef(cam);
   camRef.current = cam;
@@ -610,13 +630,17 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     let vy = 0; let grounded = true; let sprint = false; let landAt = 0; let greetAt = 0;
     let yaw = 0; let pitch = 0.16; let dist = 9;
     const keys = {}; const touch = { x: 0, y: 0 }; let jumpReq = false; let interactReq = false;
+    let chatMode = false; // true while the chat input owns the keyboard
     const remotes = {};
 
     const onKey = (d) => (ev) => {
-      if (ev.target && (ev.target.tagName === "INPUT" || ev.target.tagName === "TEXTAREA")) return;
-      keys[ev.key.toLowerCase()] = d;
-      if (d && ev.key === " ") { jumpReq = true; ev.preventDefault(); }
-      if (d && ev.key.toLowerCase() === "e") interactReq = true;
+      const k = ev.key.toLowerCase();
+      // keyup ALWAYS clears — a keyup swallowed while typing must never leave a movement key stuck
+      if (!d) { keys[k] = false; return; }
+      if (chatMode || (ev.target && (ev.target.tagName === "INPUT" || ev.target.tagName === "TEXTAREA"))) return;
+      keys[k] = true;
+      if (ev.key === " ") { jumpReq = true; ev.preventDefault(); }
+      if (k === "e") interactReq = true;
     };
     const kd = onKey(true); const ku = onKey(false);
     window.addEventListener("keydown", kd); window.addEventListener("keyup", ku);
@@ -635,7 +659,13 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     const ray = new THREE.Raycaster();
     let dragSel = false;
     const onDown = (ev) => {
-      if (mode === "play") { renderer.domElement.requestPointerLock?.(); return; }
+      if (mode === "play") {
+        // defensive recovery: clicking into gameplay always ends any lingering chat focus
+        if (chatMode) window.__NEXUS_CHAT?.set(false);
+        if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur?.();
+        renderer.domElement.requestPointerLock?.();
+        return;
+      }
       const r = renderer.domElement.getBoundingClientRect();
       const p = new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(p, camera);
@@ -683,6 +713,11 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     const camT = { id: null, lx: 0, ly: 0 };
     let pinch = 0;
     const onTS = (ev) => {
+      // touching the world while chat is focused returns input to gameplay (mobile recovery)
+      if (chatMode) {
+        window.__NEXUS_CHAT?.set(false);
+        if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur?.();
+      }
       for (const t of ev.changedTouches) {
         if (t.clientX < window.innerWidth / 2 && joy.id === null) { joy.id = t.identifier; joy.cx = t.clientX; joy.cy = t.clientY; }
         else if (camT.id === null) { camT.id = t.identifier; camT.lx = t.clientX; camT.ly = t.clientY; }
@@ -717,6 +752,24 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
     renderer.domElement.addEventListener("touchmove", onTM, { passive: true });
     renderer.domElement.addEventListener("touchend", onTE, { passive: true });
     window.__NEXUS_MOB = { jump: () => { jumpReq = true; }, interact: () => { interactReq = true; }, sprint: (v) => { sprint = v; }, greet: () => { greetAt = Date.now(); }, recenter: () => { yaw = player.rotation.y; pitch = 0.16; dist = 9; } };
+    // centralized chat-mode transition: EnterChatMode/ExitChatMode equivalent.
+    // Entering suppresses gameplay input; exiting deterministically restores movement,
+    // camera look, wheel/pinch zoom and joystick state. dist (zoom) is never reset.
+    window.__NEXUS_CHAT = {
+      set: (on, restorePointer = false) => {
+        chatMode = !!on;
+        Object.keys(keys).forEach((k) => { keys[k] = false; });
+        touch.x = 0; touch.y = 0; jumpReq = false; interactReq = false;
+        joy.id = null; camT.id = null;
+        if (on) { sprint = false; document.exitPointerLock?.(); }
+        if (!on && restorePointer && mode === "play") {
+          try { renderer.domElement.requestPointerLock?.(); } catch { /* browser may reject */ }
+        }
+        const th = document.getElementById("nexus-joy-thumb");
+        if (th) th.style.transform = "translate(0px, 0px)";
+      },
+      active: () => chatMode,
+    };
 
     // presence loop (real multiplayer, server-validated)
     let presTimer = null; let saveTimer = null;
@@ -1050,6 +1103,7 @@ export default function NexusWorld({ mode = "play", world, zoneId = "nexus_centr
       if (presTimer) clearInterval(presTimer);
       if (saveTimer) clearInterval(saveTimer);
       chatApiRef.current = null;
+      window.__NEXUS_CHAT = null;
       player.userData.disposed = true;
       Object.values(remotes).forEach((r) => { r.grp.userData.disposed = true; });
       Object.keys(bubbles).forEach(dropBubble);
@@ -1237,19 +1291,26 @@ glb:${diagSnap.glbLoaded}/${diagSnap.glbFailed}f q:${diagSnap.queue}+${diagSnap.
           )}
           {(!mob || chatOpen) && (
           <form
-            onSubmit={async (ev) => {
-              ev.preventDefault();
-              const value = chatText.trim();
-              if (!value || !chatApiRef.current) return;
-              setChatError("");
-              try {
-                await chatApiRef.current(value);
-                setChatText("");
-                if (mob) setChatOpen(false);
-              } catch (err) {
-                setChatError(err?.response?.data?.detail || "Chat failed");
-              }
-            }}
+              onSubmit={async (ev) => {
+                ev.preventDefault();
+                if (chatSendingRef.current) return; // single send path — no duplicate submits
+                const value = chatText.trim();
+                if (!value || !chatApiRef.current) return;
+                setChatError("");
+                chatSendingRef.current = true;
+                // Exit chat while this submit still has browser user activation.
+                chatInputRef.current?.blur();
+                window.__NEXUS_CHAT?.set(false, !mob);
+                try {
+                  await chatApiRef.current(value);
+                  setChatText("");
+                  if (mob) setChatOpen(false);
+                } catch (err) {
+                  setChatError(err?.response?.data?.detail || "Chat failed");
+                } finally {
+                  chatSendingRef.current = false;
+                }
+              }}
             className={`absolute z-20 ${mob ? "bottom-40" : "bottom-12"} left-1/2 -translate-x-1/2 flex gap-1 w-[min(88vw,420px)]`}
             data-testid="nexus-chat-form">
             {chatError && (
@@ -1258,12 +1319,24 @@ glb:${diagSnap.glbLoaded}/${diagSnap.glbFailed}f q:${diagSnap.queue}+${diagSnap.
               </span>
             )}
             <input
+              ref={chatInputRef}
               value={chatText}
               onChange={(ev) => setChatText(ev.target.value)}
+              onFocus={() => window.__NEXUS_CHAT?.set(true)}
+              onBlur={() => window.__NEXUS_CHAT?.set(false)}
+              onKeyDown={(ev) => {
+                ev.stopPropagation(); // typing must never reach gameplay hotkeys
+                if (ev.key === "Escape") {
+                  ev.preventDefault();
+                  ev.currentTarget.blur();
+                  window.__NEXUS_CHAT?.set(false, true);
+                  if (mob) setChatOpen(false);
+                }
+              }}
               maxLength={160}
               aria-label="Nearby chat"
               placeholder="Talk to nearby players…"
-              className="min-w-0 flex-1 rounded-lg border border-white/15 bg-black/65 px-3 py-2 text-xs text-white outline-none focus:border-cyan-400"
+              className="min-w-0 flex-1 rounded-lg border border-white/15 bg-black/65 px-3 py-2 text-base md:text-xs text-white outline-none focus:border-cyan-400"
               data-testid="nexus-chat-input"
             />
             <button type="submit" aria-label="Send chat"
