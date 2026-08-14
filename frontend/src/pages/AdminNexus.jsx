@@ -131,6 +131,8 @@ export default function AdminNexus() {
           ◉ LIVE PREVIEW v{meta.published_version}
         </button>
         <Link to="/nexus" className="text-[10px] font-bold bg-purple-500/15 text-purple-300 hover:bg-purple-500/30 rounded-lg px-2.5 py-1.5" data-testid="nexus-nav-mp">◎ MULTIPLAYER WORLD</Link>
+        <a href="/admin/nexus/assets" className="text-[10px] font-bold bg-cyan-500/15 text-cyan-200 border border-cyan-400/40 hover:bg-cyan-500/30 rounded-lg px-2.5 py-1.5" data-testid="nexus-topbar-asset-manager">◆ ASSET MANAGER</a>
+        <a href="/admin/nexus/assets?sec=unity" className="text-[10px] font-bold bg-lime-500/15 text-lime-300 border border-lime-400/40 hover:bg-lime-500/30 rounded-lg px-2.5 py-1.5" data-testid="nexus-topbar-unity-builds">▲ UNITY BUILDS</a>
         <div className="ml-auto flex items-center gap-2">
           <button onClick={publish} data-testid="nexus-publish-btn"
             className="text-[11px] font-black bg-emerald-500 text-black hover:bg-emerald-400 rounded-lg px-4 py-1.5">PUBLISH UPDATE ⇧</button>

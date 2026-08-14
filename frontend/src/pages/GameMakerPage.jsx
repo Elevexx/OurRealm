@@ -21,8 +21,8 @@ const IMG = {
   turn_based_creature_rpg: "https://static.prod-images.emergentagent.com/jobs/1c985948-3d37-41fa-b0f3-a492d822a494/images/040a449a0b631a01b1d01b1e1029d20d5f3d95ebaaa086b5860fb212deb8d253.jpeg",
   platformer: "https://static.prod-images.emergentagent.com/jobs/1c985948-3d37-41fa-b0f3-a492d822a494/images/643664d7edcc1ec813c94705a2b2a532066fa6e21b9e20a8cc16d55a3d5afbac.jpeg",
   top_down_adventure: "https://static.prod-images.emergentagent.com/jobs/1c985948-3d37-41fa-b0f3-a492d822a494/images/becc04c0e2324f4fb81a1845dcac2a99d39682a06a0b00f217ab7d417674d726.jpeg",
-  open_world_rpg: "https://static.prod-images.emergentagent.com/jobs/1c985948-3d37-41fa-b0f3-a492d822a494/images/8f5ae95bc5d3e19070cceab7456e55659bd9aee661acba4643ced14fc360eef0.jpeg",
-  card_battle: "https://static.prod-images.emergentagent.com/jobs/1c985948-3d37-41fa-b0f3-a492d822a494/images/a263441df3e3697ea386fc136de27c0ffe80b76017b98e565ee1ff64c7c90bca.jpeg",
+  open_world_rpg: "/api/media/images/9dc01738c82ce276cb3a8442233b65dc.webp",
+  card_battle: "/api/media/images/723781ee31eeaf289331287382cbf234.webp",
   tower_defense: "https://static.prod-images.emergentagent.com/jobs/1c985948-3d37-41fa-b0f3-a492d822a494/images/d84d38d92e1e270e725df68796df880097d99695e56e79a7ff0e61700cae8594.jpeg",
   match3: "https://static.prod-images.emergentagent.com/jobs/1c985948-3d37-41fa-b0f3-a492d822a494/images/788f394684201327520ca7f5f8f0dffe200071cb931f3778ce8c0deb23908d25.jpeg",
   racing: "https://static.prod-images.emergentagent.com/jobs/1c985948-3d37-41fa-b0f3-a492d822a494/images/f8e7eb2b60e930d359a6236e11bd6627f09faf4c9e99f92e298d7f9d687490c1.jpeg",
@@ -31,7 +31,13 @@ const IMG = {
 
 const BLUE = "#2EA0FF", GREEN = "#10E670", ORANGE = "#F4A73B";
 
-const Card = ({ n, name, desc, img, color, selected, status, onClick, testid }) => (
+// OurRealm-owned originals (durable R2, content-hashed): mobile loads the 512 derivative.
+const IMG_SET = {
+  open_world_rpg: "/api/media/images/585361f0dc2b0e45daffcce4c19b5cf4.webp 512w, /api/media/images/9dc01738c82ce276cb3a8442233b65dc.webp 1024w",
+  card_battle: "/api/media/images/566ec4fa237e8b6d2568d6cd4ba7dc96.webp 512w, /api/media/images/723781ee31eeaf289331287382cbf234.webp 1024w",
+};
+
+const Card = ({ n, name, desc, img, imgSet, color, selected, status, onClick, testid }) => (
   <button onClick={onClick} data-testid={testid}
     className="text-left rounded-xl overflow-hidden transition-transform duration-150 active:scale-95 relative"
     style={{
@@ -47,7 +53,7 @@ const Card = ({ n, name, desc, img, color, selected, status, onClick, testid }) 
         style={{ color: "#EAF2FF" }}>{name}</b>
     </div>
     <div className="relative" style={{ aspectRatio: "1.25/1" }}>
-      <img src={img} alt={name} loading="lazy" className="w-full h-full object-cover" />
+      <img src={img} srcSet={imgSet} sizes="(max-width: 768px) 45vw, 300px" alt={name} loading="lazy" className="w-full h-full object-cover" />
       {status === "planned" && (
         <span className="absolute top-1.5 right-1.5 text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase"
           style={{ background: "rgba(4,8,18,0.85)", color: ORANGE, border: `1px solid ${ORANGE}` }}>Coming Soon</span>)}
@@ -201,7 +207,7 @@ export default function GameMakerPage() {
             10 ANIMATION STYLES</h3>
           <div className="grid grid-cols-2 min-[420px]:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
             {(cat?.styles || fallbackStyles).map((s, i) => (
-              <Card key={s.key} n={i + 1} name={s.name} desc={s.description} img={IMG[s.key]} color={BLUE}
+              <Card key={s.key} n={i + 1} name={s.name} desc={s.description} img={IMG[s.key]} imgSet={IMG_SET[s.key]} color={BLUE}
                 selected={style === s.key} onClick={() => !locked && setStyle(s.key)}
                 testid={`gm-style-${s.key}`} />
             ))}
@@ -215,7 +221,7 @@ export default function GameMakerPage() {
             10 POWERFUL GAME RUNTIMES</h3>
           <div className="grid grid-cols-2 min-[420px]:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
             {(cat?.runtimes || fallbackRuntimes).map((r, i) => (
-              <Card key={r.key} n={i + 1} name={r.name} desc={r.description} img={IMG[r.key]} color={GREEN}
+              <Card key={r.key} n={i + 1} name={r.name} desc={r.description} img={IMG[r.key]} imgSet={IMG_SET[r.key]} color={GREEN}
                 status={r.status} selected={runtime === r.key}
                 onClick={() => { if (locked) return; if (r.status !== "live" && r.status !== "beta") { toast.info(`${r.name} is coming soon`); return; } setRuntime(r.key); }}
                 testid={`gm-runtime-${r.key}`} />

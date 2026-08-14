@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, "/app/backend")
 from dotenv import load_dotenv; load_dotenv("/app/backend/.env")
 
-RELEASE_ID = "nexus-v32-final"
+RELEASE_ID = "nexus-v33-visuals"
 WORLD_VERSION_MIN = 28
 
 def iso(): return datetime.now(timezone.utc).isoformat()
@@ -65,6 +65,28 @@ async def main():
 
     static_assets = []
     from pathlib import Path
+    # V33 image assets (avatar portraits + gamemaker art): verify durable in R2, merge into files
+    img_manifest_path = Path("/app/backend/release/nexus_v33_images.json")
+    if img_manifest_path.exists():
+        for rec in json.loads(img_manifest_path.read_text()).get("images", []):
+            for role, f in rec["files"].items():
+                durable = False
+                try:
+                    if not adapter.exists("images", f["file"]):
+                        local = media_dir("images") / f["file"]
+                        if local.exists():
+                            adapter.put("images", f["file"], local); uploaded += 1
+                    durable = adapter.exists("images", f["file"])
+                except Exception as ex:
+                    print(f"[rel] image {f['file']}: {ex}", flush=True)
+                files[f["file"]] = {"file": f["file"], "url": f["url"], "category": f"{rec['kind']}_{role}",
+                                    "refs": 1, "avatar": rec["id"] if rec["kind"] == "avatar" else None,
+                                    "game": rec["id"] if rec["kind"] == "game_art" else None,
+                                    "sha256": f["sha256"], "bytes": f["bytes"], "mime": f["mime"],
+                                    "width": f["width"], "height": f["height"], "ktx2": False,
+                                    "status": "DURABLE" if durable else "UPLOAD_FAILED"}
+                if durable: ok += 1
+                else: failed += 1
     for rel in ["basis/basis_transcoder.js", "basis/basis_transcoder.wasm", "draco/draco_decoder.wasm",
                 "draco/draco_wasm_wrapper.js", "draco/draco_decoder.js"] + \
                [f"nexus/{a['id']}.webp" for a in avatars if a.get("status") != "archived"]:
@@ -73,7 +95,7 @@ async def main():
                               "status": "BUNDLED" if p.exists() else "MISSING"})
 
     manifest = {
-        "release_id": RELEASE_ID, "version": 32, "built_at": iso(),
+        "release_id": RELEASE_ID, "version": 33, "built_at": iso(),
         "world_version": max(doc["published_version"], WORLD_VERSION_MIN),
         "world": doc["published"],
         "avatars": [a for a in avatars],
@@ -88,7 +110,7 @@ async def main():
     import os; os.makedirs("/app/backend/release", exist_ok=True)
     json.dump(manifest, open(out, "w"), default=str)
     await db.nexus_release.update_one({"release_id": RELEASE_ID}, {"$set": {
-        "release_id": RELEASE_ID, "version": 32, "built_at": manifest["built_at"],
+        "release_id": RELEASE_ID, "version": 33, "built_at": manifest["built_at"],
         "counts": manifest["counts"], "world_version": manifest["world_version"]}}, upsert=True)
     print(f"[rel] {RELEASE_ID}: files={len(files)} durable={ok} uploaded_now={uploaded} failed={failed} -> {out}", flush=True)
 

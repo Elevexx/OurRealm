@@ -64,7 +64,7 @@ async def public_info():
     return {"name": "OurRealm Nexus", "online": await _online_count(),
             "zones": [{"id": z["id"], "name": z["name"]} for z in zones],
             "published_version": doc["published_version"],
-            "release_id": "nexus-v32-final",
+            "release_id": "nexus-v33-visuals",
             "systems": {"multiplayer": "live", "world": "live", "proximity_chat": "live",
                         "live_publish_sync": "live", "orai_architect": "live",
                         "asset_studio": "live", "avatar_studio": "live"}}

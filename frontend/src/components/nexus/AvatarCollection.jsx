@@ -158,9 +158,11 @@ export const AvatarCollection = ({ onEquipped }) => {
         {data.avatars.map((av) => (
           <div key={av.id} className="relative rounded-2xl border border-white/10 bg-gradient-to-b from-[#101a33] to-[#070b18] overflow-hidden flex flex-col" data-testid={`avatar-card-${av.id}`}>
             <button type="button" onClick={() => av.available && setPreview(av)} aria-label={`Preview ${NAMES[av.id]}`}
-              className="relative w-full aspect-[3/4] max-h-44 overflow-hidden bg-black/40 group" data-testid={`avatar-thumb-${av.id}`}>
-              <img src={av.thumb || `/nexus/${av.id}.webp`} alt={NAMES[av.id]} loading="lazy"
-                className="w-full h-full object-cover object-top group-active:scale-105 transition-transform" />
+              className="relative w-full aspect-[3/4] max-h-44 overflow-hidden isolate bg-black/40 group" data-testid={`avatar-thumb-${av.id}`}>
+              <img src={av.thumbs?.w512 || av.thumb || `/nexus/${av.id}.webp`}
+                srcSet={av.thumbs ? `${av.thumbs.w512} 512w, ${av.thumbs.w1024} 1024w, ${av.thumbs.w2048} 2048w` : undefined}
+                sizes="(max-width: 1024px) 45vw, 300px" alt={NAMES[av.id]} loading="lazy"
+                className="absolute inset-0 w-full h-full object-cover object-top group-active:scale-105 transition-transform" />
               {av.id === "av_void_wizard" && (
                 <span className="absolute top-1.5 right-1.5 text-[9px] font-black tracking-widest bg-yellow-500/90 text-black rounded-full px-2 py-0.5">LEGENDARY</span>
               )}

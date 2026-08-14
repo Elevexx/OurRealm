@@ -78,9 +78,10 @@ export default function NexusPage() {
     if (user) apiClient.post("/nexus/prefs", { gfx: t }).catch(() => {});
   };
   const [glowPick, setGlowPick] = useState("lime");
-  const [bodyPick, setBodyPick] = useState("av_ninja");
+  const [bodyPick, setBodyPick] = useState(null);
   const [glowSaving, setGlowSaving] = useState(false);
   const saveStarter = async () => {
+    if (!bodyPick) return;
     setGlowSaving(true);
     try {
       await apiClient.post("/nexus/avatars/starter", { id: bodyPick, color: glowPick });
@@ -101,6 +102,9 @@ export default function NexusPage() {
     toast.success("Avatar saved to your account");
   };
   const myAvatar = avInfo?.avatars?.find((a) => a.id === avInfo.my_id) || null;
+  // equipped-avatar thumbnail: optimized derivative > catalog thumb > bundled art (id already carries av_ prefix)
+  const myThumb = myAvatar?.thumbs?.w512 || myAvatar?.thumb || (avInfo?.my_id ? `/nexus/${avInfo.my_id}.webp` : null);
+  const myThumbSet = myAvatar?.thumbs ? `${myAvatar.thumbs.w512} 512w, ${myAvatar.thumbs.w1024} 1024w` : undefined;
   const isTouch = typeof window !== "undefined" && (window.matchMedia?.("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);
   // mobile boots with the optimized LOD so the equipped avatar appears before city decoration
   const myAvatarUrl = (isTouch && (myAvatar?.lod_urls?.lod1 || myAvatar?.lod_urls?.lod2))
@@ -287,13 +291,17 @@ export default function NexusPage() {
             {user ? (
               <>
                 <div className="mt-3 flex items-center gap-4">
-                  <div className="w-20 h-24 rounded-xl bg-gradient-to-b from-[#12203f] to-[#0a1226] border border-cyan-400/20 overflow-hidden flex items-end justify-center">
-                    {avInfo?.my_id && (
-                      <img key={avInfo.my_id} src={`/nexus/av_${avInfo.my_id}.webp`} alt="" className="w-full h-full object-cover"
+                  <div className="w-20 h-24 rounded-xl bg-gradient-to-b from-[#12203f] to-[#0a1226] border border-cyan-400/20 overflow-hidden isolate flex items-end justify-center">
+                    {myThumb && (
+                      <img key={`${avInfo.my_id}:${myThumb}`} src={myThumb} srcSet={myThumbSet} sizes="80px" alt=""
+                        className="w-full h-full object-cover object-top" data-testid="nexus-my-avatar-img"
                         onError={(ev) => { ev.currentTarget.style.display = "none"; ev.currentTarget.nextSibling.style.display = "flex"; }} />
                     )}
-                    <div className={`${avInfo?.my_id ? "hidden" : "flex"} w-full h-full items-center justify-center text-3xl font-black text-cyan-300/70`}>
-                      {(myAvatar?.label || user.username || "?").slice(0, 1).toUpperCase()}
+                    <div className={`${myThumb ? "hidden" : "flex"} w-full h-full items-end justify-center`} data-testid="nexus-my-avatar-silhouette" aria-hidden="true">
+                      <svg viewBox="0 0 64 80" className="w-14 h-[70px] text-[#1c3564]" fill="currentColor">
+                        <circle cx="32" cy="22" r="12" />
+                        <path d="M10 80c0-14 10-24 22-24s22 10 22 24z" />
+                      </svg>
                     </div>
                   </div>
                   <div className="min-w-0">
@@ -345,9 +353,16 @@ export default function NexusPage() {
                     <div className="mt-4 text-[10px] font-black tracking-[0.22em] text-white/70">LIVE PREVIEW</div>
                     <div className="mt-2">
                       {(() => {
-                        const bavRaw = (avInfo?.avatars || []).find((a) => a.id === bodyPick);
+                        // previewAvatarId (bodyPick) is separate from equippedAvatarId (my_id):
+                        // with no explicit starter pick, preview the EQUIPPED avatar — never default to Ninja
+                        const pid = bodyPick || avInfo?.my_id;
+                        const bavRaw = (avInfo?.avatars || []).find((a) => a.id === pid);
                         const burl = bavRaw && (bavRaw.lod_urls?.lod1 || bavRaw.rigged_base_url);
-                        return burl ? <AvatarPreview url={burl} glow={GLOWS[glowPick]} label={bodyPick === "av_ninja_f" ? "FEMALE NINJA" : "MALE NINJA"} /> : null;
+                        const plabel = bodyPick
+                          ? (bodyPick === "av_ninja_f" ? "FEMALE NINJA" : "MALE NINJA")
+                          : ((bavRaw?.label || "").toUpperCase());
+                        const pglow = bavRaw?.glow_channel ? GLOWS[glowPick] : null;
+                        return burl ? <AvatarPreview url={burl} glow={pglow} label={plabel} /> : null;
                       })()}
                     </div>
                     <div className="mt-4 text-[10px] font-black tracking-[0.22em] text-white/70">CHOOSE YOUR GLOW <span className="text-cyan-300">— {glowPick.toUpperCase()}</span></div>
@@ -391,7 +406,10 @@ export default function NexusPage() {
           ))}
         </div>
 
-        {user && <AvatarCollection onEquipped={() => apiClient.get("/nexus/avatars").then((r) => setAvInfo(r.data)).catch(() => {})} />}
+        {user && <AvatarCollection onEquipped={(id) => {
+          setBodyPick(String(id || "").startsWith("av_ninja") ? id : null);
+          apiClient.get("/nexus/avatars").then((r) => setAvInfo(r.data)).catch(() => {});
+        }} />}
 
         {/* EXPLORE — real zones from the published world */}
         <div className="mt-9">

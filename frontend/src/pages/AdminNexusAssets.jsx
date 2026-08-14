@@ -83,7 +83,10 @@ const Uploader = ({ kind, label, onDone }) => {
 };
 
 export default function AdminNexusAssets() {
-  const [sec, setSec] = useState("OVERVIEW");
+  const [sec, setSec] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("sec") === "unity" ? "UNITY BUILDS" : "OVERVIEW"; }
+    catch { return "OVERVIEW"; }
+  });
   const [rel, setRel] = useState(null);
   const [cat, setCat] = useState([]);
   const [builds, setBuilds] = useState([]);
@@ -188,6 +191,10 @@ export default function AdminNexusAssets() {
         )}
         {sec === "UNITY BUILDS" && (
           <div className="space-y-3">
+            <div data-testid="unity-importer-header">
+              <h2 className="text-base md:text-lg font-black tracking-[0.14em] text-lime-300">UNITY WEB BUILD IMPORTER &amp; PREVIEW</h2>
+              <p className="text-[10px] font-bold text-white/50 mt-0.5">Imports EXPORTED Unity web build ZIPs, validates them and stages an isolated preview. This is not a Unity source editor.</p>
+            </div>
             <Uploader kind="unity_zip" label="UNITY WEB BUILD — EXPORTED ZIP ONLY (not a source project)" onDone={loadAll} />
             {builds.map((b) => (
               <div key={b.build_id} className={card} data-testid={`unity-build-${b.build_id}`}>

@@ -1,6 +1,45 @@
-# OurRealm — PRD (UPDATED 2026-06 — V32 FINAL NEXUS FIXES COMPLETE, REPUBLISH READY)
+# OurRealm — PRD (UPDATED 2026-06 — V33 VISUALS RELEASE COMPLETE, REPUBLISH READY)
 
-## RESUME CHECKPOINT — nexus-v32-final (REPUBLISH READY — FOUNDER CLICKS REPUBLISH, latest)
+## RESUME CHECKPOINT — nexus-v33-visuals (REPUBLISH READY — FOUNDER CLICKS REPUBLISH, latest)
+- V33 FOUNDER DIRECTIVE (Unity visibility + original gamemaker art + AAA avatar thumbnails) DONE,
+  TESTED (iteration_151: backend 10/10 pytest PASS, frontend all core flows + post-equip fix
+  self-verified), deployment_agent PASS. ZERO Meshy credits spent (balance 3,505).
+- 1) UNITY TOOLS: /admin/nexus topbar now ALWAYS shows ASSET MANAGER (→/admin/nexus/assets) +
+  UNITY BUILDS (→/admin/nexus/assets?sec=unity) buttons (nexus-topbar-asset-manager /
+  nexus-topbar-unity-builds); AdminNexusAssets reads ?sec=unity, Unity section headed
+  "UNITY WEB BUILD IMPORTER & PREVIEW" (unity-importer-header, explicitly NOT a source editor).
+  Access: founder 200 / member 403 ("Founder only.") / anon 401 on all /api/nexus/assets/*.
+  Full V30 asset manager (resumable uploader, 3D inspector, Avatar Studio, Unity ZIP importer,
+  staging, Magic Loops) intact — no rollback of later Nexus work.
+- 2) GAMEMAKER ART: Card 6 CARD BATTLE = new ORIGINAL OurRealm cosmic arena key-art (generated,
+  no third-party trade dress); 3D OPEN WORLD card restored at zero generation cost. Both
+  re-hosted durable R2 content-hashed /api/media/images/*.webp with 512/1024/2048 WebP+AVIF
+  derivatives + 7680px masters; GameMakerPage IMG/IMG_SET srcSet — mobile loads 512.
+- 3) SIX PREMIUM AVATAR PORTRAITS: deterministic studio renders from each avatar's EXACT GLB
+  (three.js + SwiftShader headless via /tmp harness pattern; harness: scripts kept at
+  /app/backend/scripts/nexus_v33_images.py, renders were /tmp/v33). Three-quarter hero framing,
+  ry=35, idle-clip pose t=0.4, dark Nexus studio bg (NO transparency checkerboard), own-equipment
+  only (wizard staff fully inside own image, no sprite-sheet bleed). 7680px masters + w512/w1024/
+  w2048 WebP + AVIF derivatives, all DURABLE R2. DB: nexus_avatars.thumb=w1024, thumbs{...,master8k}.
+  AvatarCollection uses srcSet+sizes (mobile gets 512); public /nexus/av_*.webp replaced with new 512s.
+- 4) YOUR AVATAR CARD: fixed /nexus/av_av_* 404 bug — now myAvatar.thumbs.w512 > thumb > bundled;
+  dark SVG silhouette fallback (never an initial letter). previewAvatarId (bodyPick, init null)
+  fully separate from equippedAvatarId: premium equipped → LIVE PREVIEW shows the equipped premium,
+  NO auto Ninja highlight; browsing never equips; equip updates card+summary+live preview+ring
+  WITHOUT reload (onEquipped(id) resets bodyPick + refetches avInfo); persists after reload.
+- 5) RELEASE: nexus-v33-visuals v33, manifest 188/188 DURABLE (56 image files merged from
+  /app/backend/release/nexus_v33_images.json with sha256/dims/mime/avatar-or-game id), idempotent
+  startup migration applies avatar thumb docs in production on Republish boot. /api/nexus/public
+  returns nexus-v33-visuals. deployment_agent PASS.
+- KNOWN QUIRK: duplicate data-testid avatar-preview-state (starter LIVE PREVIEW + collection
+  dialog) — documented, tests filter by ancestor. nexus-my-avatar-name testid absent (minor).
+- FILE-EDIT CORRUPTION WATCH: three files (NexusWorld.jsx, AdminNexusAssets.jsx, NexusPage.jsx)
+  had stray duplicated tail fragments from earlier session edits — all cleaned; babel-parse all
+  edited JSX after bulk edits to catch this.
+- DEFERRED (do NOT start unprompted): Unity runtime bridge, ORAi prompt reference generator,
+  malware scanner interface, voice foundation / NPC machine.
+
+## PREVIOUS CHECKPOINT — nexus-v32-final (deployed to production)
 - ALL SIX V32 DIRECTIVES DONE, TESTED (iteration_150: backend 9/9 pytest PASS, frontend E2E 100%),
   deployment_agent PASS. ZERO Meshy credits spent (balance stays 3,505).
 - 1) LEGACY STREETWEAR STARTERS: starter_m/starter_f/av_d5b60b3e stay archived + excluded from

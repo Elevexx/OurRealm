@@ -1,0 +1,613 @@
+{
+ "release": "nexus-v33-visuals",
+ "images": [
+  {
+   "id": "av_streetwear",
+   "kind": "avatar",
+   "files": {
+    "master8k": {
+     "file": "66e060cf15c46417375c20f10fcc30fe.webp",
+     "bytes": 434552,
+     "width": 5760,
+     "height": 7680,
+     "mime": "image/webp",
+     "sha256": "66e060cf15c46417375c20f10fcc30fe02369c773817549a804c99d506f6fefc",
+     "url": "/api/media/images/66e060cf15c46417375c20f10fcc30fe.webp",
+     "status": "DURABLE"
+    },
+    "w512": {
+     "file": "835f713897aba74783ab8cac9a7b919a.webp",
+     "bytes": 15114,
+     "width": 512,
+     "height": 683,
+     "mime": "image/webp",
+     "sha256": "835f713897aba74783ab8cac9a7b919a41d4bb918a68909b4e844f5572433429",
+     "url": "/api/media/images/835f713897aba74783ab8cac9a7b919a.webp",
+     "status": "DURABLE"
+    },
+    "avif512": {
+     "file": "559dc2bd97ccd5a89c4d4ad5e142dd82.avif",
+     "bytes": 9047,
+     "width": 512,
+     "height": 683,
+     "mime": "image/avif",
+     "sha256": "559dc2bd97ccd5a89c4d4ad5e142dd82444eea3c16132c2aea23df8ae423fc70",
+     "url": "/api/media/images/559dc2bd97ccd5a89c4d4ad5e142dd82.avif",
+     "status": "DURABLE"
+    },
+    "w1024": {
+     "file": "e49b39a2246a2351e961e1af7392f6da.webp",
+     "bytes": 38846,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/webp",
+     "sha256": "e49b39a2246a2351e961e1af7392f6da0705ef034fb68efe133efc191cdf41f7",
+     "url": "/api/media/images/e49b39a2246a2351e961e1af7392f6da.webp",
+     "status": "DURABLE"
+    },
+    "avif1024": {
+     "file": "c4bd233cb080a700b51246d4bedd11c9.avif",
+     "bytes": 22698,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/avif",
+     "sha256": "c4bd233cb080a700b51246d4bedd11c9d83a4dfc321dcb1a4b773c0986fe1de9",
+     "url": "/api/media/images/c4bd233cb080a700b51246d4bedd11c9.avif",
+     "status": "DURABLE"
+    },
+    "w2048": {
+     "file": "fb1154b39ed29f04f49a8b3b9f9151e8.webp",
+     "bytes": 95408,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/webp",
+     "sha256": "fb1154b39ed29f04f49a8b3b9f9151e8c5287b1ef715e73da88f8e5fab53bb4d",
+     "url": "/api/media/images/fb1154b39ed29f04f49a8b3b9f9151e8.webp",
+     "status": "DURABLE"
+    },
+    "avif2048": {
+     "file": "fc5453069bcca47238a11b4e9c2c2b04.avif",
+     "bytes": 54781,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/avif",
+     "sha256": "fc5453069bcca47238a11b4e9c2c2b0459bca0300a84489f1bc039970d2806db",
+     "url": "/api/media/images/fc5453069bcca47238a11b4e9c2c2b04.avif",
+     "status": "DURABLE"
+    }
+   }
+  },
+  {
+   "id": "av_tech_operative",
+   "kind": "avatar",
+   "files": {
+    "master8k": {
+     "file": "89abe5ce8abf80b5b86e25deb575a430.webp",
+     "bytes": 544718,
+     "width": 5760,
+     "height": 7680,
+     "mime": "image/webp",
+     "sha256": "89abe5ce8abf80b5b86e25deb575a430bb19fc4d2bfaae9642251d56fa3780b6",
+     "url": "/api/media/images/89abe5ce8abf80b5b86e25deb575a430.webp",
+     "status": "DURABLE"
+    },
+    "w512": {
+     "file": "b8a9e022936efd060888a2ae288372d5.webp",
+     "bytes": 19874,
+     "width": 512,
+     "height": 683,
+     "mime": "image/webp",
+     "sha256": "b8a9e022936efd060888a2ae288372d54c175fece7c7dda9c301403ba0dd57f5",
+     "url": "/api/media/images/b8a9e022936efd060888a2ae288372d5.webp",
+     "status": "DURABLE"
+    },
+    "avif512": {
+     "file": "f6fc10ac65a9e6df766201c3d0adb7cc.avif",
+     "bytes": 11075,
+     "width": 512,
+     "height": 683,
+     "mime": "image/avif",
+     "sha256": "f6fc10ac65a9e6df766201c3d0adb7cc4e8fad8a1cfd1e60c9d59427851b716e",
+     "url": "/api/media/images/f6fc10ac65a9e6df766201c3d0adb7cc.avif",
+     "status": "DURABLE"
+    },
+    "w1024": {
+     "file": "9975b99bfa95b789a148a18fd40c0f58.webp",
+     "bytes": 50986,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/webp",
+     "sha256": "9975b99bfa95b789a148a18fd40c0f58c79190939c686f6ec489a8a2feda4cf6",
+     "url": "/api/media/images/9975b99bfa95b789a148a18fd40c0f58.webp",
+     "status": "DURABLE"
+    },
+    "avif1024": {
+     "file": "c4c814a934d75cc53ce6f0ea63688af5.avif",
+     "bytes": 28180,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/avif",
+     "sha256": "c4c814a934d75cc53ce6f0ea63688af5ea52be78544ab362e891afb5cb5c1b0d",
+     "url": "/api/media/images/c4c814a934d75cc53ce6f0ea63688af5.avif",
+     "status": "DURABLE"
+    },
+    "w2048": {
+     "file": "d6d556a5f2329a83abe2d54ffe122133.webp",
+     "bytes": 124102,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/webp",
+     "sha256": "d6d556a5f2329a83abe2d54ffe12213362769a2fa9898688865f0241ae259504",
+     "url": "/api/media/images/d6d556a5f2329a83abe2d54ffe122133.webp",
+     "status": "DURABLE"
+    },
+    "avif2048": {
+     "file": "a0d2a601be789099fd16e8f2a8444ef9.avif",
+     "bytes": 68698,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/avif",
+     "sha256": "a0d2a601be789099fd16e8f2a8444ef9ec7237a097a077b97f9cfd0403bec1f6",
+     "url": "/api/media/images/a0d2a601be789099fd16e8f2a8444ef9.avif",
+     "status": "DURABLE"
+    }
+   }
+  },
+  {
+   "id": "av_realm_guardian",
+   "kind": "avatar",
+   "files": {
+    "master8k": {
+     "file": "1defd217e234134fb6e94d5d72d61a06.webp",
+     "bytes": 557058,
+     "width": 5760,
+     "height": 7680,
+     "mime": "image/webp",
+     "sha256": "1defd217e234134fb6e94d5d72d61a0653e7f326570be50cccf310a20142d735",
+     "url": "/api/media/images/1defd217e234134fb6e94d5d72d61a06.webp",
+     "status": "DURABLE"
+    },
+    "w512": {
+     "file": "c784668e9196c17c15c0f2c2f0ba938b.webp",
+     "bytes": 20136,
+     "width": 512,
+     "height": 683,
+     "mime": "image/webp",
+     "sha256": "c784668e9196c17c15c0f2c2f0ba938b79baec410bd7953321e31125913a4df5",
+     "url": "/api/media/images/c784668e9196c17c15c0f2c2f0ba938b.webp",
+     "status": "DURABLE"
+    },
+    "avif512": {
+     "file": "7074a3a856219ebf301bfa5bb4c616d3.avif",
+     "bytes": 11954,
+     "width": 512,
+     "height": 683,
+     "mime": "image/avif",
+     "sha256": "7074a3a856219ebf301bfa5bb4c616d3a960d4a5f86bf4eb3b893eb9551a0e83",
+     "url": "/api/media/images/7074a3a856219ebf301bfa5bb4c616d3.avif",
+     "status": "DURABLE"
+    },
+    "w1024": {
+     "file": "1f77374780de0485373079ade27ab376.webp",
+     "bytes": 50540,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/webp",
+     "sha256": "1f77374780de0485373079ade27ab376085745d71fb0c2ffc198cca688323dfb",
+     "url": "/api/media/images/1f77374780de0485373079ade27ab376.webp",
+     "status": "DURABLE"
+    },
+    "avif1024": {
+     "file": "c6f8bb7ecc162546dd2b4c5ceb27171d.avif",
+     "bytes": 29798,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/avif",
+     "sha256": "c6f8bb7ecc162546dd2b4c5ceb27171d5fbdea816a860430548de12cd46ca2fe",
+     "url": "/api/media/images/c6f8bb7ecc162546dd2b4c5ceb27171d.avif",
+     "status": "DURABLE"
+    },
+    "w2048": {
+     "file": "42764a6cc9c34dcd416e540180b94229.webp",
+     "bytes": 121532,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/webp",
+     "sha256": "42764a6cc9c34dcd416e540180b94229af0133d48aaf2028e9a4b1a6867e2abf",
+     "url": "/api/media/images/42764a6cc9c34dcd416e540180b94229.webp",
+     "status": "DURABLE"
+    },
+    "avif2048": {
+     "file": "5da70144fe68ba07531b61b1dbdbca8c.avif",
+     "bytes": 73355,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/avif",
+     "sha256": "5da70144fe68ba07531b61b1dbdbca8c2328c84747528e4c2dfd4b6b557fffa1",
+     "url": "/api/media/images/5da70144fe68ba07531b61b1dbdbca8c.avif",
+     "status": "DURABLE"
+    }
+   }
+  },
+  {
+   "id": "av_aether_champion",
+   "kind": "avatar",
+   "files": {
+    "master8k": {
+     "file": "8555da836770b44be5d61a9683ef67f9.webp",
+     "bytes": 442848,
+     "width": 5760,
+     "height": 7680,
+     "mime": "image/webp",
+     "sha256": "8555da836770b44be5d61a9683ef67f9fd0ca90a0989ae64d6e33d6388b5aa9e",
+     "url": "/api/media/images/8555da836770b44be5d61a9683ef67f9.webp",
+     "status": "DURABLE"
+    },
+    "w512": {
+     "file": "8410c6d9ad1f2ea64f8c25a0a95bcf83.webp",
+     "bytes": 14044,
+     "width": 512,
+     "height": 683,
+     "mime": "image/webp",
+     "sha256": "8410c6d9ad1f2ea64f8c25a0a95bcf83844d20ef0494d0b875d46d69b056a78c",
+     "url": "/api/media/images/8410c6d9ad1f2ea64f8c25a0a95bcf83.webp",
+     "status": "DURABLE"
+    },
+    "avif512": {
+     "file": "1a5b3143d70723ad9860d42fb423af5e.avif",
+     "bytes": 8838,
+     "width": 512,
+     "height": 683,
+     "mime": "image/avif",
+     "sha256": "1a5b3143d70723ad9860d42fb423af5eb1007bed3dce882b34e89fea56ef7fe2",
+     "url": "/api/media/images/1a5b3143d70723ad9860d42fb423af5e.avif",
+     "status": "DURABLE"
+    },
+    "w1024": {
+     "file": "5eec26d8bfe80320d95e75707e6b259e.webp",
+     "bytes": 37794,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/webp",
+     "sha256": "5eec26d8bfe80320d95e75707e6b259e6bb8f4b66d25d4e78c5850f79fe6b30c",
+     "url": "/api/media/images/5eec26d8bfe80320d95e75707e6b259e.webp",
+     "status": "DURABLE"
+    },
+    "avif1024": {
+     "file": "1d7db052833ed4989af40afc8ac7b38e.avif",
+     "bytes": 22607,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/avif",
+     "sha256": "1d7db052833ed4989af40afc8ac7b38efb8b16c6f551625c2b287eaf6ce1f863",
+     "url": "/api/media/images/1d7db052833ed4989af40afc8ac7b38e.avif",
+     "status": "DURABLE"
+    },
+    "w2048": {
+     "file": "8d110b9f893f8cd7ebde32e3a5a57319.webp",
+     "bytes": 94816,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/webp",
+     "sha256": "8d110b9f893f8cd7ebde32e3a5a573190f86e3986253db7f772478c933333ac8",
+     "url": "/api/media/images/8d110b9f893f8cd7ebde32e3a5a57319.webp",
+     "status": "DURABLE"
+    },
+    "avif2048": {
+     "file": "6a903b385c2ce8b870116bdfaa6eff6b.avif",
+     "bytes": 56323,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/avif",
+     "sha256": "6a903b385c2ce8b870116bdfaa6eff6bb69634180ed84f4f76c05e2233ae6243",
+     "url": "/api/media/images/6a903b385c2ce8b870116bdfaa6eff6b.avif",
+     "status": "DURABLE"
+    }
+   }
+  },
+  {
+   "id": "av_arcane_sovereign",
+   "kind": "avatar",
+   "files": {
+    "master8k": {
+     "file": "b73c7923c7f3265c48d87729b55a15c7.webp",
+     "bytes": 570340,
+     "width": 5760,
+     "height": 7680,
+     "mime": "image/webp",
+     "sha256": "b73c7923c7f3265c48d87729b55a15c7b05599e82b465b356be51dd0805fcdab",
+     "url": "/api/media/images/b73c7923c7f3265c48d87729b55a15c7.webp",
+     "status": "DURABLE"
+    },
+    "w512": {
+     "file": "b5e3b06c7e71a15f8e8b0026c8048d18.webp",
+     "bytes": 20290,
+     "width": 512,
+     "height": 683,
+     "mime": "image/webp",
+     "sha256": "b5e3b06c7e71a15f8e8b0026c8048d18e63d51144c958bf3f42ed1aa13f96280",
+     "url": "/api/media/images/b5e3b06c7e71a15f8e8b0026c8048d18.webp",
+     "status": "DURABLE"
+    },
+    "avif512": {
+     "file": "1659303b2934583f945cd3a52b94769a.avif",
+     "bytes": 11731,
+     "width": 512,
+     "height": 683,
+     "mime": "image/avif",
+     "sha256": "1659303b2934583f945cd3a52b94769ac11324ff3e406ef736d5ef65bd44bce9",
+     "url": "/api/media/images/1659303b2934583f945cd3a52b94769a.avif",
+     "status": "DURABLE"
+    },
+    "w1024": {
+     "file": "539de401b4f71742440566076f62b55b.webp",
+     "bytes": 52256,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/webp",
+     "sha256": "539de401b4f71742440566076f62b55bfc1927b319ef8975e564f31084022a6d",
+     "url": "/api/media/images/539de401b4f71742440566076f62b55b.webp",
+     "status": "DURABLE"
+    },
+    "avif1024": {
+     "file": "774722891e025225a92e5464656e9480.avif",
+     "bytes": 30548,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/avif",
+     "sha256": "774722891e025225a92e5464656e9480b803f8d2a030fafbd8d87a1f531b0ae5",
+     "url": "/api/media/images/774722891e025225a92e5464656e9480.avif",
+     "status": "DURABLE"
+    },
+    "w2048": {
+     "file": "fbf7b959d6091c1e16abdf2204af8f51.webp",
+     "bytes": 126596,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/webp",
+     "sha256": "fbf7b959d6091c1e16abdf2204af8f517bb619f4d19a7b59aeecc92d73f96b05",
+     "url": "/api/media/images/fbf7b959d6091c1e16abdf2204af8f51.webp",
+     "status": "DURABLE"
+    },
+    "avif2048": {
+     "file": "583f06c05e830fb124e5d162ccfaaa7c.avif",
+     "bytes": 75804,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/avif",
+     "sha256": "583f06c05e830fb124e5d162ccfaaa7cbdb703e2ce47ebd9646f7b38730efc40",
+     "url": "/api/media/images/583f06c05e830fb124e5d162ccfaaa7c.avif",
+     "status": "DURABLE"
+    }
+   }
+  },
+  {
+   "id": "av_void_wizard",
+   "kind": "avatar",
+   "files": {
+    "master8k": {
+     "file": "87c4c9dd72d29727729d0b79bc063d77.webp",
+     "bytes": 698664,
+     "width": 5760,
+     "height": 7680,
+     "mime": "image/webp",
+     "sha256": "87c4c9dd72d29727729d0b79bc063d77d1cf5236b2141d9d78a2fd1d5ad88414",
+     "url": "/api/media/images/87c4c9dd72d29727729d0b79bc063d77.webp",
+     "status": "DURABLE"
+    },
+    "w512": {
+     "file": "9e65ab1121fd395643f569f860d07377.webp",
+     "bytes": 27088,
+     "width": 512,
+     "height": 683,
+     "mime": "image/webp",
+     "sha256": "9e65ab1121fd395643f569f860d0737793775de86a78e996dccd71eada1541fb",
+     "url": "/api/media/images/9e65ab1121fd395643f569f860d07377.webp",
+     "status": "DURABLE"
+    },
+    "avif512": {
+     "file": "49fe66ed516d12a20a0e2ff2e7cb2b75.avif",
+     "bytes": 14172,
+     "width": 512,
+     "height": 683,
+     "mime": "image/avif",
+     "sha256": "49fe66ed516d12a20a0e2ff2e7cb2b751e674685e1a8eaf58d39f3375d9a88c3",
+     "url": "/api/media/images/49fe66ed516d12a20a0e2ff2e7cb2b75.avif",
+     "status": "DURABLE"
+    },
+    "w1024": {
+     "file": "869b5cab7035853ee68e026aa2f1ac6a.webp",
+     "bytes": 69900,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/webp",
+     "sha256": "869b5cab7035853ee68e026aa2f1ac6a03457d464fa6909cbac8261612a33f18",
+     "url": "/api/media/images/869b5cab7035853ee68e026aa2f1ac6a.webp",
+     "status": "DURABLE"
+    },
+    "avif1024": {
+     "file": "95ab79ce167a31e4d1b7e5c829a70bdb.avif",
+     "bytes": 36926,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/avif",
+     "sha256": "95ab79ce167a31e4d1b7e5c829a70bdb4b2ba97b66807da78fc527216cef05df",
+     "url": "/api/media/images/95ab79ce167a31e4d1b7e5c829a70bdb.avif",
+     "status": "DURABLE"
+    },
+    "w2048": {
+     "file": "e3efdb91f2f8a25c6db25713587cab87.webp",
+     "bytes": 162034,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/webp",
+     "sha256": "e3efdb91f2f8a25c6db25713587cab87ff67efe4326217f6291ed6edc2e29cab",
+     "url": "/api/media/images/e3efdb91f2f8a25c6db25713587cab87.webp",
+     "status": "DURABLE"
+    },
+    "avif2048": {
+     "file": "4cf510a1407b411fe918bbacb6172fee.avif",
+     "bytes": 91377,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/avif",
+     "sha256": "4cf510a1407b411fe918bbacb6172fee7b7abf1ba4e10b3f24fa4aefb03b59b1",
+     "url": "/api/media/images/4cf510a1407b411fe918bbacb6172fee.avif",
+     "status": "DURABLE"
+    }
+   }
+  },
+  {
+   "id": "card_battle",
+   "kind": "game_art",
+   "files": {
+    "master8k": {
+     "file": "eb58bd0d71fbca2e79e3fb99dc21d50e.webp",
+     "bytes": 1754284,
+     "width": 7680,
+     "height": 5152,
+     "mime": "image/webp",
+     "sha256": "eb58bd0d71fbca2e79e3fb99dc21d50ef82c43fd8aa18ef63481ca3a267d1805",
+     "url": "/api/media/images/eb58bd0d71fbca2e79e3fb99dc21d50e.webp",
+     "status": "DURABLE"
+    },
+    "w512": {
+     "file": "566ec4fa237e8b6d2568d6cd4ba7dc96.webp",
+     "bytes": 47434,
+     "width": 512,
+     "height": 343,
+     "mime": "image/webp",
+     "sha256": "566ec4fa237e8b6d2568d6cd4ba7dc966327b330f03f22109ab4445cff533a11",
+     "url": "/api/media/images/566ec4fa237e8b6d2568d6cd4ba7dc96.webp",
+     "status": "DURABLE"
+    },
+    "avif512": {
+     "file": "3138de84a19145c02d1f9a1b39579abe.avif",
+     "bytes": 23708,
+     "width": 512,
+     "height": 343,
+     "mime": "image/avif",
+     "sha256": "3138de84a19145c02d1f9a1b39579abed139d7665a17fc3cc2d95cf41df7ab7c",
+     "url": "/api/media/images/3138de84a19145c02d1f9a1b39579abe.avif",
+     "status": "DURABLE"
+    },
+    "w1024": {
+     "file": "723781ee31eeaf289331287382cbf234.webp",
+     "bytes": 129262,
+     "width": 1024,
+     "height": 687,
+     "mime": "image/webp",
+     "sha256": "723781ee31eeaf289331287382cbf2345a99cbb44eec25edc7d232434e03e3b8",
+     "url": "/api/media/images/723781ee31eeaf289331287382cbf234.webp",
+     "status": "DURABLE"
+    },
+    "avif1024": {
+     "file": "435f367c89ea2a4b52131e46ac9043d1.avif",
+     "bytes": 63145,
+     "width": 1024,
+     "height": 687,
+     "mime": "image/avif",
+     "sha256": "435f367c89ea2a4b52131e46ac9043d1d4b9cac88b09367e6c825234cc1963e9",
+     "url": "/api/media/images/435f367c89ea2a4b52131e46ac9043d1.avif",
+     "status": "DURABLE"
+    },
+    "w2048": {
+     "file": "ae4acbc46bc239abfb4f4fb644138b00.webp",
+     "bytes": 281844,
+     "width": 2048,
+     "height": 1374,
+     "mime": "image/webp",
+     "sha256": "ae4acbc46bc239abfb4f4fb644138b009d567952e0b4295f1b2fbe957acc43d4",
+     "url": "/api/media/images/ae4acbc46bc239abfb4f4fb644138b00.webp",
+     "status": "DURABLE"
+    },
+    "avif2048": {
+     "file": "5720df0e98adfab68821e5b873290a06.avif",
+     "bytes": 146632,
+     "width": 2048,
+     "height": 1374,
+     "mime": "image/avif",
+     "sha256": "5720df0e98adfab68821e5b873290a06afe465035f4902810ee61717159811a6",
+     "url": "/api/media/images/5720df0e98adfab68821e5b873290a06.avif",
+     "status": "DURABLE"
+    }
+   }
+  },
+  {
+   "id": "open_world_rpg",
+   "kind": "game_art",
+   "files": {
+    "master8k": {
+     "file": "0bb3dc40b2fac681282abd364bc68e0e.webp",
+     "bytes": 2395832,
+     "width": 7680,
+     "height": 7680,
+     "mime": "image/webp",
+     "sha256": "0bb3dc40b2fac681282abd364bc68e0e515cde31554f3b5a44dcff4362d6e61f",
+     "url": "/api/media/images/0bb3dc40b2fac681282abd364bc68e0e.webp",
+     "status": "DURABLE"
+    },
+    "w512": {
+     "file": "585361f0dc2b0e45daffcce4c19b5cf4.webp",
+     "bytes": 53682,
+     "width": 512,
+     "height": 512,
+     "mime": "image/webp",
+     "sha256": "585361f0dc2b0e45daffcce4c19b5cf43024ce60aba440592a667daaf98070e8",
+     "url": "/api/media/images/585361f0dc2b0e45daffcce4c19b5cf4.webp",
+     "status": "DURABLE"
+    },
+    "avif512": {
+     "file": "80a373cfaacafc810e9ffa785d164b34.avif",
+     "bytes": 25792,
+     "width": 512,
+     "height": 512,
+     "mime": "image/avif",
+     "sha256": "80a373cfaacafc810e9ffa785d164b3415d1894c542b4711ed3dbe68d743346e",
+     "url": "/api/media/images/80a373cfaacafc810e9ffa785d164b34.avif",
+     "status": "DURABLE"
+    },
+    "w1024": {
+     "file": "9dc01738c82ce276cb3a8442233b65dc.webp",
+     "bytes": 164522,
+     "width": 1024,
+     "height": 1024,
+     "mime": "image/webp",
+     "sha256": "9dc01738c82ce276cb3a8442233b65dc81989f178456e09761078a918a0325e4",
+     "url": "/api/media/images/9dc01738c82ce276cb3a8442233b65dc.webp",
+     "status": "DURABLE"
+    },
+    "avif1024": {
+     "file": "aa4e07818d3ca2c6b4181ad9fbf7c3b0.avif",
+     "bytes": 75831,
+     "width": 1024,
+     "height": 1024,
+     "mime": "image/avif",
+     "sha256": "aa4e07818d3ca2c6b4181ad9fbf7c3b0c855a65d53a7b1dcf8ffc16b6b283198",
+     "url": "/api/media/images/aa4e07818d3ca2c6b4181ad9fbf7c3b0.avif",
+     "status": "DURABLE"
+    },
+    "w2048": {
+     "file": "34244241f78af62f4f86015fc1094636.webp",
+     "bytes": 320678,
+     "width": 2048,
+     "height": 2048,
+     "mime": "image/webp",
+     "sha256": "34244241f78af62f4f86015fc1094636fbca144f3a933286b1b46163a99319a1",
+     "url": "/api/media/images/34244241f78af62f4f86015fc1094636.webp",
+     "status": "DURABLE"
+    },
+    "avif2048": {
+     "file": "a8ff505c6a9279a4d6d86a87bab885a6.avif",
+     "bytes": 175159,
+     "width": 2048,
+     "height": 2048,
+     "mime": "image/avif",
+     "sha256": "a8ff505c6a9279a4d6d86a87bab885a618f97a21b2913c01c06da804505cd165",
+     "url": "/api/media/images/a8ff505c6a9279a4d6d86a87bab885a6.avif",
+     "status": "DURABLE"
+    }
+   }
+  }
+ ]
+}
