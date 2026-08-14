@@ -1,6 +1,43 @@
-# OurRealm — PRD (UPDATED 2026-06 — V33 VISUALS RELEASE COMPLETE, REPUBLISH READY)
+# OurRealm — PRD (UPDATED 2026-06 — FOUNDER STEALTH AVATAR — REPUBLISH READY)
 
-## RESUME CHECKPOINT — nexus-v33-visuals (REPUBLISH READY — FOUNDER CLICKS REPUBLISH, latest)
+## RESUME CHECKPOINT — Founder Stealth avatar + chat fixes (REPUBLISH READY, latest)
+- FOUNDER STEALTH AVATAR (founder-verified in preview; deployment_agent PASS; 0 Meshy credits):
+  - Record: id `founder_stealth_private`, label "Founder Stealth", slug founder-stealth, status
+    `founder_private`, asset e1f28ff8f8fe3ea0df4b6b0cf848b756 (38MB GLB, durable R2, NOT re-uploaded),
+    embedded clips addressed via `url#Clip@speed` fragments: idle=Walking@0 (frozen stance),
+    walk=Walking, run=Running. Jump/fall/land/greet use existing fallback chain (→idle). Portrait
+    thumbs rendered locally (v33 pipeline) and embedded in the code record.
+  - Security (server-side, role-based via _is_founder_user): founder sees/selects it
+    (/avatars, /avatars/collection append + select gate); everyone else: absent from all
+    catalogs and select returns 404 "Avatar not available" (verified). Others still SEE stealth
+    wearing it (presence _user_avatar_data now includes founder_private status).
+  - Founder default: one-time seed (users.founder_stealth_seeded flag) in
+    services/nexus_release.py apply_nexus_release — runs EVERY startup BEFORE the release-id
+    early-return (critical: production already applied nexus-v33-visuals so post-return code
+    would be skipped). Verified: seed applied once; founder switched to av_void_wizard →
+    restart → choice preserved (not re-forced); switch back works; exactly 1 avatar record.
+  - Production path: code-shipped record + idempotent startup migration; GLB + thumbs durable
+    in R2; manifest 195/195 DURABLE; NO manual production step besides Republish.
+- CHAT BUBBLE + POST-CHAT INPUT FIX (same session, earlier directive, verified):
+  - chatSprite now auto-sizes: measured text width + 22/16px padding, wraps at 440px canvas
+    (~70% sensible max), max 4 lines, emoji bubble ≈0.5 world units (verified in-world),
+    style preserved, bubble rises with height (y = 2.85 + h/2), nameplate separate.
+  - Input state machine: window.__NEXUS_CHAT.set(on) = Enter/ExitChatMode (clears keys, zeroes
+    touch/joystick/camera-touch ids, exits pointer lock on enter; deterministic restore on exit;
+    zoom dist untouched). keyup ALWAYS clears keys (stuck-key fix). Input blurs + chat mode
+    exits after successful send (Enter or SEND single path, sendingRef dupe guard); Escape
+    cancels; canvas mousedown/touchstart defensively blurs lingering chat focus. Failed send
+    keeps focus for retry (by design).
+  - Presence/save heartbeats moved from setInterval to rAF accumulator in the render loop
+    (300ms/5s) — background-timer starvation on low-end devices silently dropped presence and
+    caused chat "You must be in the world" errors. window.__NEXUS_POS() debug hook added.
+  - Verified in-world: chatMode toggles correctly, focus returns to body after send, emoji
+    bubble tiny, send works (chat cooldown 2s server-side is intended anti-spam).
+  - NOTE: in-world screenshots in the software-GL test browser take >30s (raster starved) —
+    use page.screenshot(timeout=240000); the 38MB founder GLB needs 2-4 min to appear there
+    (real GPUs are fast). Founder manually verified on real hardware and approved.
+
+## PREVIOUS CHECKPOINT — nexus-v33-visuals (deployed to production)
 - V33 FOUNDER DIRECTIVE (Unity visibility + original gamemaker art + AAA avatar thumbnails) DONE,
   TESTED (iteration_151: backend 10/10 pytest PASS, frontend all core flows + post-equip fix
   self-verified), deployment_agent PASS. ZERO Meshy credits spent (balance 3,505).

@@ -608,6 +608,82 @@
      "status": "DURABLE"
     }
    }
+  },
+  {
+   "id": "founder_stealth_private",
+   "kind": "avatar",
+   "files": {
+    "master8k": {
+     "file": "42c37b6f2254cab51a01c0ac70c4dd42.webp",
+     "bytes": 505690,
+     "width": 5760,
+     "height": 7680,
+     "mime": "image/webp",
+     "sha256": "42c37b6f2254cab51a01c0ac70c4dd42ba243bb63efcf5d940379d79d13ac522",
+     "url": "/api/media/images/42c37b6f2254cab51a01c0ac70c4dd42.webp",
+     "status": "DURABLE"
+    },
+    "w512": {
+     "file": "32b2a40b229a4059e481678467872b99.webp",
+     "bytes": 16922,
+     "width": 512,
+     "height": 683,
+     "mime": "image/webp",
+     "sha256": "32b2a40b229a4059e481678467872b9952d09558200ce0329c1b3b7410914d89",
+     "url": "/api/media/images/32b2a40b229a4059e481678467872b99.webp",
+     "status": "DURABLE"
+    },
+    "avif512": {
+     "file": "11e2366471df670098a35f4472c17a92.avif",
+     "bytes": 10116,
+     "width": 512,
+     "height": 683,
+     "mime": "image/avif",
+     "sha256": "11e2366471df670098a35f4472c17a925f554b32393629f2e1e711d12aad0cfd",
+     "url": "/api/media/images/11e2366471df670098a35f4472c17a92.avif",
+     "status": "DURABLE"
+    },
+    "w1024": {
+     "file": "5bb0ed4349f6ae92e29fe338e8944470.webp",
+     "bytes": 44874,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/webp",
+     "sha256": "5bb0ed4349f6ae92e29fe338e8944470fd897ef2ed2e0053d99100db79f7d53a",
+     "url": "/api/media/images/5bb0ed4349f6ae92e29fe338e8944470.webp",
+     "status": "DURABLE"
+    },
+    "avif1024": {
+     "file": "92ff6f8bb7aaabae8d895e4379e55496.avif",
+     "bytes": 25796,
+     "width": 1024,
+     "height": 1365,
+     "mime": "image/avif",
+     "sha256": "92ff6f8bb7aaabae8d895e4379e55496e8cec7433868d112f70320450e40a9dc",
+     "url": "/api/media/images/92ff6f8bb7aaabae8d895e4379e55496.avif",
+     "status": "DURABLE"
+    },
+    "w2048": {
+     "file": "ff92c9004ad2d16e7a30f6b9b9a363f7.webp",
+     "bytes": 112088,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/webp",
+     "sha256": "ff92c9004ad2d16e7a30f6b9b9a363f7a86c2a993bdf70e3b83eae6103b0b615",
+     "url": "/api/media/images/ff92c9004ad2d16e7a30f6b9b9a363f7.webp",
+     "status": "DURABLE"
+    },
+    "avif2048": {
+     "file": "98818b6a91cbc30a0813cff7823d7b7f.avif",
+     "bytes": 61538,
+     "width": 2048,
+     "height": 2731,
+     "mime": "image/avif",
+     "sha256": "98818b6a91cbc30a0813cff7823d7b7f1f027064e44246bd11efa53c0641c96b",
+     "url": "/api/media/images/98818b6a91cbc30a0813cff7823d7b7f.avif",
+     "status": "DURABLE"
+    }
+   }
   }
  ]
 }

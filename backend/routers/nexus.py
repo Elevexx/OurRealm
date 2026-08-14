@@ -265,7 +265,7 @@ async def _user_avatar_data(user_id):
     av = None
     if u and u.get("nexus_avatar_id"):
         av = await db.nexus_avatars.find_one(
-            {"id": u["nexus_avatar_id"], "status": {"$in": ["active", "premium"]}},
+            {"id": u["nexus_avatar_id"], "status": {"$in": ["active", "premium", "founder_private"]}},
             {
                 "_id": 0,
                 "id": 1,
@@ -599,7 +599,9 @@ async def avatars_list(current: CurrentUser):
     u = await db.users.find_one({"id": current["id"]}, {"_id": 0, "nexus_avatar_id": 1, "nexus_glow": 1, "nexus_gfx": 1})
     my_id = (u or {}).get("nexus_avatar_id")
     if my_id and not any(a["id"] == my_id for a in items):
-        mine = await db.nexus_avatars.find_one({"id": my_id, "status": {"$in": ["active", "premium"]}}, {"_id": 0})
+        mine = await db.nexus_avatars.find_one({"id": my_id, "status": {"$in": ["active", "premium", "founder_private"]}}, {"_id": 0})
+        if mine and mine.get("status") == "founder_private" and not await _is_founder_user(current["id"]):
+            mine = None
         if mine: items.append(mine)
     default = next((a["id"] for a in items if a.get("is_default")), None)
     return {"avatars": items, "my_id": my_id or default, "default_id": default,
@@ -698,6 +700,13 @@ async def avatars_collection(current: CurrentUser):
         out.append({**av, "fp_cost": cost, "unlocked": founder or (aid in owned),
                     "equipped": (me or {}).get("nexus_avatar_id") == aid,
                     "available": bool(av.get("rigged_base_url") or av.get("url"))})
+    if founder:
+        # FOUNDER STEALTH — private founder-only avatar, appended server-side for the founder ONLY
+        fav = await db.nexus_avatars.find_one({"id": "founder_stealth_private"}, {"_id": 0})
+        if fav:
+            out.append({**fav, "fp_cost": 0, "unlocked": True, "founder_only": True,
+                        "equipped": (me or {}).get("nexus_avatar_id") == fav["id"],
+                        "available": bool(fav.get("rigged_base_url") or fav.get("url"))})
     return {"avatars": out, "fire_balance": (wallet or {}).get("vault_balance", 0), "founder_vault": founder}
 
 
@@ -742,8 +751,11 @@ async def avatar_unlock(avatar_id: str, current: CurrentUser):
 @router.post("/avatars/select")
 async def avatars_select(body: dict, current: CurrentUser):
     aid = str(body.get("id") or "")
-    av = await db.nexus_avatars.find_one({"id": aid, "status": {"$in": ["active", "premium"]}}, {"_id": 0})
+    av = await db.nexus_avatars.find_one({"id": aid, "status": {"$in": ["active", "premium", "founder_private"]}}, {"_id": 0})
     if not av:
+        raise HTTPException(status_code=404, detail="Avatar not available")
+    if av.get("status") == "founder_private" and not await _is_founder_user(current["id"]):
+        # founder-only avatar: server-side gate, absent for everyone else
         raise HTTPException(status_code=404, detail="Avatar not available")
     if av.get("eligibility") == "assigned" and current["id"] not in (av.get("assigned_user_ids") or []):
         raise HTTPException(status_code=403, detail="This avatar is not available to your account")

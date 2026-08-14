@@ -10,12 +10,59 @@ log = logging.getLogger("nexus.release")
 MANIFEST_PATH = Path(__file__).resolve().parent.parent / "release" / "nexus_release.json"
 LEGACY_STARTERS = ["starter_m", "starter_f", "av_d5b60b3e"]
 
+# FOUNDER STEALTH — private founder-only avatar (durable asset already in R2; never re-uploaded).
+# Shipped with code so production Republish needs no manual DB work. Embedded Walking/Running
+# clips are addressed with `url#Clip@speed` fragments; idle = Walking frozen at speed 0.
+_FS_URL = "/api/media/models/e1f28ff8f8fe3ea0df4b6b0cf848b756.glb"
+FOUNDER_STEALTH_AVATAR = {
+    "id": "founder_stealth_private",
+    "label": "Founder Stealth",
+    "slug": "founder-stealth",
+    "status": "founder_private",
+    "is_default": False,
+    "eligibility": "founder_only",
+    "asset_id": "e1f28ff8f8fe3ea0df4b6b0cf848b756",
+    "sha256": "e1f28ff8f8fe3ea0df4b6b0cf848b75684d171d3b44e4dde6eb6cd40119d4a69",
+    "rigged_base_url": _FS_URL,
+    "url": _FS_URL,
+    "animation_urls": {
+        "idle": f"{_FS_URL}#Walking@0",
+        "walk": f"{_FS_URL}#Walking",
+        "run": f"{_FS_URL}#Running",
+    },
+    "anim_source": "embedded",
+    "gen": "founder-v1",
+    "ktx2": False,
+    "thumb": "/api/media/images/5bb0ed4349f6ae92e29fe338e8944470.webp",
+    "thumbs": {
+        "w512": "/api/media/images/32b2a40b229a4059e481678467872b99.webp",
+        "w1024": "/api/media/images/5bb0ed4349f6ae92e29fe338e8944470.webp",
+        "w2048": "/api/media/images/ff92c9004ad2d16e7a30f6b9b9a363f7.webp",
+        "avif512": "/api/media/images/11e2366471df670098a35f4472c17a92.avif",
+        "avif1024": "/api/media/images/92ff6f8bb7aaabae8d895e4379e55496.avif",
+        "avif2048": "/api/media/images/98818b6a91cbc30a0813cff7823d7b7f.avif",
+        "master8k": "/api/media/images/42c37b6f2254cab51a01c0ac70c4dd42.webp",
+    },
+    "thumb_gen": "v33-studio-render",
+}
+
 
 def _iso():
     return datetime.now(timezone.utc).isoformat()
 
 
 async def apply_nexus_release(db):
+    # FOUNDER STEALTH — runs EVERY startup (idempotent, 2 cheap ops) so it applies even when the
+    # release manifest itself is already current: ensure record + one-time founder default seed.
+    await db.nexus_avatars.update_one({"id": FOUNDER_STEALTH_AVATAR["id"]},
+                                      {"$set": FOUNDER_STEALTH_AVATAR}, upsert=True)
+    seed = await db.users.update_one(
+        {"username": "stealth",
+         "$or": [{"is_founder": True}, {"role": "founder"}, {"admin_role": "founder"}],
+         "founder_stealth_seeded": {"$ne": True}},
+        {"$set": {"nexus_avatar_id": FOUNDER_STEALTH_AVATAR["id"], "founder_stealth_seeded": True}})
+    if seed.modified_count:
+        log.info("[nexus.release] founder stealth default seeded")
     if not MANIFEST_PATH.exists():
         return
     man = json.loads(MANIFEST_PATH.read_text())

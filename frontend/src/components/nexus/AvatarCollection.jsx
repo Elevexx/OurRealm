@@ -10,7 +10,8 @@ import { toast } from "sonner";
 import { Flame, Lock, Check, X, Eye, ShieldCheck } from "lucide-react";
 
 const NAMES = { av_streetwear: "STREETWEAR", av_tech_operative: "TECH OPERATIVE", av_realm_guardian: "REALM GUARDIAN",
-  av_aether_champion: "AETHER CHAMPION", av_arcane_sovereign: "ARCANE SOVEREIGN", av_void_wizard: "LEGENDARY VOID WIZARD" };
+  av_aether_champion: "AETHER CHAMPION", av_arcane_sovereign: "ARCANE SOVEREIGN", av_void_wizard: "LEGENDARY VOID WIZARD",
+  founder_stealth_private: "FOUNDER STEALTH" };
 
 export const AvatarPreview = ({ url, glow = null, label = "" }) => {
   const ref = useRef(null);
@@ -180,7 +181,9 @@ export const AvatarCollection = ({ onEquipped }) => {
             <div className="p-3 flex flex-col flex-1">
               <div className="font-black text-xs leading-tight">{NAMES[av.id]}</div>
               <div className="flex items-center gap-1 text-[11px] font-bold text-orange-300 mt-0.5">
-                <Flame className="w-3 h-3" /> {av.fp_cost.toLocaleString()}
+                {av.founder_only
+                  ? <span className="flex items-center gap-1 text-lime-300"><ShieldCheck className="w-3 h-3" /> FOUNDER ONLY</span>
+                  : <><Flame className="w-3 h-3" /> {av.fp_cost.toLocaleString()}</>}
               </div>
               <div className="mt-auto pt-2.5">
                 {!av.available ? (
@@ -218,7 +221,9 @@ export const AvatarCollection = ({ onEquipped }) => {
             <div className="mt-2 flex gap-1.5 flex-wrap text-[9px] font-black">
               <span className="bg-white/10 rounded px-1.5 py-0.5">{preview.id}</span>
               <span className="bg-white/10 rounded px-1.5 py-0.5">{preview.gen || "v1"}</span>
-              <span className="bg-orange-500/15 text-orange-300 rounded px-1.5 py-0.5">{preview.fp_cost.toLocaleString()}🔥</span>
+              <span className={preview.founder_only ? "bg-lime-500/15 text-lime-300 rounded px-1.5 py-0.5" : "bg-orange-500/15 text-orange-300 rounded px-1.5 py-0.5"}>
+                {preview.founder_only ? "FOUNDER ONLY" : `${preview.fp_cost.toLocaleString()}🔥`}
+              </span>
               {preview.equipped && <span className="bg-emerald-500/15 text-emerald-300 rounded px-1.5 py-0.5">EQUIPPED</span>}
               {preview.unlocked && !preview.equipped && <span className="bg-cyan-500/15 text-cyan-300 rounded px-1.5 py-0.5">OWNED</span>}
               <span className="bg-white/10 rounded px-1.5 py-0.5">ANIMS {Object.keys(preview.animation_urls || {}).length}</span>

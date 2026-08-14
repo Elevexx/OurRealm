@@ -223,17 +223,19 @@ function makeAvatar(color, label, avatarUrl, motionUrls, mixers, priority = 3.5,
       const mixer = new THREE.AnimationMixer(inst);
       const actions = {};
 
-      const addAction = (name, clip) => {
+      const addAction = (name, clip, baseScale) => {
         if (!clip || actions[name]) return;
         const action = mixer.clipAction(clip);
         action.enabled = true;
         action.setLoop(THREE.LoopRepeat, Infinity);
         action.setEffectiveWeight(0);
+        if (baseScale !== undefined) { action.__baseScale = baseScale; action.setEffectiveTimeScale(baseScale); }
         action.play();
         actions[name] = action;
       };
 
-      addAction("idle", g.animations?.[0]);
+      const pack = motionUrls || {};
+      if (!pack.idle) addAction("idle", g.animations?.[0]);
 
       const mix = {
         mixer,
@@ -250,12 +252,31 @@ function makeAvatar(color, label, avatarUrl, motionUrls, mixers, priority = 3.5,
       grp.userData.mix = mix;
       mixers.push(mix);
 
-      const pack = motionUrls || {};
-      const clipNames = ["walk", "run", "jump", "fall", "land", "greet"];
-      Promise.all(clipNames.map((n) => (pack[n] ? loadGLB(pack[n], 4).catch(() => null) : Promise.resolve(null))))
+      const clipNames = ["idle", "walk", "run", "jump", "fall", "land", "greet"];
+      // pack entries may address an embedded clip: "/api/media/x.glb#ClipName@speed"
+      Promise.all(clipNames.map((n) => {
+        const spec = pack[n];
+        if (!spec) return Promise.resolve(null);
+        const [url, frag] = String(spec).split("#");
+        return loadGLB(url, 4).then((f) => ({ f, frag })).catch(() => null);
+      }))
         .then((files) => {
           if (grp.userData.disposed) return;
-          files.forEach((f, i) => addAction(clipNames[i], f?.animations?.[0]));
+          files.forEach((r, i) => {
+            if (!r) return;
+            let clip = r.f?.animations?.[0];
+            let scale;
+            if (r.frag) {
+              const [nm, sp] = r.frag.split("@");
+              clip = (r.f?.animations || []).find((a) => a.name === nm || a.name.toLowerCase().includes(nm.toLowerCase())) || clip;
+              if (sp !== undefined && sp !== "") scale = parseFloat(sp);
+            }
+            addAction(clipNames[i], clip, scale);
+          });
+          if (mix.currentAction === null && actions.idle) {
+            actions.idle.setEffectiveWeight(1);
+            mix.currentAction = actions.idle;
+          }
         });
     }).catch((err) => { console.error("[nexus] avatar GLB load failed:", avatarUrl, err?.message || err); });
   }
@@ -285,6 +306,7 @@ function setAvatarAnim(grp, state) {
   next.reset();
   next.setEffectiveWeight(1);
   next.setEffectiveTimeScale(
+    next.__baseScale !== undefined ? next.__baseScale :
     wanted === "walk" ? 1.6 :
     wanted === "run" ? 1.15 :
     1
