@@ -164,11 +164,11 @@ def detect_mechanics(text: str) -> list:
     #   "do not create a quiz"
     # must NOT be interpreted as requesting quiz_learning.
     negative_patterns = [
-        r"\bdo not (?:create|make|build|use|include|select)\b[^.\n;]*",
-        r"\bdon't (?:create|make|build|use|include|select)\b[^.\n;]*",
-        r"\bmust not (?:create|make|build|use|include|select|be)\b[^.\n;]*",
-        r"\bshould not (?:create|make|build|use|include|select|be)\b[^.\n;]*",
-        r"\bwithout\b[^.\n;]*",
+        r"\bdo not (?:create|make|build|use|include|select|add|generate|introduce)\b[^.;]*",
+        r"\bdon't (?:create|make|build|use|include|select|add|generate|introduce)\b[^.;]*",
+        r"\bmust not (?:create|make|build|use|include|select|add|generate|introduce|be)\b[^.;]*",
+        r"\bshould not (?:create|make|build|use|include|select|add|generate|introduce|be)\b[^.;]*",
+        r"\bwithout\b[^.;]*",
         r"\bno\b\s+(?:quiz|trivia|card game|card battle|course|lesson|multiple[- ]choice)[^.\n;]*",
     ]
 
