@@ -171,11 +171,14 @@ RUNTIME_MECHANICS = {
                                 "inventory", "party system", "creature roster", "turn-based combat",
                                 "capture mechanic", "creature taming", "tame & befriend wild creature",
                                 "XP & leveling", "save/load", "starter creature", "village & region maps"],
-    "shooter": ["free 360° movement", "auto-aim firing at the nearest threat", "enemy waves",
+    "shooter": ["real-time free 360° movement", "top-down arena shooting",
+                "auto-aim firing at the nearest threat", "enemy waves",
                 "chaser + gunner enemy AI", "enemy projectiles", "hit points & i-frames",
                 "wave counter", "exit portal", "touch controls"],
-    "open_world_rpg": ["seamless scrolling world", "camera follow", "named zones/regions",
-                       "NPC dialogue", "collect & defeat quests", "quest tracker",
+    "open_world_rpg": ["real-time free roaming movement",
+                       "top-down exploration across a seamless scrolling world",
+                       "camera follow", "named zones/regions", "NPC dialogue",
+                       "collect & defeat quests", "quest tracker",
                        "roaming enemy AI (patrol/chase)", "bump combat", "relic collectibles",
                        "world gate unlock", "checkpoints & respawn", "touch controls"],
 }
@@ -532,7 +535,7 @@ Reply ONLY valid JSON:
  "learning_objective": "one sentence", "stages": 3,
  "controls": "tap/click/drag/arrows ...", "replayability": "one sentence"}
 RUNTIME ROUTING — pick the runtime whose GAMEPLAY matches the request:
-- action/arcade/runner/dodge/shooter/racing/collecting -> dodge_collect
+- action/arcade/runner/dodge/collecting -> dodge_collect
 - card battler/deck builder/TCG/turn-based card combat -> card_battle
 - tower defense/wave defense/place towers -> tower_defense
 - match-3/gem swap/tile matching puzzle -> match3

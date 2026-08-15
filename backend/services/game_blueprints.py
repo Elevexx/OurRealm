@@ -107,6 +107,49 @@ RULES:
 PLAN_SYSTEM = PLAN_SYSTEM.replace("__RUNTIME_ENUM__", RUNTIME_ENUM)
 
 
+def _explicit_runtime_request(text: str):
+    """Return a runtime only when the founder explicitly names it as the runtime."""
+    norm = re.sub(r"[^a-z0-9]+", " ", str(text or "").lower()).strip()
+
+    for rt in RUNTIMES:
+        aliases = {
+            re.sub(r"[^a-z0-9]+", " ", rt.lower()).strip(),
+            re.sub(
+                r"[^a-z0-9]+",
+                " ",
+                str(RUNTIME_LABELS.get(rt) or "").lower(),
+            ).strip(),
+        }
+
+        for alias in aliases:
+            if not alias:
+                continue
+
+            # Respect explicit negatives such as "do not use the Shooter runtime".
+            neg = (
+                rf"\b(?:do not|don t|never)\s+"
+                rf"(?:use|select|choose)\s+(?:the\s+)?"
+                rf"{re.escape(alias)}\s+runtime\b"
+            )
+            if re.search(neg, norm):
+                continue
+
+            patterns = (
+                rf"\b(?:use|select|choose|force)\s+(?:the\s+)?"
+                rf"{re.escape(alias)}\s+runtime\b",
+
+                rf"\block\s+(?:the\s+)?runtime\s+(?:to\s+)?"
+                rf"{re.escape(alias)}\b",
+
+                rf"\bruntime\s+(?:is\s+)?{re.escape(alias)}\b",
+            )
+
+            if any(re.search(pat, norm) for pat in patterns):
+                return rt
+
+    return None
+
+
 # ── Runtime recommendation (deterministic + LLM-informed, never silent) ─
 def recommend_runtime(request_text: str, llm_hint: str, requested_mechanics: list) -> dict:
     routed = route_runtime(request_text or "")
@@ -666,6 +709,125 @@ def _sanitize_runtime_sections(sections: dict, selected_rt: str,
                 if not _TOP_DOWN_BLOCKED.search(item)
             ]
 
+    if selected_rt == "shooter":
+        identity["genre"] = "top-down shooter / arcade"
+        runtime["camera_model"] = "fixed top-down arena camera"
+        runtime["control_model"] = (
+            "WASD/arrow-key free 360-degree movement and mobile touch-drag; "
+            "weapon automatically fires at the nearest enemy"
+        )
+
+        gameplay["core_loop"] = (
+            "Move freely through the arena while auto-fire targets the nearest "
+            "enemy. Clear every enemy wave, then enter the activated exit portal."
+        )
+
+        for key in (
+            "bosses", "npcs", "quests", "upgrades",
+            "abilities", "weapons_or_spells",
+        ):
+            gameplay[key] = []
+
+        gameplay["inventory"] = ""
+        gameplay["progression"] = (
+            "Clearing every wave activates the exit portal and advances to the "
+            "next stage."
+        )
+
+        gameplay["player_mechanics"] = [
+            "real-time free 360-degree movement",
+            "top-down arena movement",
+            "automatic shooting at the nearest enemy",
+            "hit points and temporary damage i-frames",
+            "desktop keyboard and mobile touch controls",
+        ]
+
+        gameplay["enemies"] = [
+            "Chaser — pursues the player at close range",
+            "Gunner — keeps distance and fires enemy projectiles",
+        ]
+
+        gameplay["objectives"] = [
+            "Defeat every enemy wave",
+            "Survive incoming chasers and gunner projectiles",
+            "Enter the exit portal after the final wave",
+        ]
+
+        raw_levels = gameplay.get("levels") or []
+        safe_levels = []
+        for i, item in enumerate(raw_levels):
+            if isinstance(item, dict):
+                title = str(
+                    item.get("name") or item.get("title") or f"Stage {i + 1}"
+                )[:80]
+            else:
+                txt = str(item or "")
+                title = (txt.split("—", 1)[0] or f"Stage {i + 1}")[:80]
+
+            safe_levels.append(
+                f"{title} — top-down arena with escalating chaser/gunner waves; "
+                "clearing the final wave activates the exit portal."
+            )
+
+        gameplay["levels"] = safe_levels
+
+        systems["ui_hud"] = [
+            "Health, current wave, enemies remaining and portal status"
+        ]
+        systems["tutorials"] = [
+            "Show movement, automatic nearest-enemy fire, enemy waves and exit portal."
+        ]
+
+    if selected_rt == "open_world_rpg":
+        identity["genre"] = "open-world RPG / exploration"
+        runtime["camera_model"] = "smooth top-down world-follow camera"
+        runtime["control_model"] = (
+            "WASD/arrow-key free roaming and mobile touch-drag movement; "
+            "NPC interaction occurs by proximity"
+        )
+
+        gameplay["core_loop"] = (
+            "Explore connected world zones, speak with NPCs, complete collect or "
+            "defeat quests, survive roaming enemies and unlock the world gate."
+        )
+
+        for key in ("bosses", "upgrades", "abilities", "weapons_or_spells"):
+            gameplay[key] = []
+
+        gameplay["inventory"] = ""
+        gameplay["player_mechanics"] = [
+            "real-time free roaming movement",
+            "top-down world exploration",
+            "NPC proximity dialogue",
+            "collect and defeat quests",
+            "roaming enemy encounters",
+            "checkpoints and respawn",
+            "world-gate progression",
+            "desktop keyboard and mobile touch controls",
+        ]
+
+        gameplay["progression"] = (
+            "Complete required quests across the world zones to unlock the world gate."
+        )
+
+        raw_levels = gameplay.get("levels") or []
+        safe_levels = []
+        for i, item in enumerate(raw_levels):
+            if isinstance(item, dict):
+                title = str(
+                    item.get("name") or item.get("title") or f"Region {i + 1}"
+                )[:80]
+            else:
+                txt = str(item or "")
+                title = (txt.split("—", 1)[0] or f"Region {i + 1}")[:80]
+
+            safe_levels.append(
+                f"{title} — roaming exploration zone with NPC dialogue, collect/"
+                "defeat quests, enemies, checkpoints and world-gate progression."
+            )
+
+        gameplay["levels"] = safe_levels
+
     if not re.search(r"\bfire power\b", request_text or "", re.IGNORECASE):
         systems["fire_power_integrations"] = []
 
@@ -699,11 +861,17 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
     requested_stage_count = _requested_stage_count(
         request_text + "\n" + feedback
     )
-    # Capability-matrix runtime selection BEFORE any generation. Incompatible
-    # requests are refused here — no blueprint is ever generated for them.
-    sel = select_best_runtime(request_text)
+    # Capability-matrix runtime selection BEFORE any generation.
+    # An explicit founder runtime request is authoritative, but still must pass
+    # that runtime's executable capability contract.
+    explicit_runtime = _explicit_runtime_request(request_text)
+    sel = select_best_runtime(
+        request_text,
+        explicit_runtime=explicit_runtime,
+    )
     preselected = (
         (existing or {}).get("selected_runtime")
+        or explicit_runtime
         or (sel.get("selected") or {}).get("runtime")
     )
     tools = list(body.get("tools") or (existing or {}).get("tools") or [])
@@ -783,7 +951,11 @@ async def plan_blueprint(body: dict, current: dict, *, existing: dict = None,
         rec["recommended"] = mech_pick
         rec["recommended_label"] = RUNTIME_LABELS.get(mech_pick)
         rec["compatibility_score"] = sel["selected"]["score"]
-        rec["reason"] = "deterministic capability matrix matched the requested mechanics"
+        rec["reason"] = (
+            f"founder explicitly locked runtime to {RUNTIME_LABELS.get(mech_pick)}"
+            if sel["method"] == "explicit_runtime_lock"
+            else "deterministic capability matrix matched the requested mechanics"
+        )
         rec["method"] = sel["method"]
 
         rec["mechanics_selection"] = {

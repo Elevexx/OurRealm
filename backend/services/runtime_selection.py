@@ -17,6 +17,15 @@ MECHANIC_PATTERNS = {
                       r"2\.5d", r"\barpg\b"],
     "cooldown_abilities": [r"cooldown", r"ability cooldowns?", r"skill cooldowns?"],
     "top_down_exploration": [r"top[- ]?down", r"overhead (?:view|camera)", r"explore (?:a|the) (?:map|arena|world)"],
+    "open_world_exploration": [
+        r"open[- ]?world",
+        r"free[- ]?roam(?:ing)?",
+        r"roam freely",
+        r"seamless world",
+        r"seamless scrolling world",
+        r"large connected world",
+        r"vast world",
+    ],
     "platforming": [
     r"\bplatform(?:er|ing)\b",
     r"\bplatform adventure\b",
@@ -79,7 +88,7 @@ CORE = {"platforming", "tower_defense", "card_battles", "match3_swap", "racing",
         "city_building", "rhythm_timing", "idle_progression", "roguelike_runs", "tactics_grid",
         "story_choices", "fishing", "quiz_learning", "memory_matching", "sorting_categorize",
         "turn_based_combat", "creature_capture", "puzzle_solving", "top_down_exploration",
-        "real_time_movement", "action_combat", "shooting", "survival", "stealth",
+        "open_world_exploration", "real_time_movement", "action_combat", "shooting", "survival", "stealth",
         "rts_base_building", "sandbox_building", "physics_toys", "sports_match"}
 
 # capability matrix: runtime -> {"s": fully supported, "a": honest approximation}
@@ -121,6 +130,29 @@ _M = {
                                       "top_down_exploration"},
                                 "a": {"boss_battles", "crafting", "multiplayer_online",
                                       "roguelike_runs"}},
+    "shooter": {
+        "s": {
+            "real_time_movement",
+            "top_down_exploration",
+            "shooting",
+        },
+        "a": {
+            "survival",
+        },
+    },
+    "open_world_rpg": {
+        "s": {
+            "real_time_movement",
+            "top_down_exploration",
+            "open_world_exploration",
+            "quests",
+            "dialogue_npcs",
+        },
+        "a": {
+            "boss_battles",
+        },
+    },
+
 }
 
 
@@ -156,13 +188,44 @@ def _label(m: str) -> str:
     return m.replace("_", " ")
 
 
-def select_best_runtime(request_text: str) -> dict:
+def select_best_runtime(request_text: str, explicit_runtime: str = None) -> dict:
     """Score EVERY registered runtime against the detected mechanics.
-    Returns the best compatible runtime or a full incompatibility report."""
+
+    When the founder explicitly names a registered runtime, that runtime is
+    authoritative. We still validate the requested mechanics against it; an
+    incompatible explicit choice is rejected instead of silently rerouted.
+    """
     detected = detect_mechanics(request_text)
+
     if not detected:
-        return {"detected_mechanics": [], "no_signal": True, "no_compatible_runtime": False,
-                "selected": None, "ranked": []}
+        if explicit_runtime in RUNTIMES:
+            row = {
+                "runtime": explicit_runtime,
+                "label": RUNTIME_LABELS.get(explicit_runtime, explicit_runtime),
+                "score": 1.0,
+                "compatible": True,
+                "supported": [],
+                "approximated": [],
+                "unsupported": [],
+            }
+            return {
+                "detected_mechanics": [],
+                "core_mechanics": [],
+                "selected": row,
+                "ranked": [row],
+                "no_signal": True,
+                "compatible_runtimes": [explicit_runtime],
+                "no_compatible_runtime": False,
+                "method": "explicit_runtime_lock",
+            }
+
+        return {
+            "detected_mechanics": [],
+            "no_signal": True,
+            "no_compatible_runtime": False,
+            "selected": None,
+            "ranked": [],
+        }
     core_needed = [m for m in detected if m in CORE]
     ranked = []
     for rt in RUNTIMES:
@@ -179,14 +242,65 @@ def select_best_runtime(request_text: str) -> dict:
                        "approximated": [_label(m) for m in approx],
                        "unsupported": [_label(m) for m in unsup]})
     ranked.sort(key=lambda x: (x["compatible"], x["score"]), reverse=True)
-    winner = next((r for r in ranked if r["compatible"] and r["score"] > 0), None)
-    result = {"detected_mechanics": [_label(m) for m in detected],
-              "core_mechanics": [_label(m) for m in core_needed],
-              "selected": winner, "ranked": ranked[:6], "no_signal": False,
-              "compatible_runtimes": [r["runtime"] for r in ranked if r["compatible"]],
-              "no_compatible_runtime": winner is None,
-              "method": "deterministic_capability_matrix"}
+
+    explicit_row = (
+        next((r for r in ranked if r["runtime"] == explicit_runtime), None)
+        if explicit_runtime else None
+    )
+
+    if explicit_runtime:
+        winner = (
+            explicit_row
+            if explicit_row and explicit_row["compatible"] and explicit_row["score"] > 0
+            else None
+        )
+    else:
+        winner = next(
+            (r for r in ranked if r["compatible"] and r["score"] > 0),
+            None,
+        )
+
+    result = {
+        "detected_mechanics": [_label(m) for m in detected],
+        "core_mechanics": [_label(m) for m in core_needed],
+        "selected": winner,
+        "ranked": ranked[:6],
+        "no_signal": False,
+        "compatible_runtimes": [r["runtime"] for r in ranked if r["compatible"]],
+        "no_compatible_runtime": winner is None,
+        "method": (
+            "explicit_runtime_lock"
+            if explicit_runtime
+            else "deterministic_capability_matrix"
+        ),
+    }
     if winner is None:
+        if explicit_runtime and explicit_row:
+            result["report"] = {
+                "requested_mechanics": [_label(m) for m in detected],
+                "supported_mechanics": (
+                    explicit_row["supported"] + explicit_row["approximated"]
+                ),
+                "unsupported_mechanics": explicit_row["unsupported"],
+                "closest_matching_runtime": explicit_row["label"],
+                "compatibility_score": explicit_row["score"],
+                "missing_runtime_capabilities": explicit_row["unsupported"],
+                "blocking_reason": (
+                    f"Explicit runtime {explicit_row['label']} cannot execute: "
+                    + ", ".join(explicit_row["unsupported"])
+                ),
+                "recommendations": [
+                    "Keep the explicit runtime and remove unsupported mechanics",
+                    "Or explicitly choose a different runtime",
+                ],
+                "message": (
+                    f"You explicitly selected {explicit_row['label']}, but the "
+                    "requested mechanics exceed that runtime's executable contract. "
+                    "Nothing was generated."
+                ),
+            }
+            return result
+
         closest = ranked[0]
         result["report"] = {
             "requested_mechanics": [_label(m) for m in detected],
