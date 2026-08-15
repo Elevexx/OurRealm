@@ -63,6 +63,10 @@ WIN_LOSS = {
                                 "HP reaches 0 in a creature battle"),
     "action_rpg_2_5d": ("complete the region quest, defeat the boss and pass the exit portal",
                         "all lives lost (respawn at checkpoints until then)"),
+    "shooter": ("defeat all enemy waves and reach the exit portal",
+                "all lives lost"),
+    "open_world_rpg": ("complete the required quests and reach the world gate",
+                       "all lives lost"),
     "racing": ("finish all laps in 1st-3rd place", "finish last / miss checkpoints"),
     "farming": ("reach the coin goal before the season ends", "season ends short of the goal"),
     "city_builder": ("grow the city to the population target", "treasury and food collapse"),
@@ -906,8 +910,8 @@ fishing: {"stages":[{"title":"Waters name","casts":8,"goal_fish":5,
 Wrap it as: {"runtime":"<runtime>","title":"...","description":"1-2 sentences","subject":"...",
  "grade_level":"...","learning_objective":"...","controls":"...",
  "player_representation":"copy EXACTLY from the plan in the user message — the renderer honors this field",
- "visual_theme":{"environment":"cyber_city|space|sunset|crystal|lava|tunnel|grid",
-   "player":"hover_car","player_name":"e.g. neon hover vehicle",
+ "visual_theme":{"environment":"<actual setting from the request; use space ONLY when explicitly requested>",
+   "player":"<copy player_representation exactly>","player_name":"<theme-appropriate name>",
    "palette":{"bg":"#05060f","glow":"#2EE6FF","accent":"#F4A73B","hazard":"#FF3D5A","player":["#C26BFF","#2EE6FF"],"lane":"#2EE6FF"}},
  "theme":{"bg":"#0b1220","accent":"#2EE6FF","text":"#EAF2FF"},
  "scoring":{"points_per_correct":10,"pass_pct":70},
@@ -966,7 +970,8 @@ def parse_spec_json(raw: str) -> dict:
     return {}
 
 
-def validate_spec(spec: dict, complexity: int = 1, expected_runtime: str | None = None) -> list:
+def validate_spec(spec: dict, complexity: int = 1, expected_runtime: str | None = None,
+                  expected_stage_count: int | None = None) -> list:
     """Automated tests — every failure blocks approval submission."""
     errs = []
     if not spec:
@@ -991,6 +996,11 @@ def validate_spec(spec: dict, complexity: int = 1, expected_runtime: str | None 
     min_stages = {1: 1, 2: 3, 3: 5}.get(complexity, 1)
     if len(stages) < min_stages:
         errs.append(f"complexity {complexity} requires at least {min_stages} stages (got {len(stages)})")
+    if expected_stage_count is not None and len(stages) != int(expected_stage_count):
+        errs.append(
+            f"approved plan requires exactly {int(expected_stage_count)} stages "
+            f"(got {len(stages)})"
+        )
     if complexity == 3 and not spec.get("combo"):
         errs.append("complexity 3 requires combo:true")
     if complexity == 3 and not (spec.get("achievements") or []):
@@ -1317,6 +1327,7 @@ async def _run_build(game_id: str):
     try:
         await _log(game_id, "designing", f"AI Power {game['ai_power']} → {t['label']} ({t['passes']} passes)")
         plan = game.get("plan") or {}
+        expected_stages = int(plan.get("stages") or min_stages_for(game["complexity"]))
         # Reasoning models spend most of the completion budget on internal
         # thinking — give spec generation real headroom or JSON gets truncated.
         spec_tokens = max(t["max_tokens"] * 3, 16000)
@@ -1324,7 +1335,7 @@ async def _run_build(game_id: str):
             f"Request: {str(game['request'])[:4000]}\nRuntime: {game['runtime']} (MANDATORY — the spec runtime must be exactly this)\n"
             f"Complexity: {game['complexity']} — {COMPLEXITY_LEVELS[game['complexity']]}\n"
             f"COMPLEXITY CONTRACT (must all be present in the spec): {', '.join(complexity_features(game['complexity']))}\n"
-            f"Stages required: {plan.get('stages') or min_stages_for(game['complexity'])}\n"
+            f"Stages required: EXACTLY {expected_stages}\n"
             + (f"Player representation (MANDATORY — set player_representation to exactly this): {plan.get('player_representation')}\n"
                if plan.get("player_representation") else "")
             + (f"Planned mechanics: {', '.join(plan.get('mechanics') or [])}\n" if plan.get("mechanics") else "")
@@ -1338,7 +1349,8 @@ async def _run_build(game_id: str):
         spec = parse_spec_json(raw)
         if not spec:
             await _log(game_id, "refining", "First spec pass returned no valid JSON — retrying")
-        errs = validate_spec(spec, game["complexity"], expected_runtime=game.get("runtime"))
+        errs = validate_spec(spec, game["complexity"], expected_runtime=game.get("runtime"),
+            expected_stage_count=expected_stages)
         # refinement passes: fix validation errors / review quality
         for p in range(max(t["passes"] - 1, 1 if errs else 0)):
             if not errs and p > 0:
@@ -1356,7 +1368,8 @@ async def _run_build(game_id: str):
                 if not fixed.get("runtime"):
                     fixed["runtime"] = game["runtime"]
                 spec = fixed
-            errs = validate_spec(spec, game["complexity"], expected_runtime=game.get("runtime"))
+            errs = validate_spec(spec, game["complexity"], expected_runtime=game.get("runtime"),
+            expected_stage_count=expected_stages)
         if not errs and game["ai_power"] >= 7 and spec.get("runtime") in ("dodge_collect", "top_down", "platformer"):
             await _log(game_id, "art_direction", "AI Power 7+ — art direction, asset planning & stage-variation pass")
             try:
@@ -1364,17 +1377,25 @@ async def _run_build(game_id: str):
                     SPEC_SYSTEM,
                     user_msg + "\nART DIRECTION PASS: improve the spec below — richer visual_theme palette, DISTINCT "
                     "per-stage environments/hazard_types/formations (and modes where fitting), better balance and pacing. "
-                    "Keep the SAME runtime, at least the same stage count, and every complexity requirement. "
+                    "Keep the SAME runtime, EXACTLY the required stage count, and every complexity requirement. "
                     "Return the FULL improved spec JSON.\nCURRENT SPEC: " + json.dumps(spec)[:7000],
                     power=game["ai_power"], json_mode=True, max_tokens=spec_tokens)
                 cost += t["est_cost_per_pass"]
                 spec2 = parse_spec_json(raw2)
-                if spec2 and not validate_spec(spec2, game["complexity"]):
+                if spec2 and not validate_spec(
+                        spec2,
+                        game["complexity"],
+                        expected_runtime=game.get("runtime"),
+            expected_stage_count=expected_stages):
                     spec = spec2
             except Exception:  # noqa: BLE001
                 pass
         await _log(game_id, "testing", "Running automated spec validation tests")
-        errs = validate_spec(spec, game["complexity"])
+        errs = validate_spec(
+            spec,
+            game["complexity"],
+            expected_runtime=game.get("runtime"),
+            expected_stage_count=expected_stages)
         tests = {"passed": not errs, "errors": errs,
                  "checks": ["runtime schema", "stage content", "answer integrity", "category integrity"],
                  "at": _iso()}

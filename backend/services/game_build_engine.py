@@ -17,7 +17,8 @@ from core.db import db
 from services.llm_router import tier
 from services.game_studio import (RUNTIMES, RUNTIME_LABELS, RUNTIME_MECHANICS,
                                   FIRE_ECON_DEFAULTS, TEMPLATE_IDS, default_rep,
-                                  _run_build, audit as studio_audit)
+                                  min_stages_for, _run_build,
+                                  audit as studio_audit)
 from services import asset_library, sprite_studio
 from services.orai_projects import audit as project_audit
 
@@ -50,9 +51,21 @@ async def resolve_assets(bp: dict, owner_id: str) -> dict:
             skipped.append(r["req_id"])
             continue
         asset = None
+
         if dec == "use_suggested" and r.get("chosen_asset_id"):
             asset = await db.game_asset_library.find_one(
                 {"id": r["chosen_asset_id"], "owner_id": owner_id}, {"_id": 0})
+
+        # Backward compatibility for blueprints created before automatic
+        # high-confidence library reuse existed. Re-run matching at build time,
+        # but wire only a deterministic safe match.
+        if not asset and dec in (None, "pending"):
+            matches = await asset_library.match_requirement(owner_id, r, limit=1)
+            best = matches[0] if matches else None
+            if best and best.get("auto_reuse_safe"):
+                asset = await db.game_asset_library.find_one(
+                    {"id": best["asset_id"], "owner_id": owner_id}, {"_id": 0})
+
         if not asset and dec == "upload_replacement":
             # uploads register into the library first — look for a tagged upload
             hits = await asset_library.search_assets(owner_id, category=r.get("category"),
@@ -77,9 +90,24 @@ async def resolve_assets(bp: dict, owner_id: str) -> dict:
 
 
 # ── Scene Generator — deterministic scene graph from the blueprint ──
+def planned_stage_count(bp: dict) -> int:
+    """One authoritative stage count for scene graph + build plan."""
+    g = (bp.get("blueprint") or {}).get("gameplay") or {}
+    levels = g.get("levels") or []
+
+    if levels:
+        return max(1, len(levels))
+
+    requested = bp.get("requested_stage_count")
+    if requested:
+        return max(1, int(requested))
+
+    return max(1, min_stages_for(int(bp.get("complexity") or 1)))
+
+
 def scene_graph(bp: dict) -> list:
     g = bp["blueprint"]["gameplay"]
-    stages = max(1, min(len(g.get("levels") or []) or len(g.get("enemies") or []) or 1, 10))
+    stages = planned_stage_count(bp)
     scenes = [
         {"id": "scene_main_menu", "type": "main_menu", "label": "Main Menu",
          "transitions": ["scene_loading", "scene_settings", "scene_credits"]},
@@ -132,6 +160,13 @@ def runtime_validation(bp: dict, scenes: list, resolution: dict) -> dict:
     ids = [s["id"] for s in scenes]
     if len(ids) != len(set(ids)):
         blocking.append("Duplicate scene IDs in scene graph")
+
+    expected_stages = planned_stage_count(bp)
+    actual_stages = sum(1 for s in scenes if s.get("type") == "gameplay")
+    if actual_stages != expected_stages:
+        blocking.append(
+            f"Scene graph stage mismatch: expected {expected_stages}, got {actual_stages}"
+        )
     known = set(ids)
     for s in scenes:
         for tr in s.get("transitions") or []:
@@ -213,8 +248,7 @@ async def start_blueprint_build(bp: dict, current: dict) -> dict:
     if not validation["passed"]:
         return {"started": False, "validation": validation}
     g = bp["blueprint"]["gameplay"]
-    stages = max(1, min(len(g.get("levels") or []) or 3, 20)) if bp["complexity"] > 1 else \
-        max(1, min(len(g.get("levels") or []) or 1, 3))
+    stages = planned_stage_count(bp)
     plan = {
         "title": bp["blueprint"]["identity"].get("title") or bp["name"],
         "runtime": bp["selected_runtime"],

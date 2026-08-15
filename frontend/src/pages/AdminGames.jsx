@@ -194,11 +194,32 @@ export default function AdminGames() {
   const act = async (gameId, action, feedback = "") => {
     setBusy(true);
     try {
-      await apiClient.post(`/admin/games/${gameId}/action`, { action, feedback });
+      const r = await apiClient.post(`/admin/games/${gameId}/action`, { action, feedback });
+
+      if (action === "delete") {
+        setParams({});
+        setDetail(null);
+      } else if (r.data?.game) {
+        // Backend already returns the authoritative new status.
+        // Merge it immediately so Approve/Publish never appears to do nothing.
+        setDetail((prev) => prev ? { ...prev, ...r.data.game } : r.data.game);
+      }
+
       toast.success(`${action} — done`);
-      if (action === "delete") setParams({});
       load();
-      if (selGame) apiClient.get(`/admin/games/${selGame}`).then((r) => setDetail(r.data.game)).catch(() => {});
+
+      // Refresh the full record (including spec/build data). If this fails,
+      // preserve the successful action state above and tell the Founder.
+      if (selGame && action !== "delete") {
+        apiClient.get(`/admin/games/${selGame}`)
+          .then((rr) => setDetail(rr.data.game))
+          .catch((e) => {
+            toast.error(
+              e?.response?.data?.detail ||
+              "Action succeeded, but the game detail refresh failed"
+            );
+          });
+      }
     } catch (e) { toast.error(e?.response?.data?.detail || `${action} failed`); }
     finally { setBusy(false); }
   };

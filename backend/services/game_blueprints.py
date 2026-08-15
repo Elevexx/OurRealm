@@ -353,16 +353,34 @@ def derive_asset_requirements(rt: str, bp: dict, complexity: int) -> list:
 
 async def match_requirements(owner_id: str, reqs: list) -> tuple:
     searched = 0
+
     for r in reqs:
         matches = await asset_library.match_requirement(owner_id, r, limit=3)
         searched += 1
+
         r["existing_match_found"] = bool(matches)
         r["best_matches"] = matches
         r["generation_required"] = not matches
-        r["founder_decision"] = "pending"
-        r["chosen_asset_id"] = None
-        r["decision_options"] = ["use_suggested", "search_library", "upload_replacement",
-                                 "generate_later"] + ([] if r["required"] else ["skip_optional"])
+        r["decision_options"] = [
+            "use_suggested",
+            "search_library",
+            "upload_replacement",
+            "generate_later",
+        ] + ([] if r["required"] else ["skip_optional"])
+
+        best = matches[0] if matches else None
+
+        if best and best.get("auto_reuse_safe"):
+            r["founder_decision"] = "use_suggested"
+            r["chosen_asset_id"] = best["asset_id"]
+            r["auto_selected"] = True
+            r["auto_selected_score"] = best.get("match_score")
+            r["auto_selected_reason"] = "exact category + slot tag + runtime compatibility"
+        else:
+            r["founder_decision"] = "pending"
+            r["chosen_asset_id"] = None
+            r["auto_selected"] = False
+
     return reqs, searched
 
 

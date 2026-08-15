@@ -18,6 +18,8 @@ IMPLEMENTATION = {
     "turn_based_creature_rpg": "rpg", "racing": "rac", "farming": "frm", "city_builder": "cbl",
     "roguelike": "rgl", "tactics": "tac", "idle": "idl", "visual_novel": "vn", "fishing": "fsh",
     "action_rpg_2_5d": "arpg",
+    "shooter": "sht",
+    "open_world_rpg": "owr",
 }
 SHARED_FOUNDATION = {  # justified implementation reuse (must be disclosed, counts as shared impl)
     "turn_based_creature_rpg": ("rpg", "creature-RPG mode of the rpg engine: exploration, party, "
@@ -37,6 +39,8 @@ CONTROL_MODEL = {
     "sorting": "click in order", "puzzle_room": "click objects/answers", "fishing": "timed cast/reel",
     "action_rpg_2_5d": "continuous 8-dir movement + melee/spell/dodge/interact "
                        "(keyboard, gamepad, mobile joystick + buttons)",
+    "shooter": "WASD/arrows/touch-drag 360° movement + automatic nearest-threat fire",
+    "open_world_rpg": "WASD/arrows/touch-drag roaming + NPC proximity interaction + combat",
 }
 CAMERA = {"platformer": "side-scrolling", "dodge_collect": "vertical scroll", "racing": "chase/top",
           "top_down": "top-down grid", "rpg": "top-down grid + battle overlay",
@@ -47,7 +51,9 @@ CAMERA = {"platformer": "side-scrolling", "dodge_collect": "vertical scroll", "r
           "rhythm": "lane highway", "quiz_adventure": "panel", "matching": "board", "memory": "board",
           "sorting": "board", "puzzle_room": "panel", "fishing": "side water view",
           "action_rpg_2_5d": "smooth follow camera with look-ahead, bounds, arena lock and shake "
-                             "over a layered 2.5D parallax world"}
+                             "over a layered 2.5D parallax world",
+          "shooter": "fixed top-down arena view",
+          "open_world_rpg": "smooth top-down world camera following the player across a larger map"}
 
 
 def execution_contract(rt: str) -> dict:

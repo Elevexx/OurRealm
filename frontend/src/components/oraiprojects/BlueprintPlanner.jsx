@@ -298,21 +298,49 @@ function BuildReviewPanel({ bp, onExit }) {
 
   useEffect(() => {
     if (!building) return;
+
+    let pollWarningShown = false;
+
     const t = setInterval(() => {
       apiClient.get(`/orai/projects/blueprints/${bp.id}/build/status`)
         .then((r) => {
+          pollWarningShown = false;
           setStatus(r.data);
-          if (["built", "build_failed"].includes(r.data.blueprint_status)) clearInterval(t);
-        }).catch(() => {});
+
+          if (["built", "build_failed"].includes(r.data.blueprint_status)) {
+            clearInterval(t);
+          }
+        })
+        .catch((e) => {
+          if (!pollWarningShown) {
+            pollWarningShown = true;
+            toast.error(
+              e?.response?.data?.detail ||
+              "Build started, but status refresh temporarily failed"
+            );
+          }
+        });
     }, 3000);
+
     return () => clearInterval(t);
   }, [bp.id, building]);
 
   const approveBuild = async () => {
     setBusy(true);
     try {
-      await apiClient.post(`/orai/projects/blueprints/${bp.id}/build/approve`);
-      toast.success("Build approved — assembling your game");
+      const r = await apiClient.post(`/orai/projects/blueprints/${bp.id}/build/approve`);
+
+      setStatus((prev) => ({
+        ...(prev || {}),
+        blueprint_status: "building",
+        game_id: r.data?.game_id || prev?.game_id
+      }));
+
+      toast.success(
+        r.data?.already_building
+          ? "Build is already running"
+          : "Build approved — assembling your game"
+      );
       setBuilding(true);
     } catch (e) {
       const d = e?.response?.data?.detail;

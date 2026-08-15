@@ -146,22 +146,68 @@ async def find_duplicates(owner_id: str) -> list:
 
 
 def _match_score(asset: dict, req: dict) -> float:
+    """Rank suggestions conservatively.
+
+    Category-only similarity is enough to SHOW a suggestion, but never enough
+    to auto-wire it. Exact slot tags and explicit runtime compatibility are
+    the high-confidence signals used for automatic reuse.
+    """
     score = 0.0
-    if asset.get("category") == req.get("category"):
-        score += 0.5
-    a_tok = _tokens(" ".join([asset.get("name", ""), asset.get("description", ""),
-                              asset.get("visual_style", ""), " ".join(asset.get("tags") or [])]))
-    r_tok = _tokens(" ".join([req.get("description", ""), req.get("visual_style", ""),
-                              req.get("label", "")]))
+
+    category_match = asset.get("category") == req.get("category")
+    if category_match:
+        score += 0.35
+
+    tags = {str(t).lower() for t in (asset.get("tags") or []) if t}
+    slot = str(req.get("slot") or "").lower()
+    slot_match = bool(slot and slot in tags)
+    if slot_match:
+        score += 0.35
+
+    a_tok = _tokens(" ".join([
+        asset.get("name", ""),
+        asset.get("description", ""),
+        asset.get("visual_style", ""),
+        " ".join(asset.get("tags") or []),
+    ]))
+    r_tok = _tokens(" ".join([
+        req.get("description", ""),
+        req.get("visual_style", ""),
+        req.get("label", ""),
+        req.get("slot", ""),
+    ]))
     if r_tok:
-        score += 0.4 * (len(a_tok & r_tok) / len(r_tok))
+        score += 0.20 * (len(a_tok & r_tok) / len(r_tok))
+
     rt = req.get("target_runtime")
     compat = asset.get("compatible_runtimes") or []
-    if rt and compat and rt not in compat:
-        score *= 0.5
-    elif rt and (not compat or rt in compat):
-        score += 0.1
+
+    if rt and compat:
+        if rt in compat:
+            score += 0.10
+        else:
+            # Explicitly incompatible assets must never become strong matches.
+            score *= 0.25
+
     return round(min(score, 1.0), 3)
+
+
+def _auto_reuse_safe(asset: dict, req: dict, score: float) -> bool:
+    """True only when wiring this asset automatically is deterministic."""
+    if asset.get("category") != req.get("category"):
+        return False
+
+    slot = str(req.get("slot") or "").lower()
+    tags = {str(t).lower() for t in (asset.get("tags") or []) if t}
+    if not slot or slot not in tags:
+        return False
+
+    rt = req.get("target_runtime")
+    compat = asset.get("compatible_runtimes") or []
+    if not rt or rt not in compat:
+        return False
+
+    return float(score) >= 0.80
 
 
 async def match_requirement(owner_id: str, req: dict, limit: int = 3) -> list:
@@ -172,11 +218,26 @@ async def match_requirement(owner_id: str, req: dict, limit: int = 3) -> list:
         pool = await search_assets(owner_id, category=req.get("category"), limit=50)
     scored = sorted(({**a, "match_score": _match_score(a, req)} for a in pool),
                     key=lambda x: x["match_score"], reverse=True)
-    return [{"asset_id": a["id"], "name": a["name"], "category": a["category"],
-             "preview_url": a.get("preview_url"), "visual_style": a.get("visual_style"),
-             "match_score": a["match_score"], "source": a.get("source"),
-             "compatible_runtimes": a.get("compatible_runtimes")}
-            for a in scored if a["match_score"] >= 0.35][:limit]
+    return [{
+        "asset_id": a["id"],
+        "name": a["name"],
+        "category": a["category"],
+        "preview_url": a.get("preview_url"),
+        "visual_style": a.get("visual_style"),
+        "match_score": a["match_score"],
+        "source": a.get("source"),
+        "compatible_runtimes": a.get("compatible_runtimes"),
+        "slot_match": bool(
+            req.get("slot") and
+            str(req.get("slot")).lower() in
+            {str(t).lower() for t in (a.get("tags") or []) if t}
+        ),
+        "runtime_match": bool(
+            req.get("target_runtime") and
+            req.get("target_runtime") in (a.get("compatible_runtimes") or [])
+        ),
+        "auto_reuse_safe": _auto_reuse_safe(a, req, a["match_score"]),
+    } for a in scored if a["match_score"] >= 0.35][:limit]
 
 
 async def touch_usage(asset_id: str):
@@ -203,7 +264,10 @@ async def backfill_from_orai_assets(owner: dict) -> dict:
             visual_style="", dimensions={k: meta[k] for k in ("width", "height") if k in meta},
             file_format="png", source="orai_assets_backfill",
             provider=a.get("provider") or "", source_project_id=a.get("project_id"),
-            compatible_runtimes=[t for t in (a.get("tags") or []) if t and "_" in str(t)][:3],
+            compatible_runtimes=[
+                t for t in (a.get("tags") or [])
+                if t in __import__("services.game_studio", fromlist=["RUNTIMES"]).RUNTIMES
+            ][:3],
             preview_url=refs.get("thumb") or a.get("public_url") or refs.get("url"),
             storage_ref={k: refs[k] for k in ("image_id", "url", "thumb") if k in refs} or
                         {"orai_asset_id": a.get("id")},
