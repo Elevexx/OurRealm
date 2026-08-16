@@ -1,6 +1,48 @@
-# OurRealm — PRD (UPDATED 2026-06 — FOUNDER STEALTH AVATAR — REPUBLISH READY)
+# OurRealm — PRD (UPDATED 2026-06 — REALMLIFE AAA UPGRADE IN PROGRESS)
 
-## RESUME CHECKPOINT — Founder Stealth avatar + chat fixes (REPUBLISH READY, latest)
+## RESUME CHECKPOINT — RealmLife AAA Upgrade Pass 1 (latest)
+- FOUNDER DIRECTIVE: multi-phase RealmLife AAA upgrade (build ON TOP, never rebuild; Meshy/OpenAI
+  budget approved; mobile perf matters). Reference image: neon Nexus waterfront + Mediterranean
+  neighborhood. FULL 12-phase directive is in the user message history — DO NOT REBUILD WORLD.
+- ARCHITECTURE (install points): RealmLife = /app/frontend/src/pages/RealmLifeDirect.jsx →
+  components/games/lifesim/: LifeSimRuntime.jsx (5.4k lines, HOME button V7A ~line 286+1902,
+  unsafe-save rescue ~1203), lifeSimNeighborhood.js (addHouseShell 3 enterable homes, Spanish
+  privacy shells for 100-house district at createSpanishResidentialPrivacyShell/
+  installRealmLifeResidentialPrivacy, city shifted z+=360 V6B2), lifeSimCityDistrict.js
+  (downtown MAIN_X=-14, river z≈106 w90 d10, riverwalk z≈98.5, riverwalk businesses/hotel/condos),
+  lifeSimCommunityCore.js (pool), lifeSimPortalWorld.js (portals/elevator, textSprite helper).
+  Ignore *.WORKING/*.before-* backup files.
+- DONE THIS SESSION (Pass 1, zero Meshy credits, runtime smoke-verified via screenshot):
+  1. Checkpoint noted (platform auto-commits; rollback available). Codebase scanned, install
+     points mapped. HOME travel bridge verified present + untouched.
+  2. PHASE 2 partial: addHouseShell AAA Mediterranean exterior pass — seeded 3-tone stucco/
+     terracotta variants, pitched roof slabs + ridge, trimmed windows w/ warm emissive glow,
+     porch columns + awning, driveway, yard-wall accents (all cheap boxes, cast:false).
+  3. PHASE 3/4 partial: NEW module lifeSimAAAUpgrade.js (installRealmLifeAAAUpgrade, called at
+     end of buildCityDistrict, inside city group so V6B2 shift applies): neon gateway signage
+     (REALMLIFE DOWNTOWN/SHOP.PLAY.EXPLORE., RIVERWALK, REALMLIFE MARINA, MAIN STREET, NEXUS
+     ARCADE, PLAY.CONNECT.BELONG., LEVEL UP TOGETHER, LIVE EVENTS DAILY — canvas emissive
+     panels on pylons), water polish (deep base + glossy overlay + neon reflection strips),
+     marina (seawall, 3 piers w/ bollards, 3 boats), 8 riverwalk palms + planters, glowing
+     pathway edge.
+  4. PHASE 6 partial: tower facade pass — auto-detects existing tall placeholder boxes
+     (h>=12, w/d>=5, max 24), adds neon corner edge strips, parapet crowns, rooftop beacons,
+     and SHARED-canvas lit window grids on front/back faces (side faces still plain — next).
+  5. PHASE 7 partial: Main Street streetlights (x=-14±4.6, z 66..94, warm emissive heads),
+     crosswalk stripes at riverwalk intersection, benches + planters at z 70/79/88.
+     Verified via 2nd smoke screenshot: gateway sign, MAIN STREET blade, crosswalks,
+     streetlights, neon tower edges all render; game stable, no console errors.
+- REMAINING PHASES (in order): P6 finish (window grids on tower SIDE faces, facade color
+  variety); P5 business exteriors/interiors props; P7 finish (curbs, medians, lane markings
+  beyond Main St); P8 mobile UI drawer for secondary controls; P9 travel/nav polish (safe
+  front-of-house HOME spawn validation in live session); P10 perf validation on mobile;
+  optional Meshy hero assets (Nexus central structure, yachts, palms)
+  — OPTIMIZE heavily (decimate, draco, small GLBs) before adding; approved budget, balance 3505.
+- VERIFICATION NOTE: RealmLife needs login (stealth/Password1$) → /RealmLife; world builds
+  client-side ~25s in software GL. Smoke screenshot confirmed: terracotta roofs across district,
+  neon signage visible in skyline, HUD/needs/BUILD-BUY intact, no console errors.
+
+## PREVIOUS CHECKPOINT — Founder Stealth avatar + chat fixes (deployed to production)
 - FOUNDER STEALTH AVATAR (founder-verified in preview; deployment_agent PASS; 0 Meshy credits):
   - Record: id `founder_stealth_private`, label "Founder Stealth", slug founder-stealth, status
     `founder_private`, asset e1f28ff8f8fe3ea0df4b6b0cf848b756 (38MB GLB, durable R2, NOT re-uploaded),

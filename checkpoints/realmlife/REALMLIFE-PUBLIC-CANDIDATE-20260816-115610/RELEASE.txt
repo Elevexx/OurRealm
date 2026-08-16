@@ -1,0 +1,35 @@
+REALMLIFE PUBLIC CANDIDATE
+
+World:
+realm-world-main
+
+Residential:
+100 normal homes per city
+first available house assigned server-side
+City 001 first
+new city foundation opens after frontier reaches 100/100
+
+Shared world:
+server-authoritative RealmLife presence foundation
+
+Business:
+10,000 Fire Power unlock foundation
+one business normal resident
+Stealth Founder unlimited business foundation
+
+Personal home portal:
+100,000 Fire Power unlock foundation
+
+Visual:
+V6B2 expanded residential city
+gated community
+Community Center
+community pool
+Community Central
+expanded Downtown
+expanded Riverwalk
+Central Station
+mountain radius 650
+
+Build verified:
+Sun Aug 16 11:56:53 UTC 2026

@@ -1,3 +1,5 @@
+import { buildRealmLifeCommunityCore } from "./lifeSimCommunityCore";
+import { buildRealmLifeNexusMarina } from "./lifeSimNexusMarina";
 import * as THREE from "three";
 import { buildCityDistrict } from "./lifeSimCityDistrict";
 
@@ -684,6 +686,41 @@ function addHouseShell(
     1.1
   );
 
+  // ---- AAA Mediterranean exterior pass (seeded variants, mobile-cheap boxes) ----
+  const seed = Math.abs(Math.round(x * 7 + z * 13)) % 3;
+  const stuccoTones = [0xe9dbc2, 0xf0e3cf, 0xe3cfae];
+  const roofTones = [0xa94f2f, 0x96432a, 0xb35c38];
+  const roofC = roofTones[seed];
+  // terracotta roof: eave slab + two pitched slopes + ridge cap
+  box(house, { y: wallH + 0.09, w: w + 1.2, h: 0.18, d: d + 1.2, color: roofC, cast: false });
+  const roofSlope = (side) => {
+    const slab = box(house, { y: wallH + 0.62, z: side * (d / 4), w: w + 1.0, h: 0.14, d: d / 2 + 0.7, color: roofC, cast: false });
+    slab.rotation.x = side * 0.42;
+    slab.position.y = wallH + 0.18 + Math.sin(0.42) * (d / 8);
+  };
+  roofSlope(-1); roofSlope(1);
+  box(house, { y: wallH + 0.2 + Math.sin(0.42) * (d / 4), w: w + 1.0, h: 0.16, d: 0.5, color: roofTones[(seed + 1) % 3], cast: false });
+  // front windows with trim + warm interior glow
+  for (const wx of [-w / 2 + 2.2, w / 2 - 2.2]) {
+    box(house, { x: wx, y: 1.55, z: -halfD - 0.02, w: 1.5, h: 1.2, d: 0.1, color: 0x2a1f14, cast: false });
+    const glow = box(house, { x: wx, y: 1.55, z: -halfD - 0.08, w: 1.24, h: 0.95, d: 0.05, color: 0xffd9a0, cast: false });
+    glow.material = glow.material.clone();
+    glow.material.emissive = new THREE.Color(0xffb35c);
+    glow.material.emissiveIntensity = 0.85;
+    box(house, { x: wx, y: 2.25, z: -halfD - 0.14, w: 1.7, h: 0.12, d: 0.24, color: roofC, cast: false });
+  }
+  // porch: columns + terracotta awning over the door
+  for (const px of [-doorWidth / 2 - 0.55, doorWidth / 2 + 0.55]) {
+    box(house, { x: px, y: 1.25, z: -halfD - 1.0, w: 0.22, h: 2.5, d: 0.22, color: stuccoTones[seed], cast: false });
+  }
+  const awn = box(house, { y: 2.62, z: -halfD - 0.95, w: doorWidth + 1.9, h: 0.12, d: 1.6, color: roofC, cast: false });
+  awn.rotation.x = -0.18;
+  // driveway + walkway
+  plane(house, { z: -halfD - 2.2, w: doorWidth + 1.0, d: 3.2, y: 0.018, color: 0xcfc4b0 });
+  // low stucco yard wall accents at front corners
+  for (const cx of [-halfW + 0.4, halfW - 0.4]) {
+    box(house, { x: cx, y: 0.35, z: -halfD - 2.6, w: 1.6, h: 0.7, d: 0.24, color: stuccoTones[(seed + 1) % 3], cast: false });
+  }
   return house;
 }
 
@@ -2529,7 +2566,8 @@ function createSpanishResidentialPrivacyShell({
 
 
 function installRealmLifeResidentialPrivacy(
-  root
+  root,
+  colliders = null
 ) {
 
   const privacyRoot =
@@ -2583,34 +2621,162 @@ function installRealmLifeResidentialPrivacy(
   // Their private interior must not be visible from the street.
   // ----------------------------------------------------------
 
-  const privateHomes = [
-    {
-      x: -26,
-      z: 37,
-      w: 14,
-      d: 12,
-      label:
-        "Maple House",
-    },
+  // ========================================================
+  // CITY 001 — 100 NORMAL RESIDENTIAL HOMES
+  //
+  // 10 columns x 10 rows.
+  //
+  // Maple / Garden / Violet stay at their original physical
+  // coordinates as part of Row 1.
+  //
+  // A large center gap is intentionally reserved for the
+  // Community Center / pool / park / portal in V6B2.
+  // ========================================================
 
-    {
-      x: 0,
-      z: 37,
-      w: 15,
-      d: 12,
-      label:
-        "Garden House",
-    },
-
-    {
-      x: 27,
-      z: 37,
-      w: 14,
-      d: 12,
-      label:
-        "Violet House",
-    },
+  const communityColumns = [
+    -130,
+    -104,
+    -78,
+    -52,
+    -26,
+    0,
+    27,
+    53,
+    79,
+    105,
   ];
+
+
+  const communityRows = [
+    37,
+    63,
+    89,
+    115,
+    141,
+
+    // Central community district gap.
+
+    205,
+    231,
+    257,
+    283,
+    309,
+  ];
+
+
+  const privateHomes = [];
+
+
+  for (
+    let rowIndex = 0;
+    rowIndex < 10;
+    rowIndex += 1
+  ) {
+
+    for (
+      let colIndex = 0;
+      colIndex < 10;
+      colIndex += 1
+    ) {
+
+      const lotSeq =
+        rowIndex * 10
+        + colIndex
+        + 1;
+
+
+      let x =
+        communityColumns[
+          colIndex
+        ];
+
+      const z =
+        communityRows[
+          rowIndex
+        ];
+
+
+      let label =
+        `City 001 Residence ${String(
+          lotSeq
+        ).padStart(
+          3,
+          "0"
+        )}`;
+
+
+      // Preserve the original three working prototype homes.
+      if (
+        rowIndex === 0
+        &&
+        colIndex === 4
+      ) {
+        x = -26;
+        label = "Maple House";
+      }
+
+
+      if (
+        rowIndex === 0
+        &&
+        colIndex === 5
+      ) {
+        x = 0;
+        label = "Garden House";
+      }
+
+
+      if (
+        rowIndex === 0
+        &&
+        colIndex === 6
+      ) {
+        x = 27;
+        label = "Violet House";
+      }
+
+
+      // Small deterministic size variation keeps the street
+      // from looking like 100 identical copy/paste boxes.
+      const variant =
+        lotSeq % 4;
+
+
+      const w =
+        variant === 0
+          ? 15.5
+          : variant === 1
+            ? 14
+            : variant === 2
+              ? 14.8
+              : 13.8;
+
+
+      const d =
+        variant === 0
+          ? 12.8
+          : variant === 1
+            ? 12
+            : variant === 2
+              ? 12.4
+              : 11.8;
+
+
+      privateHomes.push({
+        x,
+        z,
+        w,
+        d,
+
+        label,
+
+        lotSeq,
+
+        cityId:
+          "city-001",
+      });
+    }
+  }
 
 
   const privateShells =
@@ -2628,6 +2794,61 @@ function installRealmLifeResidentialPrivacy(
         privacyRoot.add(
           shell
         );
+
+
+        shell.userData
+          .cityId =
+            home.cityId
+            || "city-001";
+
+
+        shell.userData
+          .cityLotSeq =
+            home.lotSeq
+            || null;
+
+
+        shell.userData
+          .residentialCommunity =
+            true;
+
+
+        /*
+         * These are full private exterior houses.
+         * They must physically block world movement even though
+         * their interiors are not streamed until authorized.
+         */
+        if (
+          Array.isArray(
+            colliders
+          )
+        ) {
+
+          colliders.push({
+            x:
+              home.x,
+
+            z:
+              home.z,
+
+            hw:
+              home.w / 2,
+
+            hd:
+              home.d / 2,
+
+            residentialHouse:
+              true,
+
+            cityId:
+              home.cityId
+              || "city-001",
+
+            lotSeq:
+              home.lotSeq
+              || null,
+          });
+        }
 
 
         return shell;
@@ -2735,11 +2956,15 @@ export function buildNeighborhoodWorld(
 
   const colliders = [];
 
+  // ========================================================
+  // REALMLIFE V6B1 100-HOME COMMUNITY GRID
+  // ========================================================
+
   const bounds = {
-    minX: -44,
-    maxX: 44,
-    minZ: -44,
-    maxZ: 134,
+    minX: -320,
+    maxX: 320,
+    minZ: -200,
+    maxZ: 760,
   };
 
   const ownedLot = {
@@ -3034,8 +3259,8 @@ export function buildNeighborhoodWorld(
   const clickPlane =
     new THREE.Mesh(
       new THREE.PlaneGeometry(
-        90,
-        180
+        680,
+        1040
       ),
       new THREE.MeshBasicMaterial({
         transparent: true,
@@ -3051,7 +3276,7 @@ export function buildNeighborhoodWorld(
   clickPlane.position.set(
     0,
     -0.015,
-    45
+    280
   );
 
   clickPlane.userData.ground = true;
@@ -3274,10 +3499,77 @@ export function buildNeighborhoodWorld(
   // MAIN STREET + DOWNTOWN + RIVERWALK
   // ----------------------------------------------------------
 
-  buildCityDistrict(
-    root,
-    colliders
-  );
+  // ========================================================
+  // REALMLIFE V6B2 CITY SHIFT + COMMUNITY CORE
+  //
+  // Preserve the original working Downtown/Riverwalk geometry,
+  // but move it north beyond the 100-home residential district.
+  //
+  // Collider coordinates are shifted by the exact same amount.
+  // ========================================================
+
+  const cityColliderStart =
+    colliders.length;
+
+
+  const cityDistrict =
+    buildCityDistrict(
+      root,
+      colliders
+    );
+
+
+  const realmLifeDowntownShiftZ =
+    360;
+
+
+  if (
+    cityDistrict
+    ?.root
+  ) {
+    cityDistrict
+      .root
+      .position.z +=
+        realmLifeDowntownShiftZ;
+  }
+
+
+  for (
+    let i =
+      cityColliderStart;
+
+    i <
+      colliders.length;
+
+    i += 1
+  ) {
+    if (
+      Number.isFinite(
+        colliders[i]?.z
+      )
+    ) {
+      colliders[i].z +=
+        realmLifeDowntownShiftZ;
+    }
+  }
+
+
+  const communityCore =
+    buildRealmLifeCommunityCore(
+      root,
+      colliders
+    );
+
+
+  // ==========================================================
+  // REALMLIFE V7A NEXUS + MARINA
+  // ==========================================================
+
+  const nexusMarina =
+    buildRealmLifeNexusMarina(
+      root,
+      colliders
+    );
 
 
   // ==========================================================
@@ -3286,7 +3578,8 @@ export function buildNeighborhoodWorld(
 
   const housePrivacy =
     installRealmLifeResidentialPrivacy(
-      root
+      root,
+      colliders
     );
 
 
@@ -3303,5 +3596,10 @@ export function buildNeighborhoodWorld(
     outsideSpawn,
 
     housePrivacy,
+
+    cityDistrict,
+    communityCore,
+
+    nexusMarina,
   };
 }

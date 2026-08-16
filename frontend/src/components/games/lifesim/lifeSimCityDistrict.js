@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { installRealmLifeAAAUpgrade } from "./lifeSimAAAUpgrade";
 
 
 function material(color, extra = {}) {
@@ -1467,6 +1468,8 @@ export function buildCityDistrict(
   neighborhoodRoot.userData
     .realmLifeCity =
     registry;
+
+  installRealmLifeAAAUpgrade(city);
 
   return {
     root: city,

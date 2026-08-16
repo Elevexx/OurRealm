@@ -1028,6 +1028,81 @@ async def realmlife_property_destroy(
 
 
 # ============================================================
+# REALMLIFE V6A SHARED UNIVERSE
+# ============================================================
+
+
+@public.get(
+    "/{game_id}/realmlife/world"
+)
+async def realmlife_world_status(
+    game_id: str,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_world as rlw
+    )
+
+    return await rlw.status(
+        game_id,
+        current,
+    )
+
+
+@public.post(
+    "/{game_id}/realmlife/world/presence"
+)
+async def realmlife_world_presence(
+    game_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_world as rlw
+    )
+
+    return await rlw.presence(
+        game_id,
+        current,
+        body,
+    )
+
+
+@public.post(
+    "/{game_id}/realmlife/world/presence/leave"
+)
+async def realmlife_world_presence_leave(
+    game_id: str,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_world as rlw
+    )
+
+    return await (
+        rlw.leave_presence(
+            game_id,
+            current,
+        )
+    )
+
+
+# ============================================================
 # REALMLIFE ENVIRONMENT + STEALTH FOUNDER CONTROL
 # ============================================================
 
@@ -1834,5 +1909,226 @@ async def realmlife_dj_playlist_create(
             game_id,
             current,
             body,
+        )
+    )
+
+
+
+# ============================================================
+# REALMLIFE V6C1 BUSINESS + PERSONAL PORTAL ROUTES
+# ============================================================
+
+
+@public.get(
+    "/{game_id}/realmlife/businesses"
+)
+async def realmlife_businesses(
+    game_id: str,
+    current: CurrentUser,
+    city_id: str = "city-001",
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_business as rlb
+    )
+
+    return await rlb.list_businesses(
+        game_id,
+        current,
+        city_id,
+    )
+
+
+@public.post(
+    "/{game_id}/realmlife/businesses/{business_id}/claim"
+)
+async def realmlife_business_claim(
+    game_id: str,
+    business_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_business as rlb
+    )
+
+    return await rlb.claim_business(
+        game_id,
+        current,
+        business_id,
+        city_id=
+            body.get(
+                "city_id"
+            )
+            or
+            "city-001",
+        idempotency_key=
+            body.get(
+                "idempotency_key"
+            ),
+    )
+
+
+@public.post(
+    "/{game_id}/realmlife/businesses/{business_id}/visibility"
+)
+async def realmlife_business_visibility(
+    game_id: str,
+    business_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_business as rlb
+    )
+
+    return await rlb.set_visibility(
+        game_id,
+        current,
+        business_id,
+        city_id=
+            body.get(
+                "city_id"
+            )
+            or
+            "city-001",
+        visibility=
+            body.get(
+                "visibility"
+            )
+            or
+            "public",
+    )
+
+
+@public.post(
+    "/{game_id}/realmlife/businesses/{business_id}/destroy"
+)
+async def realmlife_business_destroy(
+    game_id: str,
+    business_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_business as rlb
+    )
+
+    return await rlb.destroy_business(
+        game_id,
+        current,
+        business_id,
+        city_id=
+            body.get(
+                "city_id"
+            )
+            or
+            "city-001",
+        confirmation=
+            body.get(
+                "confirmation"
+            ),
+    )
+
+
+@public.post(
+    "/{game_id}/realmlife/businesses/founder/create"
+)
+async def realmlife_business_founder_create(
+    game_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_business as rlb
+    )
+
+    return await (
+        rlb.founder_create_business(
+            game_id,
+            current,
+            body,
+        )
+    )
+
+
+@public.post(
+    "/{game_id}/realmlife/personal-portal/unlock"
+)
+async def realmlife_personal_portal_unlock(
+    game_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_portals as rlp
+    )
+
+    return await (
+        rlp.unlock_personal_portal(
+            game_id,
+            current,
+            body.get(
+                "idempotency_key"
+            ),
+        )
+    )
+
+
+
+# ============================================================
+# REALMLIFE V7A HOME ROUTE
+# ============================================================
+
+
+@public.get(
+    "/{game_id}/realmlife/world/home"
+)
+async def realmlife_world_home(
+    game_id: str,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_world as rlw
+    )
+
+    return await (
+        rlw.home_destination(
+            game_id,
+            current,
         )
     )

@@ -282,6 +282,10 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
   const instantRealmTravelRef =
     useRef(null);
+
+  // REALMLIFE V7A HOME BUTTON
+  const realmLifeHomeTravelRef =
+    useRef(null);
   const moveTargetRef = useRef(null);
   const pathRef = useRef([]);
   const findPathRef = useRef(null);
@@ -302,6 +306,12 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
   const [
     realmTravelFade,
     setRealmTravelFade,
+  ] = useState(false);
+
+
+  const [
+    realmLifeHomeBusy,
+    setRealmLifeHomeBusy,
   ] = useState(false);
 
   // ----------------------------------------------------------
@@ -498,6 +508,35 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       },
       [markRealmLifeActive]
     );
+
+  const goRealmLifeHome =
+    useCallback(
+      async () => {
+
+        markRealmLifeActive();
+
+        const travel =
+          realmLifeHomeTravelRef
+            .current;
+
+        if (!travel)
+          return;
+
+        try {
+          await travel();
+
+        } catch (err) {
+          console.warn(
+            "[RealmLife HOME]",
+            err
+          );
+        }
+      },
+      [
+        markRealmLifeActive,
+      ]
+    );
+
 
   const toggleRealmLifeCamera =
     useCallback(() => {
@@ -844,13 +883,14 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         .dispose();
 
       neighborhood.clickPlane.geometry =
+        // REALMLIFE V6B1 LARGE COMMUNITY WORLD
         new THREE.PlaneGeometry(
-          210,
-          300
+          680,
+          1040
         );
 
       neighborhood.clickPlane
-        .position.z = -8;
+        .position.z = 280;
     }
 
     const portalWorld =
@@ -1132,13 +1172,14 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         savedResidentZ
       )
       ||
-      savedResidentX < -105
+      // REALMLIFE V6B2 LARGE METROPOLIS SAVE BOUNDS
+      savedResidentX < -330
       ||
-      savedResidentX > 105
+      savedResidentX > 330
       ||
-      savedResidentZ < -50
+      savedResidentZ < -210
       ||
-      savedResidentZ > 138;
+      savedResidentZ > 760;
 
 
     if (
@@ -1220,6 +1261,452 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
     let residentAvatar = null;
     let residentInteractionBusy = false;
+
+
+    // ========================================================
+    // REALMLIFE V6A SHARED LIVE PLAYERS
+    //
+    // Uses the same proven server-presence pattern as Nexus.
+    // City 001 is the shared canonical RealmLife city.
+    // ========================================================
+
+    const realmLifeRemotes =
+      new Map();
+
+    let realmLifePresenceTimer =
+      null;
+
+    let realmLifePresenceKickoff =
+      null;
+
+    let realmLifePresenceBusy =
+      false;
+
+    let realmLifePresenceWarned =
+      false;
+
+
+    const makeRealmLifeNameTag =
+      (username) => {
+
+        const canvas =
+          document.createElement(
+            "canvas"
+          );
+
+        canvas.width =
+          256;
+
+        canvas.height =
+          64;
+
+
+        const ctx =
+          canvas.getContext(
+            "2d"
+          );
+
+
+        ctx.fillStyle =
+          "rgba(8,18,24,0.88)";
+
+        ctx.fillRect(
+          0,
+          0,
+          256,
+          64
+        );
+
+
+        ctx.font =
+          "bold 27px Arial";
+
+        ctx.textAlign =
+          "center";
+
+        ctx.textBaseline =
+          "middle";
+
+        ctx.fillStyle =
+          "#ffffff";
+
+        ctx.fillText(
+          String(
+            username
+            || "Resident"
+          ).slice(
+            0,
+            18
+          ),
+          128,
+          32
+        );
+
+
+        const texture =
+          new THREE.CanvasTexture(
+            canvas
+          );
+
+
+        const material =
+          new THREE.SpriteMaterial({
+            map:
+              texture,
+
+            transparent:
+              true,
+
+            depthTest:
+              false,
+          });
+
+
+        const sprite =
+          new THREE.Sprite(
+            material
+          );
+
+        sprite.position.set(
+          0,
+          2.35,
+          0
+        );
+
+        sprite.scale.set(
+          2.7,
+          0.68,
+          1
+        );
+
+        return sprite;
+      };
+
+
+    const ensureRealmLifeRemote =
+      (player) => {
+
+        const id =
+          String(
+            player?.user_id
+            || ""
+          );
+
+        if (!id)
+          return null;
+
+
+        let remote =
+          realmLifeRemotes
+            .get(
+              id
+            );
+
+
+        if (remote)
+          return remote;
+
+
+        const root =
+          new THREE.Group();
+
+        root.name =
+          `RealmLifeRemote:${id}`;
+
+
+        /*
+         * V6A uses a lightweight person representation first.
+         * Exact Nexus avatar streaming is the next multiplayer
+         * visual pass after shared-world correctness is verified.
+         */
+        const person =
+          makePerson(
+            0x27b8d8,
+            0x30343c
+          );
+
+
+        root.add(
+          person
+        );
+
+
+        root.add(
+          makeRealmLifeNameTag(
+            player
+              ?.username
+          )
+        );
+
+
+        scene.add(
+          root
+        );
+
+
+        remote = {
+          root,
+          updatedAt:
+            performance.now(),
+        };
+
+
+        realmLifeRemotes.set(
+          id,
+          remote
+        );
+
+
+        return remote;
+      };
+
+
+    const removeRealmLifeRemote =
+      (id) => {
+
+        const remote =
+          realmLifeRemotes
+            .get(
+              id
+            );
+
+        if (!remote)
+          return;
+
+
+        scene.remove(
+          remote.root
+        );
+
+
+        realmLifeRemotes.delete(
+          id
+        );
+      };
+
+
+    const syncRealmLifePresence =
+      async () => {
+
+        if (
+          disposed
+          ||
+          realmLifePresenceBusy
+          ||
+          !game?.id
+        ) {
+          return;
+        }
+
+
+        realmLifePresenceBusy =
+          true;
+
+
+        try {
+
+          const indoor =
+            !!window
+              .__REALMLIFE_INDOOR;
+
+
+          const response =
+            await apiClient.post(
+              `/games/${game.id}/realmlife/world/presence`,
+              {
+                x:
+                  resident
+                    .position.x,
+
+                y:
+                  resident
+                    .position.y,
+
+                z:
+                  resident
+                    .position.z,
+
+                ry:
+                  resident
+                    .rotation.y,
+
+                location_type:
+                  indoor
+                    ? "property"
+                    : "world",
+
+                property_id:
+                  null,
+              }
+            );
+
+
+          realmLifePresenceWarned =
+            false;
+
+
+          const data =
+            response
+              ?.data
+            || {};
+
+
+          window
+            .__REALMLIFE_SHARED_WORLD =
+              {
+                worldId:
+                  data
+                    .world_id,
+
+                cityId:
+                  data
+                    .city_id,
+
+                online:
+                  (
+                    data
+                      .others
+                      ?.length
+                    || 0
+                  )
+                  + 1,
+              };
+
+
+          const seen =
+            new Set();
+
+
+          for (
+            const player
+            of (
+              data
+                .others
+              || []
+            )
+          ) {
+
+            const id =
+              String(
+                player
+                  ?.user_id
+                || ""
+              );
+
+            if (!id)
+              continue;
+
+
+            seen.add(
+              id
+            );
+
+
+            const remote =
+              ensureRealmLifeRemote(
+                player
+              );
+
+            if (!remote)
+              continue;
+
+
+            remote
+              .root
+              .visible =
+                !indoor;
+
+
+            remote
+              .root
+              .position
+              .set(
+                Number(
+                  player.x
+                  || 0
+                ),
+
+                Number(
+                  player.y
+                  || 0
+                ),
+
+                Number(
+                  player.z
+                  || 0
+                )
+              );
+
+
+            remote
+              .root
+              .rotation.y =
+                Number(
+                  player.ry
+                  || 0
+                );
+
+
+            remote.updatedAt =
+              performance.now();
+          }
+
+
+          for (
+            const id
+            of Array.from(
+              realmLifeRemotes
+                .keys()
+            )
+          ) {
+
+            if (
+              !seen.has(
+                id
+              )
+            ) {
+              removeRealmLifeRemote(
+                id
+              );
+            }
+          }
+
+
+        } catch (err) {
+
+          if (
+            !realmLifePresenceWarned
+          ) {
+
+            realmLifePresenceWarned =
+              true;
+
+            console.warn(
+              "[RealmLife V6A] Shared presence unavailable:",
+              err
+            );
+          }
+
+        } finally {
+
+          realmLifePresenceBusy =
+            false;
+        }
+      };
+
+
+    realmLifePresenceTimer =
+      window.setInterval(
+        syncRealmLifePresence,
+        450
+      );
+
+
+    realmLifePresenceKickoff =
+      window.setTimeout(
+        syncRealmLifePresence,
+        100
+      );
 
     // ========================================================
     // REALMLIFE INSTANCED ROOM TRAVEL CONTROLLER
@@ -1407,6 +1894,112 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           setRealmTravelFade(
             false
           );
+        }
+      };
+
+
+    // ========================================================
+    // REALMLIFE V7A HOME TRAVEL BRIDGE
+    // ========================================================
+
+    let realmLifeHomeTravelBusy =
+      false;
+
+
+    realmLifeHomeTravelRef.current =
+      async () => {
+
+        if (
+          disposed
+          ||
+          realmLifeHomeTravelBusy
+        ) {
+          return;
+        }
+
+
+        realmLifeHomeTravelBusy =
+          true;
+
+        setRealmLifeHomeBusy(
+          true
+        );
+
+
+        try {
+
+          const response =
+            await apiClient.get(
+              `/games/${game.id}/realmlife/world/home`
+            );
+
+
+          const data =
+            response?.data
+            || {};
+
+
+          if (
+            !data?.spawn
+          ) {
+            throw new Error(
+              "Home destination unavailable."
+            );
+          }
+
+
+          if (
+            window
+              .__REALMLIFE_SHARED_WORLD
+          ) {
+            window
+              .__REALMLIFE_SHARED_WORLD
+              .cityId =
+                data.city_id
+                ||
+                window
+                  .__REALMLIFE_SHARED_WORLD
+                  .cityId;
+          }
+
+
+          await teleportResidentWithFade(
+            data.spawn,
+            "WORLD",
+            "Welcome home."
+          );
+
+
+        } catch (err) {
+
+          console.warn(
+            "[RealmLife] HOME travel failed:",
+            err
+          );
+
+
+          setHud(
+            (h) => ({
+              ...h,
+
+              msg:
+                err?.response?.data?.detail
+                ||
+                "Unable to return home right now.",
+            })
+          );
+
+
+        } finally {
+
+          realmLifeHomeTravelBusy =
+            false;
+
+          if (!disposed) {
+            setRealmLifeHomeBusy(
+              false
+            );
+          }
         }
       };
 
@@ -4015,6 +4608,55 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
     return () => {
       disposed = true;
+
+      realmLifeHomeTravelRef.current =
+        null;
+
+
+      if (
+        realmLifePresenceTimer
+      ) {
+        window.clearInterval(
+          realmLifePresenceTimer
+        );
+      }
+
+
+      if (
+        realmLifePresenceKickoff
+      ) {
+        window.clearTimeout(
+          realmLifePresenceKickoff
+        );
+      }
+
+
+      if (
+        game?.id
+      ) {
+        apiClient
+          .post(
+            `/games/${game.id}/realmlife/world/presence/leave`
+          )
+          .catch(
+            () => {}
+          );
+      }
+
+
+      for (
+        const id
+        of Array.from(
+          realmLifeRemotes
+            .keys()
+        )
+      ) {
+        removeRealmLifeRemote(
+          id
+        );
+      }
+
+
       cancelAnimationFrame(raf);
 
       moveTargetRef.current = null;
@@ -4218,6 +4860,48 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         </div>
 
         <div className="pointer-events-auto flex items-center gap-1">
+
+          <button
+            type="button"
+            onClick={
+              goRealmLifeHome
+            }
+            disabled={
+              realmLifeHomeBusy
+            }
+            className="px-2.5 py-1.5 rounded-lg text-xs font-black"
+            style={{
+              background:
+                realmLifeHomeBusy
+                  ? "rgba(70,120,140,.32)"
+                  : "linear-gradient(135deg, rgba(34,184,207,.90), rgba(63,214,144,.88))",
+
+              border:
+                "1px solid rgba(156,255,229,.65)",
+
+              color:
+                "#ffffff",
+
+              cursor:
+                realmLifeHomeBusy
+                  ? "wait"
+                  : "pointer",
+
+              whiteSpace:
+                "nowrap",
+
+              boxShadow:
+                "0 0 18px rgba(55,220,214,.18)",
+            }}
+            title="Return directly to your RealmLife home"
+          >
+            {
+              realmLifeHomeBusy
+                ? "🏠 …"
+                : "🏠 HOME"
+            }
+          </button>
+
 
           <button
             type="button"
