@@ -1,4 +1,34 @@
-# OurRealm — PRD (UPDATED 2026-06 — REALMLIFE AAA UPGRADE IN PROGRESS)
+# OurRealm — PRD (UPDATED 2026-06 — REALMLIFE AAA PASS 2 IN PROGRESS — DO NOT PUBLISH until Founder approves)
+
+## RESUME CHECKPOINT — RealmLife AAA Pass 2 (latest)
+- FOUNDER PASS 2 DIRECTIVE (full text in message history): budget UP TO 3,000 Meshy credits
+  (balance 3,505; 0 used so far). Sub-phases 2A..2K. DO NOT REBUILD; build on Pass 1.
+- PASS 2 DONE SO FAR (zero credits, smoke-verified via screenshot, game stable, no errors):
+  - 2B partial: towers get lit window grids on ALL FOUR faces (3 shared facade material
+    variants), horizontal floor band, illuminated neon lobby base, rooftop mechanical blocks,
+    antennas (every 4th). Detection now o.scale-aware (slice 30). KNOWN GAP: one large tower
+    near the founder's saved spawn STILL shows black faces despite corner strips landing on it
+    — suspect the tower has a slightly larger dark CLADDING box that covers window planes
+    offset only 0.04 outside the inner box. Next: inspect that tower's builder in
+    lifeSimCityDistrict.js, either skip cladding meshes in detection or offset windows just
+    outside the OUTERMOST box of each tower stack.
+  - 2D partial: NEXUS CENTRAL gateway (x-14,z86) + NEXUS SPAWN ZONE panel (x-14,z58,ry PI).
+  - 2E partial: 3 more vessels (motorboat, sport boat, 10.5-len luxury yacht) via reused
+    procedural boat(); dock light posts on 5 piers.
+- PASS 2 REMAINING (priority): 1) 2C NEXUS HERO STRUCTURE — first Meshy priority (80-120k
+  tris, 2K PBR, decimate via scripts/node_modules gltf-transform before install, keep
+  procedural fallback until GLB loads; use meshy_provider + store() from
+  scripts/nexus_citizen_canary.py). 2) 2A business storefronts+interiors (procedural modular
+  furniture first; builders in lifeSimCityDistrict.js + lifeSimNeighborhood.js). 3) 2B finish
+  (scaled towers), 2F roads/seam repair, 2G residential detail+pools, 2H MOBILE DRAWER
+  (LifeSimRuntime.jsx HUD: keep joystick/JUMP/INTERACT/HOME visible, gear drawer for
+  WORLD/POV/PROPERTY/Build-Buy/Save/audio/admin, safe-area), 2I WORLD MAP overlay,
+  2J lightweight NPC population (shared avatars, LOD), 2K lighting final pass.
+  FINAL: build, desktop+mobile test, verify HOME/WORLD/zones, credits report, zone
+  screenshots, Security Audit, WAIT for Founder approval before publish.
+- INSTALL POINTS: lifeSimAAAUpgrade.js = all Pass 1+2 world additions (called at end of
+  buildCityDistrict inside city group; helpers bx/neonPanel/gatewaySign/palm/boat + shared
+  winTex/winMats). Smoke test: stealth/Password1$ → /RealmLife, ~25s build, shot timeout 60s.
 
 ## RESUME CHECKPOINT — RealmLife AAA Upgrade Pass 1 (latest)
 - FOUNDER DIRECTIVE: multi-phase RealmLife AAA upgrade (build ON TOP, never rebuild; Meshy/OpenAI

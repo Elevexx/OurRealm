@@ -95,10 +95,16 @@ export function installRealmLifeAAAUpgrade(city) {
   // ---- PHASE 6: TOWER FACADE PASS ----
   // Decorate existing tall placeholder boxes: neon edge strips, parapets, rooftop beacons.
   const towers = [];
+  const wscale = new THREE.Vector3();
   city.traverse((o) => {
     if (o.isMesh && o.geometry?.type === "BoxGeometry") {
       const p = o.geometry.parameters;
-      if (p && p.height >= 12 && p.width >= 5 && p.depth >= 5) towers.push(o);
+      if (!p) return;
+      o.getWorldScale(wscale);
+      const eh = p.height * Math.abs(wscale.y);
+      const ew = p.width * Math.abs(wscale.x);
+      const ed = p.depth * Math.abs(wscale.z);
+      if (eh >= 12 && ew >= 5 && ed >= 5) towers.push({ mesh: o, ew, eh, ed });
     }
   });
   const neonColors = [0x39dfff, 0xc084fc, 0xa3ff12, 0x60a5fa];
@@ -116,9 +122,14 @@ export function installRealmLifeAAAUpgrade(city) {
   }
   const winTex = new THREE.CanvasTexture(winC);
   winTex.colorSpace = THREE.SRGBColorSpace;
-  const winMat = new THREE.MeshStandardMaterial({ map: winTex, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0.55, roughness: 0.5 });
-  towers.slice(0, 24).forEach((t, i) => {
-    const p = t.geometry.parameters;
+  // three shared facade variants for skyline variety (PASS 2B)
+  const winMats = [0.55, 0.8, 0.35].map((ei) =>
+    new THREE.MeshStandardMaterial({ map: winTex, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: ei, roughness: 0.5 }));
+  const winMat = winMats[0];
+  void winMat;
+  towers.slice(0, 30).forEach((tw, i) => {
+    const t = tw.mesh;
+    const p = { width: tw.ew, height: tw.eh, depth: tw.ed };
     const wp = new THREE.Vector3();
     t.getWorldPosition(wp);
     city.worldToLocal(wp);
@@ -132,13 +143,24 @@ export function installRealmLifeAAAUpgrade(city) {
     }
     // parapet crown + beacon
     bx(fx, { x: wp.x, y: topY + 0.25, z: wp.z, w: p.width + 0.5, h: 0.5, d: p.depth + 0.5, color: 0x131c2e });
-    // lit window grids on front + back faces
+    // lit window grids on ALL FOUR faces (no black boxes from any angle) — shared materials
+    const wm = winMats[i % 3];
     for (const side of [-1, 1]) {
-      const win = new THREE.Mesh(new THREE.PlaneGeometry(p.width * 0.92, p.height * 0.82), winMat);
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(p.width * 0.92, p.height * 0.82), wm);
       win.position.set(wp.x, wp.y + p.height * 0.02, wp.z + side * (p.depth / 2 + 0.04));
       if (side === -1) win.rotation.y = Math.PI;
       fx.add(win);
+      const winS = new THREE.Mesh(new THREE.PlaneGeometry(p.depth * 0.92, p.height * 0.82), wm);
+      winS.position.set(wp.x + side * (p.width / 2 + 0.04), wp.y + p.height * 0.02, wp.z);
+      winS.rotation.y = side * Math.PI / 2;
+      fx.add(winS);
     }
+    // horizontal floor-division band + illuminated lobby base
+    bx(fx, { x: wp.x, y: wp.y, z: wp.z, w: p.width + 0.12, h: 0.3, d: p.depth + 0.12, color: 0x1b2740 });
+    bx(fx, { x: wp.x, y: wp.y - p.height / 2 + 1.6, z: wp.z, w: p.width + 0.2, h: 0.25, d: p.depth + 0.2, color: 0x0c1626, m: mat(0x0c1626, { emissive: new THREE.Color(neonColors[(i + 1) % 4]), emissiveIntensity: 0.9 }) });
+    // rooftop mechanical detail + antenna on some towers
+    if (i % 2 === 0) bx(fx, { x: wp.x + p.width * 0.18, y: topY + 1.0, z: wp.z - p.depth * 0.15, w: p.width * 0.3, h: 1.4, d: p.depth * 0.3, color: 0x1a2438 });
+    if (i % 4 === 1) bx(fx, { x: wp.x, y: topY + 2.2, z: wp.z, w: 0.14, h: 3.4, d: 0.14, color: 0x2a3648 });
     if (i % 3 === 0) {
       const beacon = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.6, 0.3), glowM);
       beacon.position.set(wp.x, topY + 1.3, wp.z);
@@ -186,6 +208,9 @@ export function installRealmLifeAAAUpgrade(city) {
   neonPanel(fx, { text: "PLAY. CONNECT. BELONG.", x: -30, y: 9.4, z: 78, w: 14, h: 2.6, ry: 0.35, glow: "#39dfff" });
   neonPanel(fx, { text: "LEVEL UP TOGETHER", x: 12, y: 8.6, z: 70, w: 12, h: 2.4, ry: -0.3, glow: "#a3ff12" });
   neonPanel(fx, { text: "LIVE EVENTS DAILY", x: -2, y: 7.8, z: 112.5, w: 12, h: 2.4, ry: Math.PI, glow: "#fbbf24" });
+  // PASS 2D additions
+  gatewaySign(fx, { text: "NEXUS CENTRAL", sub: "PLAY. CONNECT. BELONG.", x: -14, z: 86, w: 12, glow: "#39dfff" });
+  neonPanel(fx, { text: "NEXUS SPAWN ZONE", x: -14, y: 7.0, z: 58, w: 11, h: 2.2, ry: Math.PI, glow: "#a3ff12" });
 
   // ---- WATER POLISH: deep base + glossy top + neon reflection strips ----
   const deep = new THREE.Mesh(new THREE.PlaneGeometry(90, 10),
@@ -218,6 +243,15 @@ export function installRealmLifeAAAUpgrade(city) {
   boat(fx, { x: 23, z: 105.4, len: 6.5, ry: 0.12 });
   boat(fx, { x: 37, z: 105.8, hull: 0xdfe8ee, trim: 0x7c3aed, len: 5.4, ry: -0.1 });
   boat(fx, { x: 9.5, z: 106.2, hull: 0xe8eef4, trim: 0x0e7490, len: 7.5, ry: 0.05 });
+  // PASS 2E: more vessels (reused builder — small motorboat, sport boat, luxury yacht)
+  boat(fx, { x: -6, z: 105.6, hull: 0xf5f7f9, trim: 0x334155, len: 4.2, ry: 0.2 });
+  boat(fx, { x: -20, z: 106.4, hull: 0xe2ecf2, trim: 0xb45309, len: 6.0, ry: -0.15 });
+  boat(fx, { x: -34, z: 105.2, hull: 0xffffff, trim: 0x0f766e, len: 10.5, ry: 0.06 });
+  // dock lights on pier ends
+  for (const px of [16, 30, 44, -6, -20]) {
+    bx(fx, { x: px, y: 0.85, z: 107.4, w: 0.12, h: 1.3, d: 0.12, color: 0x2a3648 });
+    bx(fx, { x: px, y: 1.55, z: 107.4, w: 0.26, h: 0.26, d: 0.26, color: 0x123c4a, m: mat(0x123c4a, { emissive: new THREE.Color(0xffe9b8), emissiveIntensity: 1.5 }) });
+  }
 
   // ---- RIVERWALK PALMS + PLANTERS ----
   for (let i = 0; i < 8; i += 1) {
