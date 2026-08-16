@@ -30,14 +30,18 @@ export default function ThreeRuntime({ game, onExit }) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
     renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(renderer.domElement);
     renderer.domElement.style.cssText = "width:100%;height:100%;display:block;touch-action:none";
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(world.sky || "#141a2e");
     scene.fog = new THREE.Fog(world.sky || "#141a2e", 42, 130);
-    const camera = new THREE.PerspectiveCamera(58, mount.clientWidth / mount.clientHeight, 0.1, 220);
+    const camera = new THREE.PerspectiveCamera(42, mount.clientWidth / mount.clientHeight, 0.1, 220);
     scene.add(new THREE.AmbientLight(0x9aa8c8, 0.45));
     const hemi = new THREE.HemisphereLight(0xcfe4ff, 0x3a2c1e, 0.85);
     scene.add(hemi);
@@ -58,17 +62,95 @@ export default function ThreeRuntime({ game, onExit }) {
     capsule.castShadow = true;
     player.add(capsule);
     let mixer = null;
+    let playerAnimCurrent = null;
+    let playerAnimState = "idle";
+    const playerActions = {};
+
+    const setPlayerAnim = (state) => {
+      if (!mixer) return;
+
+      const wanted = playerActions[state]
+        ? state
+        : (state === "run" && playerActions.walk ? "walk" : "idle");
+
+      const next = playerActions[wanted] || playerActions.walk;
+      if (!next || next === playerAnimCurrent) return;
+
+      if (playerAnimCurrent) playerAnimCurrent.fadeOut(0.16);
+
+      next.enabled = true;
+      next.reset();
+      next.setEffectiveWeight(1);
+      next.setEffectiveTimeScale(
+        wanted === "idle" ? 0 :
+        wanted === "walk" ? 1.12 :
+        1
+      );
+      next.fadeIn(0.16);
+      next.play();
+
+      playerAnimCurrent = next;
+      playerAnimState = wanted;
+    };
+
     const glbUrl = (spec.assets || {}).player_model?.url;
     if (glbUrl) {
       makeGLTFLoader().load(glbUrl, (g) => {
         if (disposed) return;
+
         player.remove(capsule);
+
         const model = g.scene;
-        model.traverse((n) => { if (n.isMesh) n.castShadow = true; });
+        model.traverse((n) => {
+          if (n.isMesh) {
+            n.castShadow = true;
+            n.receiveShadow = true;
+          }
+        });
+
         const box = new THREE.Box3().setFromObject(model);
-        model.scale.setScalar(1.8 / Math.max(0.001, box.getSize(new THREE.Vector3()).y));
+
+        // Slightly larger hero for stronger reference-style screen presence.
+        model.scale.setScalar(
+          2.10 / Math.max(0.001, box.getSize(new THREE.Vector3()).y)
+        );
+
         player.add(model);
-        if (g.animations?.length) { mixer = new THREE.AnimationMixer(model); mixer.clipAction(g.animations[0]).play(); }
+
+        if (g.animations?.length) {
+          mixer = new THREE.AnimationMixer(model);
+
+          // Maeve currently contains one Meshy walking clip.
+          // Clone it so idle and locomotion are independent mixer actions.
+          const source = g.animations[0];
+
+          const idleClip = source.clone();
+          idleClip.name = "or3d_idle";
+
+          const walkClip = source.clone();
+          walkClip.name = "or3d_walk";
+
+          const idle = mixer.clipAction(idleClip);
+          idle.enabled = true;
+          idle.setLoop(THREE.LoopRepeat, Infinity);
+          idle.setEffectiveWeight(1);
+          idle.setEffectiveTimeScale(0);
+          idle.time = 0;
+          idle.play();
+
+          const walk = mixer.clipAction(walkClip);
+          walk.enabled = true;
+          walk.setLoop(THREE.LoopRepeat, Infinity);
+          walk.setEffectiveWeight(0);
+          walk.setEffectiveTimeScale(1.12);
+          walk.play();
+
+          playerActions.idle = idle;
+          playerActions.walk = walk;
+
+          playerAnimCurrent = idle;
+          playerAnimState = "idle";
+        }
       }, undefined, () => {});
     }
 
@@ -76,6 +158,7 @@ export default function ThreeRuntime({ game, onExit }) {
     let lvIdx = 0, L = null, phase = "talk", ing = 0, need = 3, hitCd = 0;
     let coins = 0, gems = 0, stars = 0, collected = 0, won = false;
     let obstacles = [], orbs = [], portal = null;
+    const camFocus = new THREE.Vector3();
     const say = (msg) => setHud((h) => ({ ...h, msg }));
 
     function loadQuestLevel(i) {
@@ -86,6 +169,7 @@ export default function ThreeRuntime({ game, onExit }) {
       need = (lv.ingredients || [1, 2, 3]).length;
       phase = "talk"; ing = 0;
       player.position.set(...(lv.spawn ? [lv.spawn[0], 0, lv.spawn[1]] : [-14, 0, 12]));
+      camFocus.set(player.position.x, 0.8, player.position.z);
       const sky = new THREE.Color(lv.sky || world.sky || "#141a2e");
       scene.background = sky;
       if (scene.fog) scene.fog.color = sky;
@@ -167,7 +251,10 @@ export default function ThreeRuntime({ game, onExit }) {
       let ix = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0) + touch.x;
       let iz = (keys.s || keys.arrowdown ? 1 : 0) - (keys.w || keys.arrowup ? 1 : 0) + touch.y;
       const mag = Math.hypot(ix, iz);
-      if (mixer) { if (mag > 0.05) mixer.update(dt); }
+      if (mixer) {
+        setPlayerAnim(mag > 0.08 ? "walk" : "idle");
+        mixer.update(dt);
+      }
       if (mag > 1) { ix /= mag; iz /= mag; } // normalized 8-direction diagonals
       const nx = player.position.x + ix * 7 * dt;
       const nz = player.position.z + iz * 7 * dt;
@@ -255,10 +342,25 @@ export default function ThreeRuntime({ game, onExit }) {
       }
 
       if (quest) {
-        // FIXED top-down follow camera — constant offset, never spins with heading
-        const t = new THREE.Vector3(player.position.x, 15.5, player.position.z + 9.5);
-        camera.position.lerp(t, 1 - Math.exp(-dt * 5));
-        camera.lookAt(player.position.x, 0.6, player.position.z);
+        // Cinematic fixed 3/4 action-RPG camera.
+        // It never rotates with heading, preserving the current gameplay controls.
+        // Small movement look-ahead keeps more world visible in front of Maeve.
+        const wantedFocus = new THREE.Vector3(
+          player.position.x + ix * 0.85,
+          0.82,
+          player.position.z + iz * 0.85
+        );
+
+        camFocus.lerp(wantedFocus, 1 - Math.exp(-dt * 7));
+
+        const t = new THREE.Vector3(
+          camFocus.x,
+          12.5,
+          camFocus.z + 8.5
+        );
+
+        camera.position.lerp(t, 1 - Math.exp(-dt * 5.5));
+        camera.lookAt(camFocus);
       } else {
         const t = new THREE.Vector3(player.position.x - Math.sin(heading) * 7.5, 5.2,
           player.position.z - Math.cos(heading) * 7.5);
@@ -267,6 +369,7 @@ export default function ThreeRuntime({ game, onExit }) {
       }
       window.__OR3D = { x: player.position.x, z: player.position.z, level: lvIdx + 1,
         phase, ing, coins, gems, stars, orbs: collected, won,
+        anim: playerAnimState,
         cam: { x: camera.position.x, z: camera.position.z } };
       renderer.render(scene, camera);
     }

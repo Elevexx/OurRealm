@@ -66,6 +66,25 @@ async def ensure_indexes_and_seed():
         {"$set": {"fire_equiv": 0, "build_eligible": False,
                   "exchange_source": False, "exchange_dest": False}})
 
+    # Game reward surfaces — Coins/Gems/Stars
+    # Only seed a placement when one does not already exist so founder/admin
+    # configuration remains authoritative after first creation.
+    for resource_key in ("coins", "gems", "stars"):
+        await db.resource_registry.update_one(
+            {
+                "key": resource_key,
+                "placements.games": {"$exists": False},
+            },
+            {
+                "$set": {
+                    "placements.games": {
+                        "mode": "full",
+                        "overrides": {},
+                    }
+                }
+            },
+        )
+
 
 async def registry(include_private: bool = False) -> list:
     q = {"archived": {"$ne": True}}

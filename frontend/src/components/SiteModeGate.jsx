@@ -57,6 +57,13 @@ export default function SiteModeGate() {
   // is gated by Maintenance/Beta/Preview. This exemption is route-scoped only.
   if (location.pathname === "/games" || location.pathname.startsWith("/games/")) return null;
 
+  // REALMLIFE DIRECT GAME BYPASS
+  if (
+    location.pathname
+      .toLowerCase()
+      .startsWith("/realmlife")
+  ) return null;
+
   if (["/signin", "/signup"].some((p) => location.pathname.startsWith(p))) return null;
   return <ModeScreen mode={status.mode} title={status.title} message={status.message} />;
 }

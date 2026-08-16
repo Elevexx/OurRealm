@@ -1,3 +1,4 @@
+import RealmLifeDirect from "./pages/RealmLifeDirect";
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -376,6 +377,27 @@ function App() {
             <Route path="/realms/portals/vr" element={<PortalsAdminGate><PortalVR /></PortalsAdminGate>} />
             <Route path="/admin/portals" element={<ShellRoute><AdminPortalsHub /></ShellRoute>} />
             <Route path="/admin/portals/:realmId" element={<ShellRoute><AdminPortalDetail /></ShellRoute>} />
+
+            <Route
+              caseSensitive
+              path="/RealmLife"
+              element={
+                <ShellRoute>
+                  <RealmLifeDirect />
+                </ShellRoute>
+              }
+            />
+
+            <Route
+              caseSensitive
+              path="/realmlife"
+              element={
+                <Navigate
+                  to="/RealmLife"
+                  replace
+                />
+              }
+            />
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

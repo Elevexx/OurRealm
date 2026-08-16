@@ -225,6 +225,13 @@ export default function OraiAssistantPanel() {
   // Immersive Nexus routes: never overlap ENTER NEXUS / world HUD controls
   if (location.pathname.startsWith("/nexus")) return null;
 
+  // REALMLIFE DIRECT GAME OVERLAY BYPASS
+  if (
+    location.pathname
+      .toLowerCase()
+      .startsWith("/realmlife")
+  ) return null;
+
   // Portaled to <body>: fixed positioning can never be hijacked by a
   // transformed/filtered ancestor (the desktop top-left clipping bug).
   return createPortal(

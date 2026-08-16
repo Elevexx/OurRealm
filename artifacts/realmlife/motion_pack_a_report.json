@@ -1,0 +1,143 @@
+{
+  "game_id": "realmlife-home-v1",
+  "avatar_id": "av_streetwear",
+  "rig_task_id": "019ffa10-6664-7d07-a771-34776ab0c302",
+  "started_at": "2026-08-15T23:33:02.675178+00:00",
+  "max_credit_budget": 30,
+  "motions": {
+    "sit_down": {
+      "task_id": "01a007c1-823e-7685-8987-0cb128034d8d",
+      "status": "SUCCEEDED",
+      "consumed_credits": 3,
+      "task_error": null,
+      "asset_id": "33efee3c19c75925f5d3b0e31ec22bb4",
+      "url": "/api/media/models/33efee3c19c75925f5d3b0e31ec22bb4.glb",
+      "animations": [
+        "Armature|Stand_to_Sit_Transition_M|baselayer"
+      ],
+      "bytes": 8461752
+    },
+    "sit_idle": {
+      "task_id": "01a007c1-ebbf-7f63-a7ee-0508ff710dd0",
+      "status": "SUCCEEDED",
+      "consumed_credits": 3,
+      "task_error": null,
+      "asset_id": "40dc7c75b25d8e2bbc6cb750622da1a5",
+      "url": "/api/media/models/40dc7c75b25d8e2bbc6cb750622da1a5.glb",
+      "animations": [
+        "Armature|Chair_Sit_Idle_M|baselayer"
+      ],
+      "bytes": 8527452
+    },
+    "stand_up": {
+      "task_id": "01a007c2-83ae-7e4c-90e1-87b23d5d6b7a",
+      "status": "SUCCEEDED",
+      "consumed_credits": 3,
+      "task_error": null,
+      "asset_id": "83b9490897ccec3b19c744fb2850041f",
+      "url": "/api/media/models/83b9490897ccec3b19c744fb2850041f.glb",
+      "animations": [
+        "Armature|Sit_to_Stand_Transition_M|baselayer"
+      ],
+      "bytes": 8478984
+    },
+    "lie_down": {
+      "task_id": "01a007c2-eb71-7e51-9869-599592f89072",
+      "status": "SUCCEEDED",
+      "consumed_credits": 3,
+      "task_error": null,
+      "asset_id": "8b660ce1ba67aaccec3c5724e74bc0fa",
+      "url": "/api/media/models/8b660ce1ba67aaccec3c5724e74bc0fa.glb",
+      "animations": [
+        "Armature|Sit_Lie_Bed|baselayer"
+      ],
+      "bytes": 8492512
+    },
+    "sleep": {
+      "task_id": "01a007c5-b03d-7fe5-89a5-392fd2b5f72b",
+      "status": "SUCCEEDED",
+      "consumed_credits": 3,
+      "task_error": null,
+      "asset_id": "4075ce21d999900d7c85c016c0b20aca",
+      "url": "/api/media/models/4075ce21d999900d7c85c016c0b20aca.glb",
+      "animations": [
+        "Armature|Sleep_Normally|baselayer"
+      ],
+      "bytes": 8423684
+    },
+    "wake_up": {
+      "task_id": "01a007c5-e836-7eaf-b1e9-c04b94f553c3",
+      "status": "SUCCEEDED",
+      "consumed_credits": 3,
+      "task_error": null,
+      "asset_id": "2153f3b1dc6e760de979dabc0df5a1d3",
+      "url": "/api/media/models/2153f3b1dc6e760de979dabc0df5a1d3.glb",
+      "animations": [
+        "Armature|Wake_Up_and_Look_Up|baselayer"
+      ],
+      "bytes": 8446580
+    },
+    "talk": {
+      "task_id": "01a007c6-5091-700d-89fd-ba2cf2c87e6c",
+      "status": "SUCCEEDED",
+      "consumed_credits": 3,
+      "task_error": null,
+      "asset_id": "238d154636ea64b49248f995e2507013",
+      "url": "/api/media/models/238d154636ea64b49248f995e2507013.glb",
+      "animations": [
+        "Armature|Stand_and_Chat|baselayer"
+      ],
+      "bytes": 8468376
+    },
+    "phone": {
+      "task_id": "01a007c6-b8cf-701b-8881-6edd49c1270d",
+      "status": "SUCCEEDED",
+      "consumed_credits": 3,
+      "task_error": null,
+      "asset_id": "89e5cb5314b6e491afec0b0dec6ec854",
+      "url": "/api/media/models/89e5cb5314b6e491afec0b0dec6ec854.glb",
+      "animations": [
+        "Armature|Phone_Conversation|baselayer"
+      ],
+      "bytes": 8457944
+    },
+    "drink": {
+      "task_id": "01a007c7-20fd-7ee2-b860-b803ea5891b9",
+      "status": "SUCCEEDED",
+      "consumed_credits": 3,
+      "task_error": null,
+      "asset_id": "45aa7de86bc5c49204ff1ff02a10b181",
+      "url": "/api/media/models/45aa7de86bc5c49204ff1ff02a10b181.glb",
+      "animations": [
+        "Armature|Stand_and_Drink|baselayer"
+      ],
+      "bytes": 8509244
+    },
+    "open_door": {
+      "task_id": "01a007c7-ba10-7784-a147-fb16b0f92fb0",
+      "status": "SUCCEEDED",
+      "consumed_credits": 3,
+      "task_error": null,
+      "asset_id": "06ac4870b852cce736420bee0d91a0ec",
+      "url": "/api/media/models/06ac4870b852cce736420bee0d91a0ec.glb",
+      "animations": [
+        "Armature|open_door|baselayer"
+      ],
+      "bytes": 8456848
+    }
+  },
+  "finished_at": "2026-08-15T23:35:51.653830+00:00",
+  "generated_count": 10,
+  "animation_urls": {
+    "sit_down": "/api/media/models/33efee3c19c75925f5d3b0e31ec22bb4.glb",
+    "sit_idle": "/api/media/models/40dc7c75b25d8e2bbc6cb750622da1a5.glb",
+    "stand_up": "/api/media/models/83b9490897ccec3b19c744fb2850041f.glb",
+    "lie_down": "/api/media/models/8b660ce1ba67aaccec3c5724e74bc0fa.glb",
+    "sleep": "/api/media/models/4075ce21d999900d7c85c016c0b20aca.glb",
+    "wake_up": "/api/media/models/2153f3b1dc6e760de979dabc0df5a1d3.glb",
+    "talk": "/api/media/models/238d154636ea64b49248f995e2507013.glb",
+    "phone": "/api/media/models/89e5cb5314b6e491afec0b0dec6ec854.glb",
+    "drink": "/api/media/models/45aa7de86bc5c49204ff1ff02a10b181.glb",
+    "open_door": "/api/media/models/06ac4870b852cce736420bee0d91a0ec.glb"
+  }
+}
