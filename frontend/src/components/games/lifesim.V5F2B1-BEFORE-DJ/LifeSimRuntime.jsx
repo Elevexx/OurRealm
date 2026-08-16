@@ -18,14 +18,10 @@ import { useRealmLifeProperty } from "./useRealmLifeProperty";
 import RealmLifePropertyPanel from "./RealmLifePropertyPanel";
 import { useRealmLifeEnvironment } from "./useRealmLifeEnvironment";
 import RealmLifeFounderAdmin from "./RealmLifeFounderAdmin";
-import RealmLifeDJMixer from "./RealmLifeDJMixer";
 import { createRealmLifeEnvironment } from "./lifeSimEnvironment";
 import {
   initRealmLifeAAAAssets,
 } from "./lifeSimAAAAssets";
-import {
-  applyRealmLifeVisualPolish,
-} from "./lifeSimVisualPolish";
 
 const clamp = (n, a = 0, b = 100) => Math.max(a, Math.min(b, n));
 
@@ -295,11 +291,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
   const [selected, setSelected] = useState(null);
 
   const [
-    realmLifeDJOpen,
-    setRealmLifeDJOpen,
-  ] = useState(false);
-
-  const [
     realmTravelFade,
     setRealmTravelFade,
   ] = useState(false);
@@ -319,119 +310,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
   const cameraModeRef =
     useRef("world");
-
-
-  // ----------------------------------------------------------
-  // REALMLIFE HOUSE VIEW STATE V5G1B2
-  //
-  // FULL is the default so RealmLife loads as a proper
-  // residential world instead of an exposed dollhouse.
-  // ----------------------------------------------------------
-
-  const [houseView, setHouseView] =
-    useState(() => {
-
-      try {
-
-        return (
-          window.localStorage.getItem(
-            "realmlife-house-view"
-          ) === "cutaway"
-            ? "cutaway"
-            : "full"
-        );
-
-      } catch (_) {
-
-        return "full";
-      }
-    });
-
-
-  const houseViewRef =
-    useRef(houseView);
-
-
-  const toggleHouseView =
-    useCallback(() => {
-
-      const next =
-        houseViewRef.current ===
-          "full"
-          ? "cutaway"
-          : "full";
-
-
-      houseViewRef.current =
-        next;
-
-
-      setHouseView(
-        next
-      );
-
-
-      try {
-
-        window.localStorage.setItem(
-          "realmlife-house-view",
-          next
-        );
-
-      } catch (_) {}
-
-
-      window
-        .__REALMLIFE_HOUSE_PRIVACY
-        ?.setOwnMode?.(
-          next
-        );
-
-
-      markRealmLifeActive();
-
-    }, [
-      markRealmLifeActive,
-    ]);
-
-
-  // Keep newly-created Three.js scenes synchronized with the
-  // remembered UI choice.
-  useEffect(() => {
-
-    const sync = () => {
-
-      window
-        .__REALMLIFE_HOUSE_PRIVACY
-        ?.setOwnMode?.(
-          houseViewRef.current
-        );
-    };
-
-
-    sync();
-
-
-    const timer =
-      window.setTimeout(
-        sync,
-        500
-      );
-
-
-    return () => {
-
-      window.clearTimeout(
-        timer
-      );
-    };
-
-  }, [
-    ready,
-  ]);
-
-
-  // REALMLIFE HOUSE VIEW STATE V5G1B2
 
   // ----------------------------------------------------------
   // POV CONTROL DIRECTION
@@ -560,25 +438,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
   }, [persist]);
 
   const queueAction = (actionId) => {
-
-    // REALMLIFE DJ MIXER ACTION
-    if (
-      actionId ===
-      "dj_mixer"
-    ) {
-      setRealmLifeDJOpen(
-        true
-      );
-
-      setSelected(
-        null
-      );
-
-      markRealmLifeActive();
-
-      return;
-    }
-
 
     // ========================================================
     // REALMLIFE INSTANT TRAVEL ACTION
@@ -2025,11 +1884,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     };
 
     simRef.current.placed.forEach(addPlacedObject);
-    // REALMLIFE V5G1B1 — SPANISH LUXURY VISUAL PASS
-    applyRealmLifeVisualPolish(
-      scene
-    );
-
 
     const blocked = (x, z, ignoreObject = null) => {
       if (
@@ -2960,191 +2814,12 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
                   : "Talking…",
           }));
 
-          // ==================================================
-          // REALMLIFE V5G1 SLEEP SAFETY
-          // ==================================================
-
-          const interactionModel =
-            residentAvatar?.model
-            || null;
-
-
-          const residentStartY =
-            resident.position.y;
-
-
-          const modelStartPosition =
-            interactionModel
-              ?.position
-              ?.clone?.()
-            || null;
-
-
-          const modelStartQuaternion =
-            interactionModel
-              ?.quaternion
-              ?.clone?.()
-            || null;
-
-
-          /*
-           * The current prototype mattress is elevated.
-           * Keep the avatar root above the mattress while the
-           * lie-down/sleep/wake sequence is playing instead of
-           * letting the character disappear inside the bed box.
-           */
-          if (
-            actionId === "sleep"
-          ) {
-            resident.position.y =
-              residentStartY
-              + 0.78;
-          }
-
-
           try {
-
-            const sequenceWork =
-              Promise.resolve(
-                residentAvatar
-                  .playSequence(
-                    sequence
-                  )
-              );
-
-
-            /*
-             * Animation clips must NEVER be allowed to lock
-             * RealmLife input forever.
-             *
-             * Sleep gets enough time for:
-             * lie_down -> sleep hold -> wake_up.
-             */
-            const timeoutMs =
-              actionId === "sleep"
-                ? 7600
-                : actionId === "relax"
-                  ? 6500
-                  : 4500;
-
-
-            const completed =
-              await Promise.race([
-                sequenceWork
-                  .then(
-                    () =>
-                      "sequence"
-                  ),
-
-                waitRealmTravel(
-                  timeoutMs
-                )
-                  .then(
-                    () =>
-                      "timeout"
-                  ),
-              ]);
-
-
-            if (
-              completed ===
-              "timeout"
-            ) {
-              console.warn(
-                "[RealmLife] Interaction animation timed out safely:",
-                actionId
-              );
-            }
-
-          } catch (err) {
-
-            console.warn(
-              "[RealmLife] Interaction animation recovered:",
-              actionId,
-              err
+            await residentAvatar.playSequence(
+              sequence
             );
-
           } finally {
-
-            residentInteractionBusy =
-              false;
-
-
-            if (
-              actionId === "sleep"
-            ) {
-
-              // Return gameplay root to the floor.
-              resident.position.y =
-                residentStartY;
-
-
-              resident.rotation.x =
-                0;
-
-              resident.rotation.z =
-                0;
-
-
-              /*
-               * GLB animation root motion can move the model
-               * relative to the resident group. Restore the
-               * original model transform so movement starts
-               * from the correct standing origin.
-               */
-              if (
-                interactionModel
-              ) {
-
-                if (
-                  modelStartPosition
-                ) {
-                  interactionModel
-                    .position
-                    .copy(
-                      modelStartPosition
-                    );
-                }
-
-
-                if (
-                  modelStartQuaternion
-                ) {
-                  interactionModel
-                    .quaternion
-                    .copy(
-                      modelStartQuaternion
-                    );
-                }
-
-
-                interactionModel.visible =
-                  true;
-              }
-
-
-              /*
-               * Existing locomotion controller takes over again
-               * on the next simulation frame.
-               */
-              moveTargetRef.current =
-                null;
-
-              pathRef.current =
-                [];
-
-              pendingActionRef.current =
-                null;
-
-
-              setHud(
-                (h) => ({
-                  ...h,
-                  msg:
-                    "Rested and ready.",
-                })
-              );
-            }
+            residentInteractionBusy = false;
           }
         }
       }
@@ -4102,42 +3777,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               : "↔ REVERSE"}
           </button>
 
-          {/* REALMLIFE FULL CUTAWAY BUTTON V5G1B2 */}
-          <button
-            type="button"
-            onClick={
-              toggleHouseView
-            }
-            className="px-2.5 py-1.5 rounded-lg text-xs font-black"
-            style={{
-              background:
-                houseView ===
-                  "full"
-                  ? "rgba(255,138,76,.24)"
-                  : "rgba(197,140,255,.20)",
-
-              border:
-                houseView ===
-                  "full"
-                  ? "1px solid rgba(255,138,76,.48)"
-                  : "1px solid rgba(197,140,255,.42)",
-
-              color:
-                "#fff",
-            }}
-            title={
-              houseView ===
-                "full"
-                ? "Show your house interior in Cutaway mode"
-                : "Restore the complete house exterior and roof"
-            }
-          >
-            {houseView ===
-              "full"
-              ? "🏠 FULL"
-              : "✂ CUTAWAY"}
-          </button>
-
           <button
             type="button"
             onClick={() =>
@@ -4445,12 +4084,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           />
         </>
       )}
-
-      <RealmLifeDJMixer
-        gameId={game?.id}
-        open={realmLifeDJOpen}
-        setOpen={setRealmLifeDJOpen}
-      />
 
       <RealmLifeFounderAdmin
         {...realmEnvironment}

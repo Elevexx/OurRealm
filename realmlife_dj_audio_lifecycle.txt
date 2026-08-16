@@ -1,0 +1,1660 @@
+============================================================
+REALMLIFE DJ AUDIO LIFECYCLE INSPECTION
+READ ONLY
+============================================================
+
+===== 1. AUDIO CONTEXT + SOURCE CREATION =====
+
+  const [
+    playlists,
+    setPlaylists,
+  ] =
+    useState([]);
+
+  const [
+    playlistId,
+    setPlaylistId,
+  ] =
+    useState("");
+
+
+  const [
+    notice,
+    setNotice,
+  ] =
+    useState("");
+
+
+  const apiRoot =
+    `/games/${gameId}/realmlife/dj`;
+
+
+  const recordEvent =
+    useCallback(
+      (
+        type,
+        payload = {}
+      ) => {
+
+        const recorder =
+          recordingRef.current;
+
+
+        if (
+          !recorder.active
+        ) {
+          return;
+        }
+
+
+        recorder.events.push({
+          t:
+            Date.now()
+            - recorder.startedAt,
+
+          type,
+
+          ...payload,
+        });
+
+      },
+      []
+    );
+
+
+  // ==========================================================
+  // WEB AUDIO GRAPH
+  // ==========================================================
+
+  useEffect(() => {
+
+    // REALMLIFE DJ AUDIO GRAPH SINGLE-CONNECTION GUARD
+    //
+    // Do not create MediaElementSourceNodes until the user
+    // actually opens the DJ Studio. Once created, reuse them.
+    if (!open) {
+      return;
+    }
+
+
+    if (
+      !audioARef.current
+      || !audioBRef.current
+      || nodesRef.current
+    ) {
+      return;
+    }
+
+
+    // Capture the exact DOM elements this AudioContext owns.
+    // A media element may only ever have one source node.
+    const audioAElement =
+      audioARef.current;
+
+    const audioBElement =
+      audioBRef.current;
+
+
+    const AudioContext =
+      window.AudioContext
+      || window.webkitAudioContext;
+
+
+    if (!AudioContext)
+      return;
+
+
+    const ctx =
+      new AudioContext();
+
+
+    audioContextRef.current =
+      ctx;
+
+
+    const buildDeck = (
+      element
+    ) => {
+
+      const source =
+        ctx.createMediaElementSource(
+          element
+        );
+
+
+      const bass =
+        ctx.createBiquadFilter();
+
+      bass.type =
+        "lowshelf";
+
+      bass.frequency.value =
+        90;
+
+
+      const low =
+        ctx.createBiquadFilter();
+
+      low.type =
+        "peaking";
+
+      low.frequency.value =
+        280;
+
+      low.Q.value =
+        0.8;
+
+
+      const mid =
+        ctx.createBiquadFilter();
+
+      mid.type =
+        "peaking";
+
+      mid.frequency.value =
+        1200;
+
+      mid.Q.value =
+        0.9;
+
+
+      const high =
+        ctx.createBiquadFilter();
+
+      high.type =
+        "highshelf";
+
+      high.frequency.value =
+        6000;
+
+
+      const volume =
+        ctx.createGain();
+
+
+      const cross =
+        ctx.createGain();
+
+
+      source
+        .connect(
+          bass
+        )
+        .connect(
+          low
+        )
+        .connect(
+          mid
+        )
+        .connect(
+          high
+        )
+        .connect(
+          volume
+        )
+        .connect(
+          cross
+        );
+
+
+      return {
+        source,
+        bass,
+        low,
+        mid,
+        high,
+        volume,
+        cross,
+      };
+    };
+
+
+    const a =
+      buildDeck(
+        audioAElement
+      );
+
+
+    const b =
+      buildDeck(
+        audioBElement
+      );
+
+
+    const master =
+      ctx.createGain();
+
+
+    a.cross.connect(
+      master
+    );
+
+    b.cross.connect(
+      master
+    );
+
+
+    master.connect(
+      ctx.destination
+    );
+
+
+    nodesRef.current = {
+      a,
+      b,
+      master,
+    };
+
+
+    return () => {
+
+      replayTimersRef.current
+        .forEach(
+          (timer) =>
+            window.clearTimeout(
+              timer
+            )
+        );
+
+
+      replayTimersRef.current =
+        [];
+
+
+      // React Strict Mode may immediately run this effect again.
+      // Pause playback, but preserve the AudioContext and the
+      // MediaElementSourceNode bindings.
+      //
+      // createMediaElementSource() CANNOT bind these same
+      // <audio> elements again later.
+      audioAElement.pause();
+      audioBElement.pause();
+
+
+      // Intentionally DO NOT:
+      //   ctx.close()
+      //   nodesRef.current = null
+      //
+      // The graph remains reusable when the DJ popup reopens.
+
+    };
+
+  }, [open]);
+
+
+  // ==========================================================
+  // AUDIO NODE UPDATES
+  // ==========================================================
+
+  useEffect(() => {
+
+    const nodes =
+      nodesRef.current;
+
+
+    if (!nodes)
+      return;
+
+
+===== 2. PLAY FUNCTION =====
+      setPickerDeck(
+        null
+      );
+
+      setNotice(
+        `${track.title} loaded to Deck ${deck}.`
+      );
+    };
+
+
+  const playDeck =
+    async (
+      deck,
+      fromReplay = false
+    ) => {
+
+      await resumeAudioContext();
+
+
+      const audio =
+        deck === "A"
+          ? audioARef.current
+          : audioBRef.current;
+
+
+      if (!audio?.src)
+        return;
+
+
+      if (!mixerActive) {
+
+        const other =
+          deck === "A"
+            ? audioBRef.current
+            : audioARef.current;
+
+
+        other?.pause();
+
+
+        if (deck === "A") {
+
+          setPlayingB(
+            false
+          );
+
+        } else {
+
+          setPlayingA(
+            false
+          );
+        }
+      }
+
+
+      try {
+
+        // ==================================================
+        // REALMLIFE DJ AUDIO CONTEXT RESUME V5F2B1B
+        //
+        // The HTMLMediaElement can advance normally while a
+        // Web Audio AudioContext remains suspended.
+        //
+        // Since our deck MediaElementSource is routed through
+        // EQ -> volume -> crossfader -> master -> destination,
+        // the context MUST be running or playback is silent.
+        //
+        // PLAY is a direct user gesture, so this is the correct
+        // place to resume Chrome/Safari Web Audio.
+        // ==================================================
+
+        const audioContext =
+          nodesRef.current
+            ?.master
+            ?.context
+          || null;
+
+
+        if (
+          audioContext
+          &&
+          audioContext.state ===
+            "suspended"
+        ) {
+
+          await audioContext.resume();
+
+          console.log(
+            "[RealmLife DJ] AudioContext resumed:",
+            audioContext.state
+          );
+        }
+
+
+        if (
+          audioContext
+          &&
+          audioContext.state ===
+            "closed"
+        ) {
+
+          throw new Error(
+            "RealmLife DJ AudioContext is closed."
+          );
+        }
+
+
+        await audio.play();
+
+
+        if (deck === "A") {
+
+          setPlayingA(
+            true
+          );
+
+        } else {
+
+          setPlayingB(
+            true
+          );
+        }
+
+
+        if (!fromReplay) {
+
+          recordEvent(
+            "play",
+            {
+              deck,
+            }
+          );
+        }
+
+      } catch (err) {
+
+        setNotice(
+          "Your browser blocked playback. Click PLAY again."
+        );
+      }
+    };
+
+
+  const pauseDeck =
+    (
+      deck,
+
+===== 3. MIXER TOGGLE =====
+
+        setEqA(
+          (old) => ({
+            ...old,
+            [band]:
+              v,
+          })
+        );
+
+      } else {
+
+        setEqB(
+          (old) => ({
+            ...old,
+            [band]:
+              v,
+          })
+        );
+      }
+
+
+      if (!fromReplay) {
+
+        recordEvent(
+          "eq",
+          {
+            deck,
+            band,
+            value: v,
+          }
+        );
+      }
+    };
+
+
+  const changeCrossfader =
+    (
+      value,
+      fromReplay = false
+    ) => {
+
+      const v =
+        Math.max(
+          -1,
+          Math.min(
+            1,
+            Number(value)
+          )
+        );
+
+
+      setCrossfader(
+        v
+      );
+
+
+      if (!fromReplay) {
+
+        recordEvent(
+          "crossfader",
+          {
+            value: v,
+          }
+        );
+      }
+    };
+
+
+  const toggleMixer =
+    (
+      enabled,
+      fromReplay = false
+    ) => {
+
+      const next =
+        !!enabled;
+
+===== 4. AUDIO ELEMENTS / REFS =====
+326-                }
+327-                style={
+328-                  sliderStyle()
+329-                }
+330-              />
+331-            </label>
+332-          )
+333-        )}
+334-      </div>
+335-    </div>
+336-  );
+337-}
+338-
+339-
+340-export default function RealmLifeDJMixer({
+341-  gameId,
+342-  open,
+343-  setOpen,
+344-}) {
+345-
+346:  const audioARef =
+347-    useRef(null);
+348-
+349:  const audioBRef =
+350-    useRef(null);
+351-
+352-  const audioContextRef =
+353-    useRef(null);
+354-
+355:  const nodesRef =
+356-    useRef(null);
+357-
+358-  const replayTimersRef =
+359-    useRef([]);
+360-
+361-  const recordingRef =
+362-    useRef({
+363-      active:
+364-        false,
+365-
+366-      startedAt:
+367-        0,
+368-
+369-      events:
+370-        [],
+371-    });
+372-
+373-
+374-  const [
+375-    deckA,
+376-    setDeckA,
+377-  ] =
+378-    useState(null);
+379-
+380-  const [
+381-    deckB,
+382-    setDeckB,
+383-  ] =
+384-    useState(null);
+385-
+--
+554-      []
+555-    );
+556-
+557-
+558-  // ==========================================================
+559-  // WEB AUDIO GRAPH
+560-  // ==========================================================
+561-
+562-  useEffect(() => {
+563-
+564-    // REALMLIFE DJ AUDIO GRAPH SINGLE-CONNECTION GUARD
+565-    //
+566-    // Do not create MediaElementSourceNodes until the user
+567-    // actually opens the DJ Studio. Once created, reuse them.
+568-    if (!open) {
+569-      return;
+570-    }
+571-
+572-
+573-    if (
+574:      !audioARef.current
+575:      || !audioBRef.current
+576:      || nodesRef.current
+577-    ) {
+578-      return;
+579-    }
+580-
+581-
+582:    // Capture the exact DOM elements this AudioContext owns.
+583-    // A media element may only ever have one source node.
+584-    const audioAElement =
+585:      audioARef.current;
+586-
+587-    const audioBElement =
+588:      audioBRef.current;
+589-
+590-
+591:    const AudioContext =
+592:      window.AudioContext
+593:      || window.webkitAudioContext;
+594-
+595-
+596:    if (!AudioContext)
+597-      return;
+598-
+599-
+600-    const ctx =
+601:      new AudioContext();
+602-
+603-
+604-    audioContextRef.current =
+605-      ctx;
+606-
+607-
+608-    const buildDeck = (
+609-      element
+610-    ) => {
+611-
+612-      const source =
+613:        ctx.createMediaElementSource(
+614-          element
+615-        );
+616-
+617-
+618-      const bass =
+619-        ctx.createBiquadFilter();
+620-
+621-      bass.type =
+622-        "lowshelf";
+623-
+624-      bass.frequency.value =
+625-        90;
+626-
+627-
+628-      const low =
+629-        ctx.createBiquadFilter();
+630-
+631-      low.type =
+632-        "peaking";
+633-
+634-      low.frequency.value =
+635-        280;
+636-
+637-      low.Q.value =
+638-        0.8;
+639-
+640-
+641-      const mid =
+642-        ctx.createBiquadFilter();
+643-
+--
+715-
+716-
+717-    const master =
+718-      ctx.createGain();
+719-
+720-
+721-    a.cross.connect(
+722-      master
+723-    );
+724-
+725-    b.cross.connect(
+726-      master
+727-    );
+728-
+729-
+730-    master.connect(
+731-      ctx.destination
+732-    );
+733-
+734-
+735:    nodesRef.current = {
+736-      a,
+737-      b,
+738-      master,
+739-    };
+740-
+741-
+742-    return () => {
+743-
+744-      replayTimersRef.current
+745-        .forEach(
+746-          (timer) =>
+747-            window.clearTimeout(
+748-              timer
+749-            )
+750-        );
+751-
+752-
+753-      replayTimersRef.current =
+754-        [];
+755-
+756-
+757-      // React Strict Mode may immediately run this effect again.
+758:      // Pause playback, but preserve the AudioContext and the
+759-      // MediaElementSourceNode bindings.
+760-      //
+761:      // createMediaElementSource() CANNOT bind these same
+762:      // <audio> elements again later.
+763-      audioAElement.pause();
+764-      audioBElement.pause();
+765-
+766-
+767-      // Intentionally DO NOT:
+768-      //   ctx.close()
+769:      //   nodesRef.current = null
+770-      //
+771-      // The graph remains reusable when the DJ popup reopens.
+772-
+773-    };
+774-
+775-  }, [open]);
+776-
+777-
+778-  // ==========================================================
+779-  // AUDIO NODE UPDATES
+780-  // ==========================================================
+781-
+782-  useEffect(() => {
+783-
+784-    const nodes =
+785:      nodesRef.current;
+786-
+787-
+788-    if (!nodes)
+789-      return;
+790-
+791-
+792-    nodes.a.volume.gain.value =
+793-      volumeA;
+794-
+795-    nodes.b.volume.gain.value =
+796-      volumeB;
+797-
+798-
+799-    nodes.a.bass.gain.value =
+800-      eqA.bass;
+801-
+802-    nodes.a.low.gain.value =
+803-      eqA.low;
+804-
+805-    nodes.a.mid.gain.value =
+806-      eqA.mid;
+807-
+808-    nodes.a.high.gain.value =
+809-      eqA.high;
+810-
+811-
+812-    nodes.b.bass.gain.value =
+813-      eqB.bass;
+814-
+815-    nodes.b.low.gain.value =
+--
+852-    volumeA,
+853-    volumeB,
+854-    eqA,
+855-    eqB,
+856-    crossfader,
+857-    masterVolume,
+858-  ]);
+859-
+860-
+861-  // ==========================================================
+862-  // POSITION MONITOR
+863-  // ==========================================================
+864-
+865-  useEffect(() => {
+866-
+867-    const timer =
+868-      window.setInterval(
+869-        () => {
+870-
+871-          const a =
+872:            audioARef.current;
+873-
+874-          const b =
+875:            audioBRef.current;
+876-
+877-
+878-          if (a) {
+879-
+880-            setDeckAPosition({
+881-              current:
+882-                Number.isFinite(
+883-                  a.currentTime
+884-                )
+885-                  ? a.currentTime
+886-                  : 0,
+887-
+888-              duration:
+889-                Number.isFinite(
+890-                  a.duration
+891-                )
+892-                  ? a.duration
+893-                  : 0,
+894-            });
+895-          }
+896-
+897-
+898-          if (b) {
+899-
+900-            setDeckBPosition({
+901-              current:
+902-                Number.isFinite(
+903-                  b.currentTime
+904-                )
+905-                  ? b.currentTime
+--
+1036-
+1037-  useEffect(() => {
+1038-
+1039-    if (!open)
+1040-      return;
+1041-
+1042-
+1043-    loadLibrary(
+1044-      ""
+1045-    );
+1046-
+1047-    loadSaved();
+1048-
+1049-  }, [
+1050-    open,
+1051-    loadLibrary,
+1052-    loadSaved,
+1053-  ]);
+1054-
+1055-
+1056:  const resumeAudioContext =
+1057-    async () => {
+1058-
+1059-      const ctx =
+1060-        audioContextRef.current;
+1061-
+1062-
+1063-      if (
+1064-        ctx
+1065-        && ctx.state
+1066-        === "suspended"
+1067-      ) {
+1068-
+1069-        await ctx.resume();
+1070-      }
+1071-    };
+1072-
+1073-
+1074-  const selectTrack =
+1075-    (
+1076-      deck,
+1077-      track
+1078-    ) => {
+1079-
+1080-      const audio =
+1081-        deck === "A"
+1082:          ? audioARef.current
+1083:          : audioBRef.current;
+1084-
+1085-
+1086-      if (!audio)
+1087-        return;
+1088-
+1089-
+1090-      audio.pause();
+1091-
+1092-      audio.src =
+1093-        track.stream_url;
+1094-
+1095-      audio.load();
+1096-
+1097-
+1098-      if (deck === "A") {
+1099-
+1100-        setDeckA(
+1101-          track
+1102-        );
+1103-
+1104-        setPlayingA(
+1105-          false
+1106-        );
+1107-
+1108-      } else {
+1109-
+1110-        setDeckB(
+1111-          track
+1112-        );
+1113-
+--
+1116-        );
+1117-      }
+1118-
+1119-
+1120-      setPickerDeck(
+1121-        null
+1122-      );
+1123-
+1124-      setNotice(
+1125-        `${track.title} loaded to Deck ${deck}.`
+1126-      );
+1127-    };
+1128-
+1129-
+1130-  const playDeck =
+1131-    async (
+1132-      deck,
+1133-      fromReplay = false
+1134-    ) => {
+1135-
+1136:      await resumeAudioContext();
+1137-
+1138-
+1139-      const audio =
+1140-        deck === "A"
+1141:          ? audioARef.current
+1142:          : audioBRef.current;
+1143-
+1144-
+1145-      if (!audio?.src)
+1146-        return;
+1147-
+1148-
+1149-      if (!mixerActive) {
+1150-
+1151-        const other =
+1152-          deck === "A"
+1153:            ? audioBRef.current
+1154:            : audioARef.current;
+1155-
+1156-
+1157-        other?.pause();
+1158-
+1159-
+1160-        if (deck === "A") {
+1161-
+1162-          setPlayingB(
+1163-            false
+1164-          );
+1165-
+1166-        } else {
+1167-
+1168-          setPlayingA(
+1169-            false
+1170-          );
+1171-        }
+1172-      }
+1173-
+1174-
+1175-      try {
+1176-
+1177-        // ==================================================
+1178-        // REALMLIFE DJ AUDIO CONTEXT RESUME V5F2B1B
+1179-        //
+1180-        // The HTMLMediaElement can advance normally while a
+1181:        // Web Audio AudioContext remains suspended.
+1182-        //
+1183-        // Since our deck MediaElementSource is routed through
+1184-        // EQ -> volume -> crossfader -> master -> destination,
+1185-        // the context MUST be running or playback is silent.
+1186-        //
+1187-        // PLAY is a direct user gesture, so this is the correct
+1188-        // place to resume Chrome/Safari Web Audio.
+1189-        // ==================================================
+1190-
+1191-        const audioContext =
+1192:          nodesRef.current
+1193-            ?.master
+1194-            ?.context
+1195-          || null;
+1196-
+1197-
+1198-        if (
+1199-          audioContext
+1200-          &&
+1201-          audioContext.state ===
+1202-            "suspended"
+1203-        ) {
+1204-
+1205-          await audioContext.resume();
+1206-
+1207-          console.log(
+1208:            "[RealmLife DJ] AudioContext resumed:",
+1209-            audioContext.state
+1210-          );
+1211-        }
+1212-
+1213-
+1214-        if (
+1215-          audioContext
+1216-          &&
+1217-          audioContext.state ===
+1218-            "closed"
+1219-        ) {
+1220-
+1221-          throw new Error(
+1222:            "RealmLife DJ AudioContext is closed."
+1223-          );
+1224-        }
+1225-
+1226-
+1227-        await audio.play();
+1228-
+1229-
+1230-        if (deck === "A") {
+1231-
+1232-          setPlayingA(
+1233-            true
+1234-          );
+1235-
+1236-        } else {
+1237-
+1238-          setPlayingB(
+1239-            true
+1240-          );
+1241-        }
+1242-
+1243-
+1244-        if (!fromReplay) {
+1245-
+1246-          recordEvent(
+1247-            "play",
+1248-            {
+1249-              deck,
+1250-            }
+1251-          );
+1252-        }
+1253-
+1254-      } catch (err) {
+1255-
+1256-        setNotice(
+1257-          "Your browser blocked playback. Click PLAY again."
+1258-        );
+1259-      }
+1260-    };
+1261-
+1262-
+1263-  const pauseDeck =
+1264-    (
+1265-      deck,
+1266-      fromReplay = false
+1267-    ) => {
+1268-
+1269-      const audio =
+1270-        deck === "A"
+1271:          ? audioARef.current
+1272:          : audioBRef.current;
+1273-
+1274-
+1275-      audio?.pause();
+1276-
+1277-
+1278-      if (deck === "A") {
+1279-
+1280-        setPlayingA(
+1281-          false
+1282-        );
+1283-
+1284-      } else {
+1285-
+1286-        setPlayingB(
+1287-          false
+1288-        );
+1289-      }
+1290-
+1291-
+1292-      if (!fromReplay) {
+1293-
+1294-        recordEvent(
+1295-          "pause",
+1296-          {
+1297-            deck,
+1298-          }
+1299-        );
+1300-      }
+1301-    };
+1302-
+1303-
+1304-  const seekDeck =
+1305-    (
+1306-      deck,
+1307-      position,
+1308-      fromReplay = false
+1309-    ) => {
+1310-
+1311-      const audio =
+1312-        deck === "A"
+1313:          ? audioARef.current
+1314:          : audioBRef.current;
+1315-
+1316-
+1317-      if (!audio)
+1318-        return;
+1319-
+1320-
+1321-      audio.currentTime =
+1322-        Math.max(
+1323-          0,
+1324-          Math.min(
+1325-            Number(position)
+1326-            || 0,
+1327-
+1328-            Number.isFinite(
+1329-              audio.duration
+1330-            )
+1331-              ? audio.duration
+1332-              : Number(position)
+1333-                || 0
+1334-          )
+1335-        );
+1336-
+1337-
+1338-      if (!fromReplay) {
+1339-
+1340-        recordEvent(
+1341-          "seek",
+1342-          {
+1343-            deck,
+1344-            position:
+--
+1991-      () =>
+1992-        playlists.find(
+1993-          (p) =>
+1994-            p.id
+1995-            === playlistId
+1996-        )
+1997-        || playlists[0]
+1998-        || null,
+1999-
+2000-      [
+2001-        playlists,
+2002-        playlistId,
+2003-      ]
+2004-    );
+2005-
+2006-
+2007-  if (!open) {
+2008-
+2009-    return (
+2010-      <>
+2011:        <audio
+2012-          ref={
+2013:            audioARef
+2014-          }
+2015-          preload="metadata"
+2016-          onEnded={() =>
+2017-            setPlayingA(
+2018-              false
+2019-            )
+2020-          }
+2021-        />
+2022-
+2023:        <audio
+2024-          ref={
+2025:            audioBRef
+2026-          }
+2027-          preload="metadata"
+2028-          onEnded={() =>
+2029-            setPlayingB(
+2030-              false
+2031-            )
+2032-          }
+2033-        />
+2034-      </>
+2035-    );
+2036-  }
+2037-
+2038-
+2039-  return (
+2040-    <>
+2041:      <audio
+2042-        ref={
+2043:          audioARef
+2044-        }
+2045-        preload="metadata"
+2046-        onEnded={() =>
+2047-          setPlayingA(
+2048-            false
+2049-          )
+2050-        }
+2051-      />
+2052-
+2053:      <audio
+2054-        ref={
+2055:          audioBRef
+2056-        }
+2057-        preload="metadata"
+2058-        onEnded={() =>
+2059-          setPlayingB(
+2060-            false
+2061-          )
+2062-        }
+2063-      />
+2064-
+2065-
+2066-      <div
+2067-        className="absolute inset-0 z-[350] p-3 overflow-y-auto"
+2068-        style={{
+2069-          background:
+2070-            "radial-gradient(circle at 50% 20%,rgba(8,43,65,.95),rgba(0,3,8,.985) 65%)",
+2071-
+2072-          color:
+2073-            "#fff",
+2074-
+2075-          backdropFilter:
+2076-            "blur(12px)",
+2077-        }}
+2078-      >
+2079-        <div
+2080-          className="max-w-[1180px] mx-auto"
+2081-        >
+2082-          <div
+2083-            className="flex items-center gap-3"
+2084-          >
+2085-            <div>
+
+===== 5. CLEANUP / DISCONNECT / CLOSE =====
+337-}
+338-
+339-
+340-export default function RealmLifeDJMixer({
+341-  gameId,
+342-  open,
+343-  setOpen,
+344-}) {
+345-
+346-  const audioARef =
+347-    useRef(null);
+348-
+349-  const audioBRef =
+350-    useRef(null);
+351-
+352:  const audioContextRef =
+353-    useRef(null);
+354-
+355-  const nodesRef =
+356-    useRef(null);
+357-
+358-  const replayTimersRef =
+359-    useRef([]);
+360-
+361-  const recordingRef =
+362-    useRef({
+363-      active:
+364-        false,
+365-
+366-      startedAt:
+367-        0,
+368-
+369-      events:
+370-        [],
+371-    });
+372-
+373-
+374-  const [
+375-    deckA,
+376-    setDeckA,
+377-  ] =
+378-    useState(null);
+379-
+380-  const [
+381-    deckB,
+382-    setDeckB,
+383-  ] =
+384-    useState(null);
+385-
+386-
+387-  const [
+--
+561-
+562-  useEffect(() => {
+563-
+564-    // REALMLIFE DJ AUDIO GRAPH SINGLE-CONNECTION GUARD
+565-    //
+566-    // Do not create MediaElementSourceNodes until the user
+567-    // actually opens the DJ Studio. Once created, reuse them.
+568-    if (!open) {
+569-      return;
+570-    }
+571-
+572-
+573-    if (
+574-      !audioARef.current
+575-      || !audioBRef.current
+576:      || nodesRef.current
+577-    ) {
+578-      return;
+579-    }
+580-
+581-
+582-    // Capture the exact DOM elements this AudioContext owns.
+583-    // A media element may only ever have one source node.
+584-    const audioAElement =
+585-      audioARef.current;
+586-
+587-    const audioBElement =
+588-      audioBRef.current;
+589-
+590-
+591-    const AudioContext =
+592-      window.AudioContext
+593-      || window.webkitAudioContext;
+594-
+595-
+596-    if (!AudioContext)
+597-      return;
+598-
+599-
+600-    const ctx =
+601-      new AudioContext();
+602-
+603-
+604:    audioContextRef.current =
+605-      ctx;
+606-
+607-
+608-    const buildDeck = (
+609-      element
+610-    ) => {
+611-
+612-      const source =
+613-        ctx.createMediaElementSource(
+614-          element
+615-        );
+616-
+617-
+618-      const bass =
+619-        ctx.createBiquadFilter();
+620-
+621-      bass.type =
+622-        "lowshelf";
+623-
+624-      bass.frequency.value =
+625-        90;
+626-
+627-
+628-      const low =
+629-        ctx.createBiquadFilter();
+630-
+631-      low.type =
+632-        "peaking";
+633-
+634-      low.frequency.value =
+635-        280;
+636-
+637-      low.Q.value =
+638-        0.8;
+639-
+--
+720-
+721-    a.cross.connect(
+722-      master
+723-    );
+724-
+725-    b.cross.connect(
+726-      master
+727-    );
+728-
+729-
+730-    master.connect(
+731-      ctx.destination
+732-    );
+733-
+734-
+735:    nodesRef.current = {
+736-      a,
+737-      b,
+738-      master,
+739-    };
+740-
+741-
+742:    return () => {
+743-
+744-      replayTimersRef.current
+745-        .forEach(
+746-          (timer) =>
+747-            window.clearTimeout(
+748-              timer
+749-            )
+750-        );
+751-
+752-
+753-      replayTimersRef.current =
+754-        [];
+755-
+756-
+757-      // React Strict Mode may immediately run this effect again.
+758-      // Pause playback, but preserve the AudioContext and the
+759-      // MediaElementSourceNode bindings.
+760-      //
+761-      // createMediaElementSource() CANNOT bind these same
+762-      // <audio> elements again later.
+763-      audioAElement.pause();
+764-      audioBElement.pause();
+765-
+766-
+767-      // Intentionally DO NOT:
+768:      //   ctx.close()
+769:      //   nodesRef.current = null
+770-      //
+771-      // The graph remains reusable when the DJ popup reopens.
+772-
+773-    };
+774-
+775-  }, [open]);
+776-
+777-
+778-  // ==========================================================
+779-  // AUDIO NODE UPDATES
+780-  // ==========================================================
+781-
+782-  useEffect(() => {
+783-
+784-    const nodes =
+785:      nodesRef.current;
+786-
+787-
+788-    if (!nodes)
+789-      return;
+790-
+791-
+792-    nodes.a.volume.gain.value =
+793-      volumeA;
+794-
+795-    nodes.b.volume.gain.value =
+796-      volumeB;
+797-
+798-
+799-    nodes.a.bass.gain.value =
+800-      eqA.bass;
+801-
+802-    nodes.a.low.gain.value =
+803-      eqA.low;
+804-
+805-    nodes.a.mid.gain.value =
+806-      eqA.mid;
+807-
+808-    nodes.a.high.gain.value =
+809-      eqA.high;
+810-
+811-
+812-    nodes.b.bass.gain.value =
+813-      eqB.bass;
+814-
+815-    nodes.b.low.gain.value =
+816-      eqB.low;
+817-
+818-    nodes.b.mid.gain.value =
+819-      eqB.mid;
+820-
+--
+907-
+908-              duration:
+909-                Number.isFinite(
+910-                  b.duration
+911-                )
+912-                  ? b.duration
+913-                  : 0,
+914-            });
+915-          }
+916-
+917-        },
+918-        150
+919-      );
+920-
+921-
+922:    return () =>
+923-      window.clearInterval(
+924-        timer
+925-      );
+926-
+927-  }, []);
+928-
+929-
+930-  const loadLibrary =
+931-    useCallback(
+932-      async (
+933-        q = ""
+934-      ) => {
+935-
+936-        try {
+937-
+938-          const {
+939-            data,
+940-          } =
+941-            await apiClient.get(
+942-              `${apiRoot}/sounds`,
+943-              {
+944-                params: {
+945-                  q,
+946-                },
+947-              }
+948-            );
+949-
+950-
+951-          setSounds(
+952-            data?.sounds
+953-            || []
+954-          );
+955-
+956-        } catch (err) {
+957-
+--
+1045-    );
+1046-
+1047-    loadSaved();
+1048-
+1049-  }, [
+1050-    open,
+1051-    loadLibrary,
+1052-    loadSaved,
+1053-  ]);
+1054-
+1055-
+1056-  const resumeAudioContext =
+1057-    async () => {
+1058-
+1059-      const ctx =
+1060:        audioContextRef.current;
+1061-
+1062-
+1063-      if (
+1064-        ctx
+1065-        && ctx.state
+1066-        === "suspended"
+1067-      ) {
+1068-
+1069-        await ctx.resume();
+1070-      }
+1071-    };
+1072-
+1073-
+1074-  const selectTrack =
+1075-    (
+1076-      deck,
+1077-      track
+1078-    ) => {
+1079-
+1080-      const audio =
+1081-        deck === "A"
+1082-          ? audioARef.current
+1083-          : audioBRef.current;
+1084-
+1085-
+1086-      if (!audio)
+1087-        return;
+1088-
+1089-
+1090-      audio.pause();
+1091-
+1092-      audio.src =
+1093-        track.stream_url;
+1094-
+1095-      audio.load();
+--
+1176-
+1177-        // ==================================================
+1178-        // REALMLIFE DJ AUDIO CONTEXT RESUME V5F2B1B
+1179-        //
+1180-        // The HTMLMediaElement can advance normally while a
+1181-        // Web Audio AudioContext remains suspended.
+1182-        //
+1183-        // Since our deck MediaElementSource is routed through
+1184-        // EQ -> volume -> crossfader -> master -> destination,
+1185-        // the context MUST be running or playback is silent.
+1186-        //
+1187-        // PLAY is a direct user gesture, so this is the correct
+1188-        // place to resume Chrome/Safari Web Audio.
+1189-        // ==================================================
+1190-
+1191:        const audioContext =
+1192:          nodesRef.current
+1193-            ?.master
+1194-            ?.context
+1195-          || null;
+1196-
+1197-
+1198-        if (
+1199:          audioContext
+1200-          &&
+1201:          audioContext.state ===
+1202-            "suspended"
+1203-        ) {
+1204-
+1205:          await audioContext.resume();
+1206-
+1207-          console.log(
+1208-            "[RealmLife DJ] AudioContext resumed:",
+1209:            audioContext.state
+1210-          );
+1211-        }
+1212-
+1213-
+1214-        if (
+1215:          audioContext
+1216-          &&
+1217:          audioContext.state ===
+1218-            "closed"
+1219-        ) {
+1220-
+1221-          throw new Error(
+1222-            "RealmLife DJ AudioContext is closed."
+1223-          );
+1224-        }
+1225-
+1226-
+1227-        await audio.play();
+1228-
+1229-
+1230-        if (deck === "A") {
+1231-
+1232-          setPlayingA(
+1233-            true
+1234-          );
+1235-
+1236-        } else {
+1237-
+1238-          setPlayingB(
+1239-            true
+1240-          );
+1241-        }
+1242-
+1243-
+1244-        if (!fromReplay) {
+1245-
+1246-          recordEvent(
+1247-            "play",
+1248-            {
+1249-              deck,
+1250-            }
+1251-          );
+1252-        }
+
+============================================================
+✅ DJ AUDIO LIFECYCLE INSPECTION COMPLETE
+NO FILES MODIFIED
+============================================================
