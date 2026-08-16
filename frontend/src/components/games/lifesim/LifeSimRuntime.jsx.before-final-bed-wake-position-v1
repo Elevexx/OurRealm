@@ -3156,18 +3156,15 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               // Temporarily wake completely away from the bed
               // so we can verify the bed collider independently.
 
-              // REALMLIFE FINAL BED WAKE POSITION V1
-              //
-              // Wake at the foot of the bed, safely outside
-              // the bed geometry. The bed itself no longer
-              // participates in movement collision.
-
               const wakeObject =
                 objectMapRef.current
-                  .get("bed");
+                  .get("shower");
 
               const wakeApproach =
-                [0, 2.6];
+                wakeObject
+                  ?.userData
+                  ?.approach
+                || [0, 1.3];
 
 
               const wakeX =

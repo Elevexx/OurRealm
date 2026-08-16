@@ -783,8 +783,6 @@ function createSpanishResidentialPrivacyShell({
   d = 13,
   label = "Residence",
   own = false,
-  levelsAbove = 1,
-  levelsBelow = 0,
 }) {
 
   const house =
@@ -894,36 +892,8 @@ function createSpanishResidentialPrivacyShell({
   };
 
 
-  // REALMLIFE 3 STORY GOLDEN HOUSE V1
-
-  const storyHeight =
-    3.25;
-
-  const levelCount =
-    Math.max(
-      1,
-      Math.min(
-        3,
-        Math.round(
-          Number(levelsAbove) || 1
-        )
-      )
-    );
-
-  const basementCount =
-    Math.max(
-      0,
-      Math.min(
-        3,
-        Math.round(
-          Number(levelsBelow) || 0
-        )
-      )
-    );
-
   const wallHeight =
-    storyHeight *
-    levelCount;
+    3.25;
 
 
   const wallThickness =
@@ -1964,9 +1934,8 @@ function createSpanishResidentialPrivacyShell({
 
       addBox({
         px,
-
         py:
-          wallHeight / 2,
+          1.62,
 
         pz:
           d / 2
@@ -1976,7 +1945,7 @@ function createSpanishResidentialPrivacyShell({
           0.28,
 
         bh:
-          wallHeight - 0.20,
+          3.05,
 
         bd:
           0.28,
@@ -2180,261 +2149,6 @@ function createSpanishResidentialPrivacyShell({
     }
 
 
-    // ==========================================================
-    // UPPER STORIES — FLOORS 2 + 3
-    // ==========================================================
-
-    for (
-      let floorIndex = 1;
-      floorIndex < levelCount;
-      floorIndex += 1
-    ) {
-
-      const floorBase =
-        floorIndex *
-        storyHeight;
-
-      const windowY =
-        floorBase +
-        1.68;
-
-
-      // Decorative band separating each story.
-      addBox({
-        py:
-          floorBase + 0.08,
-
-        pz:
-          d / 2 + 0.19,
-
-        bw:
-          w + 0.22,
-
-        bh:
-          0.16,
-
-        bd:
-          0.25,
-
-        material:
-          trim,
-      });
-
-
-      // Three windows per upper floor.
-      for (
-        const wx of [
-          -w * 0.29,
-          0,
-          w * 0.29,
-        ]
-      ) {
-
-        // Window frame.
-        addBox({
-          px:
-            wx,
-
-          py:
-            windowY,
-
-          pz:
-            d / 2 + 0.15,
-
-          bw:
-            2.20,
-
-          bh:
-            1.45,
-
-          bd:
-            0.08,
-
-          material:
-            trim,
-        });
-
-
-        // Glass.
-        addBox({
-          px:
-            wx,
-
-          py:
-            windowY,
-
-          pz:
-            d / 2 + 0.21,
-
-          bw:
-            1.82,
-
-          bh:
-            1.10,
-
-          bd:
-            0.055,
-
-          material:
-            glass,
-        });
-
-
-        // Vertical mullion.
-        addBox({
-          px:
-            wx,
-
-          py:
-            windowY,
-
-          pz:
-            d / 2 + 0.26,
-
-          bw:
-            0.055,
-
-          bh:
-            1.08,
-
-          bd:
-            0.04,
-
-          material:
-            darkWood,
-        });
-
-
-        // Horizontal mullion.
-        addBox({
-          px:
-            wx,
-
-          py:
-            windowY,
-
-          pz:
-            d / 2 + 0.26,
-
-          bw:
-            1.80,
-
-          bh:
-            0.055,
-
-          bd:
-            0.04,
-
-          material:
-            darkWood,
-        });
-
-
-        // Stone sill.
-        addBox({
-          px:
-            wx,
-
-          py:
-            windowY - 0.70,
-
-          pz:
-            d / 2 + 0.30,
-
-          bw:
-            2.42,
-
-          bh:
-            0.12,
-
-          bd:
-            0.28,
-
-          material:
-            stone,
-        });
-      }
-
-
-      // Spanish center balcony.
-      addBox({
-        py:
-          floorBase + 0.94,
-
-        pz:
-          d / 2 + 0.57,
-
-        bw:
-          2.75,
-
-        bh:
-          0.14,
-
-        bd:
-          0.74,
-
-        material:
-          stone,
-      });
-
-
-      for (
-        const bx of [
-          -1.04,
-          -0.52,
-          0,
-          0.52,
-          1.04,
-        ]
-      ) {
-
-        addCylinder({
-          px:
-            bx,
-
-          py:
-            floorBase + 1.42,
-
-          pz:
-            d / 2 + 0.87,
-
-          radius:
-            0.035,
-
-          height:
-            0.80,
-
-          material:
-            iron,
-
-          segments:
-            8,
-        });
-      }
-
-
-      addBox({
-        py:
-          floorBase + 1.81,
-
-        pz:
-          d / 2 + 0.87,
-
-        bw:
-          2.35,
-
-        bh:
-          0.07,
-
-        bd:
-          0.07,
-
-        material:
-          iron,
-      });
-    }
-
-
     // ----------------------------------------------------------
     // EAVE BAND
     // ----------------------------------------------------------
@@ -2514,14 +2228,6 @@ function createSpanishResidentialPrivacyShell({
     .propertyLabel =
       label;
 
-  house.userData
-    .levelsAbove =
-      levelCount;
-
-  house.userData
-    .levelsBelow =
-      basementCount;
-
 
   return house;
 }
@@ -2564,10 +2270,6 @@ function installRealmLifeResidentialPrivacy(
         "Your Residence",
       own:
         true,
-      levelsAbove:
-        3,
-      levelsBelow:
-        3,
     });
 
 

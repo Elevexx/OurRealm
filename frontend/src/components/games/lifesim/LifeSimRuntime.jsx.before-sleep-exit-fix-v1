@@ -980,11 +980,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       actions: [{ id: "sleep", label: "Sleep" }],
       approach: [0, 1.6],
 
-      // REALMLIFE BED HARD RESCUE V1
-      // Bed stays clickable/interactable but no longer blocks
-      // the player inside its rectangular movement collider.
-      collider: false,
-
       interactionAnchor: {
         x: 0,
         y: 0,
@@ -1169,52 +1164,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         savedResidentZ
       );
     }
-
-
-    // ========================================================
-    // REALMLIFE BED STUCK SAVE RESCUE V1
-    //
-    // Same philosophy as the mountain/off-map rescue:
-    // if an old save loads inside the bed zone, immediately
-    // place the resident on the open center floor.
-    // ========================================================
-
-    const savedResidentIsInsideBed =
-      Math.abs(
-        resident.position.x - (-5.3)
-      ) < 2.1
-      &&
-      Math.abs(
-        resident.position.z - (-4.6)
-      ) < 1.8;
-
-
-    if (
-      savedResidentIsInsideBed
-    ) {
-
-      resident.position.set(
-        0,
-        0,
-        0
-      );
-
-      simRef.current
-        .resident.x =
-          0;
-
-      simRef.current
-        .resident.z =
-          0;
-
-      dirtyRef.current =
-        true;
-
-      console.warn(
-        "[RealmLife] Bed-stuck save rescued to open floor."
-      );
-    }
-
 
     scene.add(resident);
 
@@ -3079,40 +3028,22 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
                   : 4500;
 
 
-            // ==================================================
-            // REALMLIFE SLEEP SEQUENCE RACE FIX V1
-            //
-            // Sleep must finish lie_down -> sleep -> wake_up
-            // BEFORE gameplay cleanup runs.
-            //
-            // playOnce() already has its own clip-duration
-            // failsafe, so racing Sleep against a shorter outer
-            // timeout can release gameplay while the animation
-            // sequence is still running in the background.
-            // ==================================================
-
             const completed =
-              actionId === "sleep"
-                ? await sequenceWork
-                    .then(
-                      () =>
-                        "sequence"
-                    )
-                : await Promise.race([
-                    sequenceWork
-                      .then(
-                        () =>
-                          "sequence"
-                      ),
+              await Promise.race([
+                sequenceWork
+                  .then(
+                    () =>
+                      "sequence"
+                  ),
 
-                    waitRealmTravel(
-                      timeoutMs
-                    )
-                      .then(
-                        () =>
-                          "timeout"
-                      ),
-                  ]);
+                waitRealmTravel(
+                  timeoutMs
+                )
+                  .then(
+                    () =>
+                      "timeout"
+                  ),
+              ]);
 
 
             if (
@@ -3137,117 +3068,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
             residentInteractionBusy =
               false;
-
-
-            // ==================================================
-            // REALMLIFE SLEEP EXIT RECOVERY V1
-            //
-            // Never leave the player root inside the bed collider.
-            // Sleep always finishes beside the bed with normal
-            // movement/pathing restored.
-            // ==================================================
-
-            if (
-              actionId === "sleep"
-            ) {
-
-              // REALMLIFE SLEEP SHOWER RESCUE V1
-              //
-              // Temporarily wake completely away from the bed
-              // so we can verify the bed collider independently.
-
-              // REALMLIFE FINAL BED WAKE POSITION V1
-              //
-              // Wake at the foot of the bed, safely outside
-              // the bed geometry. The bed itself no longer
-              // participates in movement collision.
-
-              const wakeObject =
-                objectMapRef.current
-                  .get("bed");
-
-              const wakeApproach =
-                [0, 2.6];
-
-
-              const wakeX =
-                Number(
-                  wakeObject
-                    ?.position
-                    ?.x
-                )
-                + Number(
-                    wakeApproach[0]
-                    || 0
-                  );
-
-
-              const wakeZ =
-                Number(
-                  wakeObject
-                    ?.position
-                    ?.z
-                )
-                + Number(
-                    wakeApproach[1]
-                    || 1.3
-                  );
-
-
-              if (
-                Number.isFinite(wakeX)
-                &&
-                Number.isFinite(wakeZ)
-              ) {
-
-                resident.position.x =
-                  wakeX;
-
-                resident.position.z =
-                  wakeZ;
-
-
-                simRef.current
-                  .resident.x =
-                    wakeX;
-
-                simRef.current
-                  .resident.z =
-                    wakeZ;
-              }
-
-
-              // Return completely to floor/standing orientation.
-              resident.position.y =
-                0;
-
-              resident.rotation.x =
-                0;
-
-              resident.rotation.z =
-                0;
-
-
-              // Kill any stale route or interaction command that
-              // could immediately pull the player back into bed.
-              moveTargetRef.current =
-                null;
-
-              pathRef.current =
-                [];
-
-              pendingActionRef.current =
-                null;
-
-
-              dirtyRef.current =
-                true;
-
-
-              console.info(
-                "[RealmLife] Sleep finished — player released beside bed."
-              );
-            }
 
 
             if (

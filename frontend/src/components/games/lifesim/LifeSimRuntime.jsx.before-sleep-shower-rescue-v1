@@ -980,11 +980,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       actions: [{ id: "sleep", label: "Sleep" }],
       approach: [0, 1.6],
 
-      // REALMLIFE BED HARD RESCUE V1
-      // Bed stays clickable/interactable but no longer blocks
-      // the player inside its rectangular movement collider.
-      collider: false,
-
       interactionAnchor: {
         x: 0,
         y: 0,
@@ -1169,52 +1164,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         savedResidentZ
       );
     }
-
-
-    // ========================================================
-    // REALMLIFE BED STUCK SAVE RESCUE V1
-    //
-    // Same philosophy as the mountain/off-map rescue:
-    // if an old save loads inside the bed zone, immediately
-    // place the resident on the open center floor.
-    // ========================================================
-
-    const savedResidentIsInsideBed =
-      Math.abs(
-        resident.position.x - (-5.3)
-      ) < 2.1
-      &&
-      Math.abs(
-        resident.position.z - (-4.6)
-      ) < 1.8;
-
-
-    if (
-      savedResidentIsInsideBed
-    ) {
-
-      resident.position.set(
-        0,
-        0,
-        0
-      );
-
-      simRef.current
-        .resident.x =
-          0;
-
-      simRef.current
-        .resident.z =
-          0;
-
-      dirtyRef.current =
-        true;
-
-      console.warn(
-        "[RealmLife] Bed-stuck save rescued to open floor."
-      );
-    }
-
 
     scene.add(resident);
 
@@ -3151,46 +3100,38 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               actionId === "sleep"
             ) {
 
-              // REALMLIFE SLEEP SHOWER RESCUE V1
-              //
-              // Temporarily wake completely away from the bed
-              // so we can verify the bed collider independently.
-
-              // REALMLIFE FINAL BED WAKE POSITION V1
-              //
-              // Wake at the foot of the bed, safely outside
-              // the bed geometry. The bed itself no longer
-              // participates in movement collision.
-
-              const wakeObject =
+              const bedObject =
                 objectMapRef.current
                   .get("bed");
 
-              const wakeApproach =
-                [0, 2.6];
+              const bedApproach =
+                bedObject
+                  ?.userData
+                  ?.approach
+                || [0, 1.6];
 
 
               const wakeX =
                 Number(
-                  wakeObject
+                  bedObject
                     ?.position
                     ?.x
                 )
                 + Number(
-                    wakeApproach[0]
+                    bedApproach[0]
                     || 0
                   );
 
 
               const wakeZ =
                 Number(
-                  wakeObject
+                  bedObject
                     ?.position
                     ?.z
                 )
                 + Number(
-                    wakeApproach[1]
-                    || 1.3
+                    bedApproach[1]
+                    || 1.6
                   );
 
 
