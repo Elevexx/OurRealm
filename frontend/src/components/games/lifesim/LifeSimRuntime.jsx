@@ -11,6 +11,7 @@ import { buildNeighborhoodWorld } from "./lifeSimNeighborhood";
 import { createRealmLifeGraphics, GRAPHICS_MODES } from "./lifeSimGraphics";
 import { createSectorStreaming } from "./lifeSimSectorStreaming";
 import { installRealmLifeMeshyWorld } from "./lifeSimMeshyWorld";
+import { createRealmLifeStarterAvatar } from "./realmLifeStarterAvatar";
 import {
   buildRealmLifePortalWorld,
   buildRealmLifeFounderEstate,
@@ -1041,8 +1042,47 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     addWall(9, 0, 0.28, 14);
 
     // Interior room divisions.
+    // V34 BATHROOM ACCESS FIX — real doorway (x 3.15..4.45 on the
+    // z=0.4 wall) with a working, openable door + frame.
     addWall(2.7, -3.2, 0.22, 7.2, 2.4);
-    addWall(5.8, 0.4, 6.1, 0.22, 2.4);
+    addWall(2.95, 0.4, 0.4, 0.22, 2.4);
+    addWall(6.65, 0.4, 4.4, 0.22, 2.4);
+
+    const bathLintel = makeBox([1.3, 0.5, 0.26], 0xe4d5ba, 2.15);
+    bathLintel.position.x = 3.8;
+    bathLintel.position.z = 0.4;
+    scene.add(bathLintel);
+
+    const bathDoorGroup = new THREE.Group();
+    bathDoorGroup.position.set(3.17, 0, 0.4);
+    scene.add(bathDoorGroup);
+
+    const bathDoorPanel = makeBox([1.22, 2.12, 0.08], 0x8a5a33);
+    bathDoorPanel.position.x = 0.63;
+    bathDoorGroup.add(bathDoorPanel);
+
+    const bathKnob = makeBox([0.07, 0.07, 0.16], 0xd9b23a, 1.02);
+    bathKnob.position.x = 1.1;
+    bathDoorGroup.add(bathKnob);
+
+    const bathDoorCollider = { x: 3.8, z: 0.4, hw: 0.001, hd: 0.001 };
+    colliders.push(bathDoorCollider);
+
+    let bathDoorOpen = true;
+    bathDoorGroup.rotation.y = 1.85;
+
+    const toggleBathroomDoor = () => {
+      bathDoorOpen = !bathDoorOpen;
+      bathDoorGroup.rotation.y = bathDoorOpen ? 1.85 : 0;
+      bathDoorCollider.hw = bathDoorOpen ? 0.001 : 0.68;
+      bathDoorCollider.hd = bathDoorOpen ? 0.001 : 0.16;
+      setHud((h) => ({
+        ...h,
+        msg: bathDoorOpen
+          ? "Bathroom door opened."
+          : "Bathroom door closed.",
+      }));
+    };
 
     const interactive = [];
 
@@ -1152,7 +1192,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     });
 
     // Bathroom
-    registerObject({
+    const showerMesh = registerObject({
       id: "shower",
       label: "Shower",
       x: 5.8,
@@ -1161,6 +1201,34 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       color: 0x7ad4e5,
       actions: [{ id: "shower", label: "Take Shower" }],
       approach: [0, 1.3],
+    });
+
+    // glass shower door
+    const showerGlass = new THREE.Mesh(
+      new THREE.BoxGeometry(1.45, 1.95, 0.05),
+      new THREE.MeshStandardMaterial({
+        color: 0xbfeaf5,
+        transparent: true,
+        opacity: 0.32,
+        roughness: 0.12,
+        metalness: 0.1,
+      })
+    );
+    showerGlass.position.set(0, 0, 0.8);
+    showerMesh.add(showerGlass);
+
+    // interactive bathroom door
+    registerObject({
+      id: "bathroom_door",
+      label: "Bathroom Door",
+      x: 3.17,
+      z: 0.4,
+      size: [0.001, 0.001, 0.001],
+      color: 0x8a5a33,
+      mesh: bathDoorGroup,
+      collider: false,
+      actions: [{ id: "door:bathroom", label: "Open / Close Door" }],
+      approach: [0.63, 1.5],
     });
 
     registerObject({
@@ -2652,6 +2720,42 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           const nexusAvatar =
             response.data;
 
+          // REALMLIFE INDEPENDENT AVATAR — stylized starter player
+          if (
+            nexusAvatar?.mode
+            === "starter"
+          ) {
+            if (
+              nexusAvatar?.username
+            ) {
+              simRef.current
+                .resident
+                .name =
+                  nexusAvatar
+                    .username;
+            }
+
+            return createRealmLifeStarterAvatar({
+              style:
+                nexusAvatar.style,
+
+              custom:
+                nexusAvatar.custom,
+
+              tier:
+                String(
+                  nexusAvatar
+                    .selected_avatar
+                  || ""
+                ).startsWith("rl_")
+                  ? nexusAvatar
+                      .selected_avatar
+                  : null,
+
+              targetHeight: 1.72,
+            });
+          }
+
           if (
             nexusAvatar
               ?.model_url
@@ -3385,6 +3489,12 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     let neighborHoldUntil = 0;
 
     const applyAction = async (actionId, objectId = null) => {
+
+      // V34 BATHROOM DOOR
+      if (actionId === "door:bathroom") {
+        toggleBathroomDoor();
+        return;
+      }
 
       // ======================================================
       // REALMLIFE SPECIAL ACTION DELEGATE

@@ -1,4 +1,5 @@
 import RealmLifeDirect from "./pages/RealmLifeDirect";
+import RealmLifeLanding from "./pages/RealmLifeLanding";
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -392,10 +393,9 @@ function App() {
               caseSensitive
               path="/realmlife"
               element={
-                <Navigate
-                  to="/RealmLife"
-                  replace
-                />
+                <ShellRoute>
+                  <RealmLifeLanding />
+                </ShellRoute>
               }
             />
 

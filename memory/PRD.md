@@ -833,3 +833,23 @@ Hero Master + Hero Animation V2 + Blue Nexus Portal wired into arpgXY engine; as
 ### Env learnings
 - Preview browser = software GL: WebGL page ~1-2fps, playwright clicks time out → use page.evaluate(...click()), force LOW via localStorage, keep waits short. GLB install ~90-140s there (sub-second on real GPUs).
 - Meshy: text-to-3d preview 5cr + refine 10cr. store_glb → /api/media/models (R2 mirror + CORS OK).
+
+## STYLIZED LOW-POLY DIRECTIVE — SESSION 1 (Aug 17 2026) ✅ TESTED 100% (iteration_152.json)
+NEW ART DIRECTION (supersedes Meshy-everything): stylized low-poly AAA; Three.js builds the world; Meshy ONLY for hero assets (premium avatars > starter avatars > nexus hero > rare props/vehicles). DO NOT PUBLISH without user approval.
+
+### Done this session
+1. Meshy residential house swaps REMOVED (procedural Spanish shells restored). Boats/palms/nexus hero GLBs kept. lifeSimMeshyWorld.js section A deleted.
+2. BATHROOM FIXED + VERIFIED: real doorway (z=0.4 wall split, gap x 3.15-4.45), lintel, openable door (action id door:bathroom, dynamic collider, starts open), glass shower door child of shower mesh. Tested: teleport → Take Shower → Hygiene 0→48.
+3. REALMLIFE AVATAR SYSTEM (independent from Nexus):
+   - backend/services/realmlife_players.py: collections realmlife_players + realmlife_avatar_unlocks. Accessories: cap/sunglasses 100, watch/bracelet 250, jacket/backpack 500, premium_shoes 750. Tiers rl_premium..rl_legendary = 1000/5000/10000/25000/50000/100000 (copied from Nexus AVATAR_FP_COSTS, no linkage). Atomic FP burn from fire_wallets.vault_balance w/ refund-on-race; founder = free grants.
+   - Endpoints (/api/games/realmlife-home-v1/realmlife/): GET player, POST player (create; founder default selected=founder_stealth), PUT player/customize, POST player/unlock, POST player/select. GET /avatar now: founder+founder_stealth → founder GLB (UNTOUCHED); else mode:"starter" payload.
+   - frontend realmLifeStarterAvatar.js: procedural stylized low-poly player (STYLE A broad / STYLE B slim), full recolor (skin/hair 6 styles/eyes/shirt/bottoms shorts|pants/shoes), 7 accessories, tier emissive trim; controller mirrors createLifeAvatar API (setState/update/setAirborne/dispose) w/ procedural walk/run/jump/sit/idle anims.
+   - pages/RealmLifeLanding.jsx at /realmlife: 3D rotating preview (NOTE: preview effect gated on !loading + previewReady — do not regress), tabs PLAYER/APPEARANCE/CLOTHING/ACCESSORIES/AVATARS, fire chip, CREATE/SAVE + ENTER REALMLIFE → /RealmLife (world, case-sensitive route).
+   - Runtime resolveRealmLifeAvatar: mode==="starter" → createRealmLifeStarterAvatar. Founder Stealth GLB path unchanged.
+4. Routing: /games RealmLife card → /realmlife redirect (GamesHub RealmLifeRedirect); /nexus landing has GAMES + REALMLIFE buttons.
+5. Terminology enforced (BUILD / UPGRADE etc.) — audited clean.
+
+### NEXT (per 37-section directive, remaining)
+- P1: Meshy hero avatar batch: 6 premium RealmLife avatars + 2 starter hero styles (rig via meshy rigging/animation endpoints or existing retarget scripts in backend/scripts). ~3,100 credits left.
+- P1: Whole-world stylized pass: water shader system (tiered), lighting pass (emissive windows/streetlights/neon), roads/sidewalks detail, landscaping instancing, business facades+interiors via Three.js, fog/particles by tier.
+- P2: NPC/population, vehicles, Central Station, final detail sweep (blank walls, z-fighting, edges), 20-screenshot visual acceptance gate vs stylized reference (target 9/10). DO NOT PUBLISH without approval.

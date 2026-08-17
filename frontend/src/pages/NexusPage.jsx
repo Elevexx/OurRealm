@@ -253,6 +253,16 @@ export default function NexusPage() {
                 JOIN FRIENDS — {friendsIn[0].username}{friendsIn.length > 1 ? ` +${friendsIn.length - 1}` : ""} · {friendsIn[0].instance_name || friendsIn[0].instance_id}
               </button>
             )}
+            <div className="mt-3 w-full lg:max-w-md grid grid-cols-2 gap-3">
+              <button onClick={() => nav("/games")} data-testid="nexus-games-btn"
+                className="h-12 rounded-2xl font-black text-sm tracking-[0.1em] text-white bg-white/[0.07] border border-white/15 active:scale-[0.985] transition-transform">
+                🎮 GAMES
+              </button>
+              <button onClick={() => nav("/realmlife")} data-testid="nexus-realmlife-btn"
+                className="h-12 rounded-2xl font-black text-sm tracking-[0.1em] text-orange-100 bg-orange-500/15 border border-orange-400/40 active:scale-[0.985] transition-transform">
+                🏠 REALMLIFE
+              </button>
+            </div>
             {loadError && (
               <div className="mt-3 flex items-center gap-3 text-sm text-red-200 bg-red-950/60 border border-red-500/30 rounded-xl px-4 py-3" data-testid="nexus-load-error">
                 <span className="flex-1">{loadError}</span>

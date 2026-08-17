@@ -1137,6 +1137,87 @@ async def realmlife_world_presence_leave(
 
 
 
+@public.get("/{game_id}/realmlife/player")
+async def realmlife_player_state(game_id: str, current: CurrentUser):
+    await _realmlife_access(game_id, current)
+    from services import realmlife_players as rlp
+    from core.permissions import get_admin_role, ROLE_FOUNDER
+    from core.db import db as _db
+    u = await _db.users.find_one(
+        {"id": current["id"]},
+        {"_id": 0, "is_founder": 1, "role": 1, "admin_role": 1, "username": 1}) or {}
+    founder = bool(
+        u.get("is_founder")
+        or get_admin_role({**current, **u}) == ROLE_FOUNDER)
+    return await rlp.get_state(current["id"], is_founder=founder)
+
+
+@public.post("/{game_id}/realmlife/player")
+async def realmlife_player_create(game_id: str, body: dict, current: CurrentUser):
+    await _realmlife_access(game_id, current)
+    from services import realmlife_players as rlp
+    from core.permissions import get_admin_role, ROLE_FOUNDER
+    from core.db import db as _db
+    u = await _db.users.find_one(
+        {"id": current["id"]},
+        {"_id": 0, "is_founder": 1, "role": 1, "admin_role": 1, "username": 1}) or {}
+    founder = bool(
+        str(u.get("username") or current.get("username") or "").lower() == "stealth"
+        and (u.get("is_founder")
+             or get_admin_role({**current, **u}) == ROLE_FOUNDER))
+    player = await rlp.create_or_update(
+        current["id"],
+        current.get("username") or "",
+        body.get("style"),
+        body.get("custom"),
+        is_founder=founder)
+    return {"ok": True, "player": player}
+
+
+@public.put("/{game_id}/realmlife/player/customize")
+async def realmlife_player_customize(game_id: str, body: dict, current: CurrentUser):
+    await _realmlife_access(game_id, current)
+    from services import realmlife_players as rlp
+    player = await rlp.customize(
+        current["id"],
+        custom=body.get("custom"),
+        style=body.get("style"))
+    return {"ok": True, "player": player}
+
+
+@public.post("/{game_id}/realmlife/player/unlock")
+async def realmlife_player_unlock(game_id: str, body: dict, current: CurrentUser):
+    await _realmlife_access(game_id, current)
+    from services import realmlife_players as rlp
+    from core.permissions import get_admin_role, ROLE_FOUNDER
+    from core.db import db as _db
+    u = await _db.users.find_one(
+        {"id": current["id"]},
+        {"_id": 0, "is_founder": 1, "role": 1, "admin_role": 1}) or {}
+    founder = bool(
+        u.get("is_founder")
+        or get_admin_role({**current, **u}) == ROLE_FOUNDER)
+    return await rlp.unlock(
+        current["id"], str(body.get("item_id") or ""), is_founder=founder)
+
+
+@public.post("/{game_id}/realmlife/player/select")
+async def realmlife_player_select(game_id: str, body: dict, current: CurrentUser):
+    await _realmlife_access(game_id, current)
+    from services import realmlife_players as rlp
+    from core.permissions import get_admin_role, ROLE_FOUNDER
+    from core.db import db as _db
+    u = await _db.users.find_one(
+        {"id": current["id"]},
+        {"_id": 0, "is_founder": 1, "role": 1, "admin_role": 1, "username": 1}) or {}
+    founder = bool(
+        str(u.get("username") or current.get("username") or "").lower() == "stealth"
+        and (u.get("is_founder")
+             or get_admin_role({**current, **u}) == ROLE_FOUNDER))
+    return await rlp.select_avatar(
+        current["id"], str(body.get("avatar_id") or ""), is_founder=founder)
+
+
 @public.get("/{game_id}/realmlife/avatar")
 async def realmlife_avatar(
     game_id: str,
@@ -1202,6 +1283,39 @@ async def realmlife_avatar(
             == ROLE_FOUNDER
         )
     )
+
+
+    # ---------------------------------------------------------
+    # REALMLIFE AVATAR IDENTITY — INDEPENDENT FROM NEXUS.
+    #
+    # Priority:
+    #   Stealth Founder default  -> private Founder body (unchanged)
+    #   RealmLife player profile -> starter / premium RealmLife avatar
+    #   No profile               -> default RealmLife starter
+    # Nexus avatar selection no longer affects RealmLife.
+    # ---------------------------------------------------------
+
+    from services.realmlife_players import DEFAULT_CUSTOM as _RL_DEFAULT
+
+    rl_player = await db.realmlife_players.find_one(
+        {"user_id": current["id"]},
+        {"_id": 0},
+    )
+
+    rl_selected = (
+        (rl_player or {}).get("selected_avatar")
+        or ("founder_stealth" if stealth_founder else "starter")
+    )
+
+    if not (stealth_founder and rl_selected == "founder_stealth"):
+        return {
+            "mode": "starter",
+            "style": (rl_player or {}).get("style") or "style_a",
+            "custom": (rl_player or {}).get("custom") or dict(_RL_DEFAULT),
+            "selected_avatar": rl_selected,
+            "needs_creation": rl_player is None,
+            "username": user.get("username") or current.get("username"),
+        }
 
 
     # ---------------------------------------------------------

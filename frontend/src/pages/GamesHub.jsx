@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Gamepad2, Search, Play, ArrowLeft, Trophy, Flag } from "lucide-react";
 import { GameMakerCTA } from "@/components/games/GameMakerCTA";
 import { ContinuePlaying } from "@/components/games/ContinuePlaying";
@@ -10,6 +10,15 @@ import GameRuntime from "@/components/games/GameRuntime";
 import { GameCover, resolveCover } from "@/components/games/GameCover";
 import DragonRealmRuntime from "@/components/games/dragonrealm/DragonRealmRuntime";
 const ThreeRuntime = React.lazy(() => import("@/components/games/three/ThreeRuntime"));
+
+// RealmLife has ONE canonical entry: /realmlife (landing + player creation).
+function RealmLifeRedirect() {
+  const nav = useNavigate();
+  useEffect(() => {
+    nav("/realmlife", { replace: true });
+  }, [nav]);
+  return <div className="text-sm opacity-70 p-8">Opening RealmLife…</div>;
+}
 const LifeSimRuntime = React.lazy(() => import("@/components/games/lifesim/LifeSimRuntime"));
 import { GameLeaderboard, AudioSettings } from "@/components/games/GameSocial";
 
@@ -219,13 +228,7 @@ export default function GamesHub() {
             <GameGate gameId={playId} status={gate}
               onUnlocked={() => apiClient.get(`/resources/gates/${playId}`).then((r) => setGate(r.data))} />
           ) : playing.game.spec?.renderer_id === "renderer_life_sim_three_v1" ? (
-            <React.Suspense fallback={<div className="text-sm opacity-70 p-8">Loading Life Sim 3D…</div>}>
-              <LifeSimRuntime
-                game={playing.game}
-                progress={playing.progress}
-                onExit={() => setPlaying(null)}
-              />
-            </React.Suspense>
+            <RealmLifeRedirect />
           ) : playing.game.spec?.renderer_id === "renderer_three_v1" ? (
             <React.Suspense fallback={<div className="text-sm opacity-70 p-8">Loading 3D engine…</div>}>
               <ThreeRuntime game={playing.game} onExit={() => setPlaying(null)} />

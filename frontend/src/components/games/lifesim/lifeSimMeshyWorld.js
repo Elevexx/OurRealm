@@ -64,14 +64,6 @@ function placeInstance(source, { x, z, ry = 0, footprint, parent }) {
   return wrap;
 }
 
-const HOUSE_SLOTS = [
-  "house_med_villa_a",
-  "house_med_villa_b",
-  "house_med_villa_c",
-  "house_med_small_a",
-  "house_med_small_b",
-];
-
 const BOAT_SLOTS = ["boat_speed", "boat_sail", "boat_yacht"];
 
 // Fixed hero placements (world coordinates around Nexus center 85,360)
@@ -111,36 +103,12 @@ export async function installRealmLifeMeshyWorld({ scene, gameId }) {
   root.name = "RealmLifeMeshyWorld";
   scene.add(root);
 
-  const homeLods = []; // { wrap, shell, x, z }
+  const homeLods = []; // kept for API compat (houses stay procedural)
   const scratch = new THREE.Vector3();
 
-  // ---- A) RESIDENTIAL: swap the 100 tagged privacy shells ----
-  const houseUrls = HOUSE_SLOTS.filter((s) => bySlot[s]).map((s) => bySlot[s]);
-  if (houseUrls.length) {
-    const models = await Promise.all(houseUrls.map(loadGLB));
-    const shells = [];
-    scene.traverse((o) => {
-      if (o.userData?.residentialCommunity) shells.push(o);
-    });
-    shells.forEach((shell, i) => {
-      shell.getWorldPosition(scratch);
-      const sBox = new THREE.Box3().setFromObject(shell);
-      const sSize = sBox.getSize(new THREE.Vector3());
-      const footprint = Math.min(
-        14.5,
-        Math.max(10, Math.max(sSize.x, sSize.z) * 0.82)
-      );
-      const wrap = placeInstance(models[i % models.length], {
-        x: scratch.x,
-        z: scratch.z,
-        ry: shell.rotation.y,
-        footprint,
-        parent: root,
-      });
-      wrap.visible = false; // LOD update reveals when near
-      homeLods.push({ wrap, shell, x: scratch.x, z: scratch.z });
-    });
-  }
+  // NOTE (stylized low-poly directive): Meshy residential house
+  // replacements were REMOVED — houses use the approved procedural
+  // Spanish architecture. Meshy is reserved for hero assets only.
 
   // ---- B) BOATS: swap every tagged prototype boat in place ----
   const boatUrls = BOAT_SLOTS.filter((s) => bySlot[s]).map((s) => bySlot[s]);
