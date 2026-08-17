@@ -2185,3 +2185,132 @@ async def home_destination(
         "spawn":
             spawn,
     }
+
+
+# ============================================================
+# REALMLIFE ORIGINAL HOME BEACONS
+#
+# Returns every owned residential lot so clients can render an
+# original RealmLife home beacon above each active resident's
+# primary home. No private identity is exposed — only the lot,
+# an activity flag, and whether the lot belongs to the caller.
+# ============================================================
+
+
+async def home_beacons(
+    game_id,
+    current,
+):
+    active_cutoff = (
+        time.time() - 900.0
+    )
+
+    presence_rows = await (
+        db.realmlife_world_presence
+        .find(
+            {
+                "game_id": game_id,
+                "ts": {
+                    "$gt":
+                        active_cutoff
+                },
+            },
+            {
+                "_id": 0,
+                "user_id": 1,
+            },
+        )
+        .to_list(length=500)
+    )
+
+    active_ids = {
+        row.get("user_id")
+        for row in presence_rows
+        if row.get("user_id")
+    }
+
+    props = await (
+        db.realmlife_properties
+        .find(
+            {
+                "game_id": game_id,
+                "state": "owned",
+                "city_lot_seq": {
+                    "$gte": 1,
+                    "$lte": 100,
+                },
+            },
+            {
+                "_id": 0,
+                "id": 1,
+                "city_lot_seq": 1,
+                "owner_user_id": 1,
+                "household_id": 1,
+            },
+        )
+        .to_list(length=300)
+    )
+
+    uid = current["id"]
+
+    membership = await (
+        db.realmlife_household_memberships
+        .find_one(
+            {
+                "game_id": game_id,
+                "user_id": uid,
+            },
+            {
+                "_id": 0,
+                "household_id": 1,
+            },
+        )
+    )
+
+    my_household = (
+        membership or {}
+    ).get("household_id")
+
+    beacons = []
+
+    for prop in props:
+        is_self = (
+            prop.get("owner_user_id")
+            == uid
+            or (
+                my_household
+                and prop.get(
+                    "household_id"
+                )
+                == my_household
+            )
+        )
+
+        beacons.append(
+            {
+                "lot_seq":
+                    int(
+                        prop[
+                            "city_lot_seq"
+                        ]
+                    ),
+
+                "property_id":
+                    prop["id"],
+
+                "is_self":
+                    bool(is_self),
+
+                "active": bool(
+                    is_self
+                    or prop.get(
+                        "owner_user_id"
+                    )
+                    in active_ids
+                ),
+            }
+        )
+
+    return {
+        "beacons": beacons,
+    }

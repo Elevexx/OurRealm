@@ -4,14 +4,16 @@ import apiClient from "@/api/client";
 import { findGridPath } from "./lifeSimPathfinding";
 import {
   createLifeAvatar,
+  createRealmLifeOptionAvatar,
   DEFAULT_AVERY_AVATAR,
   REALMLIFE_UNIVERSAL_MOTIONS,
-} from "./lifeSimAvatar";
+
+  REALMLIFE_PLAYER_MODELS,} from "./lifeSimAvatar";
 import { buildNeighborhoodWorld } from "./lifeSimNeighborhood";
-import { createRealmLifeGraphics, GRAPHICS_MODES } from "./lifeSimGraphics";
+import { createRealmLifeGraphics, GRAPHICS_MODES, createAdaptiveDPR } from "./lifeSimGraphics";
+import { createHomeBeacons } from "./lifeSimHomeBeacons";
 import { createSectorStreaming } from "./lifeSimSectorStreaming";
 import { installRealmLifeMeshyWorld } from "./lifeSimMeshyWorld";
-import { createRealmLifeStarterAvatar } from "./realmLifeStarterAvatar";
 import {
   buildRealmLifePortalWorld,
   buildRealmLifeFounderEstate,
@@ -319,6 +321,88 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
   const graphicsRef = useRef(null);
   const mobileMoveRef = useRef({ x: 0, y: 0, mag: 0 });
   const joyKnobRef = useRef(null);
+
+  // REALMLIFE PER-USER HOME ANCHOR
+  // Resolves the signed-in resident's own lot BEFORE the world
+  // builds so HOME, CUTAWAY and the interior target THEIR house.
+  const [homeAnchor, setHomeAnchor] = useState(null);
+
+  useEffect(() => {
+    if (!game?.id) return undefined;
+
+    let cancelled = false;
+
+    apiClient
+      .get(`/games/${game.id}/realmlife/housing`)
+      .then((res) => {
+        if (cancelled) return;
+        setHomeAnchor(
+          res.data?.home_anchor || {
+            founder: false,
+            lot_seq: null,
+            x: 0,
+            z: 0,
+          }
+        );
+      })
+      .catch(() => {
+        if (!cancelled)
+          setHomeAnchor({
+            founder: false,
+            lot_seq: null,
+            x: 0,
+            z: 0,
+          });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [game?.id]);
+
+  // REALMLIFE MOBILE COLLAPSED NEEDS
+  const [needsOpen, setNeedsOpen] = useState(false);
+
+  // REALMLIFE ROTATE FOR FULL VIEW
+  const [rotateAsk, setRotateAsk] = useState(() => {
+    try {
+      return (
+        (window.matchMedia?.("(pointer: coarse)")?.matches ||
+          window.innerWidth < 900) &&
+        window.matchMedia("(orientation: portrait)").matches &&
+        sessionStorage.getItem("realmlife_rotate_dismissed") !== "1"
+      );
+    } catch (_) {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const mq = window.matchMedia("(orientation: portrait)");
+    const onOrient = () => {
+      if (!mq.matches) setRotateAsk(false);
+    };
+    mq.addEventListener?.("change", onOrient);
+    return () => mq.removeEventListener?.("change", onOrient);
+  }, []);
+
+  const dismissRotateAsk = () => {
+    try {
+      sessionStorage.setItem("realmlife_rotate_dismissed", "1");
+    } catch (_) {}
+    setRotateAsk(false);
+  };
+
+  const doRotateFullView = async () => {
+    dismissRotateAsk();
+    try {
+      const el = mountRef.current?.parentElement;
+      if (el && !document.fullscreenElement)
+        await el.requestFullscreen?.();
+      if (window.screen?.orientation?.lock)
+        await window.screen.orientation.lock("landscape");
+    } catch (_) {}
+  };
 
   useEffect(() => {
     const check = () =>
@@ -755,6 +839,21 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return undefined;
+    if (!homeAnchor) return undefined;
+
+    // REALMLIFE PER-USER HOME OFFSET
+    // The entire starter interior (walls, furniture, decor,
+    // neighbor NPC) builds at the resident's OWN assigned lot.
+    // Founder Stealth keeps the origin showcase estate.
+    const HOME_X = homeAnchor.lot_seq ? homeAnchor.x : 0;
+    const HOME_Z = homeAnchor.lot_seq ? homeAnchor.z : 0;
+    const HOME_LOT = homeAnchor.lot_seq
+      ? {
+          seq: homeAnchor.lot_seq,
+          x: HOME_X,
+          z: HOME_Z,
+        }
+      : null;
 
     let disposed = false;
     let raf = 0;
@@ -850,12 +949,15 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     realmLifeEnvironmentController?.setCamera?.(camera);
 
     // REALMLIFE GRAPHICS QUALITY SYSTEM
+    const adaptiveDPR = createAdaptiveDPR(renderer);
+
     const realmGraphics = createRealmLifeGraphics({
       renderer,
       camera,
       shadowLights: [sun],
       onChange: (info) => {
         if (!disposed) setGraphicsInfo(info);
+        adaptiveDPR.setCap(renderer.getPixelRatio());
       },
     });
 
@@ -887,7 +989,9 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     // Seamless exterior world:
     // yard → sidewalk → road → neighboring lots → park.
     const neighborhood =
-      buildNeighborhoodWorld(scene);
+      buildNeighborhoodWorld(scene, {
+        ownLot: HOME_LOT,
+      });
 
     colliders.push(
       ...neighborhood.colliders
@@ -1004,6 +1108,48 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     window.__REALMLIFE_SECTORS = () =>
       sectorStreaming.stats();
 
+    // ========================================================
+    // REALMLIFE ORIGINAL HOME BEACONS
+    // One glowing beacon per active resident's primary home,
+    // resolved from persistent property lot assignments. Own
+    // home = brighter HOME beacon; neighbors = subtle.
+    // ========================================================
+
+    const homeBeacons = createHomeBeacons(scene);
+    const lotPropertyMap = new Map();
+
+    const refreshHomeBeacons = async () => {
+      if (!game?.id || disposed) return;
+
+      try {
+        const res = await apiClient.get(
+          `/games/${game.id}/realmlife/world/beacons`
+        );
+
+        if (disposed) return;
+
+        const list = (res.data?.beacons || []).map((b) => ({
+          ...b,
+          is_self:
+            b.is_self ||
+            !!(HOME_LOT && b.lot_seq === HOME_LOT.seq),
+        }));
+
+        list.forEach((b) =>
+          lotPropertyMap.set(b.lot_seq, b.property_id)
+        );
+
+        homeBeacons.setBeacons(list);
+      } catch (_) {}
+    };
+
+    refreshHomeBeacons();
+
+    const homeBeaconTimer = window.setInterval(
+      refreshHomeBeacons,
+      60000
+    );
+
     // debug/testing teleport (client-side only; server still validates saves)
     window.__REALMLIFE_TELEPORT = (x, z) => {
       resident.position.x = x;
@@ -1029,7 +1175,9 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         );
     }
 
-    const addWall = (x, z, w, d, h = 2.8) => {
+    const addWall = (x0, z0, w, d, h = 2.8) => {
+      const x = x0 + HOME_X;
+      const z = z0 + HOME_Z;
       const wall = makeBox([w, h, d], 0xf1e5cf);
       wall.position.set(x, h / 2, z);
       scene.add(wall);
@@ -1049,12 +1197,12 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     addWall(6.65, 0.4, 4.4, 0.22, 2.4);
 
     const bathLintel = makeBox([1.3, 0.5, 0.26], 0xe4d5ba, 2.15);
-    bathLintel.position.x = 3.8;
-    bathLintel.position.z = 0.4;
+    bathLintel.position.x = HOME_X + 3.8;
+    bathLintel.position.z = HOME_Z + 0.4;
     scene.add(bathLintel);
 
     const bathDoorGroup = new THREE.Group();
-    bathDoorGroup.position.set(3.17, 0, 0.4);
+    bathDoorGroup.position.set(HOME_X + 3.17, 0, HOME_Z + 0.4);
     scene.add(bathDoorGroup);
 
     const bathDoorPanel = makeBox([1.22, 2.12, 0.08], 0x8a5a33);
@@ -1065,7 +1213,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     bathKnob.position.x = 1.1;
     bathDoorGroup.add(bathKnob);
 
-    const bathDoorCollider = { x: 3.8, z: 0.4, hw: 0.001, hd: 0.001 };
+    const bathDoorCollider = { x: HOME_X + 3.8, z: HOME_Z + 0.4, hw: 0.001, hd: 0.001 };
     colliders.push(bathDoorCollider);
 
     let bathDoorOpen = true;
@@ -1138,8 +1286,8 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       interactionAnchor = null,
     }) => {
       const m = mesh || makeBox(size, color);
-      m.position.x = x;
-      m.position.z = z;
+      m.position.x = x + HOME_X;
+      m.position.z = z + HOME_Z;
 
       m.userData.lifeObject = true;
       m.userData.id = id;
@@ -1155,8 +1303,8 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
       if (collider) {
         colliders.push({
-          x,
-          z,
+          x: x + HOME_X,
+          z: z + HOME_Z,
           hw: size[0] / 2 + 0.22,
           hd: size[2] / 2 + 0.22,
           objectId: id,
@@ -1308,6 +1456,92 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     });
 
     // --------------------------------------------------------
+    // REALMLIFE HOME UPGRADE DECOR
+    // Dining set, living-room rug and corner plants so every
+    // residence reads as a full kitchen/living/bath/bedroom.
+    // --------------------------------------------------------
+    {
+      const rug = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.6, 2.6),
+        new THREE.MeshStandardMaterial({
+          color: 0x8a4b5c,
+          roughness: 0.95,
+        })
+      );
+      rug.rotation.x = -Math.PI / 2;
+      rug.position.set(HOME_X + 4.6, 0.02, HOME_Z + 1.6);
+      scene.add(rug);
+
+      const tableM = new THREE.MeshStandardMaterial({
+        color: 0x8a6a45,
+        roughness: 0.6,
+      });
+
+      const table = new THREE.Mesh(
+        new THREE.BoxGeometry(1.9, 0.9, 1.1),
+        tableM
+      );
+      table.position.set(HOME_X - 1.2, 0.45, HOME_Z + 4.2);
+      table.castShadow = true;
+      scene.add(table);
+      colliders.push({
+        x: HOME_X - 1.2,
+        z: HOME_Z + 4.2,
+        hw: 1.1,
+        hd: 0.75,
+      });
+
+      for (const sx of [-1, 1]) {
+        const chair = new THREE.Mesh(
+          new THREE.BoxGeometry(0.55, 0.95, 0.55),
+          tableM
+        );
+        chair.position.set(
+          HOME_X - 1.2 + sx * 1.45,
+          0.48,
+          HOME_Z + 4.2
+        );
+        scene.add(chair);
+      }
+
+      const potM = new THREE.MeshStandardMaterial({
+        color: 0xa5593c,
+        roughness: 0.8,
+      });
+      const leafM = new THREE.MeshStandardMaterial({
+        color: 0x3f8a4b,
+        roughness: 0.9,
+      });
+
+      for (const spot of [
+        [-8.1, -6.1],
+        [8.1, 5.9],
+      ]) {
+        const pot = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.28, 0.35, 0.5, 7),
+          potM
+        );
+        pot.position.set(
+          HOME_X + spot[0],
+          0.25,
+          HOME_Z + spot[1]
+        );
+
+        const leaf = new THREE.Mesh(
+          new THREE.IcosahedronGeometry(0.42, 0),
+          leafM
+        );
+        leaf.position.set(
+          HOME_X + spot[0],
+          0.85,
+          HOME_Z + spot[1]
+        );
+
+        scene.add(pot, leaf);
+      }
+    }
+
+    // --------------------------------------------------------
     // RESIDENT + NEIGHBOR
     // --------------------------------------------------------
 
@@ -1367,21 +1601,35 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       savedResidentZ > 760;
 
 
+    // Old saves that lived at the origin prototype migrate to
+    // the resident's OWN home lot (origin = Founder residence).
+    const savedInsideFounderLot =
+      !!HOME_LOT
+      &&
+      Math.abs(savedResidentX) < 12
+      &&
+      savedResidentZ > -10
+      &&
+      savedResidentZ < 17;
+
+
     if (
       savedExteriorIsUnsafe
+      ||
+      savedInsideFounderLot
     ) {
       simRef.current
         .resident.x =
-          6.2;
+          HOME_X + 6.2;
 
       simRef.current
         .resident.z =
-          4.2;
+          HOME_Z + 4.2;
 
       resident.position.set(
-        6.2,
+        HOME_X + 6.2,
         0,
-        4.2
+        HOME_Z + 4.2
       );
 
       console.warn(
@@ -1407,11 +1655,11 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
     const savedResidentIsInsideBed =
       Math.abs(
-        resident.position.x - (-5.3)
+        resident.position.x - (HOME_X - 5.3)
       ) < 2.1
       &&
       Math.abs(
-        resident.position.z - (-4.6)
+        resident.position.z - (HOME_Z - 4.6)
       ) < 1.8;
 
 
@@ -1420,9 +1668,9 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     ) {
 
       resident.position.set(
+        HOME_X,
         0,
-        0,
-        0
+        HOME_Z
       );
 
       simRef.current
@@ -2516,6 +2764,114 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     );
 
     // REALMLIFE MOBILE INTERACT — select the nearest interactive
+    // ========================================================
+    // REALMLIFE PROPERTY PRIVACY — RESIDENTIAL DOOR ENTRY
+    // Interacting near another resident's front door checks
+    // authorization server-side. Approved household members and
+    // guests may enter; everyone else gets an entry request.
+    // ========================================================
+
+    const residentialLots =
+      neighborhood.housePrivacy?.residentialLots || [];
+
+    let doorRequestBusy = false;
+
+    const tryResidentialDoor = () => {
+      let bestLot = null;
+      let bestDoorD2 = 30;
+
+      for (const lot of residentialLots) {
+        if (lot.own) continue;
+
+        const dx = resident.position.x - lot.x;
+        const dz =
+          resident.position.z - (lot.z + lot.d / 2);
+        const d2 = dx * dx + dz * dz;
+
+        if (d2 < bestDoorD2) {
+          bestDoorD2 = d2;
+          bestLot = lot;
+        }
+      }
+
+      if (!bestLot) return false;
+
+      const propertyId = lotPropertyMap.get(bestLot.lotSeq);
+
+      if (!propertyId) {
+        setHud((h) => ({
+          ...h,
+          msg: "🏠 This residence is unclaimed.",
+        }));
+        return true;
+      }
+
+      if (doorRequestBusy) return true;
+      doorRequestBusy = true;
+
+      apiClient
+        .post(
+          `/games/${game.id}/realmlife/property/access-check`,
+          { property_id: propertyId }
+        )
+        .then((res) => {
+          if (disposed) return undefined;
+
+          if (res.data?.allowed) {
+            for (let i = colliders.length - 1; i >= 0; i -= 1) {
+              const c = colliders[i];
+              if (
+                c.residentialHouse &&
+                c.lotSeq === bestLot.lotSeq
+              ) {
+                colliders.splice(i, 1);
+              }
+            }
+
+            setHud((h) => ({
+              ...h,
+              msg: "✅ Access granted — you may enter this residence.",
+            }));
+
+            return undefined;
+          }
+
+          return apiClient
+            .post(
+              `/games/${game.id}/realmlife/property/entry-request`,
+              { property_id: propertyId }
+            )
+            .then(() => {
+              if (!disposed)
+                setHud((h) => ({
+                  ...h,
+                  msg: "🔒 Private residence — entry request sent to the household.",
+                }));
+            })
+            .catch((err) => {
+              if (!disposed)
+                setHud((h) => ({
+                  ...h,
+                  msg:
+                    err?.response?.data?.detail ||
+                    "🔒 Private residence.",
+                }));
+            });
+        })
+        .catch(() => {
+          if (!disposed)
+            setHud((h) => ({
+              ...h,
+              msg: "🔒 Private residence.",
+            }));
+        })
+        .finally(() => {
+          doorRequestBusy = false;
+        });
+
+      return true;
+    };
+
     const onRealmLifeInteract = () => {
       let best = null;
       let bestD = 4.5;
@@ -2539,6 +2895,10 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       }
 
       if (!best) {
+        if (tryResidentialDoor()) {
+          return;
+        }
+
         setHud((h) => ({
           ...h,
           msg: "Nothing nearby to interact with.",
@@ -2720,7 +3080,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           const nexusAvatar =
             response.data;
 
-          // REALMLIFE INDEPENDENT AVATAR — stylized starter player
+          // REALMLIFE OPTION 1 / OPTION 2 — CLEAN TEST ROSTER
           if (
             nexusAvatar?.mode
             === "starter"
@@ -2735,26 +3095,42 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
                     .username;
             }
 
-            return createRealmLifeStarterAvatar({
-              style:
-                nexusAvatar.style,
+            const selectedOption =
+              nexusAvatar
+                ?.selected_avatar
+              === "player_2"
+                ? "player_2"
+                : "player_1";
 
-              custom:
-                nexusAvatar.custom,
+            const optionCfg =
+              REALMLIFE_PLAYER_MODELS[
+                selectedOption
+              ];
 
-              tier:
-                String(
-                  nexusAvatar
-                    .selected_avatar
-                  || ""
-                ).startsWith("rl_")
-                  ? nexusAvatar
-                      .selected_avatar
-                  : null,
+            if (
+              !optionCfg
+                ?.modelUrl
+            ) {
+              throw new Error(
+                `RealmLife option model missing: ${selectedOption}`
+              );
+            }
 
-              targetHeight: 1.72,
+            console.info(
+              "[RealmLife] Loading",
+              selectedOption,
+              optionCfg.modelUrl
+            );
+
+            return createRealmLifeOptionAvatar({
+              modelUrl:
+                optionCfg.modelUrl,
+
+              targetHeight:
+                1.82,
             });
           }
+
 
           if (
             nexusAvatar
@@ -2841,7 +3217,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         setHud((h) => ({
           ...h,
           msg:
-            "Avery is ready.",
+            "RealmLife avatar ready.",
         }));
       })
       .catch((err) => {
@@ -2868,7 +3244,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
     neighbor.add(neighborPlaceholder);
 
-    neighbor.position.set(6.7, 0, 6.1);
+    neighbor.position.set(HOME_X + 6.7, 0, HOME_Z + 6.1);
 
     neighbor.userData.lifeObject = true;
     neighbor.userData.id = "neighbor";
@@ -3156,7 +3532,9 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
         const id = `placed-${simRef.current.nextPlacedId++}`;
 
-        const rec = { id, kind, x, z };
+        // Player placements are stored HOME-RELATIVE so the
+        // furniture follows the resident's own house.
+        const rec = { id, kind, x: x - HOME_X, z: z - HOME_Z };
         simRef.current.placed.push(rec);
         addPlacedObject(rec);
 
@@ -4315,12 +4693,19 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               -Math.cos(camAngle)
             );
 
+      // REALMLIFE NORMAL POV RIGHT-VECTOR FIX
+      // In NORMAL first-person mode the camera-right basis is
+      // corrected at the source so keyboard AND joystick input
+      // compose identically (no per-input special cases).
+      const firstRightSign =
+        controlDirectionRef.current === "normal" ? -1 : 1;
+
       const camRight =
         firstPersonMovement
           ? new THREE.Vector3(
-              Math.cos(firstYaw),
+              firstRightSign * Math.cos(firstYaw),
               0,
-              -Math.sin(firstYaw)
+              firstRightSign * -Math.sin(firstYaw)
             )
           : new THREE.Vector3(
               Math.cos(camAngle),
@@ -4328,22 +4713,10 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               -Math.sin(camAngle)
             );
 
-      // REALMLIFE NORMAL POV A/D FIX
-
-      // Only NORMAL POV horizontal A/D is corrected.
-
       const realmLifeHorizontalInput = ((keys.d || keys.arrowright ? 1 : 0) -
         (keys.a || keys.arrowleft ? 1 : 0));
 
-      let mx =
-
-        firstPersonMovement &&
-
-        controlDirectionRef.current === "normal"
-
-          ? -realmLifeHorizontalInput
-
-          : realmLifeHorizontalInput;
+      let mx = realmLifeHorizontalInput;
 
       let mz =
         (keys.s || keys.arrowdown ? 1 : 0) -
@@ -4895,6 +5268,15 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         if (dirtyRef.current) persist();
       }
 
+      // REALMLIFE PERFORMANCE + BEACONS FRAME HOOKS
+      const realmNowMs = performance.now();
+      adaptiveDPR.tick(realmNowMs);
+      homeBeacons.update(
+        realmNowMs / 1000,
+        resident.position.x,
+        resident.position.z
+      );
+
       renderer.render(scene, camera);
     };
 
@@ -4953,6 +5335,9 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
 
       cancelAnimationFrame(raf);
+
+      window.clearInterval(homeBeaconTimer);
+      homeBeacons.dispose();
 
       moveTargetRef.current = null;
       pathRef.current = [];
@@ -5076,7 +5461,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       if (renderer.domElement.parentNode === mount)
         mount.removeChild(renderer.domElement);
     };
-  }, [persist, scheduleSave]);
+  }, [persist, scheduleSave, homeAnchor]);
 
   const toggleFullscreen = async () => {
     const el = mountRef.current?.parentElement;
@@ -5165,12 +5550,17 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     </>
   );
 
+  const needsCritical = NEED_META.some(
+    ([key]) => clamp(hud.needs?.[key] || 0) < 50
+  );
+
   return (
     <div
       className="relative w-full rounded-xl overflow-hidden"
       style={{
         height: "100%",
-        minHeight: 620,
+        minHeight: "min(620px, 100dvh)",
+        maxHeight: "100dvh",
         background: "#071018",
         border: "1px solid rgba(46,230,255,.25)",
       }}
@@ -5184,7 +5574,10 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
       {/* TOP BAR */}
       <div
-        className="absolute top-3 left-3 right-3 flex items-center justify-between gap-3 pointer-events-none"
+        className="absolute left-3 right-3 flex items-center justify-between gap-3 pointer-events-none"
+        style={{
+          top: "max(12px, env(safe-area-inset-top))",
+        }}
       >
         <div
           className="pointer-events-auto rounded-xl px-3 py-2 text-xs font-bold"
@@ -5255,6 +5648,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
             disabled={
               realmLifeHomeBusy
             }
+            data-testid="realmlife-home-btn"
             className="px-2.5 py-1.5 rounded-lg text-xs font-black"
             style={{
               background:
@@ -5295,6 +5689,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               if (isMobileUI) setMobileMenuOpen(true);
               else setSettingsOpen((v) => !v);
             }}
+            data-testid="realmlife-menu-btn"
             className="px-2.5 py-1.5 rounded-lg text-xs font-black"
             style={{
               background:
@@ -5314,6 +5709,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
           <button
             type="button"
+            data-testid="realmlife-pov-btn"
             onClick={
               toggleRealmLifeCamera
             }
@@ -5348,6 +5744,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
           <button
             type="button"
+            data-testid="realmlife-control-direction-btn"
             onClick={
               toggleControlDirection
             }
@@ -5381,6 +5778,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
             onClick={
               toggleHouseView
             }
+            data-testid="realmlife-cutaway-btn"
             className="px-2.5 py-1.5 rounded-lg text-xs font-black"
             style={{
               background:
@@ -5413,6 +5811,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
           <button
             type="button"
+            data-testid="realmlife-property-btn"
             onClick={() =>
               realmProperty.setOpen(
                 true
@@ -5774,9 +6173,38 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         </>
       )}
 
-      {/* NEEDS PANEL */}
+      {/* NEEDS PANEL — collapsed to a compact icon on mobile */}
+      {isMobileUI && !needsOpen && (
+        <button
+          type="button"
+          data-testid="realmlife-needs-toggle"
+          onClick={() => setNeedsOpen(true)}
+          className="absolute left-3 z-30 w-[46px] h-[46px] rounded-full flex items-center justify-center text-lg font-black"
+          style={{
+            bottom:
+              "max(150px, calc(env(safe-area-inset-bottom) + 150px))",
+            background: needsCritical
+              ? "rgba(255,45,85,.88)"
+              : "rgba(3,10,20,.82)",
+            border: needsCritical
+              ? "1px solid rgba(255,130,150,.9)"
+              : "1px solid rgba(46,230,255,.35)",
+            color: "#fff",
+            backdropFilter: "blur(10px)",
+            boxShadow: needsCritical
+              ? "0 0 18px rgba(255,45,85,.55)"
+              : "0 6px 18px rgba(0,0,0,.35)",
+          }}
+          title="Show your needs"
+        >
+          ❤
+        </button>
+      )}
+
+      {(!isMobileUI || needsOpen) && (
       <div
-        className={`absolute left-3 rounded-xl p-3 ${
+        data-testid="realmlife-needs-panel"
+        className={`absolute left-3 rounded-xl p-3 z-30 ${
           isMobileUI ? "bottom-[150px] w-[172px]" : "bottom-3 w-[210px]"
         }`}
         style={{
@@ -5786,8 +6214,24 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           color: "white",
         }}
       >
-        <div className="font-black text-sm mb-2">
-          {simRef.current.resident.name}
+        <div className="font-black text-sm mb-2 flex items-center justify-between">
+          <span>{simRef.current.resident.name}</span>
+
+          {isMobileUI && (
+            <button
+              type="button"
+              data-testid="realmlife-needs-minimize"
+              onClick={() => setNeedsOpen(false)}
+              className="w-6 h-6 rounded-md text-xs font-black flex items-center justify-center"
+              style={{
+                background: "rgba(255,255,255,.1)",
+                border: "1px solid rgba(255,255,255,.2)",
+              }}
+              title="Minimize needs"
+            >
+              —
+            </button>
+          )}
         </div>
 
         {NEED_META.map(([key, label, icon, color]) => {
@@ -5829,6 +6273,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           ❤️ Neighbor friendship {Math.round(hud.relationship)}/100
         </div>
       </div>
+      )}
 
       {/* INTERACTION MENU */}
       {selected && !buildItem && (
@@ -5905,6 +6350,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       {/* REALMLIFE JUMP CONTROL */}
       <button
         type="button"
+        data-testid="realmlife-jump-btn"
         onPointerDown={(event) => {
           event.preventDefault();
 
@@ -5916,8 +6362,10 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
           markRealmLifeActive();
         }}
-        className="absolute right-4 bottom-[96px] z-30 w-[62px] h-[62px] rounded-full text-[11px] font-black"
+        className="absolute z-30 w-[62px] h-[62px] rounded-full text-[11px] font-black"
         style={{
+          right: "max(16px, env(safe-area-inset-right))",
+          bottom: "calc(max(16px, env(safe-area-inset-bottom)) + 80px)",
           background:
             "linear-gradient(180deg,rgba(16,54,78,.94),rgba(4,20,34,.94))",
 
@@ -5946,8 +6394,10 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       {isMobileUI && (
         <div
           data-testid="realmlife-joystick"
-          className="absolute left-4 bottom-4 z-30"
+          className="absolute z-30"
           style={{
+            left: "max(16px, env(safe-area-inset-left))",
+            bottom: "max(16px, env(safe-area-inset-bottom))",
             width: 118,
             height: 118,
             borderRadius: 999,
@@ -5998,8 +6448,10 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
             markRealmLifeActive();
           }}
-          className="absolute right-4 bottom-4 z-30 w-[62px] h-[62px] rounded-full text-[9px] font-black"
+          className="absolute z-30 w-[62px] h-[62px] rounded-full text-[9px] font-black"
           style={{
+            right: "max(16px, env(safe-area-inset-right))",
+            bottom: "max(16px, env(safe-area-inset-bottom))",
             background:
               "linear-gradient(180deg,rgba(60,26,86,.94),rgba(24,8,40,.94))",
             border: "1px solid rgba(197,140,255,.55)",
@@ -6015,6 +6467,56 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         </button>
       )}
 
+
+      {/* REALMLIFE ROTATE FOR FULL VIEW */}
+      {rotateAsk && isMobileUI && (
+        <div
+          className="absolute inset-x-4 z-[59] flex justify-center"
+          style={{
+            top: "max(calc(env(safe-area-inset-top) + 64px), 72px)",
+          }}
+          data-testid="realmlife-rotate-popup"
+        >
+          <div
+            className="rounded-2xl px-4 py-3 w-full max-w-[340px]"
+            style={{
+              background: "rgba(3,10,20,.94)",
+              border: "1px solid rgba(46,230,255,.45)",
+              backdropFilter: "blur(14px)",
+              boxShadow: "0 12px 40px rgba(0,0,0,.5)",
+            }}
+          >
+            <div className="text-xs font-black tracking-[0.2em] text-cyan-200">
+              ROTATE FOR FULL VIEW
+            </div>
+
+            <div className="text-[11px] text-white/75 mt-1">
+              Turn your phone sideways for the full RealmLife
+              experience.
+            </div>
+
+            <div className="flex gap-2 mt-3">
+              <button
+                type="button"
+                onClick={dismissRotateAsk}
+                className="flex-1 min-h-[44px] rounded-xl bg-white/10 border border-white/20 text-[11px] font-bold text-white/80"
+                data-testid="realmlife-rotate-notnow"
+              >
+                NOT NOW
+              </button>
+
+              <button
+                type="button"
+                onClick={doRotateFullView}
+                className="flex-1 min-h-[44px] rounded-xl bg-cyan-500 text-black text-[11px] font-black tracking-widest"
+                data-testid="realmlife-rotate-btn"
+              >
+                ROTATE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* REALMLIFE CINEMATIC ROOM FADE */}
       {realmTravelFade && (

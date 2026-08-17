@@ -734,8 +734,60 @@ async def housing_status(
         )
     )
 
+    from services.realmlife_world import (
+        _realm_lot_geometry,
+        _realmlife_is_founder,
+    )
+
+    founder = _realmlife_is_founder(
+        current
+    )
+
+    lot_seq = (
+        prop.get("city_lot_seq")
+        or None
+    )
+
+    if founder or not lot_seq:
+        home_anchor = {
+            "founder": founder,
+            "lot_seq": None,
+            "x": 0.0,
+            "z": 0.0,
+            "w": 18.2,
+            "d": 14.2,
+        }
+
+    else:
+        geometry = (
+            _realm_lot_geometry(
+                lot_seq
+            )
+        )
+
+        home_anchor = {
+            "founder": False,
+
+            "lot_seq":
+                int(lot_seq),
+
+            "x":
+                geometry["x"],
+
+            "z":
+                geometry["z"],
+
+            "w":
+                geometry["w"],
+
+            "d":
+                geometry["d"],
+        }
+
     return {
         "has_housing": True,
+
+        "home_anchor": home_anchor,
 
         "membership": {
             "role":
@@ -764,6 +816,14 @@ async def housing_status(
             "neighborhood_id":
                 prop.get(
                     "neighborhood_id"
+                ),
+
+            "city_id":
+                prop.get("city_id"),
+
+            "city_lot_seq":
+                prop.get(
+                    "city_lot_seq"
                 ),
 
             "state":
@@ -2427,7 +2487,7 @@ async def request_property_entry(
 
     await (
         db.realmlife_entry_requests
-        .insert_one(doc)
+        .insert_one(dict(doc))
     )
 
     return doc

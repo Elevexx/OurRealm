@@ -2567,7 +2567,8 @@ function createSpanishResidentialPrivacyShell({
 
 function installRealmLifeResidentialPrivacy(
   root,
-  colliders = null
+  colliders = null,
+  ownLot = null
 ) {
 
   const privacyRoot =
@@ -2594,8 +2595,8 @@ function installRealmLifeResidentialPrivacy(
 
   const ownShell =
     createSpanishResidentialPrivacyShell({
-      x: 0,
-      z: 0,
+      x: ownLot ? ownLot.x : 0,
+      z: ownLot ? ownLot.z : 0,
       w: 18.2,
       d: 14.2,
       label:
@@ -2612,6 +2613,49 @@ function installRealmLifeResidentialPrivacy(
   privacyRoot.add(
     ownShell
   );
+
+
+  // ----------------------------------------------------------
+  // FOUNDER SHOWCASE RESIDENCE AT ORIGIN
+  //
+  // When the resident's own home lives on a city lot, the
+  // origin prototype becomes the Founder's private residence:
+  // fully shelled and physically blocked for privacy.
+  // ----------------------------------------------------------
+
+  if (ownLot) {
+    const founderShell =
+      createSpanishResidentialPrivacyShell({
+        x: 0,
+        z: 0,
+        w: 18.2,
+        d: 14.2,
+        label:
+          "Founder Residence",
+        own:
+          false,
+        levelsAbove:
+          3,
+        levelsBelow:
+          3,
+      });
+
+    privacyRoot.add(
+      founderShell
+    );
+
+    if (
+      Array.isArray(colliders)
+    ) {
+      colliders.push({
+        x: 0,
+        z: 0,
+        hw: 9.3,
+        hd: 7.3,
+        founderResidence: true,
+      });
+    }
+  }
 
 
   // ----------------------------------------------------------
@@ -2783,6 +2827,18 @@ function installRealmLifeResidentialPrivacy(
     privateHomes.map(
       (home) => {
 
+        // The signed-in resident's own lot gets the dedicated
+        // "Your Residence" shell + walk-in interior instead of
+        // a sealed community privacy shell.
+        if (
+          ownLot
+          &&
+          home.lotSeq ===
+            ownLot.seq
+        ) {
+          return null;
+        }
+
         const shell =
           createSpanishResidentialPrivacyShell({
             ...home,
@@ -2853,7 +2909,215 @@ function installRealmLifeResidentialPrivacy(
 
         return shell;
       }
+    )
+    .filter(Boolean);
+
+
+  // ==========================================================
+  // REALMLIFE PRIVATE BACKYARDS — instanced lawns, fence rails
+  // and corner bushes behind every residential home. Instanced
+  // geometry keeps 100 backyards at only 3 draw calls.
+  // ==========================================================
+
+  const yardCount =
+    privateHomes.length;
+
+  const lawnInst =
+    new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshStandardMaterial({
+        color: 0x6f9f5a,
+        roughness: 0.95,
+      }),
+      yardCount
     );
+
+  lawnInst.receiveShadow = true;
+
+  const railInst =
+    new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({
+        color: 0x7c5a3a,
+        roughness: 0.82,
+      }),
+      yardCount * 3
+    );
+
+  const bushInst =
+    new THREE.InstancedMesh(
+      new THREE.SphereGeometry(0.7, 6, 5),
+      new THREE.MeshStandardMaterial({
+        color: 0x3f7a3f,
+        roughness: 0.95,
+      }),
+      yardCount * 2
+    );
+
+  {
+    const m4 = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const scl = new THREE.Vector3();
+    const qIdent = new THREE.Quaternion();
+    const qFlat =
+      new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(-Math.PI / 2, 0, 0)
+      );
+
+    let railIdx = 0;
+    let bushIdx = 0;
+
+    privateHomes.forEach((home, i) => {
+      const yardD = 8.5;
+      const yardW = home.w + 2.5;
+      const yardZ =
+        home.z - home.d / 2 - yardD / 2;
+      const backZ =
+        home.z - home.d / 2 - yardD;
+
+      m4.compose(
+        pos.set(home.x, 0.02, yardZ),
+        qFlat,
+        scl.set(yardW, yardD, 1)
+      );
+      lawnInst.setMatrixAt(i, m4);
+
+      m4.compose(
+        pos.set(home.x, 0.55, backZ),
+        qIdent,
+        scl.set(yardW, 1.1, 0.18)
+      );
+      railInst.setMatrixAt(railIdx++, m4);
+
+      m4.compose(
+        pos.set(home.x - yardW / 2, 0.55, yardZ),
+        qIdent,
+        scl.set(0.18, 1.1, yardD)
+      );
+      railInst.setMatrixAt(railIdx++, m4);
+
+      m4.compose(
+        pos.set(home.x + yardW / 2, 0.55, yardZ),
+        qIdent,
+        scl.set(0.18, 1.1, yardD)
+      );
+      railInst.setMatrixAt(railIdx++, m4);
+
+      m4.compose(
+        pos.set(home.x - yardW / 2 + 1.1, 0.5, backZ + 1.1),
+        qIdent,
+        scl.set(1, 1, 1)
+      );
+      bushInst.setMatrixAt(bushIdx++, m4);
+
+      m4.compose(
+        pos.set(home.x + yardW / 2 - 1.1, 0.5, backZ + 1.1),
+        qIdent,
+        scl.set(1, 1, 1)
+      );
+      bushInst.setMatrixAt(bushIdx++, m4);
+    });
+  }
+
+  privacyRoot.add(
+    lawnInst,
+    railInst,
+    bushInst
+  );
+
+
+  // ==========================================================
+  // REALMLIFE CITY GREENERY — instanced street trees between
+  // lots plus plaza trees near the central community district.
+  // 2 draw calls total.
+  // ==========================================================
+
+  {
+    const treeSpots = [];
+
+    for (
+      let rowIndex = 0;
+      rowIndex < 10;
+      rowIndex += 1
+    ) {
+      for (
+        let colIndex = 0;
+        colIndex < 9;
+        colIndex += 1
+      ) {
+        treeSpots.push({
+          x:
+            (communityColumns[colIndex]
+              + communityColumns[colIndex + 1])
+            / 2,
+          z:
+            communityRows[rowIndex] + 11,
+        });
+      }
+    }
+
+    // Central plaza ring trees.
+    for (let i = 0; i < 8; i += 1) {
+      treeSpots.push({
+        x: -84 + i * 24,
+        z: 165,
+      });
+      treeSpots.push({
+        x: -84 + i * 24,
+        z: 186,
+      });
+    }
+
+    const trunkInst =
+      new THREE.InstancedMesh(
+        new THREE.CylinderGeometry(0.18, 0.28, 2.6, 5),
+        new THREE.MeshStandardMaterial({
+          color: 0x6d4a2f,
+          roughness: 0.9,
+        }),
+        treeSpots.length
+      );
+
+    const canopyInst =
+      new THREE.InstancedMesh(
+        new THREE.IcosahedronGeometry(1.7, 0),
+        new THREE.MeshStandardMaterial({
+          color: 0x4c8a46,
+          roughness: 0.95,
+          flatShading: true,
+        }),
+        treeSpots.length
+      );
+
+    const m4 = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const scl = new THREE.Vector3(1, 1, 1);
+    const qIdent = new THREE.Quaternion();
+
+    treeSpots.forEach((spot, i) => {
+      const s =
+        0.85 + ((i * 7) % 10) * 0.045;
+
+      m4.compose(
+        pos.set(spot.x, 1.3, spot.z),
+        qIdent,
+        scl.set(1, 1, 1)
+      );
+      trunkInst.setMatrixAt(i, m4);
+
+      m4.compose(
+        pos.set(spot.x, 3.4, spot.z),
+        qIdent,
+        scl.set(s, s, s)
+      );
+      canopyInst.setMatrixAt(i, m4);
+    });
+
+    privacyRoot.add(
+      trunkInst,
+      canopyInst
+    );
+  }
 
 
   let ownMode =
@@ -2916,6 +3180,19 @@ function installRealmLifeResidentialPrivacy(
 
     privateShells,
 
+    residentialLots:
+      privateHomes.map((h) => ({
+        lotSeq: h.lotSeq,
+        x: h.x,
+        z: h.z,
+        w: h.w,
+        d: h.d,
+        own: !!(
+          ownLot
+          && h.lotSeq === ownLot.seq
+        ),
+      })),
+
     root:
       privacyRoot,
   };
@@ -2947,7 +3224,8 @@ function installRealmLifeResidentialPrivacy(
 
 
 export function buildNeighborhoodWorld(
-  scene
+  scene,
+  worldOpts = {}
 ) {
   const root = new THREE.Group();
   root.name = "RealmLifeNeighborhood";
@@ -2990,11 +3268,37 @@ export function buildNeighborhoodWorld(
     maxZ: ownedLot.maxZ,
   };
 
-  const outsideSpawn = {
-    x: 0,
-    y: 0,
-    z: 17.6,
-  };
+  // ----------------------------------------------------------
+  // PER-USER HOME LOT
+  //
+  // When the signed-in resident owns a normal city lot, their
+  // buildable zone and exterior spawn move to that lot. The
+  // origin prototype remains the Founder showcase estate.
+  // ----------------------------------------------------------
+
+  const ownLot =
+    worldOpts.ownLot || null;
+
+  const buildZone = ownLot
+    ? {
+        minX: ownLot.x - 10,
+        maxX: ownLot.x + 10,
+        minZ: ownLot.z - 9,
+        maxZ: ownLot.z + 16,
+      }
+    : ownedLot;
+
+  const outsideSpawn = ownLot
+    ? {
+        x: ownLot.x,
+        y: 0,
+        z: ownLot.z + 17.6,
+      }
+    : {
+        x: 0,
+        y: 0,
+        z: 17.6,
+      };
 
 
   const fenceMaterial =
@@ -3579,7 +3883,8 @@ export function buildNeighborhoodWorld(
   const housePrivacy =
     installRealmLifeResidentialPrivacy(
       root,
-      colliders
+      colliders,
+      ownLot
     );
 
 
@@ -3589,7 +3894,7 @@ export function buildNeighborhoodWorld(
     colliders,
     clickPlane,
     bounds,
-    ownedLot,
+    ownedLot: buildZone,
 
     propertyBoundary,
     propertyGate,

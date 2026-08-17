@@ -1308,6 +1308,25 @@ async def realmlife_avatar(
     )
 
     if not (stealth_founder and rl_selected == "founder_stealth"):
+        # RealmLife GLB avatar (starter_1/2 or premium) if its model is stored
+        from services.realmlife_players import TIER_MAP as _RL_TIERS
+        from services.realmlife_players import STARTER_MAP as _RL_STARTERS
+        from services.realmlife_players import avatar_assets as _rl_assets
+
+        entry = _RL_TIERS.get(rl_selected) or _RL_STARTERS.get(rl_selected)
+        if entry:
+            assets = await _rl_assets()
+            a = assets.get(entry["slot"])
+            if a and a.get("url"):
+                return {
+                    "avatar_id": rl_selected,
+                    "label": entry["name"],
+                    "model_url": a["url"],
+                    "animation_urls": {},
+                    "lod_urls": {},
+                    "glow": None,
+                }
+
         return {
             "mode": "starter",
             "style": (rl_player or {}).get("style") or "style_a",
@@ -2271,6 +2290,30 @@ async def realmlife_world_home(
 
     return await (
         rlw.home_destination(
+            game_id,
+            current,
+        )
+    )
+
+
+@public.get(
+    "/{game_id}/realmlife/world/beacons"
+)
+async def realmlife_world_beacons(
+    game_id: str,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_world as rlw
+    )
+
+    return await (
+        rlw.home_beacons(
             game_id,
             current,
         )

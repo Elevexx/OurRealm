@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 153 tested RealmLife housing/beacons/privacy backend + desktop & mobile UX. All 8 backend pytest cases passed (housing per-user + founder, beacons list without identity leaks, world/home per-lot spawn vs founder origin, access-check private_property, entry-request idempotent no 500, property inbox). Desktop /realmlife loads Three.js world after ENTER REALMLIFE (life-sim-runtime + canvas render, needs panel visible, HOME/POV/CUTAWAY/PROPERTY/EXIT text buttons render, 'Welcome home.' toast shown, no fatal console errors). Mobile 390x844: rotate popup shows and NOT NOW dismisses it with sessionStorage realmlife_rotate_dismissed=1; needs collapsed to icon (realmlife-needs-toggle) and expands to realmlife-needs-panel then minimizes; joystick, INTERACT (realmlife-interact-btn) and JUMP all visible bottom-inset; top bar DAY visible.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "LifeSimRuntime desktop HUD", "issue": "HOME / CUTAWAY (FULL) / PROPERTY / EXIT buttons on desktop lack data-testid attributes (realmlife-home-btn, realmlife-cutaway-btn, realmlife-property-btn, realmlife-exit-btn). Buttons are clickable but not test-selectable via testid on desktop.", "selector": "button:has-text('HOME')", "priority": "MEDIUM"},
+      {"component": "LifeSimRuntime mobile HUD", "issue": "Mobile JUMP button lacks data-testid (e.g. realmlife-jump-btn). Visible on screen but not testable via testid.", "selector": "button:has-text('JUMP')", "priority": "LOW"},
+      {"component": "LifeSimRuntime mobile HUD", "issue": "Mobile HOME/MENU top-right buttons lack data-testid.", "selector": "button:has-text('HOME')", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_realmlife_housing_v2.py", "/app/test_reports/pytest/iter153_backend.xml"],
+  "action_items": [
+    "Add data-testid attributes to desktop HUD buttons in LifeSimRuntime.jsx: realmlife-home-btn, realmlife-cutaway-btn (FULL), realmlife-property-btn, realmlife-exit-btn, realmlife-pov-btn, realmlife-normal-btn (or reverse-btn), realmlife-jump-btn. This unblocks reliable automated regression testing of the specific flows called out in the review request (e.g. click HOME then assert no 'Unable to return home')."
+  ],
+  "critical_code_review_comments": [
+    "Beacon endpoint correctly omits owner identity fields (username/user_id/email) — verified in test.",
+    "Founder housing correctly returns founder=true with lot_seq=null and world/home spawn at (0, 17.6).",
+    "Member auditcheckreal correctly gets home_anchor.lot_seq == property.city_lot_seq and spawn matches anchor x within 1.0 unit — per-lot ownership works end-to-end.",
+    "Entry-request is idempotent and no longer throws the previous ObjectId 500.",
+    "Access-check returns allowed=false reason=private_property for property-000001 as expected."
+  ],
+  "updated_files": ["/app/backend/tests/test_realmlife_housing_v2.py"],
+  "success_rate": {"backend": "100%", "frontend": "90%"},
+  "test_credentials": "auditcheckreal / Password1$ (member, owns property-000002 lot 2 x=-104 z=37); stealth / Password1$ (Founder, origin lot); tftwo / pass1234 (second member, not exercised in this run since read-only checks sufficed).",
+  "seed_data_creation": "None; used existing pending entry-request from prior runs to validate idempotency.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "After main agent adds missing data-testids on desktop HUD, a follow-up run can programmatically click the HOME testid and assert no 'Unable to return home' toast. On mobile every target testid from the review request already exists (realmlife-rotate-popup, realmlife-rotate-notnow, realmlife-rotate-btn, realmlife-needs-toggle, realmlife-needs-panel, realmlife-needs-minimize, realmlife-joystick, realmlife-interact-btn, life-sim-runtime, life-sim-canvas). Login must use POST /api/auth/login with {\"email\":\"<username>\",\"password\":...} and access_token — the /login form redirects to /signup on cold load; use the in-page fetch pattern used here, or click the 'Log in' tab explicitly. The /realmlife route shows a landing/customization page first for members; click 'ENTER REALMLIFE' button to enter the game (Three.js world takes ~15-20s to build).",
+  "rca of the issue": "n/a — no functional bugs found this iteration. Only gap is missing data-testids on desktop HUD which impedes automated regression coverage but is not a runtime defect."
+}

@@ -1,0 +1,297 @@
+"""Centralized AUDIO hosting for OurRealm.
+
+Mirrors the design of `services.image_store` so we never duplicate
+storage primitives — same disk-backed pattern, same call surface, ready
+to swap for S3 / R2 later.
+
+Public surface:
+    save_upload(file_bytes, filename, mime, owner_id) → AudioRecord
+    audio_dir()                                       → Path
+
+`AudioRecord` exposes the hosted url (`/api/sounds/{id}.{ext}`) plus
+duration_seconds extracted server-side via mutagen.
+"""
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import logging
+import os
+import re
+import subprocess
+import uuid
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta, timezone
+from io import BytesIO
+from pathlib import Path
+from typing import Optional
+
+from mutagen import File as MutagenFile
+
+from core.db import db
+
+
+logger = logging.getLogger("ourrealm.audiostore")
+
+# ── Config ────────────────────────────────────────────────────────────
+MAX_BYTES = 50 * 1024 * 1024  # 50 MB (matches spec)
+
+# MIME → extension. Accepted: mp3, m4a/aac, wav, ogg, flac, webm.
+ALLOWED_MIMES = {
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/mp4": "m4a",
+    "audio/x-m4a": "m4a",
+    "audio/aac": "aac",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/wave": "wav",
+    "audio/ogg": "ogg",
+    "audio/vorbis": "ogg",
+    "audio/flac": "flac",
+    "audio/x-flac": "flac",
+    "audio/webm": "webm",
+}
+EXT_FALLBACK = {
+    ".mp3": ("audio/mpeg", "mp3"),
+    ".m4a": ("audio/mp4", "m4a"),
+    ".aac": ("audio/aac", "aac"),
+    ".wav": ("audio/wav", "wav"),
+    ".ogg": ("audio/ogg", "ogg"),
+    ".flac": ("audio/flac", "flac"),
+    ".webm": ("audio/webm", "webm"),
+}
+
+from services.storage import media_dir
+
+ROOT = media_dir("audio", per_store_env="AUDIO_STORAGE_DIR")
+
+
+def audio_dir() -> Path:
+    return ROOT
+
+
+# ── Data ──────────────────────────────────────────────────────────────
+@dataclass
+class AudioRecord:
+    id: str
+    user_id: str
+    file_url: str            # /api/sounds/{id}.{ext}
+    bytes: int
+    mime: str
+    ext: str
+    duration_seconds: float  # 0.0 if mutagen couldn't read
+    sha256: str
+    created_at: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────
+def _sniff_mime(raw: bytes) -> Optional[str]:
+    # Magic-byte sniffing for the common audio containers
+    if raw[:3] == b"ID3" or raw[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
+        return "audio/mpeg"
+    if raw[:4] == b"fLaC":
+        return "audio/flac"
+    if raw[:4] == b"OggS":
+        return "audio/ogg"
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WAVE":
+        return "audio/wav"
+    if raw[4:8] == b"ftyp":
+        # ISO base media — M4A / MP4 audio
+        return "audio/mp4"
+    if raw[:4] == b"\x1aE\xdf\xa3":
+        return "audio/webm"
+    return None
+
+
+def _resolve_mime(raw: bytes, declared_mime: Optional[str], filename: Optional[str]) -> str:
+    sniffed = _sniff_mime(raw)
+    if sniffed and sniffed in ALLOWED_MIMES:
+        return sniffed
+    declared = (declared_mime or "").lower().split(";")[0].strip()
+    if declared in ALLOWED_MIMES:
+        return declared
+    # Last resort — file extension
+    if filename:
+        ext = os.path.splitext(filename.lower())[1]
+        if ext in EXT_FALLBACK:
+            return EXT_FALLBACK[ext][0]
+    raise ValueError("Unsupported audio format. Allowed: MP3, M4A/AAC, WAV, OGG, FLAC, WebM.")
+
+
+def _extract_duration(raw: bytes, ext: str, on_disk_path: Optional[Path] = None) -> float:
+    """Best-effort duration in seconds. 0.0 on failure.
+
+    `mutagen.File()` reads from BytesIO for most formats but needs a real
+    file path to identify some (notably WAV / AIFF). We pass the path
+    that's already on disk to maximise format coverage.
+    """
+    # 1) Try a real path first (highest accuracy).
+    if on_disk_path is not None:
+        try:
+            mf = MutagenFile(str(on_disk_path))
+            if mf and mf.info and getattr(mf.info, "length", None):
+                return float(mf.info.length)
+        except Exception:
+            pass
+    # 2) Fall back to BytesIO (works for ID3-tagged MP3 / FLAC / OGG).
+    try:
+        mf = MutagenFile(BytesIO(raw))
+        if mf and mf.info and getattr(mf.info, "length", None):
+            return float(mf.info.length)
+    except Exception:
+        pass
+    # 3) Last resort — uncompressed WAV: derive from RIFF/WAVE header.
+    if ext == "wav" and len(raw) > 44 and raw[:4] == b"RIFF" and raw[8:12] == b"WAVE":
+        try:
+            import struct
+            # Standard WAV — fmt chunk at offset 12 if `fmt ` chunk is next
+            # Walk chunks to find "fmt " and "data".
+            i = 12
+            fmt = None
+            data_size = None
+            while i + 8 <= len(raw):
+                chunk_id = raw[i:i+4]
+                chunk_size = struct.unpack_from("<I", raw, i+4)[0]
+                if chunk_id == b"fmt ":
+                    fmt = raw[i+8:i+8+chunk_size]
+                elif chunk_id == b"data":
+                    data_size = chunk_size
+                    break
+                i += 8 + chunk_size + (chunk_size % 2)
+            if fmt and data_size and len(fmt) >= 16:
+                channels = struct.unpack_from("<H", fmt, 2)[0]
+                sample_rate = struct.unpack_from("<I", fmt, 4)[0]
+                bits_per_sample = struct.unpack_from("<H", fmt, 14)[0]
+                bytes_per_sample = max(1, (bits_per_sample // 8) * max(1, channels))
+                if sample_rate > 0:
+                    return data_size / float(sample_rate * bytes_per_sample)
+        except Exception:
+            pass
+    return 0.0
+
+
+# ── Streaming optimization (AAC 128k) ─────────────────────────────────
+TRANSCODE_BITRATE = "128k"
+_SKIP_TRANSCODE_BPS = 192_000   # already-efficient AAC below this is kept as-is
+_TRANSCODE_MAX_SECONDS = 660    # don't waste cycles on tracks the caps will reject
+
+
+def _ffmpeg_exe() -> Optional[str]:
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def _should_transcode(ext: str, size: int, duration: float) -> bool:
+    if duration <= 0 or duration > _TRANSCODE_MAX_SECONDS:
+        return False
+    if ext in ("m4a", "aac") and (size * 8 / duration) <= _SKIP_TRANSCODE_BPS:
+        return False
+    return True
+
+
+def _run_transcode(src: Path, dst: Path) -> bool:
+    exe = _ffmpeg_exe()
+    if not exe:
+        return False
+    cmd = [
+        exe, "-y", "-hide_banner", "-loglevel", "error",
+        "-i", str(src), "-vn", "-c:a", "aac", "-b:a", TRANSCODE_BITRATE,
+        "-movflags", "+faststart", "-f", "mp4", str(dst),
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, timeout=600)
+        ok = res.returncode == 0 and dst.is_file() and dst.stat().st_size > 1024
+        if not ok:
+            logger.warning(f"[transcode] ffmpeg rc={res.returncode}: {(res.stderr or b'')[-300:]}")
+            dst.unlink(missing_ok=True)
+        return ok
+    except Exception as e:
+        logger.warning(f"[transcode] error: {e}")
+        try:
+            dst.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return False
+
+
+async def save_audio(
+    raw: bytes,
+    owner_id: str,
+    declared_mime: Optional[str] = None,
+    filename: Optional[str] = None,
+) -> AudioRecord:
+    if len(raw) > MAX_BYTES:
+        raise ValueError(f"Audio file is too large (max {MAX_BYTES // (1024 * 1024)} MB)")
+    if len(raw) < 256:
+        raise ValueError("Empty or invalid audio file")
+    mime = _resolve_mime(raw, declared_mime, filename)
+    ext = ALLOWED_MIMES[mime]
+
+    audio_id = uuid.uuid4().hex
+    sha = hashlib.sha256(raw).hexdigest()
+    path = ROOT / f"{audio_id}.{ext}"
+    path.write_bytes(raw)
+    duration = _extract_duration(raw, ext, on_disk_path=path)
+
+    # Optimize for streaming — transcode to AAC 128k (.m4a). On success
+    # the original is removed; on any failure the original is kept and
+    # served as-is (fully backward compatible).
+    size_bytes = len(raw)
+    if _should_transcode(ext, size_bytes, duration):
+        tmp = ROOT / f"{audio_id}.tmp.m4a"
+        if await asyncio.to_thread(_run_transcode, path, tmp):
+            final = ROOT / f"{audio_id}.m4a"
+            os.replace(tmp, final)
+            if path != final:
+                path.unlink(missing_ok=True)
+            path = final
+            ext = "m4a"
+            mime = "audio/mp4"
+            size_bytes = path.stat().st_size
+
+    rec = AudioRecord(
+        id=audio_id,
+        user_id=owner_id,
+        file_url=f"/api/sounds/{audio_id}.{ext}",
+        bytes=size_bytes,
+        mime=mime,
+        ext=ext,
+        duration_seconds=round(duration, 2),
+        sha256=sha,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    # Mirror to cloud bucket (R2/S3) when configured. Returns the
+    # public URL and is a no-op for local storage.
+    from services.r2_mirror import mirror_to_cloud
+    rec.file_url = mirror_to_cloud("audio", f"{audio_id}.{ext}", path, rec.file_url)
+    logger.info(
+        f"Stored audio {audio_id} ({mime}, {size_bytes}b, {duration:.1f}s) for {owner_id}"
+    )
+    return rec
+
+
+# Path traversal guard for the public file-serving endpoint
+_FILENAME_RE = re.compile(r"^[a-f0-9]{32}\.(mp3|m4a|aac|wav|ogg|flac|webm)$")
+
+
+def is_safe_audio_filename(name: str) -> bool:
+    return bool(_FILENAME_RE.match((name or "").strip().lower()))
+
+
+def media_type_for_ext(ext: str) -> str:
+    return {
+        "mp3": "audio/mpeg",
+        "m4a": "audio/mp4",
+        "aac": "audio/aac",
+        "wav": "audio/wav",
+        "ogg": "audio/ogg",
+        "flac": "audio/flac",
+        "webm": "audio/webm",
+    }.get(ext, "application/octet-stream")

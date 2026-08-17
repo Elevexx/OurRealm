@@ -3,6 +3,55 @@ import * as THREE from "three";
 
 export const GRAPHICS_MODES = ["AUTO", "LOW", "MEDIUM", "HIGH", "ULTRA"];
 
+// REALMLIFE ADAPTIVE DPR GOVERNOR
+// Watches real framerate and gently lowers/raises the renderer
+// pixel ratio between 0.75 and the active graphics-tier cap so
+// mobile devices never crash or grind while PCs keep quality.
+export function createAdaptiveDPR(renderer) {
+  let cap = renderer.getPixelRatio() || 1;
+  let frames = 0;
+  let windowStart = 0;
+  let lastAdjust = 0;
+
+  function setCap(v) {
+    cap = Math.max(0.75, v || 1);
+    if (renderer.getPixelRatio() > cap) applyDPR(cap);
+  }
+
+  function applyDPR(v) {
+    const size = new THREE.Vector2();
+    renderer.getSize(size);
+    renderer.setPixelRatio(v);
+    renderer.setSize(size.x, size.y, false);
+  }
+
+  function tick(nowMs) {
+    if (!windowStart) windowStart = nowMs;
+    frames += 1;
+
+    const span = nowMs - windowStart;
+    if (span < 2000) return;
+
+    const fps = (frames * 1000) / span;
+    frames = 0;
+    windowStart = nowMs;
+
+    if (nowMs - lastAdjust < 3000) return;
+
+    const current = renderer.getPixelRatio();
+
+    if (fps < 34 && current > 0.75) {
+      applyDPR(Math.max(0.75, current - 0.25));
+      lastAdjust = nowMs;
+    } else if (fps > 56 && current < cap) {
+      applyDPR(Math.min(cap, current + 0.25));
+      lastAdjust = nowMs;
+    }
+  }
+
+  return { tick, setCap };
+}
+
 const TIER_ORDER = ["LOW", "MEDIUM", "HIGH", "ULTRA"];
 
 const TIERS = {
