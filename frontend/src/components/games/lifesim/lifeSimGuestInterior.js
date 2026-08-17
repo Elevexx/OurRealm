@@ -1,9 +1,25 @@
-// REALMLIFE GUEST INTERIORS
-// When a guest is authorized (server access-check) for another
-// resident's home, the host's real furnished interior streams
-// in at that lot — no empty shells. Interactions reuse proven
-// action ids ("sit", "shower", "admire").
+// REALMLIFE GUEST INTERIORS — CANONICAL BLUEPRINT PARITY
+// Authorized guests stream the host's REAL persisted blueprint:
+// identical furniture, positions, rotations, colors, wall colors
+// and floor finishes. No generic replacement interiors.
 import * as THREE from "three";
+
+import {
+  createBlueprintLayer,
+  builtLevelKeys,
+  LEVEL_LABELS,
+} from "./lifeSimFurniture";
+
+const FLOOR_HEX = {
+  light_wood: "#d6b98c",
+  medium_wood: "#b08b5c",
+  dark_wood: "#6f4e2f",
+  warm_tile: "#c9a578",
+  cool_tile: "#b8bfc2",
+  stone: "#9c968c",
+  light_neutral: "#ded8cc",
+  dark_neutral: "#58534b",
+};
 
 export function buildGuestResidence({
   lotSeq,
@@ -13,36 +29,33 @@ export function buildGuestResidence({
   d,
   scene,
   colliders,
-  register,
+  interactive,
+  objectMap,
+  blueprint,
+  levelAccess,
 }) {
   const group = new THREE.Group();
   group.name = `RealmLifeGuestInterior-${lotSeq}`;
   scene.add(group);
 
   const s = Math.min(w / 18.6, d / 14.6, 1);
-  const px = (lx) => x + lx * s;
-  const pz = (lz) => z + lz * s;
+  let bp = blueprint || { furniture: [], wall_colors: {}, floor_finishes: {} };
+  let currentLevel = "ground";
+  let layer = null;
 
   const wallMat = new THREE.MeshStandardMaterial({
-    color: 0xf1e5cf,
+    color: new THREE.Color(bp.wall_colors?.ground || "#f1e5cf"),
     roughness: 0.9,
   });
 
   const floorMat = new THREE.MeshStandardMaterial({
-    color: 0xc9a578,
+    color: new THREE.Color(
+      FLOOR_HEX[bp.floor_finishes?.ground] || FLOOR_HEX.warm_tile
+    ),
     roughness: 0.85,
   });
 
-  const guestColliders = [];
-  const guestInteractives = [];
-
-  const pushCollider = (c) => {
-    const rec = { ...c, guestLot: lotSeq };
-    colliders.push(rec);
-    guestColliders.push(rec);
-  };
-
-  // Finished floor
+  // Finished floor (repainted per level/finish).
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(w - 1.2, d - 1.2),
     floorMat
@@ -52,151 +65,165 @@ export function buildGuestResidence({
   floor.receiveShadow = true;
   group.add(floor);
 
-  // Interior partition wall with doorway (living | bedroom/bath)
+  // Finished ceiling — front-face points DOWN so it reads as a
+  // real ceiling from inside without blocking the top-down camera.
+  const ceiling = new THREE.Mesh(
+    new THREE.PlaneGeometry(w - 1.2, d - 1.2),
+    new THREE.MeshStandardMaterial({ color: 0xf3ecdd, roughness: 0.95 })
+  );
+  ceiling.rotation.x = Math.PI / 2;
+  ceiling.position.set(x, 2.92, z);
+  ceiling.visible = false;
+  group.add(ceiling);
+
+  // Ground-floor partition wall with doorway (living | bed/bath).
   const wallH = 2.7;
   const partA = new THREE.Mesh(
     new THREE.BoxGeometry(0.24, wallH, d * 0.34),
     wallMat
   );
-  partA.position.set(px(-1.6), wallH / 2, pz(-3.4));
+  partA.position.set(x + -1.6 * s, wallH / 2, z + -3.4 * s);
   group.add(partA);
-  pushCollider({
-    x: px(-1.6),
-    z: pz(-3.4),
+  const partCollider = {
+    x: x + -1.6 * s,
+    z: z + -3.4 * s,
     hw: 0.4,
     hd: (d * 0.34) / 2 + 0.2,
-  });
+    guestLot: lotSeq,
+  };
+  colliders.push(partCollider);
 
-  const items = [
-    {
-      id: "bed",
-      label: "Bed",
-      lx: -5.1,
-      lz: -4.2,
-      size: [2.1, 0.75, 3.0],
-      color: 0x9a4a5e,
-      actions: [{ id: "sit", label: "Rest on Bed" }],
-      approach: [1.6, 0],
-    },
-    {
-      id: "shower",
-      label: "Shower",
-      lx: 6.2,
-      lz: -4.6,
-      size: [1.3, 2.3, 1.3],
-      color: 0x7fd2c8,
-      actions: [{ id: "shower", label: "Take Shower" }],
-      approach: [-1.3, 0],
-    },
-    {
-      id: "sofa",
-      label: "Sofa",
-      lx: 4.4,
-      lz: 3.2,
-      size: [2.6, 0.95, 1.15],
-      color: 0x386179,
-      actions: [{ id: "sit", label: "Sit & Relax" }],
-      approach: [0, -1.4],
-    },
-    {
-      id: "fridge",
-      label: "Refrigerator",
-      lx: -5.4,
-      lz: 4.2,
-      size: [1.1, 2.1, 1.0],
-      color: 0xb9c4c9,
-      actions: [{ id: "admire", label: "Peek Inside" }],
-      approach: [0, -1.3],
-    },
-    {
-      id: "stove",
-      label: "Stove",
-      lx: -3.6,
-      lz: 4.2,
-      size: [1.2, 1.05, 1.0],
-      color: 0x4a4f55,
-      actions: [{ id: "admire", label: "Admire Kitchen" }],
-      approach: [0, -1.3],
-    },
-    {
-      id: "tv",
-      label: "TV",
-      lx: 6.4,
-      lz: 0.8,
-      size: [0.4, 1.3, 2.2],
-      color: 0x101418,
-      actions: [{ id: "admire", label: "Check TV" }],
-      approach: [-1.4, 0],
-    },
-  ];
+  const accessibleLevels = () => {
+    const built = builtLevelKeys(
+      bp.levels_above || 1,
+      bp.levels_below || 0
+    );
+    return built.filter((k) => levelAccess?.[k]);
+  };
 
-  items.forEach((item) => {
-    const obj = register({
-      id: `guest${lotSeq}-${item.id}`,
-      label: item.label,
-      x: item.lx * s,
-      z: item.lz * s,
-      size: item.size,
-      color: item.color,
-      actions: item.actions,
-      approach: item.approach,
-      ox: x,
-      oz: z,
-    });
-    if (obj) {
-      obj.userData.guestLot = lotSeq;
-      guestInteractives.push(obj);
+  // Interior warm light for non-ground levels.
+  const levelLight = new THREE.PointLight(0xffe2b8, 0, 16, 2);
+  levelLight.position.set(x, 2.5, z);
+  group.add(levelLight);
+
+  const applyFinishes = () => {
+    wallMat.color.set(bp.wall_colors?.[currentLevel] || "#f1e5cf");
+    floorMat.color.set(
+      FLOOR_HEX[bp.floor_finishes?.[currentLevel]] || FLOOR_HEX.warm_tile
+    );
+  };
+
+  let stairsObj = null;
+
+  const registerStairs = () => {
+    const levels = accessibleLevels();
+    if (stairsObj) {
+      const idx = interactive.indexOf(stairsObj);
+      if (idx >= 0) interactive.splice(idx, 1);
+      objectMap?.delete(stairsObj.userData.id);
+      group.remove(stairsObj);
+      stairsObj = null;
     }
-  });
+    if (levels.length <= 1) return;
 
-  // Decor: rug + dining set + plant (visual only)
-  const rug = new THREE.Mesh(
-    new THREE.PlaneGeometry(3.2 * s, 2.3 * s),
-    new THREE.MeshStandardMaterial({ color: 0x8a4b5c, roughness: 0.95 })
-  );
-  rug.rotation.x = -Math.PI / 2;
-  rug.position.set(px(4.4), 0.05, pz(1.4));
-  group.add(rug);
+    const stairs = new THREE.Group();
+    const stepMat = new THREE.MeshStandardMaterial({
+      color: 0x8a6a45,
+      roughness: 0.7,
+    });
+    for (let i = 0; i < 4; i += 1) {
+      const step = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 0.22, 0.5),
+        stepMat
+      );
+      step.position.set(0, 0.11 + i * 0.24, -i * 0.42);
+      step.castShadow = true;
+      stairs.add(step);
+    }
+    stairs.position.set(x + -7.4 * s, 0, z + 0.6 * s);
 
-  const tableM = new THREE.MeshStandardMaterial({
-    color: 0x8a6a45,
-    roughness: 0.6,
-  });
-  const table = new THREE.Mesh(
-    new THREE.BoxGeometry(1.8 * s, 0.85, 1.05 * s),
-    tableM
-  );
-  table.position.set(px(-1.0), 0.43, pz(4.0));
-  group.add(table);
-  pushCollider({ x: px(-1.0), z: pz(4.0), hw: s, hd: 0.7 * s });
+    stairs.userData.lifeObject = true;
+    stairs.userData.id = `guest${lotSeq}-stairs`;
+    stairs.userData.label = "Stairs";
+    stairs.userData.approach = [1.2, 0];
+    stairs.userData.guestLot = lotSeq;
+    stairs.userData.actions = levels
+      .filter((lv) => lv !== currentLevel)
+      .map((lv) => ({
+        id: `guestlevel:${lotSeq}:${lv}`,
+        label: `Go to ${LEVEL_LABELS[lv] || lv}`,
+      }));
 
-  const pot = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.26, 0.33, 0.48, 7),
-    new THREE.MeshStandardMaterial({ color: 0xa5593c, roughness: 0.8 })
-  );
-  pot.position.set(px(-7.2 * s > -w / 2 + 1 ? -7.2 : -w / 2 + 1), 0.24, pz(-5.4));
-  const leaf = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(0.4, 0),
-    new THREE.MeshStandardMaterial({ color: 0x3f8a4b, roughness: 0.9 })
-  );
-  leaf.position.set(pot.position.x, 0.82, pot.position.z);
-  group.add(pot, leaf);
+    group.add(stairs);
+    interactive.push(stairs);
+    objectMap?.set(stairs.userData.id, stairs);
+    stairsObj = stairs;
+  };
+
+  const buildLevel = () => {
+    layer?.dispose();
+    layer = createBlueprintLayer({
+      scene,
+      colliders,
+      interactive,
+      objectMap,
+      originX: x,
+      originZ: z,
+      scale: s,
+      blueprint: bp,
+      level: currentLevel,
+      guest: true,
+      idPrefix: `guest${lotSeq}-`,
+    });
+    partA.visible = currentLevel === "ground";
+    partCollider.hw = currentLevel === "ground" ? 0.4 : 0.001;
+    partCollider.hd =
+      currentLevel === "ground" ? (d * 0.34) / 2 + 0.2 : 0.001;
+    ceiling.visible = currentLevel !== "ground";
+    levelLight.intensity = currentLevel === "ground" ? 0 : 1.1;
+    applyFinishes();
+    registerStairs();
+  };
+
+  buildLevel();
 
   return {
     lotSeq,
     group,
+
+    get currentLevel() {
+      return currentLevel;
+    },
+
+    get version() {
+      return bp.version || 1;
+    },
+
+    setLevel(level) {
+      if (!levelAccess?.[level]) return false;
+      currentLevel = level;
+      buildLevel();
+      return true;
+    },
+
+    updateBlueprint(nextBp, nextAccess) {
+      bp = nextBp || bp;
+      if (nextAccess) levelAccess = nextAccess;
+      if (!levelAccess?.[currentLevel]) currentLevel = "ground";
+      buildLevel();
+    },
+
     dispose(interactiveList) {
-      // remove colliders
+      layer?.dispose();
       for (let i = colliders.length - 1; i >= 0; i -= 1) {
         if (colliders[i].guestLot === lotSeq) colliders.splice(i, 1);
       }
-      // remove interactives
-      guestInteractives.forEach((obj) => {
-        obj.userData.guestRevoked = true;
-        const idx = interactiveList?.indexOf(obj);
-        if (idx >= 0) interactiveList.splice(idx, 1);
-        obj.parent?.remove(obj);
-      });
+      if (stairsObj) {
+        const list = interactiveList || interactive;
+        const idx = list.indexOf(stairsObj);
+        if (idx >= 0) list.splice(idx, 1);
+        objectMap?.delete(stairsObj.userData.id);
+      }
       scene.remove(group);
     },
   };

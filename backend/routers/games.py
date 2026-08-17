@@ -2370,3 +2370,75 @@ async def realmlife_property_add_level(
             body,
         )
     )
+
+
+@public.post(
+    "/{game_id}/realmlife/property/blueprint"
+)
+async def realmlife_property_blueprint(
+    game_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_blueprint as rlb
+    )
+
+    return await rlb.get_blueprint(
+        game_id,
+        current,
+        body,
+    )
+
+
+@public.post(
+    "/{game_id}/realmlife/property/furniture"
+)
+async def realmlife_property_furniture(
+    game_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_blueprint as rlb
+    )
+
+    return await rlb.furniture_op(
+        game_id,
+        current,
+        body,
+    )
+
+
+@public.post(
+    "/{game_id}/realmlife/property/finish"
+)
+async def realmlife_property_finish(
+    game_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_blueprint as rlb
+    )
+
+    return await rlb.set_finish(
+        game_id,
+        current,
+        body,
+    )

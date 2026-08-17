@@ -76,20 +76,13 @@ STYLES = ["style_a", "style_b"]
 BOTTOMS = ["shorts", "pants"]
 HAIR_STYLES = ["buzz", "crop", "side", "curly", "ponytail", "long"]
 SKIN_TONES = [
-    "#ffe9d4",
-    "#f6d7b8",
-    "#efc39a",
-    "#eab98c",
-    "#e0a878",
-    "#d29a6a",
-    "#c08552",
-    "#a9713f",
-    "#946033",
-    "#7c4a24",
-    "#693c1c",
-    "#5a3016",
-    "#47240f",
-    "#33180a",
+    # Trimmed to the 4 tones that render correctly with the
+    # current baked Player 1/2 textures. Additional tone
+    # variants will ship as separate uploaded 3D models.
+    "#F7DCC2",
+    "#E7B98D",
+    "#CE9365",
+    "#AA693F",
 ]
 
 DEFAULT_CUSTOM = {

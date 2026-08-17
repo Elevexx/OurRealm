@@ -853,3 +853,28 @@ NEW ART DIRECTION (supersedes Meshy-everything): stylized low-poly AAA; Three.js
 - P1: Meshy hero avatar batch: 6 premium RealmLife avatars + 2 starter hero styles (rig via meshy rigging/animation endpoints or existing retarget scripts in backend/scripts). ~3,100 credits left.
 - P1: Whole-world stylized pass: water shader system (tiered), lighting pass (emissive windows/streetlights/neon), roads/sidewalks detail, landscaping instancing, business facades+interiors via Three.js, fog/particles by tier.
 - P2: NPC/population, vehicles, Central Station, final detail sweep (blank walls, z-fighting, edges), 20-screenshot visual acceptance gate vs stylized reference (target 9/10). DO NOT PUBLISH without approval.
+
+## HOUSING BLUEPRINT + FURNITURE EDITOR PASS — SESSION (Aug 17 2026, fork) — STOPPED EARLY BY USER
+User halted the pass mid-testing. Code saved, compiling, NOT deployed/republished.
+
+### Completed & verified (backend via curl; frontend compiles + world smoke-tested)
+1. CANONICAL PROPERTY BLUEPRINT (backend/services/realmlife_blueprint.py — NEW):
+   - One persisted blueprint per property on realmlife_properties.blueprint: {schema, version, wall_colors{level}, floor_finishes{level}, furniture[{instance_id,type,level,x,z,rot,color}]}.
+   - 13-item starter catalog (sofa/bed/tv/fridge/stove/shower/toilet/bathroom_sink/kitchen_sink/dining_table/dining_chair/dresser/lamp) with per-type palettes; 9 wall colors; 8 floor finishes; bounds x±8.2 z±6.4; rot snaps 15°; max 5 per type (6th cleanly denied — verified).
+   - Endpoints (all POST, /api/games/{gid}/realmlife/property/): blueprint (access-scoped: member=full, guest=permitted levels only, unauthorized=exterior_only w/ 0 furniture — verified with auditcheckreal vs stealth), furniture (op:add/update/duplicate/remove — verified), finish (wall_color/floor_finish palette-validated — verified).
+2. ADD LEVEL ATOMIC+IDEMPOTENT (realmlife_property.py add_house_level): burn-then-conditional-update w/ refund; UI now sends explicit target level; parallel double-click burns exactly 🔥5,000 once, 2nd gets 409 "already added" (verified live). $inc blueprint.version on level add. New level keys get default finishes (finished empty flex space — Founder studio NOT copied).
+3. OBSERVER PARITY (frontend): lifeSimFurniture.js (NEW shared renderer, composite meshes, owner/guest action maps); lifeSimGuestInterior.js REWRITTEN to render host's real blueprint (furniture/colors/finishes/levels) w/ guest stairs + level privacy; grantGuestAccess now fetches blueprint; guestWatchdog (15s) live-applies host edits via blueprint_version (added to beacons + access-check responses).
+4. OWN-HOME BLUEPRINT RENDERING (LifeSimRuntime.jsx): hardcoded furniture replaced by blueprint layer (ids bed/shower/sofa/tv etc preserved → sleep/needs flows intact); paintable walls + floor plane; down-facing ceiling + warm light on non-ground levels; home stairs w/ homelevel:* actions (in-place level swap, ground partitions/bath door/computer hidden off-ground); 12s blueprint poll for household sync; realmlife:levels-changed event for instant exterior growth after ADD LEVEL.
+5. PROPERTY EDIT MODE UI: 🛠 EDIT button (desktop HUD + mobile drawer, data-testid realmlife-edit-mode-btn); tap furniture → RealmLifeEditPopup.jsx (NEW, top-center safe-area, MOVE nudge-pad/ROTATE 90°/COLOR/DUPLICATE/REMOVE); tap wall → 9-color palette; tap floor → 8 finishes; + ADD catalog (realmlife-edit-add-btn). All ops persist via API.
+6. SKIN TONES: per user order, trimmed to 4 visibly-correct tones (#F7DCC2 #E7B98D #CE9365 #AA693F) in realmlife_players.py SKIN_TONES. Darker tones removed until user uploads dedicated 3D models. Shader realmLifeRecolor.js highlight made multiplicative (last change; further shader work FORBIDDEN by user). Hair/eye controls remain HIDDEN for Player 1/2.
+
+### Files changed this session
+Backend: services/realmlife_blueprint.py (new), services/realmlife_property.py (add-level atomicity/target/blueprint version, blueprint_version in access-check), services/realmlife_world.py (blueprint_version in beacons), services/realmlife_players.py (4 skin tones), routers/games.py (3 new blueprint routes).
+Frontend: lifeSimFurniture.js (new), RealmLifeEditPopup.jsx (new), lifeSimGuestInterior.js (rewritten), LifeSimRuntime.jsx (blueprint integration/edit mode/levels), useRealmLifeProperty.js (target param + levels-changed event), RealmLifePropertyPanel.jsx (per-level targets), realmLifeRecolor.js (highlight fix).
+
+### UNFINISHED (user stopped the pass)
+- Cross-account UI test (@stealth owner edits ↔ guest parity) NOT run. NOTE: morpheus is a REAL account w/ unknown password — use auditcheckreal for 2nd account.
+- Mobile portrait/landscape edit-popup overlap test NOT run; full testing_agent regression NOT run; production build NOT run.
+- In-world visual verification of edit popup/level stairs NOT captured (only landing/world smoke).
+- User will upload separate 3D models for additional skin-tone variants (do NOT attempt shader-based tones).
+- Test-side effects: auditcheckreal property-000002 now levels 3/2, vault 5000 (test burns).

@@ -2275,6 +2275,29 @@ async def add_house_level(
             "Maximum of 3 basement levels reached.",
         )
 
+    # Per-level idempotency: the UI sends the exact target level
+    # ("ADD LEVEL 2" -> 2, "ADD BASEMENT 1" -> 1). A double-click
+    # whose target is already built is rejected BEFORE any burn.
+    target = (body or {}).get("target")
+
+    expected_new = (
+        levels_above + 1
+        if direction == "above"
+        else levels_below + 1
+    )
+
+    if target is not None:
+        try:
+            target = int(target)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Invalid target level.")
+
+        if target != expected_new:
+            raise HTTPException(
+                409,
+                "That level was already added. No extra Fire Power burned.",
+            )
+
     from services.realmlife_world import (
         _realmlife_is_founder,
     )
@@ -2358,40 +2381,59 @@ async def add_house_level(
         else levels_below + 1
     )
 
-    await (
+    # New level key + finished empty flex-space finishes.
+    if direction == "above":
+        new_level_key = (
+            "second" if new_value == 2 else "third"
+        )
+    else:
+        new_level_key = f"b{new_value}"
+
+    # Atomic + idempotent: only succeeds if the level count is
+    # still the value we read. A double-click's second request
+    # fails the filter and its burn is refunded.
+    result = await (
         db.realmlife_properties
         .update_one(
             {
                 "game_id": game_id,
                 "id": prop["id"],
+                "$or": [
+                    {field: levels_above if direction == "above" else levels_below},
+                    {field: {"$exists": False}},
+                ],
             },
             {
                 "$set": {
                     field:
                         new_value,
 
-                    "levels_above":
-                        (
-                            new_value
-                            if direction
-                            == "above"
-                            else levels_above
-                        ),
+                    f"blueprint.wall_colors.{new_level_key}":
+                        "#f1e5cf",
 
-                    "levels_below":
-                        (
-                            new_value
-                            if direction
-                            == "below"
-                            else levels_below
-                        ),
+                    f"blueprint.floor_finishes.{new_level_key}":
+                        "warm_tile",
 
                     "updated_at":
                         _iso(),
-                }
+                },
+                "$inc": {
+                    "blueprint.version": 1,
+                },
             },
         )
     )
+
+    if result.modified_count == 0:
+        if burned:
+            await db.fire_wallets.update_one(
+                {"user_id": current["id"]},
+                {"$inc": {"vault_balance": burned}},
+            )
+        raise HTTPException(
+            409,
+            "That level was already added. No extra Fire Power burned.",
+        )
 
     return {
         "ok": True,
@@ -2613,6 +2655,11 @@ async def property_access_check(
 
             "level_access":
                 level_access,
+
+            "blueprint_version": (
+                prop.get("blueprint")
+                or {}
+            ).get("version", 1),
         }
 
     access = await (
@@ -2672,6 +2719,11 @@ async def property_access_check(
                     GUEST_LEVEL_KEYS
                 }
             ),
+
+        "blueprint_version": (
+            prop.get("blueprint")
+            or {}
+        ).get("version", 1),
     }
 
 

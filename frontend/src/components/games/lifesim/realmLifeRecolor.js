@@ -27,8 +27,18 @@ const SNIPPET = `
       abs(rlS.g - ${SKIN_REF_SRGB[1].toFixed(4)}) +
       abs(rlS.b - ${SKIN_REF_SRGB[2].toFixed(4)});
     if (rlEnabled > 0.5 && rlDist < 0.588) {
-      float rlLum = (rlS.r + rlS.g + rlS.b) / 3.0 / ${REF_LUM.toFixed(4)};
-      vec3 rlOut = clamp(rlSkin * pow(rlLum, 0.6), 0.0, 1.0);
+      // Detail luminance from the baked texture, normalized so
+      // average skin = 1.0. The baked hue is DISCARDED and the
+      // detail drives a shadow -> midtone -> highlight ramp of
+      // the selected tone, so every tone renders distinctly.
+      float rlT = clamp((rlS.r + rlS.g + rlS.b) / 3.0 / ${REF_LUM.toFixed(4)}, 0.0, 1.6);
+      vec3 rlShadow = rlSkin * 0.5;
+      // Multiplicative highlight preserves the chosen hue so deep
+      // tones stay deep instead of washing toward tan.
+      vec3 rlHigh = min(rlSkin * 1.45, vec3(1.0));
+      vec3 rlOut = rlT < 1.0
+        ? mix(rlShadow, rlSkin, smoothstep(0.3, 1.0, rlT))
+        : mix(rlSkin, rlHigh, clamp((rlT - 1.0) * 1.4, 0.0, 1.0));
       sampledDiffuseColor.rgb = pow(rlOut, vec3(2.2));
     }
   }

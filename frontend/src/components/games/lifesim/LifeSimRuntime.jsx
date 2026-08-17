@@ -13,6 +13,12 @@ import { buildNeighborhoodWorld } from "./lifeSimNeighborhood";
 import { createRealmLifeGraphics, GRAPHICS_MODES, createAdaptiveDPR } from "./lifeSimGraphics";
 import { createHomeBeacons } from "./lifeSimHomeBeacons";
 import { buildGuestResidence } from "./lifeSimGuestInterior";
+import {
+  createBlueprintLayer,
+  builtLevelKeys,
+  LEVEL_LABELS,
+} from "./lifeSimFurniture";
+import RealmLifeEditPopup from "./RealmLifeEditPopup";
 import { createChatBubbleManager } from "./lifeSimChatBubble";
 import { createSectorStreaming } from "./lifeSimSectorStreaming";
 import { installRealmLifeMeshyWorld } from "./lifeSimMeshyWorld";
@@ -361,6 +367,34 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       cancelled = true;
     };
   }, [game?.id]);
+
+  // REALMLIFE PROPERTY EDIT MODE
+  const [editMode, setEditMode] = useState(false);
+  const editModeRef = useRef(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const editTargetRef = useRef(null);
+  const [editPopupMode, setEditPopupMode] = useState("menu");
+  const [editAddOpen, setEditAddOpen] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editMeta, setEditMeta] = useState(null);
+  const editApiRef = useRef({});
+
+  useEffect(() => {
+    editTargetRef.current = editTarget;
+  }, [editTarget]);
+
+  const toggleEditMode = useCallback(() => {
+    setEditMode((v) => {
+      const next = !v;
+      editModeRef.current = next;
+      if (!next) {
+        setEditTarget(null);
+        setEditAddOpen(false);
+        setEditPopupMode("menu");
+      }
+      return next;
+    });
+  }, []);
 
   // REALMLIFE MOBILE COLLAPSED NEEDS
   const [needsOpen, setNeedsOpen] = useState(false);
@@ -1206,13 +1240,33 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         );
     }
 
+    // Wall meshes are tracked so PROPERTY EDIT can repaint them
+    // and non-ground levels can hide ground-only partitions.
+    const homeWallMeshes = [];
+    const homePartitionMeshes = [];
+    const homePartitionColliders = [];
+    const groundDecorMeshes = [];
+
     const addWall = (x0, z0, w, d, h = 2.8) => {
       const x = x0 + HOME_X;
       const z = z0 + HOME_Z;
       const wall = makeBox([w, h, d], 0xf1e5cf);
       wall.position.set(x, h / 2, z);
+      wall.userData.rlWall = true;
       scene.add(wall);
-      colliders.push({ x, z, hw: w / 2 + 0.3, hd: d / 2 + 0.3 });
+      const wallCollider = { x, z, hw: w / 2 + 0.3, hd: d / 2 + 0.3 };
+      colliders.push(wallCollider);
+      if (h < 2.8) {
+        homePartitionMeshes.push(wall);
+        homePartitionColliders.push({
+          collider: wallCollider,
+          hw: wallCollider.hw,
+          hd: wallCollider.hd,
+        });
+      } else {
+        homeWallMeshes.push(wall);
+      }
+      return wall;
     };
 
     // Dollhouse-style open front.
@@ -1349,57 +1403,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       return m;
     };
 
-    // Bedroom
-    registerObject({
-      id: "bed",
-      label: "Bed",
-      x: -5.3,
-      z: -4.6,
-      size: [3.0, 0.65, 2.0],
-      color: 0x397ea5,
-      actions: [{ id: "sleep", label: "Sleep" }],
-      approach: [0, 1.6],
-
-      // REALMLIFE BED HARD RESCUE V1
-      // Bed stays clickable/interactable but no longer blocks
-      // the player inside its rectangular movement collider.
-      collider: false,
-
-      interactionAnchor: {
-        x: 0,
-        y: 0,
-        z: 0,
-        rotationY:
-          Math.PI / 2,
-      },
-    });
-
-    // Bathroom
-    const showerMesh = registerObject({
-      id: "shower",
-      label: "Shower",
-      x: 5.8,
-      z: -4.7,
-      size: [1.55, 2.15, 1.55],
-      color: 0x7ad4e5,
-      actions: [{ id: "shower", label: "Take Shower" }],
-      approach: [0, 1.3],
-    });
-
-    // glass shower door
-    const showerGlass = new THREE.Mesh(
-      new THREE.BoxGeometry(1.45, 1.95, 0.05),
-      new THREE.MeshStandardMaterial({
-        color: 0xbfeaf5,
-        transparent: true,
-        opacity: 0.32,
-        roughness: 0.12,
-        metalness: 0.1,
-      })
-    );
-    showerGlass.position.set(0, 0, 0.8);
-    showerMesh.add(showerGlass);
-
     // interactive bathroom door
     registerObject({
       id: "bathroom_door",
@@ -1414,70 +1417,426 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       approach: [0.63, 1.5],
     });
 
+    // ======================================================
+    // REALMLIFE CANONICAL HOME BLUEPRINT
+    // Furniture, wall colors and floor finishes render from
+    // the persisted per-property blueprint so every authorized
+    // observer sees this exact interior.
+    // ======================================================
+
+    const FLOOR_FINISH_HEX = {
+      light_wood: "#d6b98c",
+      medium_wood: "#b08b5c",
+      dark_wood: "#6f4e2f",
+      warm_tile: "#c9a578",
+      cool_tile: "#b8bfc2",
+      stone: "#9c968c",
+      light_neutral: "#ded8cc",
+      dark_neutral: "#58534b",
+    };
+
+    const homeFloor = new THREE.Mesh(
+      new THREE.PlaneGeometry(17.6, 13.6),
+      new THREE.MeshStandardMaterial({
+        color: 0xc9a578,
+        roughness: 0.85,
+      })
+    );
+    homeFloor.rotation.x = -Math.PI / 2;
+    homeFloor.position.set(HOME_X, 0.035, HOME_Z);
+    homeFloor.receiveShadow = true;
+    homeFloor.userData.rlFloor = true;
+    scene.add(homeFloor);
+
+    // Finished ceiling for upper levels/basements — front face
+    // points DOWN so it never blocks the top-down camera.
+    const homeCeiling = new THREE.Mesh(
+      new THREE.PlaneGeometry(17.6, 13.6),
+      new THREE.MeshStandardMaterial({
+        color: 0xf3ecdd,
+        roughness: 0.95,
+      })
+    );
+    homeCeiling.rotation.x = Math.PI / 2;
+    homeCeiling.position.set(HOME_X, 2.92, HOME_Z);
+    homeCeiling.visible = false;
+    scene.add(homeCeiling);
+
+    const homeLevelLight = new THREE.PointLight(0xffe2b8, 0, 20, 2);
+    homeLevelLight.position.set(HOME_X, 2.5, HOME_Z);
+    scene.add(homeLevelLight);
+
+    // Home stairs — travel between built levels.
+    const homeStairs = new THREE.Group();
+    {
+      const stepMat = new THREE.MeshStandardMaterial({
+        color: 0x8a6a45,
+        roughness: 0.7,
+      });
+      for (let i = 0; i < 4; i += 1) {
+        const step = new THREE.Mesh(
+          new THREE.BoxGeometry(1.6, 0.24, 0.55),
+          stepMat
+        );
+        step.position.set(0, 0.12 + i * 0.26, -i * 0.46);
+        step.castShadow = true;
+        homeStairs.add(step);
+      }
+    }
     registerObject({
-      id: "toilet",
-      label: "Toilet",
-      x: 7.5,
-      z: -2.8,
-      size: [0.9, 0.75, 1.0],
-      color: 0xf2f2eb,
-      actions: [{ id: "toilet", label: "Use Toilet" }],
-      approach: [0, 1.15],
+      id: "home_stairs",
+      label: "Stairs",
+      x: -7.5,
+      z: -0.4,
+      size: [1.6, 1.1, 1.9],
+      color: 0x8a6a45,
+      mesh: homeStairs,
+      collider: false,
+      actions: [],
+      approach: [1.5, 0],
     });
+    homeStairs.visible = false;
 
-    // Kitchen
-    registerObject({
-      id: "fridge",
-      label: "Refrigerator",
-      x: -5.7,
-      z: 4.4,
-      size: [1.2, 2.2, 1.1],
-      color: 0xc5d3d6,
-      actions: [{ id: "snack", label: "Grab Snack · 🔥5" }],
-      approach: [0, -1.3],
-    });
+    let homeBlueprint = null;
+    let homeLayer = null;
+    let homeLevelKey = "ground";
+    let editMovePending = null;
 
-    registerObject({
-      id: "stove",
-      label: "Stove",
-      x: -3.8,
-      z: 4.4,
-      size: [1.5, 1.05, 1.05],
-      color: 0x30353c,
-      actions: [{ id: "cook", label: "Cook Meal · 🔥10" }],
-      approach: [0, -1.3],
-    });
+    const homeBuiltLevels = () =>
+      builtLevelKeys(
+        homeBlueprint?.levels_above || 1,
+        homeBlueprint?.levels_below || 0
+      );
 
-    // Living room
-    registerObject({
-      id: "sofa",
-      label: "Sofa",
-      x: 4.6,
-      z: 3.4,
-      size: [3.0, 1.0, 1.2],
-      color: 0x6f4ba8,
-      actions: [{ id: "relax", label: "Relax" }],
-      approach: [0, -1.3],
+    const applyHomeFinishes = () => {
+      if (!homeBlueprint) return;
+      const wall =
+        homeBlueprint.wall_colors?.[homeLevelKey] || "#f1e5cf";
+      const floorHex =
+        FLOOR_FINISH_HEX[
+          homeBlueprint.floor_finishes?.[homeLevelKey]
+        ] || FLOOR_FINISH_HEX.warm_tile;
+      [...homeWallMeshes, ...homePartitionMeshes].forEach((m) => {
+        m.material?.color?.set?.(wall);
+      });
+      homeFloor.material.color.set(floorHex);
+    };
 
-      interactionAnchor: {
-        x: 0,
-        y: 0,
-        z: -0.10,
-        rotationY:
-          Math.PI,
+    const setHomeGroundExtrasVisible = (visible) => {
+      homePartitionMeshes.forEach((m) => {
+        m.visible = visible;
+      });
+      homePartitionColliders.forEach((rec) => {
+        rec.collider.hw = visible ? rec.hw : 0.001;
+        rec.collider.hd = visible ? rec.hd : 0.001;
+      });
+      bathLintel.visible = visible;
+      bathDoorGroup.visible = visible;
+      bathDoorCollider.hw =
+        visible && !bathDoorOpen ? 0.68 : 0.001;
+      bathDoorCollider.hd =
+        visible && !bathDoorOpen ? 0.16 : 0.001;
+      groundDecorMeshes.forEach((m) => {
+        m.visible = visible;
+      });
+      const computerObj = objectMapRef.current.get("computer");
+      if (computerObj) computerObj.visible = visible;
+      const compCollider = colliders.find(
+        (c) => c.objectId === "computer"
+      );
+      if (compCollider) {
+        if (visible) {
+          compCollider.hw = compCollider.rlHw ?? compCollider.hw;
+          compCollider.hd = compCollider.rlHd ?? compCollider.hd;
+        } else {
+          compCollider.rlHw = compCollider.rlHw ?? compCollider.hw;
+          compCollider.rlHd = compCollider.rlHd ?? compCollider.hd;
+          compCollider.hw = 0.001;
+          compCollider.hd = 0.001;
+        }
+      }
+    };
+
+    const buildHomeLevel = () => {
+      if (!homeBlueprint) return;
+      homeLayer?.dispose();
+      homeLayer = createBlueprintLayer({
+        scene,
+        colliders,
+        interactive,
+        objectMap: objectMapRef.current,
+        originX: HOME_X,
+        originZ: HOME_Z,
+        scale: 1,
+        blueprint: homeBlueprint,
+        level: homeLevelKey,
+        guest: false,
+        idPrefix: "",
+      });
+
+      const isGround = homeLevelKey === "ground";
+      setHomeGroundExtrasVisible(isGround);
+      homeCeiling.visible = !isGround;
+      homeLevelLight.intensity = isGround ? 0 : 1.2;
+
+      const levels = homeBuiltLevels();
+      homeStairs.visible = levels.length > 1;
+      homeStairs.userData.actions = levels
+        .filter((lv) => lv !== homeLevelKey)
+        .map((lv) => ({
+          id: `homelevel:${lv}`,
+          label: `Go to ${LEVEL_LABELS[lv] || lv}`,
+        }));
+      applyHomeFinishes();
+    };
+
+    const refreshHomeBlueprint = async (force = false) => {
+      if (!game?.id || disposed) return;
+      try {
+        const res = await apiClient.post(
+          `/games/${game.id}/realmlife/property/blueprint`,
+          {}
+        );
+        if (disposed) return;
+        const bp = res.data;
+        setEditMeta(
+          (prev) =>
+            prev || {
+              catalog: bp.catalog,
+              wallPalette: bp.wall_palette,
+              floorPalette: bp.floor_palette,
+            }
+        );
+        const changed =
+          !homeBlueprint ||
+          bp.version !== homeBlueprint.version ||
+          bp.levels_above !== homeBlueprint.levels_above ||
+          bp.levels_below !== homeBlueprint.levels_below;
+        homeBlueprint = bp;
+        // Canonical exterior growth for the player's own lot.
+        if (HOME_LOT && bp.levels_above) {
+          neighborhood.housePrivacy?.setLotLevels?.(
+            HOME_LOT.seq,
+            bp.levels_above,
+            bp.levels_below || 0
+          );
+          window.__REALMLIFE_HOUSE_PRIVACY?.setOwnMode?.(
+            houseViewRef.current
+          );
+        }
+        if (changed || force) buildHomeLevel();
+      } catch (err) {
+        console.debug(
+          "[RealmLife Blueprint] refresh failed",
+          err?.message
+        );
+      }
+    };
+
+    refreshHomeBlueprint(true);
+
+    // Household members see each other's edits without a reload.
+    const homeBlueprintTimer = window.setInterval(() => {
+      if (!editModeRef.current && !editTargetRef.current)
+        refreshHomeBlueprint();
+    }, 12000);
+
+    // Instant refresh after ADD LEVEL burns in the Property panel.
+    const onLevelsChanged = () => refreshHomeBlueprint(true);
+    window.addEventListener(
+      "realmlife:levels-changed",
+      onLevelsChanged
+    );
+
+    const applyFurnitureResponse = (data) => {
+      if (!homeBlueprint) return;
+      homeBlueprint.furniture =
+        data.furniture || homeBlueprint.furniture;
+      homeBlueprint.version =
+        data.version || homeBlueprint.version;
+      buildHomeLevel();
+    };
+
+    const editOp = async (payload, okMsg) => {
+      setEditBusy(true);
+      try {
+        const res = await apiClient.post(
+          `/games/${game.id}/realmlife/property/furniture`,
+          payload
+        );
+        applyFurnitureResponse(res.data);
+        if (okMsg) setHud((h) => ({ ...h, msg: okMsg }));
+        return res.data;
+      } catch (err) {
+        setHud((h) => ({
+          ...h,
+          msg:
+            err?.response?.data?.detail || "Edit failed.",
+        }));
+        return null;
+      } finally {
+        setEditBusy(false);
+      }
+    };
+
+    editApiRef.current = {
+      nudge(dx, dz) {
+        const t = editTargetRef.current;
+        if (!t || !homeLayer) return;
+        const mesh = homeLayer.meshes.find(
+          (m) => m.userData.rlInstanceId === t.instanceId
+        );
+        if (!mesh) return;
+        const nx = THREE.MathUtils.clamp(
+          mesh.position.x + dx * 0.45,
+          HOME_X - 8.2,
+          HOME_X + 8.2
+        );
+        const nz = THREE.MathUtils.clamp(
+          mesh.position.z + dz * 0.45,
+          HOME_Z - 6.4,
+          HOME_Z + 6.4
+        );
+        mesh.position.set(nx, 0, nz);
+        editMovePending = {
+          instanceId: t.instanceId,
+          x: +(nx - HOME_X).toFixed(2),
+          z: +(nz - HOME_Z).toFixed(2),
+        };
       },
-    });
 
-    registerObject({
-      id: "tv",
-      label: "Television",
-      x: 6.7,
-      z: 0.9,
-      size: [2.1, 1.4, 0.4],
-      color: 0x161a22,
-      actions: [{ id: "tv", label: "Watch TV" }],
-      approach: [-1.8, 0],
-    });
+      async moveDone() {
+        if (!editMovePending) {
+          setEditPopupMode("menu");
+          return;
+        }
+        const pending = editMovePending;
+        editMovePending = null;
+        await editOp(
+          {
+            op: "update",
+            instance_id: pending.instanceId,
+            x: pending.x,
+            z: pending.z,
+          },
+          "Furniture moved."
+        );
+        setEditPopupMode("menu");
+      },
+
+      async rotate() {
+        const t = editTargetRef.current;
+        if (!t) return;
+        const inst = homeBlueprint?.furniture?.find(
+          (f) => f.instance_id === t.instanceId
+        );
+        if (!inst) return;
+        await editOp(
+          {
+            op: "update",
+            instance_id: t.instanceId,
+            rot: ((inst.rot || 0) + 90) % 360,
+          },
+          "Rotated 90°."
+        );
+      },
+
+      async color(c) {
+        const t = editTargetRef.current;
+        if (!t) return;
+        await editOp(
+          {
+            op: "update",
+            instance_id: t.instanceId,
+            color: c,
+          },
+          "Color updated."
+        );
+        setEditPopupMode("menu");
+      },
+
+      async duplicate() {
+        const t = editTargetRef.current;
+        if (!t) return;
+        await editOp(
+          { op: "duplicate", instance_id: t.instanceId },
+          "Furniture duplicated."
+        );
+      },
+
+      async remove() {
+        const t = editTargetRef.current;
+        if (!t) return;
+        const done = await editOp(
+          { op: "remove", instance_id: t.instanceId },
+          "Furniture removed. You can place it again anytime."
+        );
+        if (done) {
+          setEditTarget(null);
+          setEditPopupMode("menu");
+        }
+      },
+
+      async addType(type) {
+        const lx = THREE.MathUtils.clamp(
+          resident.position.x - HOME_X,
+          -8.2,
+          8.2
+        );
+        const lz = THREE.MathUtils.clamp(
+          resident.position.z - HOME_Z,
+          -6.4,
+          6.4
+        );
+        const done = await editOp(
+          {
+            op: "add",
+            type,
+            level: homeLevelKey,
+            x: +lx.toFixed(2),
+            z: +lz.toFixed(2),
+          },
+          "Furniture placed — tap it to MOVE."
+        );
+        if (done) setEditAddOpen(false);
+      },
+
+      async finish(payload) {
+        setEditBusy(true);
+        try {
+          const res = await apiClient.post(
+            `/games/${game.id}/realmlife/property/finish`,
+            { level: homeLevelKey, ...payload }
+          );
+          if (homeBlueprint) {
+            homeBlueprint.wall_colors =
+              res.data.wall_colors || homeBlueprint.wall_colors;
+            homeBlueprint.floor_finishes =
+              res.data.floor_finishes ||
+              homeBlueprint.floor_finishes;
+            homeBlueprint.version =
+              res.data.version || homeBlueprint.version;
+          }
+          applyHomeFinishes();
+          setHud((h) => ({
+            ...h,
+            msg: payload.wall_color
+              ? "Walls repainted."
+              : "Floor finish updated.",
+          }));
+          setEditTarget(null);
+        } catch (err) {
+          setHud((h) => ({
+            ...h,
+            msg:
+              err?.response?.data?.detail ||
+              "Finish update failed.",
+          }));
+        } finally {
+          setEditBusy(false);
+        }
+      },
+    };
 
     registerObject({
       id: "computer",
@@ -1506,38 +1865,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       rug.rotation.x = -Math.PI / 2;
       rug.position.set(HOME_X + 4.6, 0.02, HOME_Z + 1.6);
       scene.add(rug);
-
-      const tableM = new THREE.MeshStandardMaterial({
-        color: 0x8a6a45,
-        roughness: 0.6,
-      });
-
-      const table = new THREE.Mesh(
-        new THREE.BoxGeometry(1.9, 0.9, 1.1),
-        tableM
-      );
-      table.position.set(HOME_X - 1.2, 0.45, HOME_Z + 4.2);
-      table.castShadow = true;
-      scene.add(table);
-      colliders.push({
-        x: HOME_X - 1.2,
-        z: HOME_Z + 4.2,
-        hw: 1.1,
-        hd: 0.75,
-      });
-
-      for (const sx of [-1, 1]) {
-        const chair = new THREE.Mesh(
-          new THREE.BoxGeometry(0.55, 0.95, 0.55),
-          tableM
-        );
-        chair.position.set(
-          HOME_X - 1.2 + sx * 1.45,
-          0.48,
-          HOME_Z + 4.2
-        );
-        scene.add(chair);
-      }
+      groundDecorMeshes.push(rug);
 
       const potM = new THREE.MeshStandardMaterial({
         color: 0xa5593c,
@@ -1573,6 +1901,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         );
 
         scene.add(pot, leaf);
+        groundDecorMeshes.push(pot, leaf);
       }
     }
 
@@ -2997,21 +3326,35 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       }
 
       if (!guestStates.has(lot.lotSeq)) {
-        const interior = buildGuestResidence({
-          lotSeq: lot.lotSeq,
-          x: lot.x,
-          z: lot.z,
-          w: lot.w,
-          d: lot.d,
-          scene,
-          colliders,
-          register: registerObject,
-        });
-        guestStates.set(lot.lotSeq, {
-          lot,
-          propertyId,
-          interior,
-        });
+        // Canonical blueprint parity: the host's REAL persisted
+        // interior streams in for authorized guests.
+        apiClient
+          .post(
+            `/games/${game.id}/realmlife/property/blueprint`,
+            { property_id: propertyId }
+          )
+          .then((res) => {
+            if (disposed || guestStates.has(lot.lotSeq)) return;
+            const interior = buildGuestResidence({
+              lotSeq: lot.lotSeq,
+              x: lot.x,
+              z: lot.z,
+              w: lot.w,
+              d: lot.d,
+              scene,
+              colliders,
+              interactive,
+              objectMap: objectMapRef.current,
+              blueprint: res.data,
+              levelAccess: res.data.level_access,
+            });
+            guestStates.set(lot.lotSeq, {
+              lot,
+              propertyId,
+              interior,
+            });
+          })
+          .catch(() => {});
       }
 
       neighborhood.housePrivacy?.grantGuestLot?.(lot.lotSeq);
@@ -3070,11 +3413,31 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
             const ok =
               res.data?.allowed &&
               res.data?.level_access?.ground;
-            if (!ok) revokeGuestAccess(state);
+            if (!ok) {
+              revokeGuestAccess(state);
+              return;
+            }
+            // Live edit propagation — host changes stream in.
+            const ver = res.data?.blueprint_version || 1;
+            if (state.interior && ver !== state.interior.version) {
+              apiClient
+                .post(
+                  `/games/${game.id}/realmlife/property/blueprint`,
+                  { property_id: state.propertyId }
+                )
+                .then((bpRes) => {
+                  if (disposed) return;
+                  state.interior?.updateBlueprint?.(
+                    bpRes.data,
+                    bpRes.data.level_access
+                  );
+                })
+                .catch(() => {});
+            }
           })
           .catch(() => {});
       });
-    }, 30000);
+    }, 15000);
 
     const onRealmLifeInteract = () => {
       let best = null;
@@ -3603,6 +3966,53 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
       markRealmLifeActive();
       setPointer(e);
+
+      // PROPERTY EDIT MODE — tap furniture, walls or the floor.
+      if (editModeRef.current) {
+        const editTargets = [
+          ...(homeLayer?.meshes || []),
+          ...homeWallMeshes,
+          ...homePartitionMeshes,
+          homeFloor,
+        ];
+        const editHits = raycaster.intersectObjects(
+          editTargets,
+          true
+        );
+        if (editHits.length) {
+          let obj = editHits[0].object;
+          while (
+            obj &&
+            !obj.userData?.rlEditable &&
+            !obj.userData?.rlWall &&
+            !obj.userData?.rlFloor
+          )
+            obj = obj.parent;
+
+          if (obj?.userData?.rlEditable) {
+            setEditAddOpen(false);
+            setEditPopupMode("menu");
+            setEditTarget({
+              kind: "furniture",
+              instanceId: obj.userData.rlInstanceId,
+              type: obj.userData.rlType,
+              label: obj.userData.label,
+            });
+            return;
+          }
+          if (obj?.userData?.rlWall) {
+            setEditAddOpen(false);
+            setEditTarget({ kind: "wall" });
+            return;
+          }
+          if (obj?.userData?.rlFloor) {
+            setEditAddOpen(false);
+            setEditTarget({ kind: "floor" });
+            return;
+          }
+        }
+        return;
+      }
 
       const hits = raycaster.intersectObjects(interactive, true);
 
@@ -4303,6 +4713,47 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         return;
       }
 
+
+      // REALMLIFE HOUSE LEVEL TRAVEL (own home stairs)
+      if (actionId.startsWith("homelevel:")) {
+        const lv = actionId.slice("homelevel:".length);
+        if (!homeBuiltLevels().includes(lv)) return;
+        homeLevelKey = lv;
+        buildHomeLevel();
+        moveTargetRef.current = null;
+        pathRef.current = [];
+        pendingActionRef.current = null;
+        resident.position.set(HOME_X - 5.6, 0, HOME_Z - 0.4);
+        simRef.current.resident.x = HOME_X - 5.6;
+        simRef.current.resident.z = HOME_Z - 0.4;
+        setSelected(null);
+        setHud((h) => ({
+          ...h,
+          msg:
+            lv === "ground"
+              ? "🏠 GROUND level."
+              : `🏠 ${LEVEL_LABELS[lv]} — finished flex space. Use 🛠 EDIT to furnish it.`,
+        }));
+        markRealmLifeActive();
+        scheduleSave();
+        return;
+      }
+
+      // Guest level travel inside an authorized residence
+      if (actionId.startsWith("guestlevel:")) {
+        const [, lotStr, lv] = actionId.split(":");
+        const state = guestStates.get(Number(lotStr));
+        if (!state) return;
+        const ok = state.interior?.setLevel?.(lv);
+        setSelected(null);
+        setHud((h) => ({
+          ...h,
+          msg: ok
+            ? `🏠 ${LEVEL_LABELS[lv] || lv} — authorized guest access.`
+            : "🔒 THIS LEVEL IS LOCKED",
+        }));
+        return;
+      }
 
       const fx = ACTION_EFFECTS[actionId];
       if (!fx) return;
@@ -5547,6 +5998,11 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       cancelAnimationFrame(raf);
 
       window.clearInterval(homeBeaconTimer);
+      window.clearInterval(homeBlueprintTimer);
+      window.removeEventListener(
+        "realmlife:levels-changed",
+        onLevelsChanged
+      );
       homeBeacons.dispose();
       window.clearInterval(guestWatchdog);
       chatBubbles.disposeAll();
@@ -6062,6 +6518,28 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               : "✂ CUTAWAY"}
           </button>
 
+          {/* REALMLIFE PROPERTY EDIT MODE */}
+          <button
+            type="button"
+            data-testid="realmlife-edit-mode-btn"
+            onClick={() => {
+              if (!editMode && houseView === "full")
+                toggleHouseView();
+              toggleEditMode();
+            }}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-black"
+            style={{
+              background: editMode
+                ? "rgba(122,212,229,.30)"
+                : "rgba(122,212,229,.10)",
+              border: "1px solid rgba(122,212,229,.45)",
+              color: "#fff",
+            }}
+            title="Property Edit Mode — move, rotate, color, duplicate or remove furniture; repaint walls and floors"
+          >
+            {editMode ? "✓ EDITING" : "🛠 EDIT"}
+          </button>
+
           <button
             type="button"
             data-testid="realmlife-property-btn"
@@ -6292,6 +6770,21 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
                 {houseView === "full"
                   ? "🏠 FULL HOUSE"
                   : "✂ CUTAWAY VIEW"}
+              </button>
+
+              <button
+                type="button"
+                data-testid="realmlife-drawer-editmode"
+                onClick={() => {
+                  if (!editMode && houseView === "full")
+                    toggleHouseView();
+                  toggleEditMode();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
+                style={drawerBtnStyle}
+              >
+                {editMode ? "✓ EXIT EDIT MODE" : "🛠 PROPERTY EDIT MODE"}
               </button>
 
               <button
@@ -6914,6 +7407,80 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       <RealmLifePropertyPanel
         {...realmProperty}
       />
+
+      {/* REALMLIFE PROPERTY EDIT MODE UI */}
+      {editMode && !editTarget && !editAddOpen && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 z-[59] flex items-center gap-2 pointer-events-auto"
+          style={{
+            top: "calc(env(safe-area-inset-top, 0px) + 56px)",
+          }}
+        >
+          <div
+            data-testid="realmlife-edit-hint"
+            className="px-2.5 py-1.5 rounded-xl text-[10px] font-black tracking-wide"
+            style={{
+              background: "rgba(10,14,20,.9)",
+              border: "1px solid rgba(122,212,229,.4)",
+              color: "#9fd8e8",
+            }}
+          >
+            🛠 TAP FURNITURE · WALLS · FLOOR
+          </div>
+          <button
+            type="button"
+            data-testid="realmlife-edit-add-btn"
+            onClick={() => setEditAddOpen(true)}
+            className="px-3 py-1.5 rounded-xl text-[11px] font-black"
+            style={{
+              background: "rgba(122,212,229,.22)",
+              border: "1px solid rgba(122,212,229,.5)",
+              color: "#eafcff",
+            }}
+          >
+            + ADD
+          </button>
+        </div>
+      )}
+
+      {editMode && (
+        <RealmLifeEditPopup
+          target={editTarget}
+          mode={editPopupMode}
+          busy={editBusy}
+          palette={
+            editTarget?.kind === "furniture"
+              ? editMeta?.catalog?.[editTarget.type]?.palette
+              : null
+          }
+          wallPalette={editMeta?.wallPalette}
+          floorPalette={editMeta?.floorPalette}
+          addOpen={editAddOpen}
+          catalog={editMeta?.catalog}
+          onNudge={(dx, dz) => editApiRef.current.nudge?.(dx, dz)}
+          onMoveDone={() => editApiRef.current.moveDone?.()}
+          onRotate={() => editApiRef.current.rotate?.()}
+          onColorPick={(c) => editApiRef.current.color?.(c)}
+          onDuplicate={() => editApiRef.current.duplicate?.()}
+          onRemove={() => editApiRef.current.remove?.()}
+          onWallColor={(c) =>
+            editApiRef.current.finish?.({ wall_color: c })
+          }
+          onFloorFinish={(id) =>
+            editApiRef.current.finish?.({ floor_finish: id })
+          }
+          onAddType={(t) => editApiRef.current.addType?.(t)}
+          onOpenColor={() => setEditPopupMode("color")}
+          onOpenMove={() => setEditPopupMode("move")}
+          onClose={() => {
+            if (editPopupMode === "move")
+              editApiRef.current.moveDone?.();
+            setEditTarget(null);
+            setEditAddOpen(false);
+            setEditPopupMode("menu");
+          }}
+        />
+      )}
 
       {/* BUILD / BUY */}
       {(!isMobileUI || mobileBuildOpen) && (

@@ -231,7 +231,7 @@ export default function RealmLifePropertyPanel({
               const below =
                 property?.levels_below || 0;
 
-              const row = (label, state, dir, testid) => (
+              const row = (label, state, dir, target, testid) => (
                 <div
                   key={testid}
                   className="flex items-center justify-between text-[11px] font-bold py-1"
@@ -251,7 +251,7 @@ export default function RealmLifePropertyPanel({
                       type="button"
                       data-testid={testid}
                       disabled={busy}
-                      onClick={() => addHouseLevel?.(dir)}
+                      onClick={() => addHouseLevel?.(dir, target)}
                       className="px-2.5 py-1 rounded-lg text-[10px] font-black"
                       style={{
                         background: "rgba(255,138,76,.2)",
@@ -270,11 +270,12 @@ export default function RealmLifePropertyPanel({
               );
 
               const rows = [
-                row("GROUND", "built", null, "lvl-ground"),
+                row("GROUND", "built", null, null, "lvl-ground"),
                 row(
                   "LEVEL 2",
                   above >= 2 ? "built" : "add",
                   "above",
+                  2,
                   "realmlife-add-level-2"
                 ),
                 row(
@@ -285,12 +286,14 @@ export default function RealmLifePropertyPanel({
                     ? "add"
                     : "locked",
                   "above",
+                  3,
                   "realmlife-add-level-3"
                 ),
                 row(
                   "BASEMENT 1",
                   below >= 1 ? "built" : "add",
                   "below",
+                  1,
                   "realmlife-add-basement-1"
                 ),
                 row(
@@ -301,6 +304,7 @@ export default function RealmLifePropertyPanel({
                     ? "add"
                     : "locked",
                   "below",
+                  2,
                   "realmlife-add-basement-2"
                 ),
                 row(
@@ -311,6 +315,7 @@ export default function RealmLifePropertyPanel({
                     ? "add"
                     : "locked",
                   "below",
+                  3,
                   "realmlife-add-basement-3"
                 ),
               ];

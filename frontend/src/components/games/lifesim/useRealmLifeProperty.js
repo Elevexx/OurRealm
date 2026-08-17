@@ -417,7 +417,8 @@ export function useRealmLifeProperty(
   const addHouseLevel =
     useCallback(
       (
-        direction
+        direction,
+        target
       ) =>
         run(
           () =>
@@ -425,11 +426,21 @@ export function useRealmLifeProperty(
               `/games/${gameId}/realmlife/property/add-level`,
               {
                 direction,
+                target,
               }
             ),
 
           "🔥 Level added to your residence."
-        ),
+        ).then((data) => {
+          try {
+            window.dispatchEvent(
+              new Event(
+                "realmlife:levels-changed"
+              )
+            );
+          } catch (_) {}
+          return data;
+        }),
       [
         gameId,
         run,

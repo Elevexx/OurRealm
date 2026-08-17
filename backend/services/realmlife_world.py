@@ -2275,6 +2275,7 @@ async def home_beacons(
                 "household_id": 1,
                 "levels_above": 1,
                 "levels_below": 1,
+                "blueprint.version": 1,
             },
         )
         .to_list(length=300)
@@ -2339,6 +2340,11 @@ async def home_beacons(
                     prop.get(
                         "levels_below"
                     ),
+
+                "blueprint_version": (
+                    prop.get("blueprint")
+                    or {}
+                ).get("version", 1),
 
                 "active": bool(
                     is_self
