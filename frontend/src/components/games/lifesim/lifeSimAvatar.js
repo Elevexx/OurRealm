@@ -30,19 +30,88 @@ function loader() {
 
 
 function loadGLTF(url) {
-  return new Promise(
-    (
-      resolve,
-      reject
-    ) => {
-      loader().load(
-        url,
-        resolve,
-        undefined,
-        reject
-      );
+  return cachedLoadGLTF(url);
+}
+
+
+// ==========================================================
+// REALMLIFE AVATAR LOAD CACHE
+//
+// 1) In-memory: the same GLB is parsed at most once per
+//    session (camera/tab switches reuse the parsed source).
+// 2) Cache Storage: content-hashed model URLs are immutable,
+//    so the raw bytes persist across visits — repeat loads
+//    skip the network completely.
+// ==========================================================
+
+const gltfMemoryCache = new Map();
+
+const MODEL_CACHE_NAME = "realmlife-models-v1";
+
+async function fetchModelBytes(url) {
+  const abs = url.startsWith("http")
+    ? url
+    : `${window.location.origin.includes("localhost")
+        ? (process.env.REACT_APP_BACKEND_URL || "")
+        : ""}${url}`;
+
+  try {
+    if ("caches" in window) {
+      const cache = await caches.open(MODEL_CACHE_NAME);
+      const hit = await cache.match(abs);
+      if (hit) return hit.arrayBuffer();
+
+      const res = await fetch(abs);
+      if (!res.ok) throw new Error(`model fetch ${res.status}`);
+      try {
+        await cache.put(abs, res.clone());
+      } catch (_) {}
+      return res.arrayBuffer();
     }
-  );
+  } catch (_) {}
+
+  const res = await fetch(abs);
+  if (!res.ok) throw new Error(`model fetch ${res.status}`);
+  return res.arrayBuffer();
+}
+
+function parseGLTF(buffer) {
+  return new Promise((resolve, reject) => {
+    loader().parse(buffer, "", resolve, reject);
+  });
+}
+
+function cachedLoadGLTF(url) {
+  if (gltfMemoryCache.has(url)) {
+    return gltfMemoryCache.get(url);
+  }
+
+  const promise = fetchModelBytes(url)
+    .then(parseGLTF)
+    .catch((err) => {
+      gltfMemoryCache.delete(url);
+      // fallback to the classic loader path
+      return new Promise((resolve, reject) => {
+        loader().load(url, resolve, undefined, reject);
+      });
+    });
+
+  gltfMemoryCache.set(url, promise);
+  return promise;
+}
+
+// Background warm-up used by /realmlife to preload the selected
+// player's gameplay model while the page is idle.
+export function preloadRealmLifeModel(url) {
+  if (!url) return;
+  const start = () => {
+    fetchModelBytes(url).catch(() => {});
+  };
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(start, { timeout: 8000 });
+  } else {
+    window.setTimeout(start, 2500);
+  }
 }
 
 
@@ -266,7 +335,7 @@ export const REALMLIFE_PLAYER_MODELS = {
       "Player 1",
 
     modelUrl:
-      "/api/media/models/698bcea39a7e273b446da21a6580a30a.glb",
+      "/api/media/models/698bcea39a7e273b446da21a6580a30a_game.glb",
   },
 
   player_2: {
@@ -277,7 +346,7 @@ export const REALMLIFE_PLAYER_MODELS = {
       "Player 2",
 
     modelUrl:
-      "/api/media/models/8787f255e4c1d0db42460c66bdc1bafc.glb",
+      "/api/media/models/8787f255e4c1d0db42460c66bdc1bafc_game.glb",
   },
 };
 
@@ -1435,6 +1504,7 @@ export async function createLifeAvatar({
 export async function createRealmLifeOptionAvatar({
   modelUrl,
   targetHeight = 1.82,
+  skinColor = null,
 }) {
   const g =
     await loadGLTF(
@@ -1443,6 +1513,20 @@ export async function createRealmLifeOptionAvatar({
 
   const model =
     g.scene;
+
+  if (skinColor) {
+    try {
+      const {
+        applyAvatarSkinTone,
+      } = await import(
+        "./realmLifeRecolor"
+      );
+      applyAvatarSkinTone(
+        model,
+        skinColor
+      );
+    } catch (_) {}
+  }
 
   model.name =
     "RealmLifeOptionAvatar";

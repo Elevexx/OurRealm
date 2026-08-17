@@ -75,7 +75,22 @@ async def avatar_assets():
 STYLES = ["style_a", "style_b"]
 BOTTOMS = ["shorts", "pants"]
 HAIR_STYLES = ["buzz", "crop", "side", "curly", "ponytail", "long"]
-SKIN_TONES = ["#f6d7b8", "#eab98c", "#d29a6a", "#a9713f", "#7c4a24", "#5a3016"]
+SKIN_TONES = [
+    "#ffe9d4",
+    "#f6d7b8",
+    "#efc39a",
+    "#eab98c",
+    "#e0a878",
+    "#d29a6a",
+    "#c08552",
+    "#a9713f",
+    "#946033",
+    "#7c4a24",
+    "#693c1c",
+    "#5a3016",
+    "#47240f",
+    "#33180a",
+]
 
 DEFAULT_CUSTOM = {
     "skin": "#eab98c",

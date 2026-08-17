@@ -826,6 +826,14 @@ async def housing_status(
                     "city_lot_seq"
                 ),
 
+            "guest_interior_access":
+                prop.get(
+                    "guest_interior_access"
+                )
+                or {
+                    "mode": "public"
+                },
+
             "state":
                 prop.get("state"),
 
@@ -2184,6 +2192,154 @@ async def leave_household(
 # TEMPORARY GUEST PROPERTY ACCESS
 # =============================================================
 
+GUEST_LEVEL_KEYS = [
+    "ground",
+    "second",
+    "third",
+    "b1",
+    "b2",
+    "b3",
+]
+
+
+def _guest_level_access(
+    prop,
+    full_access,
+):
+    cfg = (
+        prop.get(
+            "guest_interior_access"
+        )
+        or {}
+    )
+
+    mode = (
+        cfg.get("mode")
+        or "public"
+    )
+
+    if full_access:
+        return (
+            {
+                k: True
+                for k in
+                GUEST_LEVEL_KEYS
+            },
+            mode,
+        )
+
+    if mode == "private":
+        return (
+            {
+                k: False
+                for k in
+                GUEST_LEVEL_KEYS
+            },
+            mode,
+        )
+
+    if mode == "custom":
+        levels = (
+            cfg.get("levels")
+            or {}
+        )
+
+        return (
+            {
+                k: bool(
+                    levels.get(
+                        k,
+                        False,
+                    )
+                )
+                for k in
+                GUEST_LEVEL_KEYS
+            },
+            mode,
+        )
+
+    return (
+        {
+            k: True
+            for k in
+            GUEST_LEVEL_KEYS
+        },
+        mode,
+    )
+
+
+async def set_guest_interior_access(
+    game_id,
+    current,
+    body,
+):
+    membership, prop = (
+        await _require_household_member(
+            game_id,
+            current["id"],
+        )
+    )
+
+    mode = str(
+        (body or {}).get("mode")
+        or "public"
+    ).lower()
+
+    if mode not in (
+        "public",
+        "private",
+        "custom",
+    ):
+        raise HTTPException(
+            400,
+            "Invalid guest access mode.",
+        )
+
+    levels_in = (
+        (body or {}).get("levels")
+        or {}
+    )
+
+    levels = {
+        k: bool(
+            levels_in.get(
+                k,
+                True,
+            )
+        )
+        for k in GUEST_LEVEL_KEYS
+    }
+
+    cfg = {
+        "mode": mode,
+        "levels": levels,
+    }
+
+    await (
+        db.realmlife_properties
+        .update_one(
+            {
+                "game_id": game_id,
+                "id": prop["id"],
+            },
+            {
+                "$set": {
+                    "guest_interior_access":
+                        cfg,
+                    "updated_at":
+                        _iso(),
+                }
+            },
+        )
+    )
+
+    return {
+        "ok": True,
+        "property_id": prop["id"],
+        "guest_interior_access": cfg,
+    }
+
+
 async def property_access_check(
     game_id,
     current,
@@ -2219,6 +2375,13 @@ async def property_access_check(
             "household_id"
         )
     ):
+        level_access, mode = (
+            _guest_level_access(
+                prop,
+                True,
+            )
+        )
+
         return {
             "allowed": True,
             "reason":
@@ -2229,6 +2392,15 @@ async def property_access_check(
 
             "property_id":
                 prop["id"],
+
+            "is_household_member":
+                True,
+
+            "guest_access_mode":
+                mode,
+
+            "level_access":
+                level_access,
         }
 
     access = await (
@@ -2251,6 +2423,13 @@ async def property_access_check(
         )
     )
 
+    level_access, mode = (
+        _guest_level_access(
+            prop,
+            False,
+        )
+    )
+
     return {
         "allowed":
             bool(access),
@@ -2264,6 +2443,23 @@ async def property_access_check(
 
         "property_id":
             prop["id"],
+
+        "is_household_member":
+            False,
+
+        "guest_access_mode":
+            mode,
+
+        "level_access":
+            (
+                level_access
+                if access
+                else {
+                    k: False
+                    for k in
+                    GUEST_LEVEL_KEYS
+                }
+            ),
     }
 
 

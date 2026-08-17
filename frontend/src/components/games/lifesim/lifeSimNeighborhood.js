@@ -2560,6 +2560,63 @@ function createSpanishResidentialPrivacyShell({
       basementCount;
 
 
+  // ----------------------------------------------------------
+  // REALMLIFE SPANISH QUALITY PASS
+  // Roof fascia/overhang trim, dimensional door lintel and a
+  // clay chimney so every residence reads as a finished home
+  // with no wall/roof seams.
+  // ----------------------------------------------------------
+  {
+    const fasciaH = 0.34;
+    const fy = wallHeight + fasciaH / 2 - 0.06;
+    const overhang = 0.55;
+
+    const fascia = (fx, fz, fw, fd) => {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(fw, fasciaH, fd),
+        terracottaDark
+      );
+      m.position.set(fx, fy, fz);
+      m.castShadow = true;
+      house.add(m);
+    };
+
+    fascia(0, d / 2 + overhang / 2 - 0.1, w + overhang * 2, overhang);
+    fascia(0, -(d / 2 + overhang / 2 - 0.1), w + overhang * 2, overhang);
+    fascia(w / 2 + overhang / 2 - 0.1, 0, overhang, d + overhang * 2);
+    fascia(-(w / 2 + overhang / 2 - 0.1), 0, overhang, d + overhang * 2);
+
+    const lintel = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 0.34, 0.5),
+      darkWood
+    );
+    lintel.position.set(0, 2.42, d / 2 + 0.18);
+    house.add(lintel);
+
+    const chimney = new THREE.Mesh(
+      new THREE.BoxGeometry(0.8, 1.5, 0.8),
+      stuccoLight
+    );
+    chimney.position.set(
+      w / 4,
+      wallHeight + 1.2,
+      -d / 4
+    );
+    chimney.castShadow = true;
+    house.add(chimney);
+
+    const chimneyCap = new THREE.Mesh(
+      new THREE.BoxGeometry(1.0, 0.18, 1.0),
+      terracotta
+    );
+    chimneyCap.position.set(
+      w / 4,
+      wallHeight + 2.0,
+      -d / 4
+    );
+    house.add(chimneyCap);
+  }
+
   return house;
 }
 
@@ -2570,6 +2627,9 @@ function installRealmLifeResidentialPrivacy(
   colliders = null,
   ownLot = null
 ) {
+  const shellByLot = new Map();
+  const guestLots = new Set();
+
 
   const privacyRoot =
     new THREE.Group();
@@ -2851,6 +2911,11 @@ function installRealmLifeResidentialPrivacy(
           shell
         );
 
+        shellByLot.set(
+          home.lotSeq,
+          shell
+        );
+
 
         shell.userData
           .cityId =
@@ -2968,8 +3033,8 @@ function installRealmLifeResidentialPrivacy(
     let bushIdx = 0;
 
     privateHomes.forEach((home, i) => {
-      const yardD = 8.5;
-      const yardW = home.w + 2.5;
+      const yardD = 4.2;
+      const yardW = Math.min(home.w + 2.5, 19);
       const yardZ =
         home.z - home.d / 2 - yardD / 2;
       const backZ =
@@ -3051,7 +3116,7 @@ function installRealmLifeResidentialPrivacy(
               + communityColumns[colIndex + 1])
             / 2,
           z:
-            communityRows[rowIndex] + 11,
+            communityRows[rowIndex] + 8.8,
         });
       }
     }
@@ -3120,8 +3185,182 @@ function installRealmLifeResidentialPrivacy(
   }
 
 
+  // ==========================================================
+  // REALMLIFE RESIDENTIAL STREET GRID
+  // Proper asphalt streets + sidewalks between the lot rows,
+  // N-S connector avenues, per-lot driveways (instanced) and
+  // street lamps. Yards no longer touch roadway: lots keep
+  // z ± ~9.4 while the street band spans z+10.6 .. z+15.4.
+  // ==========================================================
+
+  {
+    const asphalt =
+      new THREE.MeshStandardMaterial({
+        color: 0x2e2c30,
+        roughness: 0.96,
+      });
+
+    const sidewalkMat =
+      new THREE.MeshStandardMaterial({
+        color: 0x9b917f,
+        roughness: 0.92,
+      });
+
+    const westX =
+      communityColumns[0] - 16;
+    const eastX =
+      communityColumns[9] + 16;
+    const spanW = eastX - westX;
+    const midX = (westX + eastX) / 2;
+
+    const addStrip = (mat, x, z, w, d, y) => {
+      const p = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, d),
+        mat
+      );
+      p.rotation.x = -Math.PI / 2;
+      p.position.set(x, y, z);
+      p.receiveShadow = true;
+      privacyRoot.add(p);
+    };
+
+    communityRows.forEach((rowZ) => {
+      // road in front of the row (houses face +Z)
+      addStrip(asphalt, midX, rowZ + 13, spanW, 4.8, 0.015);
+      // sidewalks on both road edges
+      addStrip(sidewalkMat, midX, rowZ + 10, spanW, 1.4, 0.02);
+      addStrip(sidewalkMat, midX, rowZ + 16, spanW, 1.4, 0.02);
+      // lane markings
+      for (let mx = westX + 6; mx < eastX - 4; mx += 14) {
+        addStrip(
+          new THREE.MeshStandardMaterial({
+            color: 0xd8c24a,
+            roughness: 0.8,
+          }),
+          mx,
+          rowZ + 13,
+          3.2,
+          0.28,
+          0.022
+        );
+      }
+    });
+
+    // N-S connector avenues through clear column gaps
+    const northZ = communityRows[0] - 12;
+    const southZ =
+      communityRows[communityRows.length - 1] + 18;
+    const spanD = southZ - northZ;
+    const midZ = (northZ + southZ) / 2;
+
+    [13.5, -143].forEach((ax) => {
+      addStrip(asphalt, ax, midZ, 4.8, spanD, 0.013);
+      addStrip(sidewalkMat, ax - 3.1, midZ, 1.3, spanD, 0.018);
+      addStrip(sidewalkMat, ax + 3.1, midZ, 1.3, spanD, 0.018);
+    });
+
+    // Instanced driveways: house front edge -> sidewalk
+    const driveInst =
+      new THREE.InstancedMesh(
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.MeshStandardMaterial({
+          color: 0xb8ab96,
+          roughness: 0.9,
+        }),
+        privateHomes.length
+      );
+    driveInst.receiveShadow = true;
+
+    {
+      const m4 = new THREE.Matrix4();
+      const pos = new THREE.Vector3();
+      const scl = new THREE.Vector3();
+      const qFlat =
+        new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(-Math.PI / 2, 0, 0)
+        );
+
+      privateHomes.forEach((home, i) => {
+        const frontZ = home.z + home.d / 2;
+        const walkLen = rowFrontGap(home);
+        m4.compose(
+          pos.set(home.x + home.w / 4, 0.025, frontZ + walkLen / 2),
+          qFlat,
+          scl.set(2.6, walkLen, 1)
+        );
+        driveInst.setMatrixAt(i, m4);
+      });
+    }
+
+    function rowFrontGap(home) {
+      return Math.max(
+        1.4,
+        home.z + 9.3 - (home.z + home.d / 2)
+      );
+    }
+
+    privacyRoot.add(driveInst);
+
+    // Instanced street lamps along each row street
+    const lampSpots = [];
+    communityRows.forEach((rowZ, ri) => {
+      for (let li = 0; li < 5; li += 1) {
+        lampSpots.push({
+          x: westX + 10 + li * (spanW - 20) / 4,
+          z: rowZ + 16.8,
+        });
+      }
+    });
+
+    const poleInst =
+      new THREE.InstancedMesh(
+        new THREE.CylinderGeometry(0.09, 0.12, 4.4, 5),
+        new THREE.MeshStandardMaterial({
+          color: 0x2a3138,
+          roughness: 0.7,
+        }),
+        lampSpots.length
+      );
+
+    const globeInst =
+      new THREE.InstancedMesh(
+        new THREE.SphereGeometry(0.26, 8, 6),
+        new THREE.MeshStandardMaterial({
+          color: 0xffe6b0,
+          emissive: 0xffd489,
+          emissiveIntensity: 1.1,
+          roughness: 0.4,
+        }),
+        lampSpots.length
+      );
+
+    {
+      const m4 = new THREE.Matrix4();
+      const pos = new THREE.Vector3();
+      const one = new THREE.Vector3(1, 1, 1);
+      const q = new THREE.Quaternion();
+      lampSpots.forEach((spot, i) => {
+        m4.compose(pos.set(spot.x, 2.2, spot.z), q, one);
+        poleInst.setMatrixAt(i, m4);
+        m4.compose(pos.set(spot.x, 4.5, spot.z), q, one);
+        globeInst.setMatrixAt(i, m4);
+      });
+    }
+
+    privacyRoot.add(poleInst, globeInst);
+  }
+
+
   let ownMode =
     "full";
+
+  const applyGuestShells = () => {
+    guestLots.forEach((seq) => {
+      const shell = shellByLot.get(seq);
+      if (shell)
+        shell.visible = ownMode === "full";
+    });
+  };
 
 
   const api = {
@@ -3141,6 +3380,8 @@ function installRealmLifeResidentialPrivacy(
         ownMode ===
         "full";
 
+      applyGuestShells();
+
 
       if (
         typeof window !==
@@ -3154,6 +3395,20 @@ function installRealmLifeResidentialPrivacy(
 
 
       return ownMode;
+    },
+
+
+    // Guest cutaway is property-scoped: only lots the server has
+    // authorized for this user ever reveal their interior.
+    grantGuestLot(lotSeq) {
+      guestLots.add(lotSeq);
+      applyGuestShells();
+    },
+
+    revokeGuestLot(lotSeq) {
+      guestLots.delete(lotSeq);
+      const shell = shellByLot.get(lotSeq);
+      if (shell) shell.visible = true;
     },
 
 

@@ -12,6 +12,8 @@ import {
 import { buildNeighborhoodWorld } from "./lifeSimNeighborhood";
 import { createRealmLifeGraphics, GRAPHICS_MODES, createAdaptiveDPR } from "./lifeSimGraphics";
 import { createHomeBeacons } from "./lifeSimHomeBeacons";
+import { buildGuestResidence } from "./lifeSimGuestInterior";
+import { createChatBubbleManager } from "./lifeSimChatBubble";
 import { createSectorStreaming } from "./lifeSimSectorStreaming";
 import { installRealmLifeMeshyWorld } from "./lifeSimMeshyWorld";
 import {
@@ -362,6 +364,21 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
   // REALMLIFE MOBILE COLLAPSED NEEDS
   const [needsOpen, setNeedsOpen] = useState(false);
+
+  // REALMLIFE IN-WORLD CHAT
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatDraft, setChatDraft] = useState("");
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Enter") return;
+      const tag = e.target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      setChatOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // REALMLIFE ROTATE FOR FULL VIEW
   const [rotateAsk, setRotateAsk] = useState(() => {
@@ -1284,10 +1301,14 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       collider = true,
       mesh = null,
       interactionAnchor = null,
+      ox = null,
+      oz = null,
     }) => {
+      const baseX = ox === null ? HOME_X : ox;
+      const baseZ = oz === null ? HOME_Z : oz;
       const m = mesh || makeBox(size, color);
-      m.position.x = x + HOME_X;
-      m.position.z = z + HOME_Z;
+      m.position.x = x + baseX;
+      m.position.z = z + baseZ;
 
       m.userData.lifeObject = true;
       m.userData.id = id;
@@ -1303,8 +1324,8 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
       if (collider) {
         colliders.push({
-          x: x + HOME_X,
-          z: z + HOME_Z,
+          x: x + baseX,
+          z: z + baseZ,
           hw: size[0] / 2 + 0.22,
           hd: size[2] / 2 + 0.22,
           objectId: id,
@@ -1632,6 +1653,23 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         HOME_Z + 4.2
       );
 
+      // FIRST REALMLIFE ENTRY: reveal THEIR house immediately so
+      // the player instantly understands "this is my home".
+      if (HOME_LOT) {
+        window.setTimeout(() => {
+          try {
+            setHouseView("cutaway");
+            window.localStorage.setItem(
+              "realmlife-house-view",
+              "cutaway"
+            );
+            window.__REALMLIFE_HOUSE_PRIVACY?.setOwnMode?.(
+              "cutaway"
+            );
+          } catch (_) {}
+        }, 700);
+      }
+
       console.warn(
         "[RealmLife] Unsafe exterior save rescued to Level 1 spawn."
       );
@@ -1694,6 +1732,36 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
     let residentAvatar = null;
     let residentInteractionBusy = false;
+
+
+    // ========================================================
+    // REALMLIFE IN-WORLD CHAT BUBBLES
+    // RealmLife-styled auto-sized bubbles (dark navy + cyan
+    // glow + trail dots) anchored to the sender's avatar.
+    // Synced through the existing presence channel.
+    // ========================================================
+
+    const chatBubbles = createChatBubbleManager();
+    let pendingChat = null;
+
+    const onRealmLifeChat = (ev) => {
+      const text = String(ev?.detail || "").slice(0, 200).trim();
+      if (!text) return;
+      const id = `c${Date.now()}`;
+      pendingChat = { text, id };
+      chatBubbles.show(
+        resident,
+        "self",
+        text,
+        id,
+        null
+      );
+    };
+
+    window.addEventListener(
+      "realmlife:chat",
+      onRealmLifeChat
+    );
 
 
     // ========================================================
@@ -1970,8 +2038,13 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
                 property_id:
                   null,
+
+                chat:
+                  pendingChat,
               }
             );
+
+          pendingChat = null;
 
 
           realmLifePresenceWarned =
@@ -2082,6 +2155,29 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
             remote.updatedAt =
               performance.now();
+
+            // Attach fresh chat bubbles to the correct sender.
+            if (
+              player.chat_text
+              && player.chat_ts
+              && data.server_ts
+              && data.server_ts - player.chat_ts < 12
+            ) {
+              const dx =
+                Number(player.x || 0) - resident.position.x;
+              const dz =
+                Number(player.z || 0) - resident.position.z;
+
+              if (dx * dx + dz * dz < 55 * 55) {
+                chatBubbles.show(
+                  remote.root,
+                  id,
+                  player.chat_text,
+                  player.chat_id,
+                  player.username
+                );
+              }
+            }
           }
 
 
@@ -2817,22 +2913,19 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         .then((res) => {
           if (disposed) return undefined;
 
-          if (res.data?.allowed) {
-            for (let i = colliders.length - 1; i >= 0; i -= 1) {
-              const c = colliders[i];
-              if (
-                c.residentialHouse &&
-                c.lotSeq === bestLot.lotSeq
-              ) {
-                colliders.splice(i, 1);
-              }
-            }
+          const levelOk =
+            !!res.data?.level_access?.ground;
 
+          if (res.data?.allowed && levelOk) {
+            grantGuestAccess(bestLot, propertyId);
+            return undefined;
+          }
+
+          if (res.data?.allowed && !levelOk) {
             setHud((h) => ({
               ...h,
-              msg: "✅ Access granted — you may enter this residence.",
+              msg: "🔒 THIS LEVEL IS LOCKED",
             }));
-
             return undefined;
           }
 
@@ -2871,6 +2964,103 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
       return true;
     };
+
+    // ========================================================
+    // AUTHORIZED GUEST INTERIORS + LIVE REVOCATION
+    // Approved guests stream the host's real furnished interior
+    // at that lot. A watchdog re-verifies authorization and
+    // instantly revokes access (eviction) without a refresh.
+    // ========================================================
+
+    const guestStates = new Map();
+
+    const grantGuestAccess = (lot, propertyId) => {
+      for (let i = colliders.length - 1; i >= 0; i -= 1) {
+        const c = colliders[i];
+        if (c.residentialHouse && c.lotSeq === lot.lotSeq) {
+          colliders.splice(i, 1);
+        }
+      }
+
+      if (!guestStates.has(lot.lotSeq)) {
+        const interior = buildGuestResidence({
+          lotSeq: lot.lotSeq,
+          x: lot.x,
+          z: lot.z,
+          w: lot.w,
+          d: lot.d,
+          scene,
+          colliders,
+          register: registerObject,
+        });
+        guestStates.set(lot.lotSeq, {
+          lot,
+          propertyId,
+          interior,
+        });
+      }
+
+      neighborhood.housePrivacy?.grantGuestLot?.(lot.lotSeq);
+      window.__REALMLIFE_HOUSE_PRIVACY?.setOwnMode?.(
+        houseViewRef.current
+      );
+
+      setHud((h) => ({
+        ...h,
+        msg: "✅ Access granted — welcome inside.",
+      }));
+    };
+
+    const revokeGuestAccess = (state) => {
+      const { lot } = state;
+      state.interior?.dispose(interactive);
+      guestStates.delete(lot.lotSeq);
+      neighborhood.housePrivacy?.revokeGuestLot?.(lot.lotSeq);
+
+      colliders.push({
+        x: lot.x,
+        z: lot.z,
+        hw: lot.w / 2 + 0.2,
+        hd: lot.d / 2 + 0.2,
+        residentialHouse: true,
+        lotSeq: lot.lotSeq,
+      });
+
+      const insideX =
+        Math.abs(resident.position.x - lot.x) < lot.w / 2 + 1;
+      const insideZ =
+        Math.abs(resident.position.z - lot.z) < lot.d / 2 + 1;
+
+      if (insideX && insideZ) {
+        const outZ = lot.z + lot.d / 2 + 2.4;
+        resident.position.set(lot.x, 0, outZ);
+        simRef.current.resident.x = lot.x;
+        simRef.current.resident.z = outZ;
+      }
+
+      setHud((h) => ({
+        ...h,
+        msg: "🚪 Your access to this residence was revoked.",
+      }));
+    };
+
+    const guestWatchdog = window.setInterval(() => {
+      guestStates.forEach((state) => {
+        apiClient
+          .post(
+            `/games/${game.id}/realmlife/property/access-check`,
+            { property_id: state.propertyId }
+          )
+          .then((res) => {
+            if (disposed) return;
+            const ok =
+              res.data?.allowed &&
+              res.data?.level_access?.ground;
+            if (!ok) revokeGuestAccess(state);
+          })
+          .catch(() => {});
+      });
+    }, 30000);
 
     const onRealmLifeInteract = () => {
       let best = null;
@@ -3128,6 +3318,12 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
               targetHeight:
                 1.82,
+
+              skinColor:
+                nexusAvatar
+                  ?.custom
+                  ?.skin
+                || null,
             });
           }
 
@@ -5338,6 +5534,12 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
       window.clearInterval(homeBeaconTimer);
       homeBeacons.dispose();
+      window.clearInterval(guestWatchdog);
+      chatBubbles.disposeAll();
+      window.removeEventListener(
+        "realmlife:chat",
+        onRealmLifeChat
+      );
 
       moveTargetRef.current = null;
       pathRef.current = [];
@@ -5554,6 +5756,19 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     ([key]) => clamp(hud.needs?.[key] || 0) < 50
   );
 
+  const sendRealmLifeChat = () => {
+    const text = chatDraft.trim().slice(0, 200);
+    setChatDraft("");
+    setChatOpen(false);
+    if (!text) return;
+    window.dispatchEvent(
+      new CustomEvent("realmlife:chat", { detail: text })
+    );
+    if (cameraMode === "first") {
+      setHud((h) => ({ ...h, msg: `💬 You: ${text}` }));
+    }
+  };
+
   return (
     <div
       className="relative w-full rounded-xl overflow-hidden"
@@ -5639,6 +5854,30 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         </div>
 
         <div className="pointer-events-auto flex items-center gap-1">
+
+          {isMobileUI && (
+            <button
+              type="button"
+              data-testid="realmlife-mobile-pov-btn"
+              onClick={toggleRealmLifeCamera}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-black"
+              style={{
+                background:
+                  cameraMode === "first"
+                    ? "rgba(255,138,76,.3)"
+                    : "rgba(3,10,20,.72)",
+                border:
+                  cameraMode === "first"
+                    ? "1px solid rgba(255,138,76,.58)"
+                    : "1px solid rgba(46,230,255,.28)",
+                color: "#fff",
+                minHeight: 34,
+              }}
+              title="Toggle camera view"
+            >
+              {cameraMode === "first" ? "🌐 WORLD" : "👁 POV"}
+            </button>
+          )}
 
           <button
             type="button"
@@ -6487,6 +6726,78 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         </button>
       )}
 
+
+      {/* REALMLIFE CHAT INPUT */}
+      {chatOpen && (
+        <div
+          className="absolute z-[58] flex justify-center inset-x-3"
+          style={{
+            bottom:
+              "calc(max(16px, env(safe-area-inset-bottom)) + 148px)",
+          }}
+          data-testid="realmlife-chat-input-wrap"
+        >
+          <div
+            className="flex items-center gap-2 rounded-2xl px-3 py-2 w-full max-w-[420px]"
+            style={{
+              background: "rgba(3,10,20,.94)",
+              border: "1px solid rgba(46,230,255,.45)",
+              backdropFilter: "blur(12px)",
+              boxShadow: "0 8px 26px rgba(0,0,0,.45)",
+            }}
+          >
+            <input
+              autoFocus
+              data-testid="realmlife-chat-input"
+              value={chatDraft}
+              maxLength={200}
+              placeholder="Say something…"
+              onChange={(e) => setChatDraft(e.target.value)}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") sendRealmLifeChat();
+                if (e.key === "Escape") {
+                  setChatOpen(false);
+                  setChatDraft("");
+                }
+              }}
+              onKeyUp={(e) => e.stopPropagation()}
+              className="flex-1 bg-transparent outline-none text-sm text-white placeholder-white/40"
+            />
+
+            <button
+              type="button"
+              data-testid="realmlife-chat-send"
+              onClick={sendRealmLifeChat}
+              className="px-3 min-h-[38px] rounded-xl bg-cyan-500 text-black text-[11px] font-black tracking-widest"
+            >
+              SEND
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* REALMLIFE MOBILE CHAT BUTTON */}
+      {isMobileUI && !chatOpen && (
+        <button
+          type="button"
+          data-testid="realmlife-chat-btn"
+          onClick={() => setChatOpen(true)}
+          className="absolute z-30 w-[52px] h-[52px] rounded-full text-lg font-black"
+          style={{
+            right: "max(16px, env(safe-area-inset-right))",
+            bottom:
+              "calc(max(16px, env(safe-area-inset-bottom)) + 160px)",
+            background: "rgba(3,10,20,.82)",
+            border: "1px solid rgba(46,230,255,.4)",
+            color: "#7dfcff",
+            backdropFilter: "blur(10px)",
+          }}
+          title="Chat"
+        >
+          💬
+        </button>
+      )}
 
       {/* REALMLIFE ROTATE FOR FULL VIEW */}
       {rotateAsk && isMobileUI && (

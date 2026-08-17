@@ -2318,3 +2318,29 @@ async def realmlife_world_beacons(
             current,
         )
     )
+
+
+@public.post(
+    "/{game_id}/realmlife/property/guest-access"
+)
+async def realmlife_property_guest_access(
+    game_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_property as rlp
+    )
+
+    return await (
+        rlp.set_guest_interior_access(
+            game_id,
+            current,
+            body,
+        )
+    )

@@ -20,6 +20,7 @@ export default function RealmLifePropertyPanel({
 
   leaveHousehold,
   destroyProperty,
+  setGuestAccess,
 }) {
   if (!open)
     return null;
@@ -214,6 +215,102 @@ export default function RealmLifePropertyPanel({
             </div>
           </div>
 
+
+          <section
+            data-testid="realmlife-guest-access-section"
+            className="mb-4"
+          >
+            <div className="text-xs font-black text-cyan-300 mb-2">
+              GUEST INTERIOR ACCESS
+            </div>
+
+            <div className="text-[10px] opacity-60 mb-2">
+              Applies only to guests you have invited/approved.
+              Everyone else stays blocked.
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {[
+                ["public", "ALL LEVELS PUBLIC"],
+                ["private", "ALL LEVELS PRIVATE"],
+                ["custom", "CUSTOM"],
+              ].map(([mode, label]) => {
+                const active =
+                  (property?.guest_interior_access?.mode ||
+                    "public") === mode;
+
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    data-testid={`realmlife-guest-access-${mode}`}
+                    disabled={busy}
+                    onClick={() =>
+                      setGuestAccess?.(
+                        mode,
+                        property?.guest_interior_access
+                          ?.levels || {}
+                      )
+                    }
+                    className="px-2.5 py-1.5 rounded-lg text-[10px] font-black"
+                    style={{
+                      background: active
+                        ? "rgba(46,230,255,.22)"
+                        : "rgba(255,255,255,.06)",
+                      border: active
+                        ? "1px solid rgba(46,230,255,.55)"
+                        : "1px solid rgba(255,255,255,.12)",
+                      color: "#fff",
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {(property?.guest_interior_access?.mode ||
+              "public") === "custom" && (
+              <div className="flex flex-wrap gap-1.5">
+                {["ground", "second", "third"].map((lvl) => {
+                  const levels =
+                    property?.guest_interior_access?.levels ||
+                    {};
+                  const on = levels[lvl] !== false;
+
+                  return (
+                    <button
+                      key={lvl}
+                      type="button"
+                      data-testid={`realmlife-guest-level-${lvl}`}
+                      disabled={busy}
+                      onClick={() =>
+                        setGuestAccess?.("custom", {
+                          ...levels,
+                          [lvl]: !on,
+                        })
+                      }
+                      className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase"
+                      style={{
+                        background: on
+                          ? "rgba(63,214,144,.2)"
+                          : "rgba(255,90,90,.16)",
+                        border: on
+                          ? "1px solid rgba(63,214,144,.5)"
+                          : "1px solid rgba(255,90,90,.45)",
+                        color: "#fff",
+                      }}
+                    >
+                      {lvl === "ground"
+                        ? "GROUND"
+                        : lvl.toUpperCase()}{" "}
+                      {on ? "· PUBLIC" : "· PRIVATE"}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
           <section>
             <div

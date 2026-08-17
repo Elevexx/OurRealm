@@ -388,6 +388,32 @@ export function useRealmLifeProperty(
     );
 
 
+  const setGuestAccess =
+    useCallback(
+      (
+        mode,
+        levels
+      ) =>
+        run(
+          () =>
+            apiClient.post(
+              `/games/${gameId}/realmlife/property/guest-access`,
+              {
+                mode,
+                levels:
+                  levels || {},
+              }
+            ),
+
+          "Guest access updated."
+        ),
+      [
+        gameId,
+        run,
+      ]
+    );
+
+
   const destroyProperty =
     useCallback(
       (
@@ -437,6 +463,7 @@ export function useRealmLifeProperty(
 
     leaveHousehold,
     evictGuest,
+    setGuestAccess,
     destroyProperty,
   };
 }

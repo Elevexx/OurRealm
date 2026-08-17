@@ -1685,6 +1685,27 @@ async def presence(
     }
 
 
+    chat = (
+        body.get("chat")
+        or None
+    )
+
+    if (
+        isinstance(chat, dict)
+        and chat.get("text")
+    ):
+        row["chat_text"] = str(
+            chat["text"]
+        )[:200]
+
+        row["chat_id"] = str(
+            chat.get("id")
+            or f"c{now_ts}"
+        )[:60]
+
+        row["chat_ts"] = now_ts
+
+
     await (
         db.realmlife_world_presence
         .update_one(
@@ -1765,6 +1786,9 @@ async def presence(
 
                 "user_id": 1,
                 "username": 1,
+                "chat_text": 1,
+                "chat_id": 1,
+                "chat_ts": 1,
 
                 "x": 1,
                 "y": 1,
@@ -1800,6 +1824,9 @@ async def presence(
 
         "others":
             others,
+
+        "server_ts":
+            now_ts,
     }
 
 

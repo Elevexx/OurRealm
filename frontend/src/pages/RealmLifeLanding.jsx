@@ -9,6 +9,11 @@ import {
   buildStarterModel,
   TIER_ACCENTS,
 } from "@/components/games/lifesim/realmLifeStarterAvatar";
+import { applyAvatarSkinTone } from "@/components/games/lifesim/realmLifeRecolor";
+import {
+  preloadRealmLifeModel,
+  REALMLIFE_PLAYER_MODELS,
+} from "@/components/games/lifesim/lifeSimAvatar";
 
 const GAME_ID = "realmlife-home-v1";
 
@@ -46,6 +51,27 @@ export default function RealmLifeLanding() {
   const [style, setStyle] = useState("style_a");
   const [custom, setCustom] = useState(null);
   const [selected, setSelected] = useState("starter");
+
+  const isPlayerGlb =
+    selected === "player_1" || selected === "player_2";
+
+  const customSkinRef = useRef(null);
+  customSkinRef.current = isPlayerGlb ? custom?.skin || null : null;
+
+  // Live hero skin recolor when the user picks a new swatch
+  useEffect(() => {
+    if (!isPlayerGlb) return;
+    if (modelRef.current && custom?.skin) {
+      applyAvatarSkinTone(modelRef.current, custom.skin);
+    }
+  }, [custom?.skin, isPlayerGlb]);
+
+  useEffect(() => {
+    if (!isPlayerGlb) return;
+    preloadRealmLifeModel(
+      REALMLIFE_PLAYER_MODELS[selected]?.modelUrl
+    );
+  }, [selected, isPlayerGlb]);
   const [tab, setTab] = useState("PLAYER");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -204,12 +230,57 @@ export default function RealmLifeLanding() {
         scene.add(group);
         modelRef.current = group;
         mixerRef.current = mixer;
+        if (customSkinRef.current) {
+          applyAvatarSkinTone(group, customSkinRef.current);
+        }
         setHeroLoaded(slot);
       };
 
       if (cached) {
         install(cached);
       } else {
+        // PROGRESSIVE HERO: show the lightweight 2.4MB gameplay
+        // model instantly, then swap in the 4K hero when ready.
+        let tempGroup = null;
+
+        const fastUrl =
+          REALMLIFE_PLAYER_MODELS[slot]?.modelUrl;
+
+        if (fastUrl) {
+          new GLTFLoader()
+            .loadAsync(`${process.env.REACT_APP_BACKEND_URL}${fastUrl}`)
+            .then((gltf) => {
+              if (cancelled || sceneRef.current !== scene || modelRef.current) return;
+              const m = gltf.scene;
+              const b = new THREE.Box3().setFromObject(m);
+              const sz = b.getSize(new THREE.Vector3());
+              m.scale.setScalar(1.7 / Math.max(sz.y, 0.001));
+              const b2 = new THREE.Box3().setFromObject(m);
+              const ctr = b2.getCenter(new THREE.Vector3());
+              m.position.x -= ctr.x;
+              m.position.z -= ctr.z;
+              m.position.y -= b2.min.y;
+              tempGroup = new THREE.Group();
+              tempGroup.add(m);
+              scene.add(tempGroup);
+              modelRef.current = tempGroup;
+              setHeroLoaded(slot);
+              if (customSkinRef.current)
+                applyAvatarSkinTone(tempGroup, customSkinRef.current);
+            })
+            .catch(() => {});
+        }
+
+        const installFinal = (payload) => {
+          if (cancelled || sceneRef.current !== scene) return;
+          if (tempGroup) {
+            scene.remove(tempGroup);
+            if (modelRef.current === tempGroup) modelRef.current = null;
+            tempGroup = null;
+          }
+          install(payload);
+        };
+
         new GLTFLoader()
           .loadAsync(`${process.env.REACT_APP_BACKEND_URL}${HERO_PREVIEW_URLS[slot]}`)
           .then((gltf) => {
@@ -351,7 +422,7 @@ export default function RealmLifeLanding() {
             model.position.z -= center.z;
             model.position.y -= box2.min.y;
             heroCacheRef.current.set(slot, { group, mixer });
-            install({ group, mixer });
+            installFinal({ group, mixer });
           })
           .catch(() => {});
       }
@@ -518,7 +589,11 @@ export default function RealmLifeLanding() {
       {/* PANEL */}
       <div className="w-full md:w-[430px] md:max-h-none max-h-[58vh] overflow-y-auto p-4 md:p-5" style={{ background: "rgba(9,18,30,.96)", borderLeft: "1px solid rgba(34,211,238,.18)" }}>
         <div className="flex gap-1 mb-4 flex-wrap">
-          {TABS.map((t2) => (
+          {TABS.filter(
+            (t2) =>
+              !isPlayerGlb ||
+              !["CLOTHING", "ACCESSORIES"].includes(t2)
+          ).map((t2) => (
             <button
               key={t2}
               type="button"
@@ -581,6 +656,13 @@ export default function RealmLifeLanding() {
         {tab === "APPEARANCE" && catalog && (
           <div>
             {swatchRow("SKIN TONE", c.skin, catalog.skin_tones, (v) => setC("skin", v), "realmlife-skin")}
+            {isPlayerGlb ? (
+              <div className="text-[10px] opacity-60 mb-2" data-testid="realmlife-glb-appearance-note">
+                Player {selected === "player_2" ? "2" : "1"} supports live skin-tone
+                customization. More options coming soon.
+              </div>
+            ) : (
+            <>
             <div className="mb-3">
               <div className="text-[10px] font-black opacity-70 mb-1">HAIR STYLE</div>
               <div className="flex flex-wrap gap-1.5">
@@ -599,6 +681,8 @@ export default function RealmLifeLanding() {
             </div>
             {swatchRow("HAIR COLOR", c.hair_color, SWATCHES.hair, (v) => setC("hair_color", v), "realmlife-haircolor")}
             {swatchRow("EYE COLOR", c.eye_color, SWATCHES.eyes, (v) => setC("eye_color", v), "realmlife-eyes")}
+            </>
+            )}
           </div>
         )}
 
