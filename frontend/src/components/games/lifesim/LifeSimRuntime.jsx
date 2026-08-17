@@ -6204,25 +6204,39 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       {(!isMobileUI || needsOpen) && (
       <div
         data-testid="realmlife-needs-panel"
-        className={`absolute left-3 rounded-xl p-3 z-30 ${
-          isMobileUI ? "bottom-[150px] w-[172px]" : "bottom-3 w-[210px]"
+        className={`absolute rounded-xl p-3 z-30 flex flex-col ${
+          isMobileUI ? "w-[172px]" : "w-[210px]"
         }`}
         style={{
+          left: "max(12px, env(safe-area-inset-left))",
+          bottom: isMobileUI
+            ? "max(150px, calc(env(safe-area-inset-bottom) + 150px))"
+            : 12,
+          // Constrain to the ACTUAL game container height (the
+          // panel is absolutely positioned inside it) so the
+          // header/minimize button always stays visible — even
+          // on short landscape phones. Body scrolls internally.
+          maxHeight: isMobileUI
+            ? "calc(100% - max(150px, env(safe-area-inset-bottom) + 150px) - max(56px, env(safe-area-inset-top) + 48px))"
+            : "calc(100% - 72px)",
+          minHeight: 64,
           background: "rgba(3,10,20,.82)",
           border: "1px solid rgba(46,230,255,.25)",
           backdropFilter: "blur(12px)",
           color: "white",
         }}
       >
-        <div className="font-black text-sm mb-2 flex items-center justify-between">
-          <span>{simRef.current.resident.name}</span>
+        <div className="flex-none font-black text-sm mb-2 flex items-center justify-between">
+          <span className="truncate pr-1">
+            {simRef.current.resident.name}
+          </span>
 
           {isMobileUI && (
             <button
               type="button"
               data-testid="realmlife-needs-minimize"
               onClick={() => setNeedsOpen(false)}
-              className="w-6 h-6 rounded-md text-xs font-black flex items-center justify-center"
+              className="flex-none w-7 h-7 rounded-md text-xs font-black flex items-center justify-center"
               style={{
                 background: "rgba(255,255,255,.1)",
                 border: "1px solid rgba(255,255,255,.2)",
@@ -6234,6 +6248,11 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           )}
         </div>
 
+        <div
+          data-testid="realmlife-needs-body"
+          className="flex-1 min-h-0 overflow-y-auto pr-0.5"
+          style={{ overscrollBehavior: "contain" }}
+        >
         {NEED_META.map(([key, label, icon, color]) => {
           const value = clamp(hud.needs?.[key] || 0);
 
@@ -6271,6 +6290,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           }}
         >
           ❤️ Neighbor friendship {Math.round(hud.relationship)}/100
+        </div>
         </div>
       </div>
       )}

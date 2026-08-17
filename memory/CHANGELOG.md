@@ -524,3 +524,8 @@ AFTER NEXT DEPLOY: production boots → startup_import inserts all 27 published 
 - Player 1/2 skin/hair/eye color customization already existed (RealmLifeLanding swatches + realmlife_players.py sanitization) — selective material tinting, clothing separate. No changes needed.
 - Testing: iteration_153.json — backend 100% (8/8 pytest), frontend 90% (only missing testids, now added). Production build passed (68.8s). NOT deployed per user instruction.
 - Deferred/backlog: guest interiors are empty shells after access granted (furniture only streams for own home); Nexus hero tower rebuild (explicitly deferred).
+
+## Aug 17 2026 — Needs panel landscape responsiveness fix (targeted)
+- LifeSimRuntime.jsx only: expanded Needs panel is now flex-column with maxHeight calc'd from the ACTUAL game container (100% = container since absolutely positioned): mobile calc(100% - joystick clearance 150px+safe-bottom - top-bar clearance 56px+safe-top); desktop calc(100% - 72px). Header (name + [−] minimize, realmlife-needs-minimize) is flex-none/always visible; stats+friendship wrapped in flex-1 min-h-0 overflow-y-auto body (realmlife-needs-body, overscroll contain). Safe-area left inset. Collapsed icon/red-warning behavior untouched.
+- Verified via Playwright on real preview (realm-deploy.preview.emergentagent.com): 390x844 portrait panel fully inside; 844x390 landscape panel y57→239 inside 390, minimize visible+clickable, body scrolls (196>120), collapse back to icon works, no joystick/HOME/MENU/JUMP/INTERACT overlap. Production build passed (39.5s).
+- NOTE for future testing: the correct preview URL is realm-deploy.preview.emergentagent.com (from frontend/.env); the progress-pulse-14 URL shown by tooling is a stale fork URL that serves a sleep interstitial.
