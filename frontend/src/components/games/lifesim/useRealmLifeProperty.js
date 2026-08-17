@@ -414,6 +414,29 @@ export function useRealmLifeProperty(
     );
 
 
+  const addHouseLevel =
+    useCallback(
+      (
+        direction
+      ) =>
+        run(
+          () =>
+            apiClient.post(
+              `/games/${gameId}/realmlife/property/add-level`,
+              {
+                direction,
+              }
+            ),
+
+          "🔥 Level added to your residence."
+        ),
+      [
+        gameId,
+        run,
+      ]
+    );
+
+
   const destroyProperty =
     useCallback(
       (
@@ -464,6 +487,7 @@ export function useRealmLifeProperty(
     leaveHousehold,
     evictGuest,
     setGuestAccess,
+    addHouseLevel,
     destroyProperty,
   };
 }

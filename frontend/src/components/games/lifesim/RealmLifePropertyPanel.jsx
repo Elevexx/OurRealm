@@ -21,6 +21,7 @@ export default function RealmLifePropertyPanel({
   leaveHousehold,
   destroyProperty,
   setGuestAccess,
+  addHouseLevel,
 }) {
   if (!open)
     return null;
@@ -215,6 +216,108 @@ export default function RealmLifePropertyPanel({
             </div>
           </div>
 
+
+          <section
+            data-testid="realmlife-house-levels-section"
+            className="mb-4"
+          >
+            <div className="text-xs font-black text-cyan-300 mb-2">
+              HOUSE LEVELS
+            </div>
+
+            {(() => {
+              const above =
+                property?.levels_above || 1;
+              const below =
+                property?.levels_below || 0;
+
+              const row = (label, state, dir, testid) => (
+                <div
+                  key={testid}
+                  className="flex items-center justify-between text-[11px] font-bold py-1"
+                  style={{
+                    borderBottom:
+                      "1px solid rgba(255,255,255,.06)",
+                  }}
+                >
+                  <span>{label}</span>
+
+                  {state === "built" && (
+                    <span className="text-emerald-300">✓ BUILT</span>
+                  )}
+
+                  {state === "add" && (
+                    <button
+                      type="button"
+                      data-testid={testid}
+                      disabled={busy}
+                      onClick={() => addHouseLevel?.(dir)}
+                      className="px-2.5 py-1 rounded-lg text-[10px] font-black"
+                      style={{
+                        background: "rgba(255,138,76,.2)",
+                        border: "1px solid rgba(255,138,76,.55)",
+                        color: "#ffd9c0",
+                      }}
+                    >
+                      ADD — 🔥5,000 FIRE POWER
+                    </button>
+                  )}
+
+                  {state === "locked" && (
+                    <span className="opacity-40">LOCKED</span>
+                  )}
+                </div>
+              );
+
+              const rows = [
+                row("GROUND", "built", null, "lvl-ground"),
+                row(
+                  "LEVEL 2",
+                  above >= 2 ? "built" : "add",
+                  "above",
+                  "realmlife-add-level-2"
+                ),
+                row(
+                  "LEVEL 3",
+                  above >= 3
+                    ? "built"
+                    : above >= 2
+                    ? "add"
+                    : "locked",
+                  "above",
+                  "realmlife-add-level-3"
+                ),
+                row(
+                  "BASEMENT 1",
+                  below >= 1 ? "built" : "add",
+                  "below",
+                  "realmlife-add-basement-1"
+                ),
+                row(
+                  "BASEMENT 2",
+                  below >= 2
+                    ? "built"
+                    : below >= 1
+                    ? "add"
+                    : "locked",
+                  "below",
+                  "realmlife-add-basement-2"
+                ),
+                row(
+                  "BASEMENT 3",
+                  below >= 3
+                    ? "built"
+                    : below >= 2
+                    ? "add"
+                    : "locked",
+                  "below",
+                  "realmlife-add-basement-3"
+                ),
+              ];
+
+              return <div>{rows}</div>;
+            })()}
+          </section>
 
           <section
             data-testid="realmlife-guest-access-section"

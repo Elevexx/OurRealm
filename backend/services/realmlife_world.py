@@ -2273,6 +2273,8 @@ async def home_beacons(
                 "city_lot_seq": 1,
                 "owner_user_id": 1,
                 "household_id": 1,
+                "levels_above": 1,
+                "levels_below": 1,
             },
         )
         .to_list(length=300)
@@ -2327,6 +2329,16 @@ async def home_beacons(
 
                 "is_self":
                     bool(is_self),
+
+                "levels_above":
+                    prop.get(
+                        "levels_above"
+                    ),
+
+                "levels_below":
+                    prop.get(
+                        "levels_below"
+                    ),
 
                 "active": bool(
                     is_self

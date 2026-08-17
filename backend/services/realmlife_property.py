@@ -834,6 +834,22 @@ async def housing_status(
                     "mode": "public"
                 },
 
+            "levels_above":
+                int(
+                    prop.get(
+                        "levels_above"
+                    )
+                    or 1
+                ),
+
+            "levels_below":
+                int(
+                    prop.get(
+                        "levels_below"
+                    )
+                    or 0
+                ),
+
             "state":
                 prop.get("state"),
 
@@ -2200,6 +2216,202 @@ GUEST_LEVEL_KEYS = [
     "b2",
     "b3",
 ]
+
+
+HOUSE_LEVEL_COST = 5000
+
+
+async def add_house_level(
+    game_id,
+    current,
+    body,
+):
+    membership, prop = (
+        await _require_household_member(
+            game_id,
+            current["id"],
+        )
+    )
+
+    direction = str(
+        (body or {}).get("direction")
+        or "above"
+    ).lower()
+
+    if direction not in (
+        "above",
+        "below",
+    ):
+        raise HTTPException(
+            400,
+            "Invalid level direction.",
+        )
+
+    levels_above = int(
+        prop.get("levels_above")
+        or 1
+    )
+
+    levels_below = int(
+        prop.get("levels_below")
+        or 0
+    )
+
+    if (
+        direction == "above"
+        and levels_above >= 3
+    ):
+        raise HTTPException(
+            400,
+            "Maximum of 3 above-ground levels reached.",
+        )
+
+    if (
+        direction == "below"
+        and levels_below >= 3
+    ):
+        raise HTTPException(
+            400,
+            "Maximum of 3 basement levels reached.",
+        )
+
+    from services.realmlife_world import (
+        _realmlife_is_founder,
+    )
+
+    founder = _realmlife_is_founder(
+        current
+    )
+
+    burned = 0
+
+    if not founder:
+        wallet = await (
+            db.fire_wallets
+            .find_one_and_update(
+                {
+                    "user_id":
+                        current["id"],
+
+                    "vault_balance": {
+                        "$gte":
+                            HOUSE_LEVEL_COST
+                    },
+                },
+                {
+                    "$inc": {
+                        "vault_balance":
+                            -HOUSE_LEVEL_COST
+                    }
+                },
+            )
+        )
+
+        if not wallet:
+            raise HTTPException(
+                402,
+                f"🔥{HOUSE_LEVEL_COST:,} Fire Power required. Not enough in your Vault.",
+            )
+
+        burned = HOUSE_LEVEL_COST
+
+        import uuid as _uuid
+
+        await (
+            db.fire_wallet_transactions
+            .insert_one(
+                {
+                    "id":
+                        _uuid.uuid4()
+                        .hex[:16],
+
+                    "user_id":
+                        current["id"],
+
+                    "type":
+                        "realmlife_level_burn",
+
+                    "amount":
+                        -HOUSE_LEVEL_COST,
+
+                    "property_id":
+                        prop["id"],
+
+                    "direction":
+                        direction,
+
+                    "at":
+                        _iso(),
+                }
+            )
+        )
+
+    field = (
+        "levels_above"
+        if direction == "above"
+        else "levels_below"
+    )
+
+    new_value = (
+        levels_above + 1
+        if direction == "above"
+        else levels_below + 1
+    )
+
+    await (
+        db.realmlife_properties
+        .update_one(
+            {
+                "game_id": game_id,
+                "id": prop["id"],
+            },
+            {
+                "$set": {
+                    field:
+                        new_value,
+
+                    "levels_above":
+                        (
+                            new_value
+                            if direction
+                            == "above"
+                            else levels_above
+                        ),
+
+                    "levels_below":
+                        (
+                            new_value
+                            if direction
+                            == "below"
+                            else levels_below
+                        ),
+
+                    "updated_at":
+                        _iso(),
+                }
+            },
+        )
+    )
+
+    return {
+        "ok": True,
+
+        "burned": burned,
+
+        "levels_above":
+            (
+                new_value
+                if direction == "above"
+                else levels_above
+            ),
+
+        "levels_below":
+            (
+                new_value
+                if direction == "below"
+                else levels_below
+            ),
+    }
 
 
 def _guest_level_access(

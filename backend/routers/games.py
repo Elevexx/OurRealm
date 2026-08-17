@@ -2344,3 +2344,29 @@ async def realmlife_property_guest_access(
             body,
         )
     )
+
+
+@public.post(
+    "/{game_id}/realmlife/property/add-level"
+)
+async def realmlife_property_add_level(
+    game_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_property as rlp
+    )
+
+    return await (
+        rlp.add_house_level(
+            game_id,
+            current,
+            body,
+        )
+    )

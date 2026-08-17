@@ -1156,6 +1156,20 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           lotPropertyMap.set(b.lot_seq, b.property_id)
         );
 
+        // Canonical exterior levels for every observer.
+        list.forEach((b) => {
+          if (b.levels_above) {
+            neighborhood.housePrivacy?.setLotLevels?.(
+              b.lot_seq,
+              b.levels_above,
+              b.levels_below || 0
+            );
+          }
+        });
+        window.__REALMLIFE_HOUSE_PRIVACY?.setOwnMode?.(
+          houseViewRef.current
+        );
+
         homeBeacons.setBeacons(list);
       } catch (_) {}
     };

@@ -2653,7 +2653,7 @@ function installRealmLifeResidentialPrivacy(
   // collisions and furniture remain authoritative.
   // ----------------------------------------------------------
 
-  const ownShell =
+  let ownShell =
     createSpanishResidentialPrivacyShell({
       x: ownLot ? ownLot.x : 0,
       z: ownLot ? ownLot.z : 0,
@@ -3409,6 +3409,60 @@ function installRealmLifeResidentialPrivacy(
       guestLots.delete(lotSeq);
       const shell = shellByLot.get(lotSeq);
       if (shell) shell.visible = true;
+    },
+
+
+    // CANONICAL LEVEL SYNC — every observer rebuilds a lot's
+    // shell to the persisted level count so all users see the
+    // same exterior height.
+    setLotLevels(lotSeq, above, below) {
+      const home = privateHomes.find(
+        (h) => h.lotSeq === lotSeq
+      );
+      if (!home || !above) return;
+
+      const isOwnLot =
+        ownLot && lotSeq === ownLot.seq;
+
+      const target = isOwnLot
+        ? ownShell
+        : shellByLot.get(lotSeq);
+
+      if (!target) return;
+      if (
+        target.userData.rlLevels ===
+        `${above}/${below || 0}`
+      )
+        return;
+
+      const rebuilt =
+        createSpanishResidentialPrivacyShell({
+          x: isOwnLot ? ownLot.x : home.x,
+          z: isOwnLot ? ownLot.z : home.z,
+          w: isOwnLot ? 18.2 : home.w,
+          d: isOwnLot ? 14.2 : home.d,
+          label: isOwnLot
+            ? "Your Residence"
+            : home.label,
+          own: isOwnLot,
+          levelsAbove: Math.min(3, above),
+          levelsBelow: Math.min(
+            3,
+            below || 0
+          ),
+        });
+
+      rebuilt.userData.rlLevels = `${above}/${below || 0}`;
+      rebuilt.visible = target.visible;
+
+      privacyRoot.add(rebuilt);
+      privacyRoot.remove(target);
+
+      if (isOwnLot) {
+        ownShell = rebuilt;
+      } else {
+        shellByLot.set(lotSeq, rebuilt);
+      }
     },
 
 
