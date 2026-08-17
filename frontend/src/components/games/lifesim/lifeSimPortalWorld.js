@@ -101,9 +101,6 @@ function textSprite(
     height - 8
   );
 
-  ctx.font =
-    `900 ${font}px system-ui`;
-
   ctx.textAlign =
     "center";
 
@@ -112,6 +109,22 @@ function textSprite(
 
   ctx.fillStyle =
     "#f4fbff";
+
+  // Dynamic text fit: shrink until the label fits — never crop.
+  let fitFont = font;
+
+  ctx.font =
+    `900 ${fitFont}px system-ui`;
+
+  while (
+    fitFont > 16
+    && ctx.measureText(String(text)).width > width - 70
+  ) {
+    fitFont -= 4;
+
+    ctx.font =
+      `900 ${fitFont}px system-ui`;
+  }
 
   ctx.fillText(
     text,

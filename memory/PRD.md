@@ -808,3 +808,28 @@ Hero Master + Hero Animation V2 + Blue Nexus Portal wired into arpgXY engine; as
 - games_play access policy blocks non-founder members from legacy showcase games w/o explicit access config (pre-existing; founder-only testing period).
 - Playwright: login via /signin form fill (fetch-in-evaluate flaky); iframe content_frame() for game DOM; use REAL page.keyboard (dispatchEvent injection stalls td runtime).
 - Backend hot-reload kills in-flight builds; never edit backend files during a build.
+
+## REALMLIFE AAA UPGRADE — PHASE A + B1 (Aug 17 2026) ✅
+### Phase A (foundation) — ALL VERIFIED in runtime
+- Signs: dynamic text-fit added to ALL 4 canvas sign generators (portalWorld, cityDistrict, communityCore, nexusMarina) + AAAUpgrade already had it. No crops (screenshot verified).
+- Sky: SINGLE AUTHORITY = lifeSimEnvironment controller. Removed runtime per-frame scene.background lerp (was fighting env → flicker/banding). New celestial rig (sky+sun+moon+stars) follows camera via setCamera(); sky scales to 0.92×camera.far (no far-plane clipping).
+- Graphics system: lifeSimGraphics.js — AUTO/LOW/MEDIUM/HIGH/ULTRA (pixelRatio, shadows+mapSize, camera.far, exposure). AUTO = default, starts LOW(mobile)/MEDIUM(desktop), FPS-adaptive up to MEDIUM(mobile)/HIGH(desktop) cap. Persisted localStorage realmlife_graphics_mode. Verified LOW→ULTRA→AUTO switching live.
+- Sector streaming: lifeSimSectorStreaming.js — box-distance vs drawDistance, hysteresis, staggered reveals. Sectors: cityDistrict/communityCore/metro/nexus/marina/portalWorld/founderEstate. Debug: window.__REALMLIFE_SECTORS(). Verified hidden-at-home vs revealed-after-travel.
+- UI: /realmlife now fullscreen immersive (RealmLifeDirect zIndex 50, runtime height 100%). Desktop: gear → settings panel (graphics + DJ). Mobile (<900px or coarse): top bar = DAY/fire + HOME + ⚙MENU; drawer holds POV/NORMAL/CUTAWAY/PROPERTY/BUILD/SAVE/DJ/GRAPHICS/SPEED/FULLSCREEN/ADMIN/EXIT; virtual joystick (bottom-left, feeds movement + run at mag>0.82), INTERACT btn (nearest interactive ≤4.5u, event realmlife:interact), JUMP kept. Verified mobile 390px + desktop.
+- Terminology (PERMANENT RULE): RealmLife never says BUY/PURCHASE/PRICE/PAY/SPEND/COST for Fire Power. "BUILD / UPGRADE", UNLOCK, "FIRE POWER REQUIRED", "BURN 🔥X". UI + backend display strings fixed (internal field names build_costs/cost unchanged).
+
+### Phase B batch 1 — Meshy generation LIVE (key real, balance 3406 → ~3100)
+- scripts/realmlife_meshy_batch.py: idempotent preview→refine(PBR)→store pipeline (~15 credits/model). 20/20 stored (hero tower needed refine retry — Meshy server_error; retry key :refine:r2).
+- scripts/realmlife_glb_optimize.py: gltf-transform optimize (draco + webp + 1K tex) → 6-10MB → 250-660KB each (18×). asset_library.url now *_opt.glb (original kept in original_url).
+- Endpoint: GET /api/games/{id}/realmlife/aaa-assets (slot/family/url).
+- lifeSimMeshyWorld.js: GLTF+DRACO loader (/draco/), manifest fetch, placeInstance (footprint normalize + ground), swaps: 100 residentialCommunity shells → 5 house variants (distance LOD: GLB ≤min(95, 0.35×draw), shell beyond; footprint cap 14.5), RealmLifeProtoBoat tagged boats → 3 GLB boats, RealmLifeProtoPalm → GLB palms, Nexus placements around (85,360): hero_tower(85,300) portal_gate(85,338) arcade(55,390) station(115,390) fountain(85,318) cypress pair. Debug: window.__REALMLIFE_MESHY (status), __REALMLIFE_MESHY_LOG, __REALMLIFE_TELEPORT(x,z).
+- Slots stored: 4 nexus, 5 houses + pool, 4 business exteriors (cafe/restaurant/grocery/nightclub — NOT YET PLACED, need empty-lot survey), 3 boats, palm/cypress/fountain.
+
+### Phase B remaining (user directive: continue to ref-image quality, DO NOT PUBLISH without approval)
+1. Place business exteriors (survey downtown empty lots first) + downtown building variants (8-15).
+2. Business interiors + furniture families; vehicles; train/station; richer water; population.
+3. Final acceptance gate: 16 location screenshots scored vs reference (target avg 9/10).
+
+### Env learnings
+- Preview browser = software GL: WebGL page ~1-2fps, playwright clicks time out → use page.evaluate(...click()), force LOW via localStorage, keep waits short. GLB install ~90-140s there (sub-second on real GPUs).
+- Meshy: text-to-3d preview 5cr + refine 10cr. store_glb → /api/media/models (R2 mirror + CORS OK).

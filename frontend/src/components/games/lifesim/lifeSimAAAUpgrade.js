@@ -26,10 +26,21 @@ function neonPanel(group, { text, sub = "", x, y, z, w = 10, h = 2.4, ry = 0, gl
   g.textAlign = "center"; g.textBaseline = "middle";
   g.shadowColor = glow; g.shadowBlur = 28;
   g.fillStyle = "#eafcff";
-  g.font = `900 ${sub ? 120 : 140}px system-ui`;
+  // dynamic text fit: shrink font until text + padding fits the canvas — never crop
+  let fs = sub ? 120 : 140;
+  g.font = `900 ${fs}px system-ui`;
+  while (fs > 34 && g.measureText(text).width > c.width - 90) {
+    fs -= 6;
+    g.font = `900 ${fs}px system-ui`;
+  }
   g.fillText(text, c.width / 2, sub ? c.height * 0.38 : c.height / 2);
   if (sub) {
-    g.font = "700 62px system-ui";
+    let ss = 62;
+    g.font = `700 ${ss}px system-ui`;
+    while (ss > 22 && g.measureText(sub).width > c.width - 110) {
+      ss -= 4;
+      g.font = `700 ${ss}px system-ui`;
+    }
     g.fillStyle = glow;
     g.fillText(sub, c.width / 2, c.height * 0.74);
   }
@@ -58,23 +69,28 @@ function gatewaySign(group, opts) {
 }
 
 function palm(group, x, z, s = 1) {
+  const p = new THREE.Group();
+  p.name = "RealmLifeProtoPalm";
+  p.position.set(x, 0, z);
+  group.add(p);
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14 * s, 0.22 * s, 3.4 * s, 6), mat(0x8a6a44));
-  trunk.position.set(x, 1.7 * s, z);
+  trunk.position.set(0, 1.7 * s, 0);
   trunk.rotation.z = (Math.sin(x * 3.7 + z) * 6 * Math.PI) / 180;
-  group.add(trunk);
+  p.add(trunk);
   const leafM = mat(0x2f8a4a, { roughness: 0.7 });
   for (let i = 0; i < 6; i += 1) {
     const leaf = new THREE.Mesh(new THREE.BoxGeometry(2.0 * s, 0.06, 0.5 * s), leafM);
     const a = (i / 6) * Math.PI * 2;
-    leaf.position.set(x + Math.cos(a) * 0.85 * s, 3.45 * s, z + Math.sin(a) * 0.85 * s);
+    leaf.position.set(Math.cos(a) * 0.85 * s, 3.45 * s, Math.sin(a) * 0.85 * s);
     leaf.rotation.y = -a;
     leaf.rotation.z = 0.42;
-    group.add(leaf);
+    p.add(leaf);
   }
 }
 
 function boat(group, { x, z, hull = 0xf2f5f8, trim = 0x21415e, len = 6, ry = 0 }) {
   const b = new THREE.Group();
+  b.name = "RealmLifeProtoBoat";
   b.position.set(x, 0.02, z);
   b.rotation.y = ry;
   group.add(b);

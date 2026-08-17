@@ -8,6 +8,9 @@ import {
   REALMLIFE_UNIVERSAL_MOTIONS,
 } from "./lifeSimAvatar";
 import { buildNeighborhoodWorld } from "./lifeSimNeighborhood";
+import { createRealmLifeGraphics, GRAPHICS_MODES } from "./lifeSimGraphics";
+import { createSectorStreaming } from "./lifeSimSectorStreaming";
+import { installRealmLifeMeshyWorld } from "./lifeSimMeshyWorld";
 import {
   buildRealmLifePortalWorld,
   buildRealmLifeFounderEstate,
@@ -297,6 +300,35 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState(null);
+
+  // REALMLIFE GRAPHICS + MOBILE UI STATE
+  const [graphicsInfo, setGraphicsInfo] = useState({
+    mode: "AUTO",
+    tier: "",
+  });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileBuildOpen, setMobileBuildOpen] = useState(false);
+  const [isMobileUI, setIsMobileUI] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      (window.matchMedia?.("(pointer: coarse)")?.matches ||
+        window.innerWidth < 900)
+  );
+  const graphicsRef = useRef(null);
+  const mobileMoveRef = useRef({ x: 0, y: 0, mag: 0 });
+  const joyKnobRef = useRef(null);
+
+  useEffect(() => {
+    const check = () =>
+      setIsMobileUI(
+        window.matchMedia?.("(pointer: coarse)")?.matches ||
+          window.innerWidth < 900
+      );
+
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const [
     realmLifeDJOpen,
@@ -812,6 +844,22 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     warm.position.set(-2, 2.8, 3.5);
     scene.add(warm);
 
+    // SKY AUTHORITY: environment controller owns the sky rig,
+    // follows this camera so the dome never clips the far plane.
+    realmLifeEnvironmentController?.setCamera?.(camera);
+
+    // REALMLIFE GRAPHICS QUALITY SYSTEM
+    const realmGraphics = createRealmLifeGraphics({
+      renderer,
+      camera,
+      shadowLights: [sun],
+      onChange: (info) => {
+        if (!disposed) setGraphicsInfo(info);
+      },
+    });
+
+    graphicsRef.current = realmGraphics;
+
     // --------------------------------------------------------
     // HOUSE SHELL
     // --------------------------------------------------------
@@ -910,6 +958,75 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     colliders.push(
       ...founderEstate.colliders
     );
+
+    // REALMLIFE SECTOR STREAMING — home loads first, distant
+    // sectors stream in/out around the graphics draw distance.
+    const sectorStreaming = createSectorStreaming();
+
+    sectorStreaming.addSector(
+      "cityDistrict",
+      neighborhood.cityDistrict?.root
+    );
+
+    sectorStreaming.addSector(
+      "communityCore",
+      neighborhood.communityCore?.root
+    );
+
+    sectorStreaming.addSector(
+      "metro",
+      neighborhood.communityCore?.metro?.root
+        || neighborhood.communityCore?.metro
+    );
+
+    sectorStreaming.addSector(
+      "nexus",
+      neighborhood.nexusMarina?.root
+    );
+
+    sectorStreaming.addSector(
+      "marina",
+      neighborhood.nexusMarina?.marina?.root
+        || neighborhood.nexusMarina?.marina
+    );
+
+    sectorStreaming.addSector(
+      "portalWorld",
+      portalWorld.root
+    );
+
+    sectorStreaming.addSector(
+      "founderEstate",
+      founderEstate.root
+    );
+
+    window.__REALMLIFE_SECTORS = () =>
+      sectorStreaming.stats();
+
+    // debug/testing teleport (client-side only; server still validates saves)
+    window.__REALMLIFE_TELEPORT = (x, z) => {
+      resident.position.x = x;
+      resident.position.z = z;
+      moveTargetRef.current = null;
+      pathRef.current = [];
+    };
+
+    // REALMLIFE MESHY AAA WORLD — async, never blocks first paint
+    let meshyWorld = null;
+
+    if (game?.id) {
+      installRealmLifeMeshyWorld({ scene, gameId: game.id })
+        .then((mw) => {
+          if (disposed) {
+            mw?.dispose?.();
+            return;
+          }
+          meshyWorld = mw;
+        })
+        .catch((err) =>
+          console.debug("[RealmLife Meshy] install failed", err?.message)
+        );
+    }
 
     const addWall = (x, z, w, d, h = 2.8) => {
       const wall = makeBox([w, h, d], 0xf1e5cf);
@@ -2330,6 +2447,50 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       onResidentJumpEvent
     );
 
+    // REALMLIFE MOBILE INTERACT — select the nearest interactive
+    const onRealmLifeInteract = () => {
+      let best = null;
+      let bestD = 4.5;
+
+      const wp = new THREE.Vector3();
+
+      for (const obj of interactive) {
+        if (!obj?.userData?.id && !obj?.userData?.label) continue;
+
+        obj.getWorldPosition(wp);
+
+        const d = Math.hypot(
+          wp.x - resident.position.x,
+          wp.z - resident.position.z
+        );
+
+        if (d < bestD) {
+          bestD = d;
+          best = obj;
+        }
+      }
+
+      if (!best) {
+        setHud((h) => ({
+          ...h,
+          msg: "Nothing nearby to interact with.",
+        }));
+
+        return;
+      }
+
+      setSelected({
+        id: best.userData.id,
+        label: best.userData.label,
+        actions: best.userData.actions || [],
+      });
+    };
+
+    window.addEventListener(
+      "realmlife:interact",
+      onRealmLifeInteract
+    );
+
 
     const monitorResidentMotion =
       (now) => {
@@ -2862,7 +3023,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           setHud((h) => ({
             ...h,
             msg:
-              "Build / Buy is limited to your home and yard.",
+              "Build / Upgrade is limited to your home and yard.",
           }));
 
           return;
@@ -4078,6 +4239,16 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         (keys.s || keys.arrowdown ? 1 : 0) -
         (keys.w || keys.arrowup ? 1 : 0);
 
+      // REALMLIFE MOBILE JOYSTICK INPUT
+      const realmJoy = mobileMoveRef.current;
+      const realmJoyActive = realmJoy.mag > 0.08;
+      const realmJoyRun = realmJoy.mag > 0.82;
+
+      if (realmJoyActive) {
+        mx = THREE.MathUtils.clamp(mx + realmJoy.x, -1, 1);
+        mz = THREE.MathUtils.clamp(mz + realmJoy.y, -1, 1);
+      }
+
       if ((mx || mz) && !residentInteractionBusy) {
         moveTargetRef.current = null;
         pathRef.current = [];
@@ -4093,7 +4264,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         // Normal movement = walking pace.
         // Shift = full running pace.
         v.multiplyScalar(
-          motionShiftDown
+          motionShiftDown || realmJoyRun
             ? 1.0
             : 0.58
         );
@@ -4101,7 +4272,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
         residentMoving = true;
         residentRunning =
-          !!keys.shift;
+          !!keys.shift || realmJoyRun;
 
         const moveSpeed =
           residentRunning
@@ -4359,6 +4530,22 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       }
 
       // ------------------------------------------------------
+      // GRAPHICS AUTO-TUNE + SECTOR STREAMING
+      // ------------------------------------------------------
+
+      realmGraphics.frame(dt);
+
+      sectorStreaming.update(
+        resident.position,
+        realmGraphics.getDrawDistance()
+      );
+
+      meshyWorld?.update(
+        resident.position,
+        realmGraphics.getDrawDistance()
+      );
+
+      // ------------------------------------------------------
       // DAY / NIGHT PRESENTATION
       // ------------------------------------------------------
 
@@ -4373,10 +4560,8 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       ambient.intensity = 0.35 + daylight * 0.8;
       warm.intensity = 8 + (1 - daylight) * 18;
 
-      const nightColor = new THREE.Color(0x152442);
-      const dayColor = new THREE.Color(0x86c8e8);
-
-      scene.background.copy(nightColor).lerp(dayColor, daylight);
+      // SKY AUTHORITY: RealmLife environment controller owns
+      // scene.background — no second writer (fixes flicker/banding).
 
       // ------------------------------------------------------
       // REALMLIFE MULTI-VIEW CAMERA
@@ -4679,6 +4864,13 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         onResidentJumpEvent
       );
 
+      window.removeEventListener(
+        "realmlife:interact",
+        onRealmLifeInteract
+      );
+
+      graphicsRef.current = null;
+
       if (
         residentMotionFrame
       ) {
@@ -4761,6 +4953,12 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       window.__REALMLIFE_INDOOR =
         false;
 
+      delete window.__REALMLIFE_SECTORS;
+      delete window.__REALMLIFE_TELEPORT;
+
+      meshyWorld?.dispose?.();
+      meshyWorld = null;
+
       realmLifeEnvironmentController?.dispose();
 
       renderer.dispose();
@@ -4780,11 +4978,89 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       await document.exitFullscreen?.();
   };
 
+  // REALMLIFE MOBILE JOYSTICK HELPERS
+  const joyUpdate = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    let dx = (e.clientX - cx) / (rect.width / 2);
+    let dy = (e.clientY - cy) / (rect.height / 2);
+
+    const raw = Math.hypot(dx, dy);
+    const mag = Math.min(1, raw);
+
+    if (raw > 0) {
+      dx = (dx / raw) * mag;
+      dy = (dy / raw) * mag;
+    }
+
+    mobileMoveRef.current = { x: dx, y: dy, mag };
+
+    if (joyKnobRef.current) {
+      joyKnobRef.current.style.transform = `translate(${dx * 38}px, ${dy * 38}px)`;
+    }
+
+    markRealmLifeActive();
+  };
+
+  const joyReset = () => {
+    mobileMoveRef.current = { x: 0, y: 0, mag: 0 };
+
+    if (joyKnobRef.current) {
+      joyKnobRef.current.style.transform = "translate(0px, 0px)";
+    }
+  };
+
+  const drawerBtnStyle = {
+    background: "rgba(255,255,255,.07)",
+    border: "1px solid rgba(255,255,255,.14)",
+    color: "#fff",
+  };
+
+  const renderGraphicsButtons = (prefix) => (
+    <>
+      <div className="grid grid-cols-3 gap-1">
+        {GRAPHICS_MODES.map((m) => (
+          <button
+            key={m}
+            type="button"
+            data-testid={`${prefix}-graphics-${m.toLowerCase()}`}
+            onClick={() => graphicsRef.current?.setMode(m)}
+            className="px-1 py-1.5 rounded-lg text-[10px] font-black"
+            style={{
+              background:
+                graphicsInfo.mode === m
+                  ? "rgba(46,230,255,.3)"
+                  : "rgba(255,255,255,.07)",
+              border:
+                graphicsInfo.mode === m
+                  ? "1px solid rgba(46,230,255,.6)"
+                  : "1px solid rgba(255,255,255,.12)",
+              color: "#fff",
+            }}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+
+      <div
+        className="text-[9px] mt-1.5 opacity-60"
+        data-testid={`${prefix}-graphics-active-tier`}
+      >
+        Active tier: {graphicsInfo.tier || "…"}
+        {graphicsInfo.mode === "AUTO" ? " (auto-tuned)" : ""}
+      </div>
+    </>
+  );
+
   return (
     <div
       className="relative w-full rounded-xl overflow-hidden"
       style={{
-        height: 620,
+        height: "100%",
+        minHeight: 620,
         background: "#071018",
         border: "1px solid rgba(46,230,255,.25)",
       }}
@@ -4902,6 +5178,29 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
             }
           </button>
 
+          <button
+            type="button"
+            data-testid="realmlife-settings-gear"
+            onClick={() => {
+              if (isMobileUI) setMobileMenuOpen(true);
+              else setSettingsOpen((v) => !v);
+            }}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-black"
+            style={{
+              background:
+                settingsOpen || mobileMenuOpen
+                  ? "rgba(46,230,255,.26)"
+                  : "rgba(3,10,20,.72)",
+              border: "1px solid rgba(46,230,255,.28)",
+              color: "#fff",
+            }}
+            title="Settings & Graphics"
+          >
+            ⚙{isMobileUI ? " MENU" : ""}
+          </button>
+
+          {!isMobileUI && (
+            <>
 
           <button
             type="button"
@@ -5102,12 +5401,274 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           >
             ⛶
           </button>
+
+            </>
+          )}
         </div>
       </div>
 
+      {/* REALMLIFE SETTINGS PANEL (DESKTOP) */}
+      {settingsOpen && !isMobileUI && (
+        <div
+          data-testid="realmlife-settings-panel"
+          className="absolute top-16 right-3 z-40 w-[236px] rounded-xl p-3"
+          style={{
+            background: "rgba(4,12,22,.94)",
+            border: "1px solid rgba(46,230,255,.3)",
+            backdropFilter: "blur(14px)",
+            color: "#fff",
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-black text-xs">⚙ SETTINGS</span>
+            <button
+              type="button"
+              data-testid="realmlife-settings-close"
+              onClick={() => setSettingsOpen(false)}
+              className="text-xs opacity-70"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="text-[10px] font-black opacity-70 mb-1">
+            GRAPHICS QUALITY
+          </div>
+
+          {renderGraphicsButtons("realmlife-settings")}
+
+          <div className="text-[10px] font-black opacity-70 mt-2 mb-1">
+            AUDIO
+          </div>
+
+          <button
+            type="button"
+            data-testid="realmlife-settings-dj"
+            onClick={() => {
+              setRealmLifeDJOpen(true);
+              setSettingsOpen(false);
+            }}
+            className="w-full px-2 py-2 rounded-lg text-[11px] font-black text-left"
+            style={{
+              background: "rgba(197,140,255,.14)",
+              border: "1px solid rgba(197,140,255,.3)",
+              color: "#fff",
+            }}
+          >
+            🎧 AUDIO / DJ MIXER
+          </button>
+        </div>
+      )}
+
+      {/* REALMLIFE MOBILE CONTROL DRAWER */}
+      {isMobileUI && mobileMenuOpen && (
+        <>
+          <div
+            data-testid="realmlife-drawer-backdrop"
+            className="absolute inset-0 z-40"
+            style={{ background: "rgba(0,0,0,.45)" }}
+            onClick={() => setMobileMenuOpen(false)}
+          />
+
+          <div
+            data-testid="realmlife-mobile-drawer"
+            className="absolute top-0 bottom-0 right-0 z-50 w-[248px] p-3 overflow-y-auto"
+            style={{
+              background: "rgba(4,12,22,.97)",
+              borderLeft: "1px solid rgba(46,230,255,.3)",
+              backdropFilter: "blur(14px)",
+              color: "#fff",
+            }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-black text-sm">⚙ MENU</span>
+              <button
+                type="button"
+                data-testid="realmlife-drawer-close"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-sm opacity-80 px-2"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                data-testid="realmlife-drawer-pov"
+                onClick={() => {
+                  toggleRealmLifeCamera();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
+                style={drawerBtnStyle}
+              >
+                {cameraMode === "first"
+                  ? "🌐 WORLD VIEW"
+                  : "👁 FIRST PERSON POV"}
+              </button>
+
+              <button
+                type="button"
+                data-testid="realmlife-drawer-direction"
+                onClick={toggleControlDirection}
+                className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
+                style={drawerBtnStyle}
+              >
+                {controlDirection === "normal"
+                  ? "🎮 NORMAL CONTROLS"
+                  : "↔ REVERSE CONTROLS"}
+              </button>
+
+              <button
+                type="button"
+                data-testid="realmlife-drawer-houseview"
+                onClick={toggleHouseView}
+                className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
+                style={drawerBtnStyle}
+              >
+                {houseView === "full"
+                  ? "🏠 FULL HOUSE"
+                  : "✂ CUTAWAY VIEW"}
+              </button>
+
+              <button
+                type="button"
+                data-testid="realmlife-drawer-property"
+                onClick={() => {
+                  realmProperty.setOpen(true);
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
+                style={drawerBtnStyle}
+              >
+                🏠 PROPERTY
+              </button>
+
+              <button
+                type="button"
+                data-testid="realmlife-drawer-build"
+                onClick={() => {
+                  setMobileBuildOpen((v) => !v);
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
+                style={drawerBtnStyle}
+              >
+                🔨 BUILD / UPGRADE {mobileBuildOpen ? "(ON)" : ""}
+              </button>
+
+              <button
+                type="button"
+                data-testid="realmlife-drawer-save"
+                onClick={() => {
+                  persist();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
+                style={drawerBtnStyle}
+              >
+                💾 SAVE {saveStatus ? `· ${saveStatus}` : ""}
+              </button>
+
+              <button
+                type="button"
+                data-testid="realmlife-drawer-dj"
+                onClick={() => {
+                  setRealmLifeDJOpen(true);
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
+                style={drawerBtnStyle}
+              >
+                🎧 AUDIO / DJ MIXER
+              </button>
+            </div>
+
+            <div className="text-[10px] font-black opacity-70 mt-3 mb-1">
+              GRAPHICS QUALITY
+            </div>
+
+            {renderGraphicsButtons("realmlife-drawer")}
+
+            <div className="text-[10px] font-black opacity-70 mt-3 mb-1">
+              GAME SPEED
+            </div>
+
+            <div className="flex gap-1">
+              {[0, 1, 2, 3].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  data-testid={`realmlife-drawer-speed-${n}`}
+                  onClick={() => setSpeed(n)}
+                  className="flex-1 px-2 py-1.5 rounded-lg text-[11px] font-black"
+                  style={{
+                    background:
+                      speed === n
+                        ? "rgba(46,230,255,.28)"
+                        : "rgba(255,255,255,.07)",
+                    border: "1px solid rgba(46,230,255,.28)",
+                    color: "#eaffff",
+                  }}
+                >
+                  {n === 0 ? "Ⅱ" : `${n}×`}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-1.5 mt-3">
+              <button
+                type="button"
+                data-testid="realmlife-drawer-fullscreen"
+                onClick={() => {
+                  toggleFullscreen();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
+                style={drawerBtnStyle}
+              >
+                ⛶ FULLSCREEN
+              </button>
+
+              {realmEnvironment.isFounder && (
+                <button
+                  type="button"
+                  data-testid="realmlife-drawer-admin"
+                  onClick={() => {
+                    realmEnvironment.setOpen(true);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
+                  style={{
+                    background: "rgba(255,170,70,.13)",
+                    border: "1px solid rgba(255,170,70,.38)",
+                    color: "#fff",
+                  }}
+                >
+                  ⚙ ADMIN
+                </button>
+              )}
+
+              <button
+                type="button"
+                data-testid="realmlife-drawer-exit"
+                onClick={onExit}
+                className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
+                style={drawerBtnStyle}
+              >
+                🚪 EXIT REALMLIFE
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* NEEDS PANEL */}
       <div
-        className="absolute left-3 bottom-3 w-[210px] rounded-xl p-3"
+        className={`absolute left-3 rounded-xl p-3 ${
+          isMobileUI ? "bottom-[150px] w-[172px]" : "bottom-3 w-[210px]"
+        }`}
         style={{
           background: "rgba(3,10,20,.82)",
           border: "1px solid rgba(46,230,255,.25)",
@@ -5271,6 +5832,79 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         JUMP
       </button>
 
+      {/* REALMLIFE MOBILE JOYSTICK */}
+      {isMobileUI && (
+        <div
+          data-testid="realmlife-joystick"
+          className="absolute left-4 bottom-4 z-30"
+          style={{
+            width: 118,
+            height: 118,
+            borderRadius: 999,
+            background: "rgba(3,10,20,.55)",
+            border: "1px solid rgba(46,230,255,.35)",
+            touchAction: "none",
+            backdropFilter: "blur(8px)",
+          }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            joyUpdate(e);
+          }}
+          onPointerMove={(e) => {
+            if (e.buttons || e.pointerType === "touch") joyUpdate(e);
+          }}
+          onPointerUp={joyReset}
+          onPointerCancel={joyReset}
+        >
+          <div
+            ref={joyKnobRef}
+            style={{
+              position: "absolute",
+              left: 39,
+              top: 39,
+              width: 40,
+              height: 40,
+              borderRadius: 999,
+              background: "rgba(46,230,255,.5)",
+              border: "1px solid rgba(160,245,255,.8)",
+              pointerEvents: "none",
+            }}
+          />
+        </div>
+      )}
+
+      {/* REALMLIFE MOBILE INTERACT */}
+      {isMobileUI && (
+        <button
+          type="button"
+          data-testid="realmlife-interact-btn"
+          onPointerDown={(event) => {
+            event.preventDefault();
+
+            window.dispatchEvent(
+              new Event("realmlife:interact")
+            );
+
+            markRealmLifeActive();
+          }}
+          className="absolute right-4 bottom-4 z-30 w-[62px] h-[62px] rounded-full text-[9px] font-black"
+          style={{
+            background:
+              "linear-gradient(180deg,rgba(60,26,86,.94),rgba(24,8,40,.94))",
+            border: "1px solid rgba(197,140,255,.55)",
+            color: "#fff",
+            boxShadow:
+              "0 8px 26px rgba(0,0,0,.38),0 0 22px rgba(197,140,255,.14)",
+            backdropFilter: "blur(10px)",
+          }}
+          title="Interact with the nearest object"
+        >
+          <div className="text-lg leading-none">✋</div>
+          INTERACT
+        </button>
+      )}
+
 
       {/* REALMLIFE CINEMATIC ROOM FADE */}
       {realmTravelFade && (
@@ -5325,8 +5959,11 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       />
 
       {/* BUILD / BUY */}
+      {(!isMobileUI || mobileBuildOpen) && (
       <div
-        className="absolute right-3 bottom-3 rounded-xl p-2"
+        className={`absolute right-3 rounded-xl p-2 ${
+          isMobileUI ? "bottom-[170px]" : "bottom-3"
+        }`}
         style={{
           background: "rgba(3,10,20,.82)",
           border: "1px solid rgba(255,138,90,.3)",
@@ -5334,7 +5971,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         }}
       >
         <div className="text-[10px] font-black mb-1.5">
-          🔨 BUILD / BUY
+          🔨 BUILD / UPGRADE
         </div>
 
         <div className="flex gap-1">
@@ -5372,10 +6009,13 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           </div>
         )}
       </div>
+      )}
 
       {/* STATUS */}
       <div
-        className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-lg px-4 py-2 text-xs font-semibold"
+        className={`absolute left-1/2 -translate-x-1/2 rounded-lg px-4 py-2 text-xs font-semibold ${
+          isMobileUI ? "top-[64px]" : "bottom-3"
+        }`}
         style={{
           background: "rgba(3,10,20,.72)",
           color: "#fff",
@@ -5385,6 +6025,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         {hud.msg}
       </div>
 
+      {!isMobileUI && (
       <div
         className="absolute top-16 left-3 text-[10px] rounded-lg px-3 py-1.5"
         style={{
@@ -5395,7 +6036,9 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         Click/tap: walk/interact · 👁 POV: first person · Drag in POV: look · WASD: walk · Shift: run · Space: jump · Q/E:
         rotate · Wheel: zoom
       </div>
+      )}
 
+      {!isMobileUI && (
       <button
         onClick={onExit}
         className="absolute top-[62px] right-3 px-3 py-1.5 rounded-lg text-[10px] font-bold"
@@ -5407,6 +6050,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       >
         EXIT
       </button>
+      )}
 
       {!ready && (
         <div className="absolute inset-0 flex items-center justify-center text-white/80">

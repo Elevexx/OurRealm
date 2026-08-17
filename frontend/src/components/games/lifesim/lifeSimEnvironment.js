@@ -48,6 +48,13 @@ export function createRealmLifeEnvironment(
   let syncedAt =
     performance.now();
 
+  // Single authoritative sky rig — sky/sun/moon/stars ride this
+  // group so it can follow the camera and never clip the far plane.
+  let followCamera = null;
+
+  const celestialTarget =
+    new THREE.Vector3();
+
 
   const originalBackground =
     scene.background;
@@ -139,7 +146,20 @@ export function createRealmLifeEnvironment(
   sky.renderOrder =
     -1000;
 
+  sky.frustumCulled =
+    false;
+
+  const celestial =
+    new THREE.Group();
+
+  celestial.name =
+    "RealmLifeCelestialRig";
+
   scene.add(
+    celestial
+  );
+
+  celestial.add(
     sky
   );
 
@@ -168,7 +188,7 @@ export function createRealmLifeEnvironment(
   sun.renderOrder =
     -995;
 
-  scene.add(
+  celestial.add(
     sun
   );
 
@@ -176,7 +196,7 @@ export function createRealmLifeEnvironment(
   const moonGroup =
     new THREE.Group();
 
-  scene.add(
+  celestial.add(
     moonGroup
   );
 
@@ -337,7 +357,7 @@ export function createRealmLifeEnvironment(
   stars.renderOrder =
     -997;
 
-  scene.add(
+  celestial.add(
     stars
   );
 
@@ -1361,6 +1381,27 @@ export function createRealmLifeEnvironment(
         : 0;
 
 
+    // Sky rig camera follow — dome always fits within the far plane.
+    if (followCamera) {
+      followCamera.getWorldPosition(
+        celestialTarget
+      );
+
+      celestial.position.set(
+        celestialTarget.x,
+        0,
+        celestialTarget.z
+      );
+
+      sky.scale.setScalar(
+        Math.max(
+          0.5,
+          (followCamera.far * 0.92) / 320
+        )
+      );
+    }
+
+
     requestAnimationFrame(
       frame
     );
@@ -1375,6 +1416,10 @@ export function createRealmLifeEnvironment(
   return {
     setState:
       applyState,
+
+    setCamera(camera) {
+      followCamera = camera;
+    },
 
     dispose() {
       disposed = true;
@@ -1391,10 +1436,7 @@ export function createRealmLifeEnvironment(
         originalFog;
 
       scene.remove(
-        sky,
-        sun,
-        moonGroup,
-        stars,
+        celestial,
         clouds,
         hemi,
         sunLight,

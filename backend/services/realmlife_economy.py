@@ -820,7 +820,7 @@ async def burn_for_build(
             status_code=400,
             detail=(
                 "Unknown RealmLife "
-                "Build / Buy item."
+                "Build / Upgrade item."
             ),
         )
 

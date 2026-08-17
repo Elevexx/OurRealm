@@ -212,23 +212,33 @@ function makeLabel(
   ctx.fillStyle =
     color;
 
-  ctx.font =
-    "900 54px Arial";
-
   ctx.textAlign =
     "center";
 
   ctx.textBaseline =
     "middle";
 
+  // Dynamic text fit: shrink until the label fits — never crop.
+  const marinaLabel =
+    String(text || "");
+
+  let fitFont = 54;
+
+  ctx.font =
+    `900 ${fitFont}px Arial`;
+
+  while (
+    fitFont > 16
+    && ctx.measureText(marinaLabel).width > canvas.width - 56
+  ) {
+    fitFont -= 3;
+
+    ctx.font =
+      `900 ${fitFont}px Arial`;
+  }
+
   ctx.fillText(
-    String(
-      text
-      || ""
-    ).slice(
-      0,
-      34
-    ),
+    marinaLabel,
     canvas.width / 2,
     canvas.height / 2
   );
@@ -1376,6 +1386,9 @@ function addBoat(
 ) {
   const boat =
     new THREE.Group();
+
+  boat.name =
+    "RealmLifeProtoBoat";
 
   boat.position.set(
     x,

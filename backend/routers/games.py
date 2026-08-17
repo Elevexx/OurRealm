@@ -565,6 +565,35 @@ async def realmlife_account(
     return account
 
 
+@public.get("/{game_id}/realmlife/aaa-assets")
+async def realmlife_aaa_assets(
+    game_id: str,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    rows = await db.asset_library.find(
+        {"context.project": "realmlife_aaa"},
+        {"_id": 0, "context": 1, "url": 1, "meta.bytes": 1},
+    ).to_list(500)
+
+    return {
+        "assets": [
+            {
+                "slot": r["context"].get("slot"),
+                "family": r["context"].get("family"),
+                "url": r.get("url"),
+                "bytes": (r.get("meta") or {}).get("bytes"),
+            }
+            for r in rows
+            if (r.get("context") or {}).get("slot") and r.get("url")
+        ]
+    }
+
+
 @public.post("/{game_id}/realmlife/vault-transfer")
 async def realmlife_vault_transfer(
     game_id: str,

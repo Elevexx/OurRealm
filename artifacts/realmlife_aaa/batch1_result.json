@@ -1,0 +1,89 @@
+{
+  "batch": "batch1",
+  "stored": [
+    {
+      "slot": "nexus_portal_gate",
+      "url": "/api/media/models/ce97d949acd439810e10b902a344bc4f.glb"
+    },
+    {
+      "slot": "nexus_transit_station",
+      "url": "/api/media/models/7a3c4d88edb36e219f12670b95f36fa8.glb"
+    },
+    {
+      "slot": "nexus_arcade_pavilion",
+      "url": "/api/media/models/de9be679e0a9a87728a59238c9a0b023.glb"
+    },
+    {
+      "slot": "house_med_villa_a",
+      "url": "/api/media/models/2e29921d785027a443bd27c0c2f80543.glb"
+    },
+    {
+      "slot": "house_med_villa_c",
+      "url": "/api/media/models/4dae7375973a28b959391c12cc3cca95.glb"
+    },
+    {
+      "slot": "house_med_villa_b",
+      "url": "/api/media/models/a8d2d2eb200c816fc09af57c88b6b947.glb"
+    },
+    {
+      "slot": "house_med_small_a",
+      "url": "/api/media/models/03c51f7b904244af1b15acff5e991768.glb"
+    },
+    {
+      "slot": "house_med_small_b",
+      "url": "/api/media/models/10f5022cd5e1b327f851f8a074cda2b9.glb"
+    },
+    {
+      "slot": "house_med_pool",
+      "url": "/api/media/models/8d043e8ba03f6654f06da37da39de7b5.glb"
+    },
+    {
+      "slot": "biz_cafe",
+      "url": "/api/media/models/016f31d1e5330885c9a5b1ceda281b29.glb"
+    },
+    {
+      "slot": "biz_restaurant",
+      "url": "/api/media/models/b79b3b7737d34f3e0cf787b6d18da6a6.glb"
+    },
+    {
+      "slot": "biz_grocery",
+      "url": "/api/media/models/52b61b8dd2641db9bd64bebaf8352686.glb"
+    },
+    {
+      "slot": "biz_nightclub",
+      "url": "/api/media/models/42a8171c33cbbd7e4293c7b7c7c17055.glb"
+    },
+    {
+      "slot": "boat_speed",
+      "url": "/api/media/models/3e299857ba2d834f66297f05711c47cb.glb"
+    },
+    {
+      "slot": "boat_sail",
+      "url": "/api/media/models/96c9291bc4691a1cc6ab447dceee48ce.glb"
+    },
+    {
+      "slot": "boat_yacht",
+      "url": "/api/media/models/38ab42aeeae4fa16ea6fe460fdb511c3.glb"
+    },
+    {
+      "slot": "tree_palm",
+      "url": "/api/media/models/a33885b4f5e69ef26ad433357a38f50b.glb"
+    },
+    {
+      "slot": "tree_cypress",
+      "url": "/api/media/models/bae23019773e2a295a4c905776235178.glb"
+    },
+    {
+      "slot": "prop_fountain",
+      "url": "/api/media/models/7afcf0ab6a227074a46ce2a9c3c1cf4e.glb"
+    }
+  ],
+  "failed": [
+    {
+      "slot": "nexus_hero_tower",
+      "error": "nexus_hero_tower refine FAILED: {'type': 'server_error', 'message': 'An unexpected error occurred. Please retry. If this persists, contact support with your task ID.'}"
+    }
+  ],
+  "balance_after": 3116,
+  "finished_at": "2026-08-17T00:43:03.302603+00:00"
+}

@@ -186,14 +186,30 @@ function addLabel(
 
   ctx.fillStyle = "#ffffff";
 
-  ctx.font =
-    "900 46px Arial, sans-serif";
-
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
+  // Dynamic text fit: shrink until the label fits — never crop.
+  const cityLabel =
+    String(text).toUpperCase();
+
+  let fitFont = 46;
+
+  ctx.font =
+    `900 ${fitFont}px Arial, sans-serif`;
+
+  while (
+    fitFont > 16
+    && ctx.measureText(cityLabel).width > 468
+  ) {
+    fitFont -= 3;
+
+    ctx.font =
+      `900 ${fitFont}px Arial, sans-serif`;
+  }
+
   ctx.fillText(
-    String(text).toUpperCase(),
+    cityLabel,
     256,
     64
   );

@@ -406,6 +406,9 @@ export default function RealmLifeDirect() {
       style={{
         background:
           "#030911",
+
+        // Immersive fullscreen: RealmLife sits above the site chrome.
+        zIndex: 50,
       }}
     >
       <LifeSimRuntime

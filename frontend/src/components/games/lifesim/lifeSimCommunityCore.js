@@ -199,23 +199,33 @@ function labelSprite(
   ctx.fillStyle =
     "#fff7e7";
 
-  ctx.font =
-    "bold 40px Arial";
-
   ctx.textAlign =
     "center";
 
   ctx.textBaseline =
     "middle";
 
+  // Dynamic text fit: shrink until the label fits — never crop.
+  const coreLabel =
+    String(text || "");
+
+  let fitFont = 40;
+
+  ctx.font =
+    `bold ${fitFont}px Arial`;
+
+  while (
+    fitFont > 14
+    && ctx.measureText(coreLabel).width > width - 36
+  ) {
+    fitFont -= 3;
+
+    ctx.font =
+      `bold ${fitFont}px Arial`;
+  }
+
   ctx.fillText(
-    String(
-      text
-      || ""
-    ).slice(
-      0,
-      30
-    ),
+    coreLabel,
     width / 2,
     height / 2
   );
