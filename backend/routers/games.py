@@ -1314,7 +1314,18 @@ async def realmlife_avatar(
         from services.realmlife_players import avatar_assets as _rl_assets
 
         entry = _RL_TIERS.get(rl_selected) or _RL_STARTERS.get(rl_selected)
-        if entry:
+
+        # Player 1 / Player 2 use RealmLife's discrete
+        # appearance-model registry in the frontend runtime.
+        # Do not short-circuit them to the generic asset URL.
+        if (
+            entry
+            and rl_selected
+            not in {
+                "player_1",
+                "player_2",
+            }
+        ):
             assets = await _rl_assets()
             a = assets.get(entry["slot"])
             if a and a.get("url"):

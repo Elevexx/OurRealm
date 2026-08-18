@@ -139,6 +139,51 @@ export function createChatBubbleManager() {
     if (bubbles.get(uid)?.id === id) return;
     drop(uid);
     const sprite = realmLifeChatSprite(text, username);
+
+    // REALMLIFE CHAT WORLD-SCALE SAFETY
+    //
+    // Avatar GLBs can use different normalization scales.
+    // A speech bubble must remain the same visible world size
+    // regardless of the scale of the avatar holder.
+    holder.updateWorldMatrix?.(true, false);
+
+    const holderWorldScale =
+      new THREE.Vector3(1, 1, 1);
+
+    holder.getWorldScale?.(
+      holderWorldScale
+    );
+
+    const safeX =
+      Math.max(
+        0.0001,
+        Math.abs(holderWorldScale.x) || 1
+      );
+
+    const safeY =
+      Math.max(
+        0.0001,
+        Math.abs(holderWorldScale.y) || 1
+      );
+
+    sprite.scale.x /= safeX;
+    sprite.scale.y /= safeY;
+
+    // Keep the bubble physically above the avatar even when
+    // the holder itself has been heavily scaled.
+    sprite.position.y /= safeY;
+
+    sprite.frustumCulled = false;
+
+    if (sprite.material) {
+      sprite.material.depthTest = false;
+      sprite.material.depthWrite = false;
+      sprite.material.toneMapped = false;
+      sprite.material.transparent = true;
+    }
+
+    sprite.renderOrder = 9999;
+
     holder.add(sprite);
 
     const life = Math.min(

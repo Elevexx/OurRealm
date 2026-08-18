@@ -9,18 +9,41 @@ import {
   buildStarterModel,
   TIER_ACCENTS,
 } from "@/components/games/lifesim/realmLifeStarterAvatar";
-import { applyAvatarSkinTone } from "@/components/games/lifesim/realmLifeRecolor";
 import {
   preloadRealmLifeModel,
   REALMLIFE_PLAYER_MODELS,
+  getRealmLifeAppearanceModel,
 } from "@/components/games/lifesim/lifeSimAvatar";
 
 const GAME_ID = "realmlife-home-v1";
 
-// 4K hero GLBs (PREVIEW ONLY — gameplay wiring untouched)
-const HERO_PREVIEW_URLS = {
-  player_1: "/api/media/models/698bcea39a7e273b446da21a6580a30a.glb",
-  player_2: "/api/media/models/8787f255e4c1d0db42460c66bdc1bafc.glb",
+// RealmLife 4K hero models by actual discrete appearance.
+const HERO_APPEARANCE_URLS = {
+  player_1: {
+    1: "/api/media/models/698bcea39a7e273b446da21a6580a30a.glb",
+    2: "/api/media/models/8c298548650e7157896cfdb452254cc9.glb",
+    3: "/api/media/models/299c448ae83122d3549c3492699c8521.glb",
+  },
+
+  player_2: {
+    1: "/api/media/models/8787f255e4c1d0db42460c66bdc1bafc.glb",
+    2: "/api/media/models/7f33f4911a278210ebfde44eeaf62a86.glb",
+    3: "/api/media/models/2820f03039de848e0d4e871989ecb712.glb",
+  },
+};
+
+const APPEARANCE_SWATCHES = {
+  player_1: [
+    "#E7A273",
+    "#A96441",
+    "#54291F",
+  ],
+
+  player_2: [
+    "#D89466",
+    "#9A5738",
+    "#4B241C",
+  ],
 };
 
 const SWATCHES = {
@@ -55,23 +78,20 @@ export default function RealmLifeLanding() {
   const isPlayerGlb =
     selected === "player_1" || selected === "player_2";
 
-  const customSkinRef = useRef(null);
-  customSkinRef.current = isPlayerGlb ? custom?.skin || null : null;
-
-  // Live hero skin recolor when the user picks a new swatch
   useEffect(() => {
     if (!isPlayerGlb) return;
-    if (modelRef.current && custom?.skin) {
-      applyAvatarSkinTone(modelRef.current, custom.skin);
-    }
-  }, [custom?.skin, isPlayerGlb]);
 
-  useEffect(() => {
-    if (!isPlayerGlb) return;
     preloadRealmLifeModel(
-      REALMLIFE_PLAYER_MODELS[selected]?.modelUrl
+      getRealmLifeAppearanceModel(
+        selected,
+        custom?.appearance || 1
+      )
     );
-  }, [selected, isPlayerGlb]);
+  }, [
+    selected,
+    isPlayerGlb,
+    custom?.appearance,
+  ]);
   const [tab, setTab] = useState("PLAYER");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -220,20 +240,47 @@ export default function RealmLifeLanding() {
     mixerRef.current = null;
 
     // 360° spinning 4K hero preview for Player 1 / Player 2
-    if (HERO_PREVIEW_URLS[selected]) {
+    if (isPlayerGlb) {
       let cancelled = false;
-      const slot = selected;
-      const cached = heroCacheRef.current.get(slot);
+
+      const appearance =
+        Math.max(
+          1,
+          Math.min(
+            3,
+            Number(
+              custom?.appearance
+              || 1
+            ) || 1
+          )
+        );
+
+      const playerSlot =
+        selected;
+
+      const slot =
+        `${playerSlot}_appearance_${appearance}`;
+
+      const heroUrl =
+        HERO_APPEARANCE_URLS[
+          playerSlot
+        ]?.[appearance]
+        ||
+        HERO_APPEARANCE_URLS[
+          playerSlot
+        ]?.[1];
+
+      const cached =
+        heroCacheRef.current.get(
+          slot
+        );
 
       const install = ({ group, mixer }) => {
         if (cancelled || sceneRef.current !== scene) return;
         scene.add(group);
         modelRef.current = group;
         mixerRef.current = mixer;
-        if (customSkinRef.current) {
-          applyAvatarSkinTone(group, customSkinRef.current);
-        }
-        setHeroLoaded(slot);
+        setHeroLoaded(playerSlot);
       };
 
       if (cached) {
@@ -244,7 +291,11 @@ export default function RealmLifeLanding() {
         let tempGroup = null;
 
         const fastUrl =
-          REALMLIFE_PLAYER_MODELS[slot]?.modelUrl;
+          appearance === 1
+            ? REALMLIFE_PLAYER_MODELS[
+                playerSlot
+              ]?.modelUrl
+            : null;
 
         if (fastUrl) {
           new GLTFLoader()
@@ -264,10 +315,8 @@ export default function RealmLifeLanding() {
               tempGroup.add(m);
               scene.add(tempGroup);
               modelRef.current = tempGroup;
-              setHeroLoaded(slot);
-              if (customSkinRef.current)
-                applyAvatarSkinTone(tempGroup, customSkinRef.current);
-            })
+              setHeroLoaded(playerSlot);
+})
             .catch(() => {});
         }
 
@@ -282,7 +331,7 @@ export default function RealmLifeLanding() {
         };
 
         new GLTFLoader()
-          .loadAsync(`${process.env.REACT_APP_BACKEND_URL}${HERO_PREVIEW_URLS[slot]}`)
+          .loadAsync(`${process.env.REACT_APP_BACKEND_URL}${heroUrl}`)
           .then((gltf) => {
             const model = gltf.scene;
             model.traverse((o) => {
@@ -655,11 +704,90 @@ export default function RealmLifeLanding() {
 
         {tab === "APPEARANCE" && catalog && (
           <div>
-            {swatchRow("SKIN TONE", c.skin, catalog.skin_tones, (v) => setC("skin", v), "realmlife-skin")}
+            {isPlayerGlb ? (
+              <div className="mb-3">
+                <div className="text-[10px] font-black opacity-70 mb-2">
+                  APPEARANCE
+                </div>
+
+                <div className="flex gap-3 items-center">
+                  {(
+                    APPEARANCE_SWATCHES[
+                      selected
+                    ]
+                    ||
+                    APPEARANCE_SWATCHES
+                      .player_1
+                  ).map(
+                    (
+                      color,
+                      index
+                    ) => {
+                      const value =
+                        index + 1;
+
+                      const active =
+                        Number(
+                          c.appearance
+                          || 1
+                        )
+                        === value;
+
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          data-testid={`realmlife-appearance-${value}`}
+                          aria-label={`Appearance ${value}`}
+                          title={`Appearance ${value}`}
+                          onClick={() =>
+                            setC(
+                              "appearance",
+                              value
+                            )
+                          }
+                          className="w-10 h-10 rounded-full transition-transform"
+                          style={{
+                            background:
+                              color,
+
+                            border:
+                              active
+                                ? "3px solid #22d3ee"
+                                : "2px solid rgba(255,255,255,.28)",
+
+                            boxShadow:
+                              active
+                                ? "0 0 0 2px rgba(34,211,238,.18), 0 0 14px rgba(34,211,238,.35)"
+                                : "none",
+
+                            transform:
+                              active
+                                ? "scale(1.08)"
+                                : "scale(1)",
+                          }}
+                        />
+                      );
+                    }
+                  )}
+                </div>
+              </div>
+            ) : (
+              swatchRow(
+                "SKIN TONE",
+                c.skin,
+                catalog.skin_tones,
+                (v) =>
+                  setC(
+                    "skin",
+                    v
+                  ),
+                "realmlife-skin"
+              )
+            )}
             {isPlayerGlb ? (
               <div className="text-[10px] opacity-60 mb-2" data-testid="realmlife-glb-appearance-note">
-                Player {selected === "player_2" ? "2" : "1"} supports live skin-tone
-                customization. More options coming soon.
+                Choose one of three actual RealmLife model appearances.
               </div>
             ) : (
             <>

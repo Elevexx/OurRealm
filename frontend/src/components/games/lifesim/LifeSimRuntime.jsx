@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import apiClient from "@/api/client";
+import RealmLifeProgressionPanel from "./RealmLifeProgressionPanel";
 import { findGridPath } from "./lifeSimPathfinding";
 import {
   createLifeAvatar,
@@ -8,7 +9,9 @@ import {
   DEFAULT_AVERY_AVATAR,
   REALMLIFE_UNIVERSAL_MOTIONS,
 
-  REALMLIFE_PLAYER_MODELS,} from "./lifeSimAvatar";
+  REALMLIFE_PLAYER_MODELS,
+  getRealmLifeAppearanceModel,
+} from "./lifeSimAvatar";
 import { buildNeighborhoodWorld } from "./lifeSimNeighborhood";
 import { createRealmLifeGraphics, GRAPHICS_MODES, createAdaptiveDPR } from "./lifeSimGraphics";
 import { createHomeBeacons } from "./lifeSimHomeBeacons";
@@ -396,12 +399,112 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     });
   }, []);
 
-  // REALMLIFE MOBILE COLLAPSED NEEDS
+  // REALMLIFE MOBILE COLLAPSED PROGRESSION
   const [needsOpen, setNeedsOpen] = useState(false);
 
   // REALMLIFE IN-WORLD CHAT
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
+
+  // ----------------------------------------------------------
+  // REALMLIFE IOS CHAT VIEWPORT SAFETY
+  //
+  // Safari changes visualViewport height while its keyboard
+  // opens. RealmLife must NOT resize/rebuild the Three canvas
+  // during that animation.
+  // ----------------------------------------------------------
+
+  const chatOpenRef =
+    useRef(false);
+
+  const [
+    chatViewportLock,
+    setChatViewportLock,
+  ] = useState(null);
+
+  const [
+    chatKeyboardInset,
+    setChatKeyboardInset,
+  ] = useState(0);
+
+  useEffect(() => {
+    chatOpenRef.current =
+      chatOpen;
+  }, [chatOpen]);
+
+  useEffect(() => {
+    if (
+      !chatOpen
+      ||
+      !isMobileUI
+    ) {
+      setChatKeyboardInset(0);
+      return undefined;
+    }
+
+    const vv =
+      window.visualViewport;
+
+    if (!vv) {
+      return undefined;
+    }
+
+    const lockedHeight =
+      Number(
+        chatViewportLock
+        ||
+        window.innerHeight
+        ||
+        vv.height
+      );
+
+    const syncKeyboardInset = () => {
+      const visibleBottom =
+        Number(vv.height || 0)
+        +
+        Number(vv.offsetTop || 0);
+
+      const inset =
+        Math.max(
+          0,
+          lockedHeight
+          -
+          visibleBottom
+        );
+
+      setChatKeyboardInset(
+        Math.round(inset)
+      );
+    };
+
+    syncKeyboardInset();
+
+    vv.addEventListener(
+      "resize",
+      syncKeyboardInset
+    );
+
+    vv.addEventListener(
+      "scroll",
+      syncKeyboardInset
+    );
+
+    return () => {
+      vv.removeEventListener(
+        "resize",
+        syncKeyboardInset
+      );
+
+      vv.removeEventListener(
+        "scroll",
+        syncKeyboardInset
+      );
+    };
+  }, [
+    chatOpen,
+    isMobileUI,
+    chatViewportLock,
+  ]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -2227,6 +2330,220 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       };
 
 
+    // ========================================================
+    // REALMLIFE REMOTE REAL AVATAR SYNC
+    //
+    // Replace the old lightweight multiplayer person with the
+    // sender's actual RealmLife GLB once it is available.
+    // ========================================================
+
+    const syncRealmLifeRemoteAvatar =
+      (
+        remote,
+        player
+      ) => {
+
+        if (
+          !remote
+          ||
+          !player
+          ||
+          disposed
+        ) {
+          return;
+        }
+
+        const avatar =
+          player
+            ?.avatar;
+
+        // Old/initial presence rows may not contain avatar data.
+        // Keep the lightweight fallback until the next heartbeat.
+        if (
+          !avatar
+          ||
+          !avatar
+            .selected_avatar
+        ) {
+          return;
+        }
+
+        const selected =
+          avatar
+            .selected_avatar
+          === "founder_stealth"
+            ? "founder_stealth"
+            : avatar
+                  .selected_avatar
+              === "player_2"
+              ? "player_2"
+              : "player_1";
+
+        const appearance =
+          selected
+          === "founder_stealth"
+            ? 1
+            : Math.max(
+                1,
+                Math.min(
+                  3,
+                  Number(
+                    avatar
+                      .appearance
+                    || 1
+                  )
+                )
+              );
+
+        const avatarKey =
+          `${selected}:${appearance}`;
+
+        if (
+          remote.avatarKey
+          === avatarKey
+          ||
+          remote.avatarLoadingKey
+          === avatarKey
+        ) {
+          return;
+        }
+
+        const modelUrl =
+          selected
+          === "founder_stealth"
+            ? REALMLIFE_PLAYER_MODELS
+                .founder_stealth
+                ?.modelUrl
+
+            : getRealmLifeAppearanceModel(
+                selected,
+                appearance
+              );
+
+        if (!modelUrl) {
+          console.warn(
+            "[RealmLife] Remote avatar model missing:",
+            avatarKey
+          );
+
+          return;
+        }
+
+        remote.avatarLoadingKey =
+          avatarKey;
+
+        createRealmLifeOptionAvatar({
+          modelUrl,
+          targetHeight:
+            1.82,
+        })
+          .then(
+            (controller) => {
+
+              // The user may have left while their GLB loaded.
+              if (
+                disposed
+                ||
+                realmLifeRemotes
+                  .get(
+                    remote.id
+                  )
+                !== remote
+                ||
+                remote
+                  .avatarLoadingKey
+                !== avatarKey
+              ) {
+                controller
+                  ?.dispose?.();
+
+                return;
+              }
+
+              if (
+                remote
+                  .avatarController
+              ) {
+                remote.root.remove(
+                  remote
+                    .avatarController
+                    .model
+                );
+
+                remote
+                  .avatarController
+                  .dispose?.();
+              }
+
+              remote
+                .avatarController =
+                  controller;
+
+              remote.avatarKey =
+                avatarKey;
+
+              remote.avatarLoadingKey =
+                null;
+
+              remote.root.add(
+                controller.model
+              );
+
+              // Hide the cyan emergency placeholder only after
+              // the real GLB has successfully loaded.
+              if (
+                remote.placeholder
+              ) {
+                remote.placeholder
+                  .visible =
+                    false;
+              }
+
+              controller
+                ?.setState?.(
+                  "idle",
+                  {
+                    force:
+                      true,
+                  }
+                );
+
+              console.info(
+                "[RealmLife] Remote real avatar ready:",
+                avatarKey
+              );
+            }
+          )
+          .catch(
+            (err) => {
+
+              if (
+                remote
+                  .avatarLoadingKey
+                === avatarKey
+              ) {
+                remote.avatarLoadingKey =
+                  null;
+              }
+
+              if (
+                remote.placeholder
+              ) {
+                remote.placeholder
+                  .visible =
+                    true;
+              }
+
+              console.warn(
+                "[RealmLife] Remote real avatar failed:",
+                avatarKey,
+                err
+              );
+            }
+          );
+      };
+
+
     const ensureRealmLifeRemote =
       (player) => {
 
@@ -2247,8 +2564,14 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
             );
 
 
-        if (remote)
+        if (remote) {
+          syncRealmLifeRemoteAvatar(
+            remote,
+            player
+          );
+
           return remote;
+        }
 
 
         const root =
@@ -2289,7 +2612,23 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
 
         remote = {
+          id,
+
           root,
+
+          // Cyan lightweight fallback while the real GLB loads.
+          placeholder:
+            person,
+
+          avatarController:
+            null,
+
+          avatarKey:
+            null,
+
+          avatarLoadingKey:
+            null,
+
           updatedAt:
             performance.now(),
         };
@@ -2298,6 +2637,11 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         realmLifeRemotes.set(
           id,
           remote
+        );
+
+        syncRealmLifeRemoteAvatar(
+          remote,
+          player
         );
 
 
@@ -2317,6 +2661,27 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         if (!remote)
           return;
 
+
+        if (
+          remote
+            .avatarController
+        ) {
+          remote.root.remove(
+            remote
+              .avatarController
+              .model
+          );
+
+          remote
+            .avatarController
+            .dispose?.();
+
+          remote.avatarController =
+            null;
+        }
+
+        remote.avatarLoadingKey =
+          null;
 
         scene.remove(
           remote.root
@@ -2381,6 +2746,15 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
                 property_id:
                   null,
+
+
+                // REALMLIFE REAL REMOTE AVATAR
+                avatar:
+                  resident
+                    .userData
+                    .realmLifeAvatarPresence
+                  || null,
+
 
                 chat:
                   pendingChat,
@@ -3647,6 +4021,57 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           const nexusAvatar =
             response.data;
 
+          // ==================================================
+          // REALMLIFE MULTIPLAYER AVATAR PRESENCE
+          //
+          // Tell the shared-world presence layer which REAL
+          // RealmLife avatar this resident is currently using.
+          // ==================================================
+
+          const realmLifePresenceSelected =
+            (
+              nexusAvatar
+                ?.selected_avatar
+              === "founder_stealth"
+              ||
+              nexusAvatar
+                ?.mode
+              === "founder"
+            )
+              ? "founder_stealth"
+              : nexusAvatar
+                    ?.selected_avatar
+                === "player_2"
+                ? "player_2"
+                : "player_1";
+
+          const realmLifePresenceAppearance =
+            realmLifePresenceSelected
+              === "founder_stealth"
+              ? 1
+              : Math.max(
+                  1,
+                  Math.min(
+                    3,
+                    Number(
+                      nexusAvatar
+                        ?.custom
+                        ?.appearance
+                      || 1
+                    )
+                  )
+                );
+
+          resident.userData
+            .realmLifeAvatarPresence =
+              {
+                selected_avatar:
+                  realmLifePresenceSelected,
+
+                appearance:
+                  realmLifePresenceAppearance,
+              };
+
           // REALMLIFE OPTION 1 / OPTION 2 — CLEAN TEST ROSTER
           if (
             nexusAvatar?.mode
@@ -3674,9 +4099,17 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
                 selectedOption
               ];
 
+            const optionModelUrl =
+              getRealmLifeAppearanceModel(
+                selectedOption,
+                nexusAvatar
+                  ?.custom
+                  ?.appearance
+                || 1
+              );
+
             if (
-              !optionCfg
-                ?.modelUrl
+              !optionModelUrl
             ) {
               throw new Error(
                 `RealmLife option model missing: ${selectedOption}`
@@ -3686,22 +4119,16 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
             console.info(
               "[RealmLife] Loading",
               selectedOption,
-              optionCfg.modelUrl
+              optionModelUrl
             );
 
             return createRealmLifeOptionAvatar({
               modelUrl:
-                optionCfg.modelUrl,
+                optionModelUrl,
 
               targetHeight:
                 1.82,
-
-              skinColor:
-                nexusAvatar
-                  ?.custom
-                  ?.skin
-                || null,
-            });
+});
           }
 
 
@@ -4469,8 +4896,30 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     );
 
     const ro = new ResizeObserver(() => {
+
+      // REALMLIFE IOS KEYBOARD GUARD
+      //
+      // Opening the keyboard changes Safari's viewport height.
+      // Do not resize the WebGL backbuffer/camera repeatedly
+      // while the user is typing.
+      const mobileNow =
+        window.matchMedia?.(
+          "(pointer: coarse)"
+        )?.matches
+        ||
+        window.innerWidth < 900;
+
+      if (
+        chatOpenRef.current
+        &&
+        mobileNow
+      ) {
+        return;
+      }
+
       const w = mount.clientWidth;
       const h = mount.clientHeight;
+
       if (!w || !h) return;
 
       renderer.setSize(w, h);
@@ -6227,15 +6676,46 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
   );
 
   const sendRealmLifeChat = () => {
-    const text = chatDraft.trim().slice(0, 200);
+    const text =
+      chatDraft
+        .trim()
+        .slice(0, 200);
+
+    chatOpenRef.current =
+      false;
+
+    try {
+      document.activeElement
+        ?.blur?.();
+    } catch (_) {}
+
     setChatDraft("");
     setChatOpen(false);
+    setChatKeyboardInset(0);
+
+    // Keep the game viewport locked briefly while iOS finishes
+    // its keyboard-close animation, then release it.
+    window.setTimeout(() => {
+      setChatViewportLock(null);
+    }, 360);
+
     if (!text) return;
+
     window.dispatchEvent(
-      new CustomEvent("realmlife:chat", { detail: text })
+      new CustomEvent(
+        "realmlife:chat",
+        {
+          detail: text,
+        }
+      )
     );
+
     if (cameraMode === "first") {
-      setHud((h) => ({ ...h, msg: `💬 You: ${text}` }));
+      setHud((h) => ({
+        ...h,
+        msg:
+          `💬 You: ${text}`,
+      }));
     }
   };
 
@@ -6243,9 +6723,24 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     <div
       className="relative w-full rounded-xl overflow-hidden"
       style={{
-        height: "100%",
-        minHeight: "min(620px, 100dvh)",
-        maxHeight: "100dvh",
+        height:
+          isMobileUI
+          && chatViewportLock
+            ? `${chatViewportLock}px`
+            : "100%",
+
+        minHeight:
+          isMobileUI
+          && chatViewportLock
+            ? `${chatViewportLock}px`
+            : "min(620px, 100dvh)",
+
+        maxHeight:
+          isMobileUI
+          && chatViewportLock
+            ? `${chatViewportLock}px`
+            : "100dvh",
+
         background: "#071018",
         border: "1px solid rgba(46,230,255,.25)",
       }}
@@ -6948,97 +7443,25 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       )}
 
       {(!isMobileUI || needsOpen) && (
-      <div
-        data-testid="realmlife-needs-panel"
-        className={`absolute rounded-xl p-3 z-30 flex flex-col ${
-          isMobileUI ? "w-[172px]" : "w-[210px]"
-        }`}
-        style={{
-          left: "max(12px, env(safe-area-inset-left))",
-          bottom: isMobileUI
-            ? "max(150px, calc(env(safe-area-inset-bottom) + 150px))"
-            : 12,
-          // Constrain to the ACTUAL game container height (the
-          // panel is absolutely positioned inside it) so the
-          // header/minimize button always stays visible — even
-          // on short landscape phones. Body scrolls internally.
-          maxHeight: isMobileUI
-            ? "calc(100% - max(150px, env(safe-area-inset-bottom) + 150px) - max(56px, env(safe-area-inset-top) + 48px))"
-            : "calc(100% - 72px)",
-          minHeight: 64,
-          background: "rgba(3,10,20,.82)",
-          border: "1px solid rgba(46,230,255,.25)",
-          backdropFilter: "blur(12px)",
-          color: "white",
-        }}
-      >
-        <div className="flex-none font-black text-sm mb-2 flex items-center justify-between">
-          <span className="truncate pr-1">
-            {simRef.current.resident.name}
-          </span>
-
-          {isMobileUI && (
-            <button
-              type="button"
-              data-testid="realmlife-needs-minimize"
-              onClick={() => setNeedsOpen(false)}
-              className="flex-none w-7 h-7 rounded-md text-xs font-black flex items-center justify-center"
-              style={{
-                background: "rgba(255,255,255,.1)",
-                border: "1px solid rgba(255,255,255,.2)",
-              }}
-              title="Minimize needs"
-            >
-              —
-            </button>
-          )}
-        </div>
-
-        <div
-          data-testid="realmlife-needs-body"
-          className="flex-1 min-h-0 overflow-y-auto pr-0.5"
-          style={{ overscrollBehavior: "contain" }}
-        >
-        {NEED_META.map(([key, label, icon, color]) => {
-          const value = clamp(hud.needs?.[key] || 0);
-
-          return (
-            <div key={key} className="mb-1.5">
-              <div className="flex justify-between text-[10px] mb-0.5">
-                <span>
-                  {icon} {label}
-                </span>
-                <span>{Math.round(value)}</span>
-              </div>
-
-              <div
-                className="h-2 rounded-full overflow-hidden"
-                style={{ background: "rgba(255,255,255,.12)" }}
-              >
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${value}%`,
-                    background: color,
-                    transition: "width .25s ease",
-                  }}
-                />
-              </div>
-            </div>
-          );
-        })}
-
-        <div
-          className="text-[10px] mt-2 pt-2"
-          style={{
-            borderTop: "1px solid rgba(255,255,255,.12)",
-            color: "#ff9fd0",
-          }}
-        >
-          ❤️ Neighbor friendship {Math.round(hud.relationship)}/100
-        </div>
-        </div>
-      </div>
+        <RealmLifeProgressionPanel
+          residentName={
+            simRef.current.resident.name
+          }
+          hud={hud}
+          realmFire={realmFire}
+          realmProperty={realmProperty}
+          placedCount={
+            Array.isArray(
+              simRef.current?.placed
+            )
+              ? simRef.current.placed.length
+              : 0
+          }
+          isMobileUI={isMobileUI}
+          onMinimize={() =>
+            setNeedsOpen(false)
+          }
+        />
       )}
 
       {/* INTERACTION MENU */}
@@ -7235,12 +7658,42 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
 
       {/* REALMLIFE CHAT INPUT */}
+
+      {chatOpen && isMobileUI && (
+        <div
+          className="absolute inset-0 z-[57]"
+          style={{
+            background:
+              "transparent",
+
+            touchAction:
+              "none",
+          }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onPointerMove={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          data-testid="realmlife-chat-touch-blocker"
+        />
+      )}
+
       {chatOpen && (
         <div
           className="absolute z-[58] flex justify-center inset-x-3"
           style={{
             bottom:
-              "calc(max(16px, env(safe-area-inset-bottom)) + 148px)",
+              isMobileUI
+                ? `${
+                    Math.max(
+                      12,
+                      chatKeyboardInset + 12
+                    )
+                  }px`
+                : "calc(max(16px, env(safe-area-inset-bottom)) + 148px)",
           }}
           data-testid="realmlife-chat-input-wrap"
         >
@@ -7264,12 +7717,44 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
                 e.stopPropagation();
                 if (e.key === "Enter") sendRealmLifeChat();
                 if (e.key === "Escape") {
+                  chatOpenRef.current =
+                    false;
+
+                  try {
+                    e.currentTarget
+                      ?.blur?.();
+                  } catch (_) {}
+
                   setChatOpen(false);
                   setChatDraft("");
+                  setChatKeyboardInset(0);
+
+                  window.setTimeout(
+                    () => {
+                      setChatViewportLock(
+                        null
+                      );
+                    },
+                    360
+                  );
                 }
               }}
               onKeyUp={(e) => e.stopPropagation()}
-              className="flex-1 bg-transparent outline-none text-sm text-white placeholder-white/40"
+              inputMode="text"
+              enterKeyHint="send"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              className="flex-1 bg-transparent outline-none text-white placeholder-white/40"
+              style={{
+                fontSize:
+                  isMobileUI
+                    ? "16px"
+                    : "14px",
+
+                lineHeight:
+                  "1.35",
+              }}
             />
 
             <button
@@ -7284,12 +7769,37 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         </div>
       )}
 
-      {/* REALMLIFE MOBILE CHAT BUTTON */}
-      {isMobileUI && !chatOpen && (
+      {/* REALMLIFE CHAT BUTTON — MOBILE + DESKTOP */}
+      {!chatOpen && (
         <button
           type="button"
           data-testid="realmlife-chat-btn"
-          onClick={() => setChatOpen(true)}
+          onClick={() => {
+            if (isMobileUI) {
+              const stableHeight =
+                Math.round(
+                  mountRef.current
+                    ?.parentElement
+                    ?.clientHeight
+                  ||
+                  window.innerHeight
+                  ||
+                  window.visualViewport
+                    ?.height
+                  ||
+                  620
+                );
+
+              setChatViewportLock(
+                stableHeight
+              );
+            }
+
+            chatOpenRef.current =
+              true;
+
+            setChatOpen(true);
+          }}
           className="absolute z-30 w-[52px] h-[52px] rounded-full text-lg font-black"
           style={{
             right: "max(16px, env(safe-area-inset-right))",

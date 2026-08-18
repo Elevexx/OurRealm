@@ -86,6 +86,7 @@ SKIN_TONES = [
 ]
 
 DEFAULT_CUSTOM = {
+    "appearance": 1,
     "skin": "#eab98c",
     "hair_style": "crop",
     "hair_color": "#2c2118",
@@ -112,6 +113,28 @@ def _clean_color(value, fallback):
 def _sanitize_custom(custom, owned_accessories):
     src = custom if isinstance(custom, dict) else {}
     out = dict(DEFAULT_CUSTOM)
+
+    try:
+        appearance = int(
+            src.get(
+                "appearance",
+                DEFAULT_CUSTOM["appearance"],
+            )
+        )
+    except (TypeError, ValueError):
+        appearance = DEFAULT_CUSTOM["appearance"]
+
+    out["appearance"] = max(
+        1,
+        min(
+            3,
+            appearance,
+        ),
+    )
+
+    # Legacy skin value remains accepted for backward-compatible
+    # records, but Player 1 / Player 2 no longer use shader skin
+    # recoloring. Their appearance is selected by GLB model.
     out["skin"] = _clean_color(src.get("skin"), DEFAULT_CUSTOM["skin"])
     out["hair_style"] = (
         src.get("hair_style")

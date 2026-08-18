@@ -242,6 +242,84 @@ const NAME_ALIASES = {
 };
 
 
+
+/*
+ * ===========================================================
+ * REALMLIFE — DISCRETE PLAYER APPEARANCE MODELS
+ * ===========================================================
+ *
+ * These are REAL GLB model swaps.
+ *
+ * No shader skin recoloring is used for Player 1 / Player 2.
+ *
+ * Appearance:
+ *   1 = original/default
+ *   2 = medium
+ *   3 = dark
+ * ===========================================================
+ */
+
+export const REALMLIFE_APPEARANCE_MODELS = {
+  player_1: {
+    1:
+      null,
+
+    2:
+      "/api/media/models/8c298548650e7157896cfdb452254cc9.glb",
+
+    3:
+      "/api/media/models/299c448ae83122d3549c3492699c8521.glb",
+  },
+
+  player_2: {
+    1:
+      null,
+
+    2:
+      "/api/media/models/7f33f4911a278210ebfde44eeaf62a86.glb",
+
+    3:
+      "/api/media/models/2820f03039de848e0d4e871989ecb712.glb",
+  },
+};
+
+
+export function getRealmLifeAppearanceModel(
+  playerId,
+  appearance = 1
+) {
+  const family =
+    REALMLIFE_APPEARANCE_MODELS[
+      playerId
+    ];
+
+  const number =
+    Math.max(
+      1,
+      Math.min(
+        3,
+        Number(appearance) || 1
+      )
+    );
+
+  /*
+   * Appearance 1 uses the existing optimized
+   * Player 1 / Player 2 gameplay model.
+   *
+   * Appearance 2 / 3 use the uploaded GLBs.
+   */
+  return (
+    family?.[number]
+    ||
+    REALMLIFE_PLAYER_MODELS[
+      playerId
+    ]?.modelUrl
+    ||
+    null
+  );
+}
+
+
 function canonicalName(
   raw
 ) {

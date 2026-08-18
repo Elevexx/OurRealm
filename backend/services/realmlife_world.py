@@ -1685,6 +1685,91 @@ async def presence(
     }
 
 
+    # ========================================================
+    # REALMLIFE PRESENCE AVATAR IDENTITY
+    #
+    # Store only trusted RealmLife roster IDs + appearance.
+    # Never accept arbitrary model URLs through presence.
+    # ========================================================
+
+    avatar = (
+        body.get("avatar")
+        or None
+    )
+
+    if isinstance(
+        avatar,
+        dict,
+    ):
+        selected_avatar = str(
+            avatar.get(
+                "selected_avatar"
+            )
+            or "player_1"
+        ).strip().lower()
+
+        if selected_avatar not in {
+            "founder_stealth",
+            "player_1",
+            "player_2",
+        }:
+            selected_avatar = (
+                "player_1"
+            )
+
+        # Founder Stealth cannot be spoofed by another account.
+        if (
+            selected_avatar
+            == "founder_stealth"
+            and
+            str(
+                current.get(
+                    "username"
+                )
+                or ""
+            ).strip().lower()
+            != "stealth"
+        ):
+            selected_avatar = (
+                "player_1"
+            )
+
+        try:
+            appearance = int(
+                avatar.get(
+                    "appearance"
+                )
+                or 1
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            appearance = 1
+
+        appearance = max(
+            1,
+            min(
+                3,
+                appearance,
+            ),
+        )
+
+        if (
+            selected_avatar
+            == "founder_stealth"
+        ):
+            appearance = 1
+
+        row["avatar"] = {
+            "selected_avatar":
+                selected_avatar,
+
+            "appearance":
+                appearance,
+        }
+
+
     chat = (
         body.get("chat")
         or None
@@ -1786,6 +1871,10 @@ async def presence(
 
                 "user_id": 1,
                 "username": 1,
+
+                # REALMLIFE REAL REMOTE AVATAR
+                "avatar": 1,
+
                 "chat_text": 1,
                 "chat_id": 1,
                 "chat_ts": 1,

@@ -1431,11 +1431,19 @@ function createSpanishResidentialPrivacyShell({
 
   // ============================================================
   // REALMLIFE AAA GOLDEN SPANISH HOUSE V1
-  // Owner residence visual upgrade only.
+  //
+  // CANONICAL 3-STORY VISUAL PARITY
+  //
+  // Every completed 3-level residence uses the same premium
+  // Spanish architectural treatment for every observer.
+  //
+  // @stealth's 3-level house therefore looks the same whether
+  // viewed by Stealth, Morpheus, or any other authorized viewer.
+  //
   // Existing gameplay/collision/interior systems remain authoritative.
   // ============================================================
 
-  if (own) {
+  if (levelCount === 3) {
 
     house.userData.realmLifeAAATier =
       "golden-spanish-v1";
@@ -2979,116 +2987,16 @@ function installRealmLifeResidentialPrivacy(
 
 
   // ==========================================================
-  // REALMLIFE PRIVATE BACKYARDS — instanced lawns, fence rails
-  // and corner bushes behind every residential home. Instanced
-  // geometry keeps 100 backyards at only 3 draw calls.
+  // REALMLIFE CITY BACKYARDS
+  //
+  // TEMPORARILY DISABLED.
+  //
+  // Extra city backyard lawns, brown fence rails and bushes
+  // were extending beyond lots and interfering with streets.
+  //
+  // This does NOT affect the Founder @stealth property,
+  // private-property gate, ownership, privacy or authorization.
   // ==========================================================
-
-  const yardCount =
-    privateHomes.length;
-
-  const lawnInst =
-    new THREE.InstancedMesh(
-      new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshStandardMaterial({
-        color: 0x6f9f5a,
-        roughness: 0.95,
-      }),
-      yardCount
-    );
-
-  lawnInst.receiveShadow = true;
-
-  const railInst =
-    new THREE.InstancedMesh(
-      new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshStandardMaterial({
-        color: 0x7c5a3a,
-        roughness: 0.82,
-      }),
-      yardCount * 3
-    );
-
-  const bushInst =
-    new THREE.InstancedMesh(
-      new THREE.SphereGeometry(0.7, 6, 5),
-      new THREE.MeshStandardMaterial({
-        color: 0x3f7a3f,
-        roughness: 0.95,
-      }),
-      yardCount * 2
-    );
-
-  {
-    const m4 = new THREE.Matrix4();
-    const pos = new THREE.Vector3();
-    const scl = new THREE.Vector3();
-    const qIdent = new THREE.Quaternion();
-    const qFlat =
-      new THREE.Quaternion().setFromEuler(
-        new THREE.Euler(-Math.PI / 2, 0, 0)
-      );
-
-    let railIdx = 0;
-    let bushIdx = 0;
-
-    privateHomes.forEach((home, i) => {
-      const yardD = 4.2;
-      const yardW = Math.min(home.w + 2.5, 19);
-      const yardZ =
-        home.z - home.d / 2 - yardD / 2;
-      const backZ =
-        home.z - home.d / 2 - yardD;
-
-      m4.compose(
-        pos.set(home.x, 0.02, yardZ),
-        qFlat,
-        scl.set(yardW, yardD, 1)
-      );
-      lawnInst.setMatrixAt(i, m4);
-
-      m4.compose(
-        pos.set(home.x, 0.55, backZ),
-        qIdent,
-        scl.set(yardW, 1.1, 0.18)
-      );
-      railInst.setMatrixAt(railIdx++, m4);
-
-      m4.compose(
-        pos.set(home.x - yardW / 2, 0.55, yardZ),
-        qIdent,
-        scl.set(0.18, 1.1, yardD)
-      );
-      railInst.setMatrixAt(railIdx++, m4);
-
-      m4.compose(
-        pos.set(home.x + yardW / 2, 0.55, yardZ),
-        qIdent,
-        scl.set(0.18, 1.1, yardD)
-      );
-      railInst.setMatrixAt(railIdx++, m4);
-
-      m4.compose(
-        pos.set(home.x - yardW / 2 + 1.1, 0.5, backZ + 1.1),
-        qIdent,
-        scl.set(1, 1, 1)
-      );
-      bushInst.setMatrixAt(bushIdx++, m4);
-
-      m4.compose(
-        pos.set(home.x + yardW / 2 - 1.1, 0.5, backZ + 1.1),
-        qIdent,
-        scl.set(1, 1, 1)
-      );
-      bushInst.setMatrixAt(bushIdx++, m4);
-    });
-  }
-
-  privacyRoot.add(
-    lawnInst,
-    railInst,
-    bushInst
-  );
 
 
   // ==========================================================
