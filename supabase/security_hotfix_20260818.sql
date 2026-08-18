@@ -69,9 +69,17 @@ as $$
         and (select auth.uid()) = any(g.members)
     )
 
-    when 'realm' then coalesce(
-      ((select auth.jwt()) -> 'realm_ids') ? p_context_id,
-      false
+    when 'realm' then (
+      coalesce(
+        ((select auth.jwt()) -> 'realm_ids') ? p_context_id,
+        false
+      )
+      or exists (
+        select 1
+        from public.realms r
+        where r.id::text = p_context_id
+          and (select auth.uid()) = any(r.members)
+      )
     )
 
     else false
