@@ -545,6 +545,66 @@ async def refresh_token(request: Request, response: Response):
     return {"access_token": access}
 
 
+
+# ----- Supabase identity bridge -----
+@router.get("/supabase-token")
+async def supabase_token(current: CurrentUser):
+    """Mint a short-lived JWT used ONLY for Supabase RLS / Realtime.
+
+    The browser never receives the signing secret. The JWT proves the
+    authenticated OurRealm user's identity and current Realm memberships.
+    """
+    secret = os.environ.get("SUPABASE_JWT_SECRET", "").strip()
+    supabase_url = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+
+    if not secret:
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase identity bridge is not configured",
+        )
+
+    # Supabase auth.uid() expects sub to be UUID-compatible.
+    try:
+        uuid.UUID(str(current["id"]))
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(
+            status_code=500,
+            detail="OurRealm user ID is not Supabase-compatible",
+        )
+
+    realm_ids = [
+        row["community_id"]
+        async for row in db.community_memberships.find(
+            {
+                "community_type": "realm",
+                "user_id": current["id"],
+            },
+            {"_id": 0, "community_id": 1},
+        )
+        if row.get("community_id")
+    ]
+
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(minutes=5)
+
+    claims = {
+        "sub": str(current["id"]),
+        "role": "authenticated",
+        "aud": "authenticated",
+        "iat": int(now.timestamp()),
+        "exp": int(expires.timestamp()),
+        "iss": f"{supabase_url}/auth/v1" if supabase_url else "ourrealm",
+        "realm_ids": realm_ids,
+    }
+
+    token = jwt.encode(claims, secret, algorithm="HS256")
+
+    return {
+        "access_token": token,
+        "expires_at": claims["exp"],
+    }
+
+
 # ----- OTP (founder displayed-OTP login) -----
 @router.post("/otp/request")
 async def otp_request(payload: OtpRequest):

@@ -7,7 +7,11 @@
 // and `context_id = mongo_realm_id`, so message persistence + realtime
 // stay unchanged while Realm membership is the single source of truth.
 // ----------------------------------------------------------------------------
-import { supabase, isSupabaseConfigured } from "./supabase";
+import {
+  supabase,
+  isSupabaseConfigured,
+  clearSupabaseIdentityCache,
+} from "./supabase";
 import apiClient from "@/api/client";
 
 const PAGE_LIMIT = 100;
@@ -82,26 +86,15 @@ export async function createGroup(userId, name, memberIds = []) {
   return data;
 }
 
-export async function joinGroup(groupId, userId) {
-  const sb = ensure();
-  const { data: g, error: ge } = await sb
-    .from("groups").select("members").eq("id", groupId).single();
-  if (ge) throw ge;
-  const members = Array.from(new Set([...(g?.members || []), userId]));
-  const { data, error } = await sb
-    .from("groups").update({ members }).eq("id", groupId).select().single();
-  if (error) throw error;
-  return data;
+export async function joinGroup(_groupId, _userId) {
+  throw new Error("Group joining requires an invitation.");
 }
 
-export async function leaveGroup(groupId, userId) {
+export async function leaveGroup(groupId, _userId) {
   const sb = ensure();
-  const { data: g, error: ge } = await sb
-    .from("groups").select("members").eq("id", groupId).single();
-  if (ge) throw ge;
-  const members = (g?.members || []).filter((m) => m !== userId);
-  const { data, error } = await sb
-    .from("groups").update({ members }).eq("id", groupId).select().single();
+  const { data, error } = await sb.rpc("ourrealm_leave_group", {
+    p_group_id: groupId,
+  });
   if (error) throw error;
   return data;
 }
@@ -125,6 +118,7 @@ export async function createRealm(_userId, name, _memberIds = []) {
   // needed. We then read it back via /my-realms so the row carries
   // every field the UI expects (realm_id, chat_id, member_count, …).
   await apiClient.post("/communities/realms", { name });
+  clearSupabaseIdentityCache();
   const { data } = await apiClient.get("/communities/my-realms");
   const realms = data?.realms || [];
   // Return the newest realm (sorted by last_message_at/created_at desc).
@@ -135,12 +129,14 @@ export async function createRealm(_userId, name, _memberIds = []) {
 export async function joinRealm(realmId, _userId) {
   // Mongo /join is idempotent — returns {member_count} live.
   await apiClient.post(`/communities/realm/${realmId}/join`);
+  clearSupabaseIdentityCache();
   const { data } = await apiClient.get("/communities/my-realms");
   return (data?.realms || []).find((r) => r.realm_id === realmId) || null;
 }
 
 export async function leaveRealm(realmId, _userId) {
   await apiClient.post(`/communities/realm/${realmId}/leave`);
+  clearSupabaseIdentityCache();
   // Caller only needs to know it succeeded — the Messages.jsx tab
   // refreshes its list independently from the optimistic remove.
   return { id: realmId, removed: true };
