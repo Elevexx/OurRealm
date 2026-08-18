@@ -1,4 +1,5 @@
 """Authentication endpoints (/api/auth/*)."""
+import hashlib
 import logging
 import os
 import secrets
@@ -450,14 +451,33 @@ async def login(payload: LoginPayload, request: Request, response: Response):
 
 @router.post("/logout")
 async def logout(request: Request, response: Response):
-    # Phase H — best-effort revocation of the refresh token presented by
-    # the caller, so a stolen cookie can't be replayed after logout.
+    # Revoke the presented refresh token without storing the raw token.
     rt = request.cookies.get("refresh_token")
     if rt:
         try:
-            await db.refresh_tokens.delete_many({"token": rt})
-        except Exception:
+            decoded = jwt.decode(
+                rt, get_jwt_secret(), algorithms=[JWT_ALGORITHM]
+            )
+            if decoded.get("type") == "refresh":
+                token_hash = hashlib.sha256(rt.encode("utf-8")).hexdigest()
+                exp = decoded.get("exp")
+                expires_at = (
+                    datetime.fromtimestamp(exp, tz=timezone.utc)
+                    if exp else datetime.now(timezone.utc) + timedelta(days=30)
+                )
+                await db.revoked_refresh_tokens.update_one(
+                    {"token_hash": token_hash},
+                    {"$set": {
+                        "token_hash": token_hash,
+                        "revoked_at": datetime.now(timezone.utc),
+                        "expires_at": expires_at,
+                    }},
+                    upsert=True,
+                )
+        except jwt.InvalidTokenError:
             pass
+        except Exception:
+            logger.exception("Refresh-token revocation failed")
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/")
     return {"ok": True}
@@ -485,6 +505,16 @@ async def refresh_token(request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid token type")
+
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    revoked = await db.revoked_refresh_tokens.find_one(
+        {"token_hash": token_hash}
+    )
+    if revoked:
+        response.delete_cookie("access_token", path="/")
+        response.delete_cookie("refresh_token", path="/")
+        raise HTTPException(status_code=401, detail="Refresh token revoked")
+
     user = await db.users.find_one({"id": payload["sub"]})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
@@ -494,9 +524,23 @@ async def refresh_token(request: Request, response: Response):
         response.delete_cookie("refresh_token", path="/")
         raise HTTPException(status_code=401, detail="Account disabled")
     access = create_access_token(user["id"], user["email"])
+    cookie_secure = os.environ.get(
+        "COOKIE_SECURE", "true"
+    ).lower() != "false"
+    cookie_samesite = os.environ.get(
+        "COOKIE_SAMESITE", "lax"
+    ).lower()
+    if cookie_samesite not in {"lax", "strict", "none"}:
+        cookie_samesite = "lax"
+
     response.set_cookie(
-        "access_token", access, httponly=True, secure=False, samesite="lax",
-        max_age=ACCESS_TOKEN_MINUTES * 60, path="/",
+        "access_token",
+        access,
+        httponly=True,
+        secure=cookie_secure,
+        samesite=cookie_samesite,
+        max_age=ACCESS_TOKEN_MINUTES * 60,
+        path="/",
     )
     return {"access_token": access}
 
@@ -563,21 +607,54 @@ async def otp_verify(payload: OtpVerify, response: Response):
 async def forgot_password(payload: ForgotPayload):
     email = payload.email.lower().strip()
     user = await db.users.find_one({"email": email})
+    dev_reset_token = None
     if user:
         token = secrets.token_urlsafe(32)
-        await db.password_reset_tokens.insert_one({
-            "token": token,
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+        # Only one active reset token per user.
+        await db.password_reset_tokens.delete_many({
             "user_id": user["id"],
             "used": False,
+        })
+
+        await db.password_reset_tokens.insert_one({
+            "token_hash": token_hash,
+            "user_id": user["id"],
+            "used": False,
+            "created_at": datetime.now(timezone.utc),
             "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
         })
-        logger.info(f"[Password reset] {email} -> token: {token}")
-    return {"ok": True, "message": "If the email exists, a reset link has been sent."}
+
+        # Never log the raw password-reset token.
+        logger.info(
+            "[Password reset] token generated for user_id=%s",
+            user["id"],
+        )
+
+        # Development-only escape hatch. Keep FALSE in production.
+        if os.environ.get(
+            "PASSWORD_RESET_DISPLAY_IN_RESPONSE", "false"
+        ).lower() == "true":
+            dev_reset_token = token
+
+    result = {
+        "ok": True,
+        "message": "If the email exists, a reset link has been sent.",
+    }
+    if dev_reset_token:
+        result["reset_token"] = dev_reset_token
+    return result
 
 
 @router.post("/reset-password")
 async def reset_password(payload: ResetPayload):
-    rec = await db.password_reset_tokens.find_one({"token": payload.token})
+    token_hash = hashlib.sha256(
+        payload.token.encode("utf-8")
+    ).hexdigest()
+    rec = await db.password_reset_tokens.find_one(
+        {"token_hash": token_hash}
+    )
     if not rec or rec.get("used"):
         raise HTTPException(status_code=400, detail="Invalid or expired token")
     expires_at = rec.get("expires_at")
@@ -590,7 +667,11 @@ async def reset_password(payload: ResetPayload):
         {"$set": {"password_hash": hash_password(payload.new_password)}},
     )
     await db.password_reset_tokens.update_one(
-        {"token": payload.token}, {"$set": {"used": True}}
+        {"token_hash": token_hash},
+        {"$set": {
+            "used": True,
+            "used_at": datetime.now(timezone.utc),
+        }},
     )
     return {"ok": True}
 
