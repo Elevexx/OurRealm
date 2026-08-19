@@ -772,7 +772,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       setRealmLifeCameraMode,
     ]);
   const [buildItem, setBuildItemState] = useState(null);
-  const [saveStatus, setSaveStatus] = useState("");
   const [hud, setHud] = useState(() => {
     const s = simRef.current;
     return {
@@ -7331,19 +7330,6 @@ realmLifePresenceKickoff =
                 style={drawerBtnStyle}
               >
                 🔨 BUILD / UPGRADE {mobileBuildOpen ? "(ON)" : ""}
-              </button>
-
-              <button
-                type="button"
-                data-testid="realmlife-drawer-save"
-                onClick={() => {
-                  persist();
-                  setMobileMenuOpen(false);
-                }}
-                className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
-                style={drawerBtnStyle}
-              >
-                💾 SAVE {saveStatus ? `· ${saveStatus}` : ""}
               </button>
 
               <button
