@@ -830,7 +830,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       minutes: s.minutes,
       money: s.money,
       relationship: s.relationship,
-      needs: { ...s.needs },
       msg: "Welcome home.",
     };
   });
@@ -5977,9 +5976,8 @@ realmLifePresenceKickoff =
         }
       }
 
-      for (const [k, v] of Object.entries(fx.needs || {})) {
-        s.needs[k] = clamp((s.needs[k] || 0) + v);
-      }
+      // GENESIS CITY:
+      // Hangout actions no longer restore survival meters.
 
       s.relationship = clamp(
         s.relationship + (fx.relationship || 0)
@@ -6033,7 +6031,6 @@ realmLifePresenceKickoff =
         minutes: s.minutes,
         money: s.money,
         relationship: s.relationship,
-        needs: { ...s.needs },
         msg: fx.message || fx.label,
       });
 
@@ -6660,7 +6657,6 @@ realmLifePresenceKickoff =
           minutes: s.minutes,
           money: s.money,
           relationship: s.relationship,
-          needs: { ...s.needs },
         }));
       }
 
@@ -7053,9 +7049,9 @@ realmLifePresenceKickoff =
     </>
   );
 
-  const needsCritical = NEED_META.some(
-    ([key]) => clamp(hud.needs?.[key] || 0) < 50
-  );
+  // GENESIS CITY:
+  // Progression is never placed into a survival-needs warning state.
+  const needsCritical = false;
 
   const sendRealmLifeChat = () => {
     const text =
