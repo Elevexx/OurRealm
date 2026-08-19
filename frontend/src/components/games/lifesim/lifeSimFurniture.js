@@ -8,12 +8,6 @@ export const FURNITURE_TYPES = {
   sofa: { label: "Sofa", size: [3.0, 1.0, 1.2] },
   bed: { label: "Bed", size: [3.0, 0.65, 2.0] },
   tv: { label: "Television", size: [2.1, 1.4, 0.4] },
-  fridge: { label: "Refrigerator", size: [1.2, 2.2, 1.1] },
-  stove: { label: "Stove", size: [1.5, 1.05, 1.05] },
-  shower: { label: "Shower", size: [1.55, 2.15, 1.55] },
-  toilet: { label: "Toilet", size: [0.9, 0.75, 1.0] },
-  bathroom_sink: { label: "Bathroom Sink", size: [0.85, 0.95, 0.65] },
-  kitchen_sink: { label: "Kitchen Sink", size: [1.2, 0.95, 0.85] },
   dining_table: { label: "Dining Table", size: [1.8, 0.85, 1.05] },
   dining_chair: { label: "Dining Chair", size: [0.55, 0.95, 0.55] },
   dresser: { label: "Dresser", size: [1.6, 1.1, 0.6] },
@@ -22,14 +16,8 @@ export const FURNITURE_TYPES = {
 
 const OWNER_ACTIONS = {
   sofa: [{ id: "relax", label: "Relax" }],
-  bed: [{ id: "sleep", label: "Sleep" }],
+  bed: [{ id: "sit", label: "Hang Out" }],
   tv: [{ id: "tv", label: "Watch TV" }],
-  fridge: [{ id: "snack", label: "Grab Snack · 🔥5" }],
-  stove: [{ id: "cook", label: "Cook Meal · 🔥10" }],
-  shower: [{ id: "shower", label: "Take Shower" }],
-  toilet: [{ id: "toilet", label: "Use Toilet" }],
-  bathroom_sink: [{ id: "admire", label: "Freshen Up" }],
-  kitchen_sink: [{ id: "admire", label: "Rinse Up" }],
   dining_table: [{ id: "admire", label: "Admire" }],
   dining_chair: [{ id: "sit", label: "Sit" }],
   dresser: [{ id: "admire", label: "Browse" }],
@@ -38,20 +26,13 @@ const OWNER_ACTIONS = {
 
 const GUEST_ACTIONS = {
   sofa: [{ id: "sit", label: "Sit & Relax" }],
-  bed: [{ id: "sit", label: "Rest on Bed" }],
-  shower: [{ id: "shower", label: "Take Shower" }],
+  bed: [{ id: "sit", label: "Hang Out" }],
 };
 
 const APPROACH = {
   sofa: [0, -1.3],
   bed: [0, 1.6],
   tv: [-1.8, 0],
-  fridge: [0, -1.3],
-  stove: [0, -1.3],
-  shower: [0, 1.3],
-  toilet: [0, 1.15],
-  bathroom_sink: [0, 1.1],
-  kitchen_sink: [0, -1.2],
   dining_table: [0, 1.4],
   dining_chair: [0, 1.0],
   dresser: [0, 1.1],
