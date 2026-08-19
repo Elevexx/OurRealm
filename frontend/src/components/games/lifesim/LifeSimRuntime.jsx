@@ -786,7 +786,140 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     saveTimerRef.current = setTimeout(() => persist(), 1200);
   }, [persist]);
 
+  const viewRealmLifeBusiness =
+    async (businessId) => {
+      if (
+        !businessId
+        ||
+        !game?.id
+      ) {
+        return;
+      }
+
+      try {
+        const response =
+          await apiClient.get(
+            `/games/${game.id}/realmlife/businesses`
+          );
+
+        const businesses =
+          response.data?.businesses || [];
+
+        const mine =
+          response.data?.my_businesses || [];
+
+        const business =
+          businesses.find(
+            (item) =>
+              item?.id === businessId
+          );
+
+        if (!business) {
+          setHud((h) => ({
+            ...h,
+            msg:
+              "This building is not a claimable Genesis City business.",
+          }));
+
+          return;
+        }
+
+        const isMine =
+          mine.some(
+            (item) =>
+              item?.id === businessId
+          );
+
+        if (
+          business.status ===
+          "available"
+        ) {
+          const unlockFire =
+            Number(
+              response.data
+                ?.business_unlock_fire
+              || 10000
+            );
+
+          setHud((h) => ({
+            ...h,
+            msg:
+              `${business.label}: 🔥${unlockFire.toLocaleString()} Fire Power Required`,
+          }));
+
+          return;
+        }
+
+        if (
+          business.status === "owned"
+          &&
+          isMine
+        ) {
+          setHud((h) => ({
+            ...h,
+            msg:
+              `${business.label}: Owned by you · +10🔥 per qualified real-life minute`,
+          }));
+
+          return;
+        }
+
+        if (
+          business.status === "owned"
+        ) {
+          const owner =
+            business.owner_username
+              ? `@${business.owner_username}`
+              : "Genesis City Resident";
+
+          setHud((h) => ({
+            ...h,
+            msg:
+              `${business.label}: Owned by ${owner} · Enter / Hang Out — FREE`,
+          }));
+
+          return;
+        }
+
+        setHud((h) => ({
+          ...h,
+          msg:
+            `${business.label}: Ownership update in progress.`,
+        }));
+      } catch (err) {
+        setHud((h) => ({
+          ...h,
+          msg:
+            err?.response?.data?.detail
+            ||
+            err?.message
+            ||
+            "Business status unavailable.",
+        }));
+      }
+    };
+
+
   const queueAction = (actionId) => {
+
+    if (
+      actionId === "business:view"
+      &&
+      selected?.id
+    ) {
+      const businessId =
+        selected.id;
+
+      setSelected(null);
+
+      markRealmLifeActive();
+
+      viewRealmLifeBusiness(
+        businessId
+      );
+
+      return;
+    }
 
     // REALMLIFE DJ MIXER ACTION
     if (
@@ -1596,6 +1729,20 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     // existing click/tap/mobile interaction system.
     // ========================================================
 
+    const genesisCityBusinessIds =
+      new Set([
+        "main-market",
+        "sunrise-cafe",
+        "city-outfitters",
+        "plaza-restaurant",
+        "fresh-grocery",
+        "night-lounge",
+        "river-grill",
+        "pulse-club",
+        "central-offices",
+        "river-hotel",
+      ]);
+
     const registeredCityBuildingIds =
       new Set();
 
@@ -1626,10 +1773,20 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           obj.userData.buildingLabel
           || buildingId;
 
-        // Business actions are intentionally added
-        // in the next patch after the API panel is wired.
         obj.userData.actions =
-          obj.userData.actions || [];
+          genesisCityBusinessIds.has(
+            buildingId
+          )
+            ? [
+                {
+                  id: "business:view",
+                  label: "View Business",
+                },
+              ]
+            : (
+                obj.userData.actions
+                || []
+              );
 
         interactive.push(obj);
 
