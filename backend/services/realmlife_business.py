@@ -81,7 +81,7 @@ DEFAULT_BUSINESS_SLOTS = [
 
     (
         "pulse-club",
-        "Pulse Club",
+        "Club 178",
         "nightclub",
     ),
 

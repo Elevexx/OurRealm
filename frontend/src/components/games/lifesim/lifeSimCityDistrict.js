@@ -1283,7 +1283,7 @@ export function buildCityDistrict(
     buildings,
     {
       id: "pulse-club",
-      label: "Pulse Club",
+      label: "Club 178",
       type: "nightclub",
 
       x: 33,
