@@ -1562,45 +1562,45 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     addWall(9, 0, 0.28, 14);
 
     // Interior room divisions.
-    // V34 BATHROOM ACCESS FIX — real doorway (x 3.15..4.45 on the
+    // GENESIS CITY INTERIOR PRIVACY DOOR — real doorway (x 3.15..4.45 on the
     // z=0.4 wall) with a working, openable door + frame.
     addWall(2.7, -3.2, 0.22, 7.2, 2.4);
     addWall(2.95, 0.4, 0.4, 0.22, 2.4);
     addWall(6.65, 0.4, 4.4, 0.22, 2.4);
 
-    const bathLintel = makeBox([1.3, 0.5, 0.26], 0xe4d5ba, 2.15);
-    bathLintel.position.x = HOME_X + 3.8;
-    bathLintel.position.z = HOME_Z + 0.4;
-    scene.add(bathLintel);
+    const interiorLintel = makeBox([1.3, 0.5, 0.26], 0xe4d5ba, 2.15);
+    interiorLintel.position.x = HOME_X + 3.8;
+    interiorLintel.position.z = HOME_Z + 0.4;
+    scene.add(interiorLintel);
 
-    const bathDoorGroup = new THREE.Group();
-    bathDoorGroup.position.set(HOME_X + 3.17, 0, HOME_Z + 0.4);
-    scene.add(bathDoorGroup);
+    const interiorDoorGroup = new THREE.Group();
+    interiorDoorGroup.position.set(HOME_X + 3.17, 0, HOME_Z + 0.4);
+    scene.add(interiorDoorGroup);
 
-    const bathDoorPanel = makeBox([1.22, 2.12, 0.08], 0x8a5a33);
-    bathDoorPanel.position.x = 0.63;
-    bathDoorGroup.add(bathDoorPanel);
+    const interiorDoorPanel = makeBox([1.22, 2.12, 0.08], 0x8a5a33);
+    interiorDoorPanel.position.x = 0.63;
+    interiorDoorGroup.add(interiorDoorPanel);
 
-    const bathKnob = makeBox([0.07, 0.07, 0.16], 0xd9b23a, 1.02);
-    bathKnob.position.x = 1.1;
-    bathDoorGroup.add(bathKnob);
+    const interiorKnob = makeBox([0.07, 0.07, 0.16], 0xd9b23a, 1.02);
+    interiorKnob.position.x = 1.1;
+    interiorDoorGroup.add(interiorKnob);
 
-    const bathDoorCollider = { x: HOME_X + 3.8, z: HOME_Z + 0.4, hw: 0.001, hd: 0.001 };
-    colliders.push(bathDoorCollider);
+    const interiorDoorCollider = { x: HOME_X + 3.8, z: HOME_Z + 0.4, hw: 0.001, hd: 0.001 };
+    colliders.push(interiorDoorCollider);
 
-    let bathDoorOpen = true;
-    bathDoorGroup.rotation.y = 1.85;
+    let interiorDoorOpen = true;
+    interiorDoorGroup.rotation.y = 1.85;
 
-    const toggleBathroomDoor = () => {
-      bathDoorOpen = !bathDoorOpen;
-      bathDoorGroup.rotation.y = bathDoorOpen ? 1.85 : 0;
-      bathDoorCollider.hw = bathDoorOpen ? 0.001 : 0.68;
-      bathDoorCollider.hd = bathDoorOpen ? 0.001 : 0.16;
+    const toggleInteriorDoor = () => {
+      interiorDoorOpen = !interiorDoorOpen;
+      interiorDoorGroup.rotation.y = interiorDoorOpen ? 1.85 : 0;
+      interiorDoorCollider.hw = interiorDoorOpen ? 0.001 : 0.68;
+      interiorDoorCollider.hd = interiorDoorOpen ? 0.001 : 0.16;
       setHud((h) => ({
         ...h,
-        msg: bathDoorOpen
-          ? "Bathroom door opened."
-          : "Bathroom door closed.",
+        msg: interiorDoorOpen
+          ? "Interior door opened."
+          : "Interior door closed.",
       }));
     };
 
@@ -1690,17 +1690,17 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       return m;
     };
 
-    // interactive bathroom door
+    // interactive interior privacy door
     registerObject({
-      id: "bathroom_door",
-      label: "Bathroom Door",
+      id: "interior_door",
+      label: "Interior Door",
       x: 3.17,
       z: 0.4,
       size: [0.001, 0.001, 0.001],
       color: 0x8a5a33,
-      mesh: bathDoorGroup,
+      mesh: interiorDoorGroup,
       collider: false,
-      actions: [{ id: "door:bathroom", label: "Open / Close Door" }],
+      actions: [{ id: "door:interior", label: "Open / Close Door" }],
       approach: [0.63, 1.5],
     });
 
@@ -1817,12 +1817,12 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         rec.collider.hw = visible ? rec.hw : 0.001;
         rec.collider.hd = visible ? rec.hd : 0.001;
       });
-      bathLintel.visible = visible;
-      bathDoorGroup.visible = visible;
-      bathDoorCollider.hw =
-        visible && !bathDoorOpen ? 0.68 : 0.001;
-      bathDoorCollider.hd =
-        visible && !bathDoorOpen ? 0.16 : 0.001;
+      interiorLintel.visible = visible;
+      interiorDoorGroup.visible = visible;
+      interiorDoorCollider.hw =
+        visible && !interiorDoorOpen ? 0.68 : 0.001;
+      interiorDoorCollider.hd =
+        visible && !interiorDoorOpen ? 0.16 : 0.001;
       groundDecorMeshes.forEach((m) => {
         m.visible = visible;
       });
@@ -2139,7 +2139,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     // --------------------------------------------------------
     // REALMLIFE HOME UPGRADE DECOR
     // Dining set, living-room rug and corner plants so every
-    // residence reads as a full kitchen/living/bath/bedroom.
+    // residence reads as a social lounge, studio and private hangout.
     // --------------------------------------------------------
     {
       const rug = new THREE.Mesh(
@@ -5173,9 +5173,9 @@ realmLifePresenceKickoff =
 
     const applyAction = async (actionId, objectId = null) => {
 
-      // V34 BATHROOM DOOR
-      if (actionId === "door:bathroom") {
-        toggleBathroomDoor();
+      // GENESIS CITY INTERIOR DOOR
+      if (actionId === "door:interior") {
+        toggleInteriorDoor();
         return;
       }
 
