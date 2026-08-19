@@ -4550,12 +4550,12 @@ realmLifePresenceKickoff =
     ];
     neighbor.userData.approach = [-1.1, 0];
 
-    scene.add(neighbor);
-    interactive.push(neighbor);
-    objectMapRef.current.set(
-      "neighbor",
-      neighbor
-    );
+    // GENESIS CITY — REAL PEOPLE ONLY
+    //
+    // Autonomous Neighbor/Ninja is intentionally not attached
+    // to the RealmLife world or interaction system.
+    // Real multiplayer residents remain unchanged.
+    neighbor.visible = false;
 
     let neighborAvatar = null;
     let neighborPath = [];
