@@ -5742,29 +5742,22 @@ realmLifePresenceKickoff =
       raf = requestAnimationFrame(loop);
 
       const dt = Math.min(clock.getDelta(), 0.05);
-      const simSpeed = speedRef.current;
-
       // ------------------------------------------------------
-      // SIMULATION CLOCK + NEED DECAY
+      // GENESIS CITY — FIXED 1× WORLD CLOCK
       // ------------------------------------------------------
+      // RealmLife is a persistent world. Player-facing pause and
+      // fast-forward controls no longer affect simulation time.
+      const dm = dt;
+      const s = simRef.current;
 
-      if (simSpeed > 0) {
-        const minutesPerSecond = [0, 1, 4, 12][simSpeed] || 1;
-        const dm = dt * minutesPerSecond;
-        // GENESIS CITY: survival-needs decay disabled.
+      s.minutes += dm;
 
-        const s = simRef.current;
-
-        s.minutes += dm;
-
-        while (s.minutes >= 1440) {
-          s.minutes -= 1440;
-          s.day += 1;
-        }
-
-
-        dirtyRef.current = true;
+      while (s.minutes >= 1440) {
+        s.minutes -= 1440;
+        s.day += 1;
       }
+
+      dirtyRef.current = true;
 
       // ------------------------------------------------------
       // MOVEMENT
