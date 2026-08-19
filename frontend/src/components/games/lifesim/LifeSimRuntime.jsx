@@ -88,33 +88,6 @@ const BUILD_CATALOG = {
 };
 
 const ACTION_EFFECTS = {
-  sleep: {
-    label: "Sleep",
-    minutes: 180,
-    message: "You feel rested.",
-  },
-  shower: {
-    label: "Take Shower",
-    minutes: 35,
-    message: "Fresh and clean.",
-  },
-  toilet: {
-    label: "Use Toilet",
-    minutes: 15,
-    message: "Much better.",
-  },
-  snack: {
-    label: "Grab Snack",
-    minutes: 20,
-    fire_cost: 5,
-    message: "Quick snack finished.",
-  },
-  cook: {
-    label: "Cook Meal",
-    minutes: 50,
-    fire_cost: 10,
-    message: "Home-cooked meal complete.",
-  },
   relax: {
     label: "Relax",
     minutes: 40,
