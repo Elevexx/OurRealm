@@ -211,6 +211,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
     burnBuild: burnRealmLifeBuild,
     burnAction: burnRealmLifeAction,
+    refresh: refreshRealmLifeFire,
   } = useRealmLifeFire(game?.id);
 
   const realmProperty =
@@ -847,6 +848,18 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               `${business.label}: 🔥${unlockFire.toLocaleString()} Fire Power Required`,
           }));
 
+          setSelected({
+            id: businessId,
+            label: business.label,
+            actions: [
+              {
+                id: "business:claim",
+                label:
+                  `Claim Business — 🔥${unlockFire.toLocaleString()} Fire Power Required`,
+              },
+            ],
+          });
+
           return;
         }
 
@@ -901,6 +914,109 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
 
   const queueAction = (actionId) => {
+
+    if (
+      actionId === "business:claim"
+      &&
+      selected?.id
+    ) {
+      const businessId =
+        selected.id;
+
+      const businessLabel =
+        selected.label
+        || "this business";
+
+      const confirmed =
+        window.confirm(
+          `Burn 🔥10,000 Fire Power to claim ${businessLabel}?`
+        );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setSelected(null);
+
+      markRealmLifeActive();
+
+      const claimBusiness =
+        async () => {
+          try {
+            const response =
+              await apiClient.post(
+                `/games/${game.id}/realmlife/businesses/${businessId}/claim`,
+                {
+                  city_id:
+                    "city-001",
+
+                  idempotency_key:
+                    [
+                      "business-claim",
+                      businessId,
+                      Date.now(),
+                      Math.random()
+                        .toString(36)
+                        .slice(2),
+                    ].join("-"),
+                }
+              );
+
+            await refreshRealmLifeFire();
+
+            if (
+              response.data
+                ?.already_owned
+            ) {
+              setHud((h) => ({
+                ...h,
+                msg:
+                  `${businessLabel}: Already owned by you.`,
+              }));
+
+              return;
+            }
+
+            const balance =
+              response.data
+                ?.fire_balance;
+
+            setHud((h) => ({
+              ...h,
+              msg:
+                balance != null
+                  ? `${businessLabel} claimed. RealmLife Fire Power: 🔥${Number(balance).toLocaleString()}`
+                  : `${businessLabel} claimed. You now earn +10🔥 per qualified real-life minute.`,
+            }));
+          } catch (err) {
+            const detail =
+              err?.response?.data
+                ?.detail;
+
+            setHud((h) => ({
+              ...h,
+              msg:
+                (
+                  typeof detail ===
+                  "string"
+                )
+                  ? detail
+                  : (
+                      detail?.message
+                      ||
+                      err?.message
+                      ||
+                      "Business claim failed."
+                    ),
+            }));
+          }
+        };
+
+      claimBusiness();
+
+      return;
+    }
+
 
     if (
       actionId === "business:view"
