@@ -1057,23 +1057,59 @@ export function buildCityDistrict(
           color: GRAPHITE,
         });
 
-        // Two low-poly chairs per table.
+        // Two interactive café chairs per table.
         [-0.95, 0.95].forEach(
-          (chairOffset) => {
-            box(sunriseCafe, {
-              x: tx + chairOffset,
+          (chairOffset, sideIndex) => {
+            const chair =
+              new THREE.Group();
+
+            chair.position.set(
+              tx + chairOffset,
+              0,
+              tz
+            );
+
+            chair.userData.genesisInteractiveId =
+              `sunrise-chair-${index}-${sideIndex}`;
+
+            chair.userData.genesisInteractiveLabel =
+              "Sunrise Café Chair";
+
+            chair.userData.genesisInteractiveActions =
+              [
+                {
+                  id: "sit",
+                  label: "Sit & Relax",
+                },
+              ];
+
+            // Route directly to the seat's true world position.
+            chair.userData.genesisInteractiveApproach =
+              [0, 0];
+
+            chair.userData.genesisInteractionAnchor =
+              {
+                x: 0,
+                y: 0,
+                z: 0,
+              };
+
+            sunriseCafe.add(chair);
+
+            box(chair, {
+              x: 0,
               y: 0.42,
-              z: tz,
+              z: 0,
               w: 0.62,
               h: 0.62,
               d: 0.62,
               color: GRAPHITE,
             });
 
-            box(sunriseCafe, {
-              x: tx + chairOffset,
+            box(chair, {
+              x: 0,
               y: 0.82,
-              z: tz + 0.25,
+              z: 0.25,
               w: 0.62,
               h: 0.72,
               d: 0.12,
@@ -1084,42 +1120,109 @@ export function buildCityDistrict(
       }
     );
 
-    // Lounge sofa along side wall.
-    box(sunriseCafe, {
-      x: -4.65,
+    // Interactive lounge sofa along side wall.
+    const sunriseLounge =
+      new THREE.Group();
+
+    sunriseLounge.position.set(
+      -4.65,
+      0,
+      1.15
+    );
+
+    sunriseLounge.userData.genesisInteractiveId =
+      "sunrise-lounge";
+
+    sunriseLounge.userData.genesisInteractiveLabel =
+      "Sunrise Café Lounge";
+
+    sunriseLounge.userData.genesisInteractiveActions =
+      [
+        {
+          id: "sit",
+          label: "Sit & Relax",
+        },
+      ];
+
+    sunriseLounge.userData.genesisInteractiveApproach =
+      [0, 0];
+
+    sunriseLounge.userData.genesisInteractionAnchor =
+      {
+        x: 0,
+        y: 0,
+        z: 0,
+      };
+
+    sunriseCafe.add(
+      sunriseLounge
+    );
+
+    box(sunriseLounge, {
+      x: 0,
       y: 0.42,
-      z: 1.15,
+      z: 0,
       w: 1.05,
       h: 0.62,
       d: 3.6,
       color: 0x202936,
     });
 
-    box(sunriseCafe, {
-      x: -5.08,
+    box(sunriseLounge, {
+      x: -0.43,
       y: 0.88,
-      z: 1.15,
+      z: 0,
       w: 0.18,
       h: 0.92,
       d: 3.6,
       color: MAGENTA,
     });
 
-    // Cyber planter.
-    box(sunriseCafe, {
-      x: 4.65,
+    // Interactive cyber planter.
+    const sunrisePlanter =
+      new THREE.Group();
+
+    sunrisePlanter.position.set(
+      4.65,
+      0,
+      2.85
+    );
+
+    sunrisePlanter.userData.genesisInteractiveId =
+      "sunrise-planter";
+
+    sunrisePlanter.userData.genesisInteractiveLabel =
+      "Cyber Planter";
+
+    sunrisePlanter.userData.genesisInteractiveActions =
+      [
+        {
+          id: "admire",
+          label: "Admire",
+        },
+      ];
+
+    sunrisePlanter.userData.genesisInteractiveApproach =
+      [0, 0];
+
+    sunriseCafe.add(
+      sunrisePlanter
+    );
+
+    box(sunrisePlanter, {
+      x: 0,
       y: 0.34,
-      z: 2.85,
+      z: 0,
       w: 0.8,
       h: 0.68,
       d: 0.8,
       color: GRAPHITE,
     });
 
-    box(sunriseCafe, {
-      x: 4.65,
+    box(sunrisePlanter, {
+      x: 0,
       y: 0.88,
-      z: 2.85,
+      z: 0,
       w: 0.42,
       h: 0.82,
       d: 0.42,

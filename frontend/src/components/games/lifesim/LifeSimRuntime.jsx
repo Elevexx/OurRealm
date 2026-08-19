@@ -1244,9 +1244,22 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
     const ap = obj.userData.approach || [0, 1.2];
 
+    // Nested Genesis City furniture may live inside rotated
+    // building groups. Always route using true world position.
+    const interactionWorldPosition =
+      new THREE.Vector3();
+
+    obj.getWorldPosition(
+      interactionWorldPosition
+    );
+
     const destination = {
-      x: obj.position.x + ap[0],
-      z: obj.position.z + ap[1],
+      x:
+        interactionWorldPosition.x
+        + ap[0],
+      z:
+        interactionWorldPosition.z
+        + ap[1],
     };
 
     const finder = findPathRef.current;
@@ -2096,6 +2109,97 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
         registeredCityBuildingIds.add(
           buildingId
+        );
+      }
+    );
+
+    // ========================================================
+    // GENESIS CITY ITEM INTERACTIONS
+    //
+    // Register independently interactive furniture/decor nested
+    // inside rotated Genesis City buildings.
+    // ========================================================
+    genesisCityRoot?.traverse?.(
+      (obj) => {
+        const interactionId =
+          obj?.userData
+            ?.genesisInteractiveId;
+
+        if (
+          !interactionId
+          ||
+          objectMapRef.current.has(
+            interactionId
+          )
+        ) {
+          return;
+        }
+
+        const interactionLabel =
+          obj.userData
+            .genesisInteractiveLabel
+          || interactionId;
+
+        const interactionActions =
+          obj.userData
+            .genesisInteractiveActions
+          || [];
+
+        const interactionApproach =
+          obj.userData
+            .genesisInteractiveApproach
+          || [0, 0];
+
+        const interactionAnchor =
+          obj.userData
+            .genesisInteractionAnchor
+          || null;
+
+        obj.userData.lifeObject =
+          true;
+
+        obj.userData.id =
+          interactionId;
+
+        obj.userData.label =
+          interactionLabel;
+
+        obj.userData.actions =
+          interactionActions;
+
+        obj.userData.approach =
+          interactionApproach;
+
+        obj.userData.interactionAnchor =
+          interactionAnchor;
+
+        // Raycasts hit the visual child meshes. Mirror the
+        // interaction metadata onto them so desktop clicks resolve
+        // to the same canonical object id.
+        obj.traverse?.(
+          (child) => {
+            if (child === obj)
+              return;
+
+            child.userData.lifeObject =
+              true;
+
+            child.userData.id =
+              interactionId;
+
+            child.userData.label =
+              interactionLabel;
+
+            child.userData.actions =
+              interactionActions;
+          }
+        );
+
+        interactive.push(obj);
+
+        objectMapRef.current.set(
+          interactionId,
+          obj
         );
       }
     );
@@ -5948,8 +6052,15 @@ realmLifePresenceKickoff =
             target.userData
               .interactionAnchor;
 
+          const targetWorldPosition =
+            new THREE.Vector3();
+
+          target.getWorldPosition(
+            targetWorldPosition
+          );
+
           resident.position.x =
-            target.position.x
+            targetWorldPosition.x
             + Number(
                 anchor.x
                 || 0
@@ -5962,7 +6073,7 @@ realmLifePresenceKickoff =
             );
 
           resident.position.z =
-            target.position.z
+            targetWorldPosition.z
             + Number(
                 anchor.z
                 || 0
