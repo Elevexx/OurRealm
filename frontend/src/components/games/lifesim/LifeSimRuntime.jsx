@@ -5539,23 +5539,15 @@ realmLifePresenceKickoff =
           ];
         }
 
-        if (actionId === "talk") {
-          sequence = [
-            { name: "talk" },
-          ];
-        }
-
         if (sequence) {
           residentInteractionBusy = true;
 
           setHud((h) => ({
             ...h,
             msg:
-                actionId === "talk"
-                  ? "Talking…"
-                  : actionId === "sit"
-                    ? "Hanging out…"
-                    : "Relaxing…",
+              actionId === "sit"
+                ? "Hanging out…"
+                : "Relaxing…",
           }));
 
           try {
@@ -5646,40 +5638,6 @@ realmLifePresenceKickoff =
       }
 
       dirtyRef.current = true;
-
-      if (actionId === "talk") {
-        // Face each other before the social animation.
-        const dx =
-          neighbor.position.x -
-          resident.position.x;
-
-        const dz =
-          neighbor.position.z -
-          resident.position.z;
-
-        if (Math.hypot(dx, dz) > 0.01) {
-          resident.rotation.y =
-            Math.atan2(dx, dz);
-
-          neighbor.rotation.y =
-            Math.atan2(-dx, -dz);
-        }
-
-        // Avery now uses the dedicated RealmLife
-        // Stand-and-Chat animation. The neighbor still uses
-        // their existing greeting motion until NPC Motion Pack
-        // A is generated.
-        neighborAvatar?.playOnce(
-          "greet"
-        );
-
-        // Keep the NPC nearby until the greeting finishes.
-        neighborHoldUntil =
-          performance.now() + 2800;
-
-        neighborMoveTarget = null;
-        neighborPath = [];
-      }
 
       setHud({
         day: s.day,
