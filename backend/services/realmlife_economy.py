@@ -1187,10 +1187,6 @@ async def active_heartbeat(
 
     import uuid
 
-    from services import (
-        realmlife_environment
-        as rlenv
-    )
 
 
     await ensure_account(game_id, current)
@@ -1320,26 +1316,10 @@ async def active_heartbeat(
         and elapsed_seconds
             <= MAX_REWARD_GAP_SECONDS
     ):
-        realm_rate = float(
-            await (
-                rlenv
-                .realm_minutes_per_real_second(
-                    game_id
-                )
-            )
-        )
-
-        realm_rate = max(
-            0.0001,
-            min(
-                100.0,
-                realm_rate,
-            ),
-        )
-
+        # GENESIS CITY — QUALIFIED REAL-LIFE TIME
+        # 60 qualified real seconds = 1 qualified real minute.
         credited_realm_minutes = (
-            elapsed_seconds
-            * realm_rate
+            elapsed_seconds / 60.0
         )
 
 
@@ -1427,7 +1407,7 @@ async def active_heartbeat(
                         remaining_carry,
 
                     "active_reward_rule":
-                        "one_fire_per_active_realm_minute",
+                        "one_fire_per_qualified_real_minute",
                 },
 
                 "$inc":
@@ -1513,7 +1493,7 @@ async def active_heartbeat(
                 credited_realm_minutes,
 
             "rule":
-                "one_fire_per_active_realm_minute",
+                "one_fire_per_qualified_real_minute",
         }
 
 
