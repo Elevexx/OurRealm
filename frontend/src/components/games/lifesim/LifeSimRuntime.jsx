@@ -110,8 +110,6 @@ function freshSave() {
     version: 1,
     day: 1,
     minutes: 8 * 60,
-    money: 750,
-    relationship: 10,
     resident: { name: "Avery", x: 0, z: 5 },
     placed: [],
     nextPlacedId: 1,
@@ -126,6 +124,8 @@ function normalizeSave(raw) {
   // Strip legacy survival needs from old RealmLife saves.
   const clean = { ...raw };
   delete clean.needs;
+  delete clean.money;
+  delete clean.relationship;
 
   return {
     ...f,
@@ -756,8 +756,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     return {
       day: s.day,
       minutes: s.minutes,
-      money: s.money,
-      relationship: s.relationship,
       msg: "Welcome home.",
     };
   });
@@ -5580,10 +5578,6 @@ realmLifePresenceKickoff =
       // GENESIS CITY:
       // Hangout actions no longer restore survival meters.
 
-      s.relationship = clamp(
-        s.relationship + (fx.relationship || 0)
-      );
-
       s.minutes += fx.minutes || 0;
 
       while (s.minutes >= 1440) {
@@ -5596,8 +5590,6 @@ realmLifePresenceKickoff =
       setHud({
         day: s.day,
         minutes: s.minutes,
-        money: s.money,
-        relationship: s.relationship,
         msg: fx.message || fx.label,
       });
 
@@ -6047,8 +6039,6 @@ realmLifePresenceKickoff =
           ...h,
           day: s.day,
           minutes: s.minutes,
-          money: s.money,
-          relationship: s.relationship,
         }));
       }
 
