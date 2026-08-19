@@ -5659,52 +5659,33 @@ realmLifePresenceKickoff =
              * Animation clips must NEVER be allowed to lock
              * RealmLife input forever.
              *
-             * Sleep gets enough time for:
-             * lie_down -> sleep hold -> wake_up.
+             * Sit / Relax receive the longer interaction window.
              */
             const timeoutMs =
-              actionId === "sleep"
-                ? 7600
-                : actionId === "relax"
-                  ? 6500
-                  : 4500;
-
-
-            // ==================================================
-            // REALMLIFE SLEEP SEQUENCE RACE FIX V1
-            //
-            // Sleep must finish lie_down -> sleep -> wake_up
-            // BEFORE gameplay cleanup runs.
-            //
-            // playOnce() already has its own clip-duration
-            // failsafe, so racing Sleep against a shorter outer
-            // timeout can release gameplay while the animation
-            // sequence is still running in the background.
-            // ==================================================
+              (
+                actionId === "relax"
+                ||
+                actionId === "sit"
+              )
+                ? 6500
+                : 4500;
 
             const completed =
-              actionId === "sleep"
-                ? await sequenceWork
-                    .then(
-                      () =>
-                        "sequence"
-                    )
-                : await Promise.race([
-                    sequenceWork
-                      .then(
-                        () =>
-                          "sequence"
-                      ),
+              await Promise.race([
+                sequenceWork
+                  .then(
+                    () =>
+                      "sequence"
+                  ),
 
-                    waitRealmTravel(
-                      timeoutMs
-                    )
-                      .then(
-                        () =>
-                          "timeout"
-                      ),
-                  ]);
-
+                waitRealmTravel(
+                  timeoutMs
+                )
+                  .then(
+                    () =>
+                      "timeout"
+                  ),
+              ]);
 
             if (
               completed ===
