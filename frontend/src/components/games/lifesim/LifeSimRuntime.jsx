@@ -862,18 +862,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               `${business.label}: 🔥${unlockFire.toLocaleString()} Fire Power Required`,
           }));
 
-          setSelected({
-            id: businessId,
-            label: business.label,
-            actions: [
-              {
-                id: "business:claim",
-                label:
-                  `Claim Business — 🔥${unlockFire.toLocaleString()} Fire Power Required`,
-              },
-            ],
-          });
-
           return;
         }
 
@@ -896,18 +884,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
             msg:
               `${business.label}: Owned by you · +10🔥 per qualified real-life minute`,
           }));
-
-          setSelected({
-            id: businessId,
-            label: business.label,
-            actions: [
-              {
-                id: "business:destroy",
-                label:
-                  "Release Business — 50% Owner Fire Power Refund",
-              },
-            ],
-          });
 
           return;
         }
@@ -957,18 +933,21 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     };
 
 
-  const queueAction = (actionId) => {
+  const queueAction = (
+    actionId,
+    actionTarget = selected
+  ) => {
 
     if (
       actionId === "business:destroy"
       &&
-      selected?.id
+      actionTarget?.id
     ) {
       const businessId =
-        selected.id;
+        actionTarget.id;
 
       const businessLabel =
-        selected.label
+        actionTarget.label
         || "this business";
 
       const confirmation =
@@ -1006,6 +985,10 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               );
 
             await refreshRealmLifeFire();
+
+            await viewRealmLifeBusiness(
+              businessId
+            );
 
             const refunds =
               Array.isArray(
@@ -1067,13 +1050,13 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     if (
       actionId === "business:claim"
       &&
-      selected?.id
+      actionTarget?.id
     ) {
       const businessId =
-        selected.id;
+        actionTarget.id;
 
       const businessLabel =
-        selected.label
+        actionTarget.label
         || "this business";
 
       const confirmed =
@@ -1112,6 +1095,10 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               );
 
             await refreshRealmLifeFire();
+
+            await viewRealmLifeBusiness(
+              businessId
+            );
 
             if (
               response.data
@@ -7772,10 +7759,75 @@ realmLifePresenceKickoff =
               </div>
             )}
 
+            {realmLifeBusinessCard.status ===
+              "available" && (
+              <button
+                type="button"
+                onClick={() =>
+                  queueAction(
+                    "business:claim",
+                    {
+                      id:
+                        realmLifeBusinessCard.id,
+                      label:
+                        realmLifeBusinessCard.label,
+                    }
+                  )
+                }
+                className="w-full mt-3 px-3 py-2.5 rounded-xl text-xs font-black"
+                style={{
+                  background:
+                    "rgba(46,230,255,.14)",
+                  border:
+                    "1px solid rgba(46,230,255,.38)",
+                  color: "#fff",
+                }}
+              >
+                CLAIM BUSINESS — 🔥
+                {Number(
+                  realmLifeBusinessCard.unlockFire
+                  || 10000
+                ).toLocaleString()}
+              </button>
+            )}
+
             {realmLifeBusinessCard.isMine && (
-              <div className="mt-2 text-sm font-bold">
-                +10🔥 per qualified real-life minute
-              </div>
+              <>
+                <div className="mt-2 text-sm font-bold">
+                  +10🔥 per qualified real-life minute
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    queueAction(
+                      "business:destroy",
+                      {
+                        id:
+                          realmLifeBusinessCard.id,
+                        label:
+                          realmLifeBusinessCard.label,
+                      }
+                    )
+                  }
+                  className="w-full mt-3 px-3 py-2.5 rounded-xl text-xs font-black"
+                  style={{
+                    background:
+                      "rgba(197,140,255,.12)",
+                    border:
+                      "1px solid rgba(197,140,255,.32)",
+                    color: "#fff",
+                  }}
+                >
+                  RELEASE BUSINESS
+                </button>
+
+                <div
+                  className="mt-2 text-[10px] opacity-60"
+                >
+                  Returns 50% of the Fire Power you personally burned into this business.
+                </div>
+              </>
             )}
 
             {realmLifeBusinessCard.status ===
