@@ -5503,7 +5503,7 @@ realmLifePresenceKickoff =
         }
 
         /*
-         * Sit/Lie interactions use an exact object anchor,
+         * Sit interactions use an exact object anchor,
          * rather than performing the animation beside the
          * furniture.
          */
@@ -5513,7 +5513,7 @@ realmLifePresenceKickoff =
           (
             actionId === "relax"
             ||
-            actionId === "sleep"
+            actionId === "sit"
           )
           &&
           target.userData
@@ -5567,7 +5567,11 @@ realmLifePresenceKickoff =
 
         let sequence = null;
 
-        if (actionId === "relax") {
+        if (
+            actionId === "relax"
+            ||
+            actionId === "sit"
+          ) {
           sequence = [
             { name: "sit_down" },
             {
@@ -5576,18 +5580,6 @@ realmLifePresenceKickoff =
               ms: 2600,
             },
             { name: "stand_up" },
-          ];
-        }
-
-        if (actionId === "sleep") {
-          sequence = [
-            { name: "lie_down" },
-            {
-              name: "sleep",
-              mode: "loop",
-              ms: 3800,
-            },
-            { name: "wake_up" },
           ];
         }
 
@@ -5603,11 +5595,11 @@ realmLifePresenceKickoff =
           setHud((h) => ({
             ...h,
             msg:
-              actionId === "sleep"
-                ? "Sleeping…"
-                : actionId === "relax"
-                  ? "Relaxing…"
-                  : "Talking…",
+                actionId === "talk"
+                  ? "Talking…"
+                  : actionId === "sit"
+                    ? "Hanging out…"
+                    : "Relaxing…",
           }));
 
           // ==================================================
