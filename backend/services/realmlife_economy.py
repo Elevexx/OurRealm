@@ -25,7 +25,9 @@ from core.db import db
 
 
 STARTER_FIRE = 500
-ACTIVE_SECONDS_PER_FIRE = 60
+QUALIFIED_REAL_SECONDS_PER_REWARD_CYCLE = 60
+NORMAL_ACTIVE_FIRE_PER_MINUTE = 1
+BUSINESS_OWNER_ACTIVE_FIRE_PER_MINUTE = 10
 
 # Browser sends heartbeats roughly every 15 seconds.
 # Larger gaps do not accrue, preventing background catch-up.
@@ -208,14 +210,48 @@ async def ensure_account(
     )
 
 
+async def _active_fire_per_minute(
+    game_id: str,
+    user_id: str,
+):
+    owned_business = await (
+        db.realmlife_businesses
+        .find_one(
+            {
+                "game_id": game_id,
+                "owner_user_id": user_id,
+                "status": "owned",
+            },
+            {
+                "_id": 1,
+            },
+        )
+    )
+
+    if owned_business:
+        return BUSINESS_OWNER_ACTIVE_FIRE_PER_MINUTE
+
+    return NORMAL_ACTIVE_FIRE_PER_MINUTE
+
+
 async def account_status(
     game_id: str,
     current: dict,
+    *,
+    active_fire_per_minute=None,
 ):
     account = await ensure_account(
         game_id,
         current,
     )
+
+    if active_fire_per_minute is None:
+        active_fire_per_minute = (
+            await _active_fire_per_minute(
+                game_id,
+                current["id"],
+            )
+        )
 
     wallet = await db.fire_wallets.find_one(
         {"user_id": current["id"]},
@@ -239,9 +275,10 @@ async def account_status(
         "starter_fire": STARTER_FIRE,
 
         "active_play": {
-            "fire_per_minute": 1,
-            "seconds_per_fire":
-                ACTIVE_SECONDS_PER_FIRE,
+            "fire_per_minute":
+                active_fire_per_minute,
+            "qualified_real_seconds_per_reward_cycle":
+                QUALIFIED_REAL_SECONDS_PER_REWARD_CYCLE,
             "background_earnings": False,
             "idle_earnings": False,
         },
@@ -1168,14 +1205,14 @@ async def active_heartbeat(
     RealmLife active-play earning authority.
 
     RULE:
-      +1 RealmLife Fire Power
-      per ACTIVE RealmLife minute.
+      +1 Fire Power for normal residents, or +10 total for business owners
+      per qualified REAL-LIFE minute.
 
     The browser only reports whether the game is currently
     visible/focused/active.
 
-    RealmLife elapsed minutes are derived SERVER-SIDE from the
-    authoritative RealmLife environment clock.
+    Qualified elapsed time is derived SERVER-SIDE from
+    real heartbeat timestamps, never Genesis City simulation time.
 
     No inactive/background catch-up is permitted.
     """
@@ -1190,6 +1227,20 @@ async def active_heartbeat(
 
 
     await ensure_account(game_id, current)
+
+    fire_per_minute = (
+        await _active_fire_per_minute(
+            game_id,
+            current["id"],
+        )
+    )
+
+    active_reward_rule = (
+        "ten_fire_per_qualified_real_minute_business_owner"
+        if fire_per_minute
+        == BUSINESS_OWNER_ACTIVE_FIRE_PER_MINUTE
+        else "one_fire_per_qualified_real_minute"
+    )
 
 
     account_filter = {
@@ -1323,13 +1374,35 @@ async def active_heartbeat(
         )
 
 
-    carry = float(
+    previous_fire_per_minute = int(
         account.get(
-            "active_realm_minute_carry",
-            0.0,
+            "active_reward_fire_per_minute",
+            NORMAL_ACTIVE_FIRE_PER_MINUTE,
         )
-        or 0.0
+        or NORMAL_ACTIVE_FIRE_PER_MINUTE
     )
+
+    rate_changed = (
+        previous_fire_per_minute
+        != fire_per_minute
+    )
+
+    carry = (
+        0.0
+        if rate_changed
+        else float(
+            account.get(
+                "active_realm_minute_carry",
+                0.0,
+            )
+            or 0.0
+        )
+    )
+
+    if rate_changed:
+        # Never convert time accumulated under the old rate
+        # into Fire Power at the new ownership rate.
+        credited_realm_minutes = 0.0
 
 
     total_minutes = (
@@ -1338,14 +1411,19 @@ async def active_heartbeat(
     )
 
 
-    earned = int(
+    earned_minutes = int(
         total_minutes
+    )
+
+    earned = (
+        earned_minutes
+        * fire_per_minute
     )
 
 
     remaining_carry = (
         total_minutes
-        - earned
+        - earned_minutes
     )
 
 
@@ -1407,7 +1485,10 @@ async def active_heartbeat(
                         remaining_carry,
 
                     "active_reward_rule":
-                        "one_fire_per_qualified_real_minute",
+                        active_reward_rule,
+
+                    "active_reward_fire_per_minute":
+                        fire_per_minute,
                 },
 
                 "$inc":
@@ -1473,7 +1554,12 @@ async def active_heartbeat(
             pass
 
 
-    payload = await account_status(game_id, current)
+    payload = await account_status(
+        game_id,
+        current,
+        active_fire_per_minute=
+            fire_per_minute,
+    )
 
 
     if isinstance(
@@ -1489,11 +1575,14 @@ async def active_heartbeat(
             "earned":
                 committed_earned,
 
+            "fire_per_minute":
+                fire_per_minute,
+
             "realm_minutes_credited":
                 credited_realm_minutes,
 
             "rule":
-                "one_fire_per_qualified_real_minute",
+                active_reward_rule,
         }
 
 
