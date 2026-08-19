@@ -1642,7 +1642,7 @@ export function buildCityDistrict(
     buildings,
     {
       id: "city-outfitters",
-      label: "Outfitters",
+      label: "City Outfitters",
       type: "clothing_shop",
 
       x: -28.5,
@@ -1653,11 +1653,364 @@ export function buildCityDistrict(
 
       facing: "east",
 
-      color: 0xd9cbd9,
-      floorColor: 0xb7a394,
-      accent: 0x775381,
+      color: 0x10141d,
+      floorColor: 0x171b24,
+      accent: 0xd946ef,
     }
   );
+
+  // ========================================================
+  // GENESIS CITY — CITY OUTFITTERS AAA DEFAULT INTERIOR
+  //
+  // Social fashion showroom / creator hangout.
+  // No shopping economy, survival needs or visitor fees.
+  // ========================================================
+
+  const cityOutfitters =
+    city.children.find(
+      (child) =>
+        child?.userData?.buildingId ===
+        "city-outfitters"
+    );
+
+  if (cityOutfitters) {
+    const CYAN = 0x2ee6ff;
+    const MAGENTA = 0xd946ef;
+    const GRAPHITE = 0x121722;
+    const DARK = 0x080b12;
+
+    // Premium rear feature wall.
+    box(cityOutfitters, {
+      x: 0,
+      y: 1.45,
+      z: 4.68,
+      w: 9.4,
+      h: 2.35,
+      d: 0.12,
+      color: GRAPHITE,
+    });
+
+    // Neon fashion header.
+    box(cityOutfitters, {
+      x: 0,
+      y: 2.52,
+      z: 4.59,
+      w: 7.4,
+      h: 0.08,
+      d: 0.08,
+      color: MAGENTA,
+      cast: false,
+    });
+
+    addLabel(
+      cityOutfitters,
+      "CITY OUTFITTERS",
+      {
+        x: 0,
+        y: 2.03,
+        z: 4.54,
+        scale: 4.35,
+      }
+    );
+
+    // Left illuminated mirror wall.
+    box(cityOutfitters, {
+      x: -4.65,
+      y: 1.35,
+      z: 1.45,
+      w: 0.10,
+      h: 2.45,
+      d: 2.55,
+      color: DARK,
+    });
+
+    box(cityOutfitters, {
+      x: -4.57,
+      y: 1.35,
+      z: 1.45,
+      w: 0.04,
+      h: 2.15,
+      d: 2.15,
+      color: CYAN,
+      cast: false,
+    });
+
+    // Right illuminated mirror wall.
+    box(cityOutfitters, {
+      x: 4.65,
+      y: 1.35,
+      z: 1.45,
+      w: 0.10,
+      h: 2.45,
+      d: 2.55,
+      color: DARK,
+    });
+
+    box(cityOutfitters, {
+      x: 4.57,
+      y: 1.35,
+      z: 1.45,
+      w: 0.04,
+      h: 2.15,
+      d: 2.15,
+      color: MAGENTA,
+      cast: false,
+    });
+
+    // Central fashion showcase platform.
+    box(cityOutfitters, {
+      x: 0,
+      y: 0.14,
+      z: 0.25,
+      w: 2.8,
+      h: 0.28,
+      d: 2.8,
+      color: GRAPHITE,
+    });
+
+    box(cityOutfitters, {
+      x: 0,
+      y: 0.30,
+      z: 0.25,
+      w: 2.45,
+      h: 0.06,
+      d: 2.45,
+      color: MAGENTA,
+      cast: false,
+    });
+
+    // Ceiling runway lighting.
+    [-3.3, 0, 3.3].forEach(
+      (railX, index) => {
+        box(cityOutfitters, {
+          x: railX,
+          y: 2.82,
+          z: 0,
+          w: 0.08,
+          h: 0.05,
+          d: 7.3,
+          color:
+            index === 1
+              ? MAGENTA
+              : CYAN,
+          cast: false,
+        });
+      }
+    );
+
+    // --------------------------------------------------------
+    // PREMIUM FASHION DISPLAY RACKS
+    // --------------------------------------------------------
+
+    const outfitDisplayPositions = [
+      [-3.65, -1.35],
+      [-3.65,  2.20],
+      [ 3.65, -1.35],
+      [ 3.65,  2.20],
+    ];
+
+    outfitDisplayPositions.forEach(
+      ([rx, rz], index) => {
+        const rack =
+          new THREE.Group();
+
+        rack.position.set(
+          rx,
+          0,
+          rz
+        );
+
+        cityOutfitters.add(
+          rack
+        );
+
+        // Dark premium display base.
+        box(rack, {
+          x: 0,
+          y: 0.08,
+          z: 0,
+          w: 2.15,
+          h: 0.16,
+          d: 0.72,
+          color: GRAPHITE,
+        });
+
+        // Vertical frame supports.
+        [-0.92, 0.92].forEach(
+          (px) => {
+            box(rack, {
+              x: px,
+              y: 1.02,
+              z: 0,
+              w: 0.08,
+              h: 1.92,
+              d: 0.08,
+              color:
+                index % 2 === 0
+                  ? CYAN
+                  : MAGENTA,
+              cast: false,
+            });
+          }
+        );
+
+        // Upper fashion rail.
+        box(rack, {
+          x: 0,
+          y: 1.92,
+          z: 0,
+          w: 1.92,
+          h: 0.07,
+          d: 0.07,
+          color:
+            index % 2 === 0
+              ? CYAN
+              : MAGENTA,
+          cast: false,
+        });
+
+        // Abstract hanging garment displays.
+        [-0.58, 0, 0.58].forEach(
+          (gx, garmentIndex) => {
+            box(rack, {
+              x: gx,
+              y:
+                garmentIndex === 1
+                  ? 1.18
+                  : 1.12,
+              z: 0,
+              w: 0.42,
+              h:
+                garmentIndex === 1
+                  ? 1.05
+                  : 0.90,
+              d: 0.18,
+              color:
+                garmentIndex === 1
+                  ? 0xe8edf4
+                  : (
+                      index % 2 === 0
+                        ? 0x214b5a
+                        : 0x54205d
+                    ),
+            });
+          }
+        );
+
+        // Small illuminated display edge.
+        box(rack, {
+          x: 0,
+          y: 0.20,
+          z: -0.39,
+          w: 1.88,
+          h: 0.05,
+          d: 0.05,
+          color:
+            index % 2 === 0
+              ? CYAN
+              : MAGENTA,
+          cast: false,
+        });
+      }
+    );
+
+    // --------------------------------------------------------
+    // SOCIAL FASHION LOUNGE
+    // --------------------------------------------------------
+
+    const outfittersLounge =
+      new THREE.Group();
+
+    outfittersLounge.position.set(
+      -4.75,
+      0,
+      -3.25
+    );
+
+    cityOutfitters.add(
+      outfittersLounge
+    );
+
+    // Main lounge seat.
+    box(outfittersLounge, {
+      x: 0,
+      y: 0.38,
+      z: 0,
+      w: 1.05,
+      h: 0.58,
+      d: 2.35,
+      color: 0x202735,
+    });
+
+    // Backrest.
+    box(outfittersLounge, {
+      x: -0.43,
+      y: 0.82,
+      z: 0,
+      w: 0.17,
+      h: 0.82,
+      d: 2.35,
+      color: GRAPHITE,
+    });
+
+    // Cyan lounge accent.
+    box(outfittersLounge, {
+      x: -0.53,
+      y: 0.82,
+      z: 0,
+      w: 0.05,
+      h: 0.72,
+      d: 2.12,
+      color: CYAN,
+      cast: false,
+    });
+
+    // --------------------------------------------------------
+    // SMALL CREATOR / STYLE DISPLAY TABLE
+    // --------------------------------------------------------
+
+    box(cityOutfitters, {
+      x: 4.60,
+      y: 0.38,
+      z: -3.20,
+      w: 1.55,
+      h: 0.18,
+      d: 1.25,
+      color: GRAPHITE,
+    });
+
+    box(cityOutfitters, {
+      x: 4.60,
+      y: 0.50,
+      z: -3.20,
+      w: 1.30,
+      h: 0.05,
+      d: 1.00,
+      color: MAGENTA,
+      cast: false,
+    });
+
+    // Decorative folded-item blocks.
+    [-0.38, 0, 0.38].forEach(
+      (offset, index) => {
+        box(cityOutfitters, {
+          x: 4.60 + offset,
+          y: 0.61,
+          z: -3.20,
+          w: 0.28,
+          h: 0.16,
+          d: 0.42,
+          color:
+            index === 1
+              ? 0xe8edf4
+              : MAGENTA,
+        });
+      }
+    );
+
+    cityOutfitters.userData.aaaInterior =
+      "city-outfitters-v1";
+  }
 
 
   addOpenBuilding(
