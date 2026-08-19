@@ -7,7 +7,7 @@ Rules:
 - Stealth Founder = unlimited businesses.
 - Businesses are public by default.
 - Destroying/releasing a business reopens the slot.
-- Current ownership-cycle contributions restore 50% when destroyed.
+- Owner personally burned Fire Power in the current ownership cycle restores 50% when destroyed.
 - Future city clones reuse this registry.
 """
 
@@ -1025,6 +1025,13 @@ async def _refund_current_cycle(
         or 0
     )
 
+    owner_user_id = business_doc.get(
+        "owner_user_id"
+    )
+
+    if not owner_user_id:
+        return []
+
     rows = await (
         db.realmlife_business_contributions
         .find(
@@ -1040,6 +1047,9 @@ async def _refund_current_cycle(
 
                 "ownership_epoch":
                     epoch,
+
+                "user_id":
+                    owner_user_id,
 
                 "refunded_50": {
                     "$ne":
@@ -1062,7 +1072,10 @@ async def _refund_current_cycle(
             "user_id"
         )
 
-        if not uid:
+        if (
+            not uid
+            or uid != owner_user_id
+        ):
             continue
 
         entry = totals.setdefault(
