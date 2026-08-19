@@ -6055,7 +6055,7 @@ realmLifePresenceKickoff =
       if (simSpeed > 0) {
         const minutesPerSecond = [0, 1, 4, 12][simSpeed] || 1;
         const dm = dt * minutesPerSecond;
-        const hours = dm / 60;
+        // GENESIS CITY: survival-needs decay disabled.
 
         const s = simRef.current;
 
@@ -6066,11 +6066,6 @@ realmLifePresenceKickoff =
           s.day += 1;
         }
 
-        s.needs.hunger = clamp(s.needs.hunger - 2.0 * hours);
-        s.needs.energy = clamp(s.needs.energy - 1.35 * hours);
-        s.needs.hygiene = clamp(s.needs.hygiene - 0.9 * hours);
-        s.needs.fun = clamp(s.needs.fun - 0.72 * hours);
-        s.needs.social = clamp(s.needs.social - 0.82 * hours);
 
         dirtyRef.current = true;
       }
