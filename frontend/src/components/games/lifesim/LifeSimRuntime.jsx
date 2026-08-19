@@ -16,6 +16,7 @@ import { buildNeighborhoodWorld } from "./lifeSimNeighborhood";
 import { createRealmLifeGraphics, GRAPHICS_MODES, createAdaptiveDPR } from "./lifeSimGraphics";
 import { createHomeBeacons } from "./lifeSimHomeBeacons";
 import { buildGuestResidence } from "./lifeSimGuestInterior";
+import { createVenueAudio } from "./lifeSimVenueAudio";
 import {
   createBlueprintLayer,
   builtLevelKeys,
@@ -6363,12 +6364,32 @@ realmLifePresenceKickoff =
       scheduleSave();
     };
 
+    // GENESIS CITY VENUE MUSIC — Night Lounge + Club 178.
+    const venueAudio = createVenueAudio([
+      { id: "night-lounge", x: 0.5, z: 446, style: "lounge" },
+      { id: "pulse-club", x: 33, z: 451, style: "club" },
+    ]);
+    let venueAudioClock = 0;
+    const unlockVenueAudio = () => venueAudio.unlock();
+    window.addEventListener("pointerdown", unlockVenueAudio);
+    window.addEventListener("keydown", unlockVenueAudio);
+
     const loop = () => {
       if (disposed) return;
 
       raf = requestAnimationFrame(loop);
 
       const dt = Math.min(clock.getDelta(), 0.05);
+
+      // GENESIS CITY VENUE MUSIC — distance-based fade.
+      venueAudioClock += dt;
+      if (venueAudioClock > 0.25) {
+        venueAudioClock = 0;
+        venueAudio.update(
+          resident.position.x,
+          resident.position.z
+        );
+      }
       // ------------------------------------------------------
       // GENESIS CITY — FIXED 1× WORLD CLOCK
       // ------------------------------------------------------
@@ -6972,6 +6993,10 @@ realmLifePresenceKickoff =
       cancelResidentialStream?.();
 
       cancelAnimationFrame(raf);
+
+      venueAudio.dispose();
+      window.removeEventListener("pointerdown", unlockVenueAudio);
+      window.removeEventListener("keydown", unlockVenueAudio);
 
       window.clearInterval(homeBeaconTimer);
       window.clearInterval(homeBlueprintTimer);

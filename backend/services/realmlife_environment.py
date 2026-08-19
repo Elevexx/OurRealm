@@ -176,8 +176,12 @@ async def ensure_state(
                     "epoch_real":
                         now,
 
+                    # Genesis City default:
+                    # the world clock starts at dusk
+                    # (19:45) so the neon pass lands
+                    # at full impact on first entry.
                     "epoch_realm_minute":
-                        0.0,
+                        1185.0,
 
                     "manual_events":
                         [],
