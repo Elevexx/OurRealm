@@ -1012,6 +1012,13 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     let disposed = false;
     let raf = 0;
 
+    // REALMLIFE PERFORMANCE PROFILE
+    const realmLifePerfStart = performance.now();
+
+    let firstFrameLogged = false;
+
+    const rendererPerfStart = performance.now();
+
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       powerPreference: "high-performance",
@@ -1019,6 +1026,12 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
     initRealmLifeAAAAssets(
       renderer
+    );
+
+    console.info(
+      `[RealmLife Perf] Renderer + AAA init: ${
+        (performance.now() - rendererPerfStart).toFixed(1)
+      }ms`
     );
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -1142,10 +1155,23 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
     // Seamless exterior world:
     // yard → sidewalk → road → neighboring lots → park.
+    const neighborhoodPerfStart =
+      performance.now();
+
     const neighborhood =
       buildNeighborhoodWorld(scene, {
         ownLot: HOME_LOT,
+
+        // REALMLIFE PERFORMANCE:
+        // Immediate neighborhood first.
+        progressiveResidential: true,
       });
+
+    console.info(
+      `[RealmLife Perf] Neighborhood TOTAL: ${
+        (performance.now() - neighborhoodPerfStart).toFixed(1)
+      }ms`
+    );
 
     colliders.push(
       ...neighborhood.colliders
@@ -1200,19 +1226,37 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         .position.z = 280;
     }
 
+    const portalPerfStart =
+      performance.now();
+
     const portalWorld =
       buildRealmLifePortalWorld(
         scene
       );
 
+    console.info(
+      `[RealmLife Perf] Portal world: ${
+        (performance.now() - portalPerfStart).toFixed(1)
+      }ms`
+    );
+
     colliders.push(
       ...portalWorld.colliders
     );
+
+    const founderEstatePerfStart =
+      performance.now();
 
     const founderEstate =
       buildRealmLifeFounderEstate(
         scene
       );
+
+    console.info(
+      `[RealmLife Perf] Founder estate: ${
+        (performance.now() - founderEstatePerfStart).toFixed(1)
+      }ms`
+    );
 
     colliders.push(
       ...founderEstate.colliders
@@ -1221,6 +1265,11 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     // REALMLIFE SECTOR STREAMING — home loads first, distant
     // sectors stream in/out around the graphics draw distance.
     const sectorStreaming = createSectorStreaming();
+
+    // REALMLIFE PERFORMANCE:
+    // First rendered frame must contain only the immediate
+    // playable neighborhood.
+    sectorStreaming.suspend();
 
     sectorStreaming.addSector(
       "cityDistrict",
@@ -2941,17 +2990,22 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       };
 
 
-    realmLifePresenceTimer =
+    // REALMLIFE PERFORMANCE:
+// 1 Hz is enough for shared social presence while cutting
+// repeated backend traffic substantially.
+realmLifePresenceTimer =
       window.setInterval(
         syncRealmLifePresence,
-        450
+        1000
       );
 
 
-    realmLifePresenceKickoff =
+    // Let the initial world/player render finish before the
+// first multiplayer presence request competes for resources.
+realmLifePresenceKickoff =
       window.setTimeout(
         syncRealmLifePresence,
-        100
+        1500
       );
 
     // ========================================================
@@ -6388,10 +6442,62 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       );
 
       renderer.render(scene, camera);
+
+      if (!firstFrameLogged) {
+        firstFrameLogged = true;
+
+        console.info(
+          `[RealmLife Perf] FIRST FRAME RENDERED: ${
+            (
+              performance.now()
+              - realmLifePerfStart
+            ).toFixed(1)
+          }ms`
+        );
+
+        // The lightweight player/home frame is now on screen.
+        // Heavy world sectors may begin revealing gradually.
+        sectorStreaming.resume({
+          staggerMs: 1400,
+        });
+
+        console.info(
+          "[RealmLife Perf] Heavy sector streaming unlocked"
+        );
+      }
     };
 
+    console.info(
+      `[RealmLife Perf] FIRST PLAYABLE READY: ${
+        (performance.now() - realmLifePerfStart).toFixed(1)
+      }ms`
+    );
+
+    let residentialStreamKickoff = 0;
+    let cancelResidentialStream = null;
+
     setReady(true);
+
+    // First playable frame.
     loop();
+
+    // Remaining homes are now background work.
+    residentialStreamKickoff =
+      requestAnimationFrame(
+        () => {
+
+          if (disposed)
+            return;
+
+          cancelResidentialStream =
+            neighborhood
+              .housePrivacy
+              ?.streamRemainingHomes?.({
+                batchSize: 6,
+              })
+            || null;
+        }
+      );
 
     return () => {
       disposed = true;
@@ -6443,6 +6549,16 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         );
       }
 
+
+      if (
+        residentialStreamKickoff
+      ) {
+        cancelAnimationFrame(
+          residentialStreamKickoff
+        );
+      }
+
+      cancelResidentialStream?.();
 
       cancelAnimationFrame(raf);
 

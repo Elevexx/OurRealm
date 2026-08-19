@@ -9,7 +9,12 @@ import {
 
 import apiClient from "@/api/client";
 
-import LifeSimRuntime from "@/components/games/lifesim/LifeSimRuntime";
+// REALMLIFE PERFORMANCE:
+// Keep the full Three.js RealmLife world in its own chunk.
+// RealmLife game data and the 3D runtime can now load in parallel.
+const LifeSimRuntime = React.lazy(() =>
+  import("@/components/games/lifesim/LifeSimRuntime")
+);
 
 
 const PREFERRED_GAME_ID =
@@ -251,6 +256,11 @@ export default function RealmLifeDirect() {
       "RealmLife · OurRealm";
 
 
+    // Start downloading the heavy 3D runtime immediately,
+    // while the RealmLife API request happens at the same time.
+    import("@/components/games/lifesim/LifeSimRuntime")
+      .catch(() => {});
+
     resolveRealmLife()
       .then(
         (data) => {
@@ -411,21 +421,35 @@ export default function RealmLifeDirect() {
         zIndex: 50,
       }}
     >
-      <LifeSimRuntime
-        game={
-          payload.game
+      <React.Suspense
+        fallback={
+          <div
+            className="fixed inset-0 flex items-center justify-center"
+            style={{
+              background: "#030911",
+              color: "#dffcff",
+            }}
+          >
+            Loading RealmLife world…
+          </div>
         }
+      >
+        <LifeSimRuntime
+          game={
+            payload.game
+          }
 
-        progress={
-          payload.progress
-        }
+          progress={
+            payload.progress
+          }
 
-        onExit={() =>
-          navigate(
-            "/games"
-          )
-        }
-      />
+          onExit={() =>
+            navigate(
+              "/games"
+            )
+          }
+        />
+      </React.Suspense>
     </div>
   );
 }

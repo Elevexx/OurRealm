@@ -2633,8 +2633,12 @@ function createSpanishResidentialPrivacyShell({
 function installRealmLifeResidentialPrivacy(
   root,
   colliders = null,
-  ownLot = null
+  ownLot = null,
+  options = {}
 ) {
+  const progressiveResidential =
+    options?.progressive === true;
+
   const shellByLot = new Map();
   const guestLots = new Set();
 
@@ -2891,8 +2895,59 @@ function installRealmLifeResidentialPrivacy(
   }
 
 
+  // REALMLIFE PERFORMANCE:
+  // Every lot remains authoritative immediately, but only the
+  // nearest visual house shells are created before first play.
+  const pendingLevels = new Map();
+
+  const anchorX =
+    ownLot?.x ?? 0;
+
+  const anchorZ =
+    ownLot?.z ?? 0;
+
+  const orderedPrivateHomes =
+    privateHomes
+      .filter(
+        (home) =>
+          !(
+            ownLot
+            &&
+            home.lotSeq === ownLot.seq
+          )
+      )
+      .sort(
+        (a, b) =>
+          Math.hypot(
+            a.x - anchorX,
+            a.z - anchorZ
+          )
+          -
+          Math.hypot(
+            b.x - anchorX,
+            b.z - anchorZ
+          )
+      );
+
+  const INITIAL_PRIVATE_HOME_SHELLS = 20;
+
+  const initialPrivateHomes =
+    progressiveResidential
+      ? orderedPrivateHomes.slice(
+          0,
+          INITIAL_PRIVATE_HOME_SHELLS
+        )
+      : privateHomes;
+
+  const deferredPrivateHomes =
+    progressiveResidential
+      ? orderedPrivateHomes.slice(
+          INITIAL_PRIVATE_HOME_SHELLS
+        )
+      : [];
+
   const privateShells =
-    privateHomes.map(
+    initialPrivateHomes.map(
       (home) => {
 
         // The signed-in resident's own lot gets the dedicated
@@ -2984,6 +3039,40 @@ function installRealmLifeResidentialPrivacy(
       }
     )
     .filter(Boolean);
+
+  // Deferred houses are only visually deferred.
+  // Their physical collision exists immediately.
+  if (
+    Array.isArray(colliders)
+    &&
+    deferredPrivateHomes.length
+  ) {
+    deferredPrivateHomes.forEach(
+      (home) => {
+        colliders.push({
+          x: home.x,
+          z: home.z,
+
+          hw:
+            home.w / 2,
+
+          hd:
+            home.d / 2,
+
+          residentialHouse:
+            true,
+
+          cityId:
+            home.cityId
+            || "city-001",
+
+          lotSeq:
+            home.lotSeq
+            || null,
+        });
+      }
+    );
+  }
 
 
   // ==========================================================
@@ -3271,6 +3360,98 @@ function installRealmLifeResidentialPrivacy(
   };
 
 
+  const buildDeferredPrivateShell =
+    (home) => {
+
+      if (!home)
+        return null;
+
+      const existing =
+        shellByLot.get(
+          home.lotSeq
+        );
+
+      if (existing)
+        return existing;
+
+      const pending =
+        pendingLevels.get(
+          home.lotSeq
+        );
+
+      const shell =
+        createSpanishResidentialPrivacyShell({
+          ...home,
+
+          own: false,
+
+          ...(pending
+            ? {
+                levelsAbove:
+                  Math.min(
+                    3,
+                    Number(
+                      pending.above
+                    ) || 1
+                  ),
+
+                levelsBelow:
+                  Math.min(
+                    3,
+                    Number(
+                      pending.below
+                    ) || 0
+                  ),
+              }
+            : {}),
+        });
+
+      if (pending) {
+        shell.userData.rlLevels =
+          `${pending.above}/${pending.below || 0}`;
+
+        pendingLevels.delete(
+          home.lotSeq
+        );
+      }
+
+      privacyRoot.add(
+        shell
+      );
+
+      shellByLot.set(
+        home.lotSeq,
+        shell
+      );
+
+      shell.userData.cityId =
+        home.cityId
+        || "city-001";
+
+      shell.userData.cityLotSeq =
+        home.lotSeq
+        || null;
+
+      shell.userData.residentialCommunity =
+        true;
+
+      shell.visible =
+        !(
+          guestLots.has(
+            home.lotSeq
+          )
+          &&
+          ownMode === "cutaway"
+        );
+
+      privateShells.push(
+        shell
+      );
+
+      return shell;
+    };
+
+
   const api = {
 
     setOwnMode(
@@ -3336,7 +3517,22 @@ function installRealmLifeResidentialPrivacy(
         ? ownShell
         : shellByLot.get(lotSeq);
 
-      if (!target) return;
+      if (!target) {
+
+        if (!isOwnLot) {
+          pendingLevels.set(
+            lotSeq,
+            {
+              above,
+              below:
+                below || 0,
+            }
+          );
+        }
+
+        return;
+      }
+
       if (
         target.userData.rlLevels ===
         `${above}/${below || 0}`
@@ -3369,7 +3565,22 @@ function installRealmLifeResidentialPrivacy(
       if (isOwnLot) {
         ownShell = rebuilt;
       } else {
-        shellByLot.set(lotSeq, rebuilt);
+
+        const index =
+          privateShells.indexOf(
+            target
+          );
+
+        if (index >= 0) {
+          privateShells[
+            index
+          ] = rebuilt;
+        }
+
+        shellByLot.set(
+          lotSeq,
+          rebuilt
+        );
       }
     },
 
@@ -3377,6 +3588,148 @@ function installRealmLifeResidentialPrivacy(
     getOwnMode() {
 
       return ownMode;
+    },
+
+
+    streamRemainingHomes({
+      batchSize = 6,
+    } = {}) {
+
+      if (
+        !progressiveResidential
+        ||
+        !deferredPrivateHomes.length
+      ) {
+        return () => {};
+      }
+
+      let cancelled = false;
+      let handle = null;
+      let idleHandle = false;
+
+      const schedule = () => {
+
+        if (
+          cancelled
+          ||
+          !deferredPrivateHomes.length
+        ) {
+          return;
+        }
+
+        if (
+          typeof window.requestIdleCallback
+            === "function"
+        ) {
+          idleHandle = true;
+
+          handle =
+            window.requestIdleCallback(
+              pump,
+              {
+                timeout: 400,
+              }
+            );
+
+        } else {
+
+          idleHandle = false;
+
+          handle =
+            window.setTimeout(
+              () => pump(null),
+              25
+            );
+        }
+      };
+
+
+      const pump = (
+        deadline
+      ) => {
+
+        handle = null;
+
+        if (cancelled)
+          return;
+
+        const started =
+          performance.now();
+
+        let built = 0;
+
+        while (
+          deferredPrivateHomes.length
+          &&
+          built < batchSize
+        ) {
+
+          const home =
+            deferredPrivateHomes.shift();
+
+          buildDeferredPrivateShell(
+            home
+          );
+
+          built += 1;
+
+          if (
+            deadline
+            &&
+            typeof deadline.timeRemaining
+              === "function"
+            &&
+            deadline.timeRemaining() < 3
+          ) {
+            break;
+          }
+
+          if (
+            !deadline
+            &&
+            performance.now()
+              - started > 12
+          ) {
+            break;
+          }
+        }
+
+        if (
+          deferredPrivateHomes.length
+        ) {
+          schedule();
+        } else {
+          console.info(
+            "[RealmLife Perf] Residential background stream complete"
+          );
+        }
+      };
+
+
+      schedule();
+
+
+      return () => {
+        cancelled = true;
+
+        if (handle === null)
+          return;
+
+        if (
+          idleHandle
+          &&
+          typeof window.cancelIdleCallback
+            === "function"
+        ) {
+          window.cancelIdleCallback(
+            handle
+          );
+        } else {
+          window.clearTimeout(
+            handle
+          );
+        }
+      };
     },
 
 
@@ -3444,6 +3797,10 @@ export function buildNeighborhoodWorld(
   scene,
   worldOpts = {}
 ) {
+  // REALMLIFE PERFORMANCE PROFILE #2
+  const starterWorldPerfStart =
+    performance.now();
+
   const root = new THREE.Group();
   root.name = "RealmLifeNeighborhood";
 
@@ -4029,6 +4386,18 @@ export function buildNeighborhoodWorld(
   // Collider coordinates are shifted by the exact same amount.
   // ========================================================
 
+  console.info(
+    `[RealmLife Perf] Starter world BEFORE Downtown: ${
+      (
+        performance.now()
+        - starterWorldPerfStart
+      ).toFixed(1)
+    }ms`
+  );
+
+  const cityPerfStart =
+    performance.now();
+
   const cityColliderStart =
     colliders.length;
 
@@ -4075,16 +4444,34 @@ export function buildNeighborhoodWorld(
   }
 
 
+  console.info(
+    `[RealmLife Perf] Downtown: ${
+      (performance.now() - cityPerfStart).toFixed(1)
+    }ms`
+  );
+
+  const communityPerfStart =
+    performance.now();
+
   const communityCore =
     buildRealmLifeCommunityCore(
       root,
       colliders
     );
 
+  console.info(
+    `[RealmLife Perf] Community Core: ${
+      (performance.now() - communityPerfStart).toFixed(1)
+    }ms`
+  );
+
 
   // ==========================================================
   // REALMLIFE V7A NEXUS + MARINA
   // ==========================================================
+
+  const nexusPerfStart =
+    performance.now();
 
   const nexusMarina =
     buildRealmLifeNexusMarina(
@@ -4092,17 +4479,37 @@ export function buildNeighborhoodWorld(
       colliders
     );
 
+  console.info(
+    `[RealmLife Perf] Nexus + Marina: ${
+      (performance.now() - nexusPerfStart).toFixed(1)
+    }ms`
+  );
+
 
   // ==========================================================
   // REALMLIFE V5G1B2 — FULL HOUSE / PRIVATE RESIDENTIAL VIEW
   // ==========================================================
 
+  const privacyPerfStart =
+    performance.now();
+
   const housePrivacy =
     installRealmLifeResidentialPrivacy(
       root,
       colliders,
-      ownLot
+      ownLot,
+      {
+        progressive:
+          !!worldOpts
+            .progressiveResidential,
+      }
     );
+
+  console.info(
+    `[RealmLife Perf] 100-home residential privacy: ${
+      (performance.now() - privacyPerfStart).toFixed(1)
+    }ms`
+  );
 
 
 

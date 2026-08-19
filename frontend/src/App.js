@@ -1,6 +1,10 @@
-import RealmLifeDirect from "./pages/RealmLifeDirect";
-import RealmLifeLanding from "./pages/RealmLifeLanding";
 import React from "react";
+
+// REALMLIFE PERFORMANCE:
+// Keep the complete RealmLife / Three.js runtime out of the normal
+// OurRealm startup bundle. It downloads only when RealmLife is opened.
+const RealmLifeDirect = React.lazy(() => import("./pages/RealmLifeDirect"));
+const RealmLifeLanding = React.lazy(() => import("./pages/RealmLifeLanding"));
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -384,7 +388,9 @@ function App() {
               path="/RealmLife"
               element={
                 <ShellRoute>
-                  <RealmLifeDirect />
+                  <Lazy>
+                    <RealmLifeDirect />
+                  </Lazy>
                 </ShellRoute>
               }
             />
@@ -394,7 +400,9 @@ function App() {
               path="/realmlife"
               element={
                 <ShellRoute>
-                  <RealmLifeLanding />
+                  <Lazy>
+                    <RealmLifeLanding />
+                  </Lazy>
                 </ShellRoute>
               }
             />
