@@ -22,9 +22,20 @@ from services.realmlife_property import (
 )
 
 
-BLUEPRINT_SCHEMA_VERSION = 1
+BLUEPRINT_SCHEMA_VERSION = 2
 
 MAX_PER_TYPE = 5
+
+# GENESIS CITY:
+# Legacy household survival fixtures are no longer part of RealmLife.
+LEGACY_REMOVED_TYPES = {
+    "fridge",
+    "stove",
+    "shower",
+    "toilet",
+    "bathroom_sink",
+    "kitchen_sink",
+}
 
 BOUNDS_X = 8.2
 BOUNDS_Z = 6.4
@@ -53,42 +64,6 @@ FURNITURE_CATALOG = {
         "label": "Television",
         "size": [2.1, 1.4, 0.4],
         "default_color": "#161a22",
-        "palette": [],
-    },
-    "fridge": {
-        "label": "Refrigerator",
-        "size": [1.2, 2.2, 1.1],
-        "default_color": "#c5d3d6",
-        "palette": ["#c5d3d6", "#22262a", "#9aa4a8"],
-    },
-    "stove": {
-        "label": "Stove",
-        "size": [1.5, 1.05, 1.05],
-        "default_color": "#30353c",
-        "palette": ["#e8e8e2", "#30353c", "#9aa4a8"],
-    },
-    "shower": {
-        "label": "Shower",
-        "size": [1.55, 2.15, 1.55],
-        "default_color": "#7ad4e5",
-        "palette": [],
-    },
-    "toilet": {
-        "label": "Toilet",
-        "size": [0.9, 0.75, 1.0],
-        "default_color": "#f2f2eb",
-        "palette": [],
-    },
-    "bathroom_sink": {
-        "label": "Bathroom Sink",
-        "size": [0.85, 0.95, 0.65],
-        "default_color": "#eef0ec",
-        "palette": [],
-    },
-    "kitchen_sink": {
-        "label": "Kitchen Sink",
-        "size": [1.2, 0.95, 0.85],
-        "default_color": "#c9cdcf",
         "palette": [],
     },
     "dining_table": {
@@ -159,12 +134,6 @@ def _default_ground_furniture():
 
     return [
         item("bed", "bed", -5.3, -4.6),
-        item("shower", "shower", 5.8, -4.7),
-        item("toilet", "toilet", 7.5, -2.8),
-        item("bathroom_sink", "bathroom_sink", 4.4, -2.9),
-        item("fridge", "fridge", -5.7, 4.4),
-        item("stove", "stove", -3.8, 4.4),
-        item("kitchen_sink", "kitchen_sink", -2.1, 4.4),
         item("sofa", "sofa", 4.6, 3.4),
         item("tv", "tv", 6.7, 0.9),
         item("dining_table", "dining_table", -1.2, 4.2),
@@ -207,6 +176,29 @@ async def _ensure_blueprint(game_id, prop):
 
     if not isinstance(bp, dict) or "furniture" not in bp:
         bp = default_blueprint(prop)
+        changed = True
+
+    # GENESIS CITY MIGRATION:
+    # Remove legacy kitchen/bathroom survival fixtures from
+    # persisted homes. Beds remain valid hangout furniture.
+    furniture = bp.get("furniture")
+
+    if isinstance(furniture, list):
+        filtered = [
+            item
+            for item in furniture
+            if not (
+                isinstance(item, dict)
+                and item.get("type") in LEGACY_REMOVED_TYPES
+            )
+        ]
+
+        if len(filtered) != len(furniture):
+            bp["furniture"] = filtered
+            changed = True
+
+    if bp.get("schema") != BLUEPRINT_SCHEMA_VERSION:
+        bp["schema"] = BLUEPRINT_SCHEMA_VERSION
         changed = True
 
     # Backfill finishes for any newly built levels.
