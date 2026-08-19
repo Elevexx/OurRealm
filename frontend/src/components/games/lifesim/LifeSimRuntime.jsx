@@ -2015,6 +2015,64 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           return;
         }
 
+        const isGenesisBusiness =
+          genesisCityBusinessIds.has(
+            buildingId
+          );
+
+        if (isGenesisBusiness) {
+          const storefrontSign =
+            obj.children?.find(
+              (child) =>
+                child?.userData
+                  ?.businessSignFor ===
+                buildingId
+            );
+
+          if (!storefrontSign) {
+            console.warn(
+              "[RealmLife] Missing business storefront sign:",
+              buildingId
+            );
+            return;
+          }
+
+          storefrontSign.userData.lifeObject =
+            true;
+
+          storefrontSign.userData.id =
+            buildingId;
+
+          storefrontSign.userData.label =
+            obj.userData.buildingLabel
+            || buildingId;
+
+          storefrontSign.userData.actions =
+            [
+              {
+                id: "business:view",
+                label: "View Business",
+              },
+            ];
+
+          interactive.push(
+            storefrontSign
+          );
+
+          objectMapRef.current.set(
+            buildingId,
+            storefrontSign
+          );
+
+          registeredCityBuildingIds.add(
+            buildingId
+          );
+
+          return;
+        }
+
+        // Non-business city buildings keep their normal
+        // building-level interaction behavior.
         obj.userData.lifeObject =
           true;
 
@@ -2026,19 +2084,8 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           || buildingId;
 
         obj.userData.actions =
-          genesisCityBusinessIds.has(
-            buildingId
-          )
-            ? [
-                {
-                  id: "business:view",
-                  label: "View Business",
-                },
-              ]
-            : (
-                obj.userData.actions
-                || []
-              );
+          obj.userData.actions
+          || [];
 
         interactive.push(obj);
 

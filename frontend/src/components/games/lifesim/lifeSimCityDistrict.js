@@ -680,22 +680,32 @@ function addOpenBuilding(
   }
 
 
-  addLabel(
-    building,
-    label,
-    {
-      y: 2.68,
-      z: -halfD - 0.2,
-      scale:
-        Math.min(
-          6.2,
-          Math.max(
-            4.4,
-            label.length * 0.38
-          )
-        ),
-    }
-  );
+  const storefrontSign =
+    addLabel(
+      building,
+      label,
+      {
+        y: 2.68,
+        z: -halfD - 0.2,
+        scale:
+          Math.min(
+            6.2,
+            Math.max(
+              4.4,
+              label.length * 0.38
+            )
+          ),
+      }
+    );
+
+  // GENESIS CITY:
+  // Business ownership interaction belongs to the SIGN,
+  // never the entire building/interior.
+  storefrontSign.userData.businessSignFor =
+    id;
+
+  storefrontSign.userData.businessSignLabel =
+    label;
 
 
   registry.push({
@@ -896,7 +906,7 @@ export function buildCityDistrict(
     buildings,
     {
       id: "sunrise-cafe",
-      label: "Cafe",
+      label: "Sunrise Café",
       type: "cafe",
 
       x: 0.5,
@@ -907,11 +917,249 @@ export function buildCityDistrict(
 
       facing: "west",
 
-      color: 0xcdd8d1,
-      floorColor: 0xbaa98d,
-      accent: 0x4f806b,
+      color: 0x101820,
+      floorColor: 0x18212a,
+      accent: 0x2ee6ff,
     }
   );
+
+  // ========================================================
+  // GENESIS CITY — SUNRISE CAFÉ AAA DEFAULT INTERIOR
+  //
+  // Social / creator hangout only.
+  // No hunger, needs or paid visitor interactions.
+  // ========================================================
+
+  const sunriseCafe =
+    city.children.find(
+      (child) =>
+        child?.userData?.buildingId ===
+        "sunrise-cafe"
+    );
+
+  if (sunriseCafe) {
+    const CYAN = 0x2ee6ff;
+    const MAGENTA = 0xd94cff;
+    const GRAPHITE = 0x121922;
+    const DARK = 0x080d14;
+    const SOFT = 0xdce8ee;
+    const GREEN = 0x43d18a;
+
+    // Back service wall.
+    box(sunriseCafe, {
+      x: 0,
+      y: 1.45,
+      z: 4.15,
+      w: 7.8,
+      h: 2.35,
+      d: 0.12,
+      color: GRAPHITE,
+    });
+
+    // Neon menu board.
+    box(sunriseCafe, {
+      x: 0,
+      y: 2.05,
+      z: 4.03,
+      w: 4.6,
+      h: 0.78,
+      d: 0.08,
+      color: DARK,
+      cast: false,
+    });
+
+    // Menu-board cyan edge.
+    box(sunriseCafe, {
+      x: 0,
+      y: 2.48,
+      z: 3.98,
+      w: 4.75,
+      h: 0.07,
+      d: 0.11,
+      color: CYAN,
+      cast: false,
+    });
+
+    // Premium service counter overlay.
+    box(sunriseCafe, {
+      x: 0,
+      y: 0.62,
+      z: 1.45,
+      w: 4.8,
+      h: 0.18,
+      d: 1.05,
+      color: GRAPHITE,
+    });
+
+    // Counter neon strip.
+    box(sunriseCafe, {
+      x: 0,
+      y: 0.72,
+      z: 0.91,
+      w: 4.55,
+      h: 0.07,
+      d: 0.05,
+      color: CYAN,
+      cast: false,
+    });
+
+    // Register / smart display.
+    box(sunriseCafe, {
+      x: 1.45,
+      y: 1.05,
+      z: 1.42,
+      w: 0.72,
+      h: 0.62,
+      d: 0.12,
+      color: DARK,
+    });
+
+    box(sunriseCafe, {
+      x: 1.45,
+      y: 1.05,
+      z: 1.34,
+      w: 0.58,
+      h: 0.46,
+      d: 0.04,
+      color: CYAN,
+      cast: false,
+    });
+
+    // Café tables.
+    const tablePositions = [
+      [-3.4, -1.6],
+      [0, -1.7],
+      [3.4, -1.6],
+    ];
+
+    tablePositions.forEach(
+      ([tx, tz], index) => {
+        box(sunriseCafe, {
+          x: tx,
+          y: 0.73,
+          z: tz,
+          w: 1.55,
+          h: 0.12,
+          d: 1.05,
+          color:
+            index === 1
+              ? MAGENTA
+              : CYAN,
+        });
+
+        box(sunriseCafe, {
+          x: tx,
+          y: 0.36,
+          z: tz,
+          w: 0.18,
+          h: 0.72,
+          d: 0.18,
+          color: GRAPHITE,
+        });
+
+        // Two low-poly chairs per table.
+        [-0.95, 0.95].forEach(
+          (chairOffset) => {
+            box(sunriseCafe, {
+              x: tx + chairOffset,
+              y: 0.42,
+              z: tz,
+              w: 0.62,
+              h: 0.62,
+              d: 0.62,
+              color: GRAPHITE,
+            });
+
+            box(sunriseCafe, {
+              x: tx + chairOffset,
+              y: 0.82,
+              z: tz + 0.25,
+              w: 0.62,
+              h: 0.72,
+              d: 0.12,
+              color: GRAPHITE,
+            });
+          }
+        );
+      }
+    );
+
+    // Lounge sofa along side wall.
+    box(sunriseCafe, {
+      x: -4.65,
+      y: 0.42,
+      z: 1.15,
+      w: 1.05,
+      h: 0.62,
+      d: 3.6,
+      color: 0x202936,
+    });
+
+    box(sunriseCafe, {
+      x: -5.08,
+      y: 0.88,
+      z: 1.15,
+      w: 0.18,
+      h: 0.92,
+      d: 3.6,
+      color: MAGENTA,
+    });
+
+    // Cyber planter.
+    box(sunriseCafe, {
+      x: 4.65,
+      y: 0.34,
+      z: 2.85,
+      w: 0.8,
+      h: 0.68,
+      d: 0.8,
+      color: GRAPHITE,
+    });
+
+    box(sunriseCafe, {
+      x: 4.65,
+      y: 0.88,
+      z: 2.85,
+      w: 0.42,
+      h: 0.82,
+      d: 0.42,
+      color: GREEN,
+    });
+
+    // Ceiling neon rails.
+    [-2.7, 0, 2.7].forEach(
+      (railX, index) => {
+        box(sunriseCafe, {
+          x: railX,
+          y: 2.82,
+          z: 0.2,
+          w: 0.09,
+          h: 0.05,
+          d: 6.3,
+          color:
+            index === 1
+              ? MAGENTA
+              : CYAN,
+          cast: false,
+        });
+      }
+    );
+
+    // Small café identity panel inside.
+    addLabel(
+      sunriseCafe,
+      "SUNRISE",
+      {
+        x: 0,
+        y: 1.35,
+        z: 3.94,
+        scale: 4.2,
+      }
+    );
+
+    sunriseCafe.userData.aaaInterior =
+      "sunrise-cafe-v1";
+  }
 
 
   addOpenBuilding(
