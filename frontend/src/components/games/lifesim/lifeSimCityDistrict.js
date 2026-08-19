@@ -895,7 +895,7 @@ export function buildCityDistrict(
     colliders,
     buildings,
     {
-      id: "main-cafe",
+      id: "sunrise-cafe",
       label: "Cafe",
       type: "cafe",
 
@@ -919,7 +919,7 @@ export function buildCityDistrict(
     colliders,
     buildings,
     {
-      id: "main-outfitters",
+      id: "city-outfitters",
       label: "Outfitters",
       type: "clothing_shop",
 
@@ -943,7 +943,7 @@ export function buildCityDistrict(
     colliders,
     buildings,
     {
-      id: "main-restaurant",
+      id: "plaza-restaurant",
       label: "Restaurant",
       type: "restaurant",
 
@@ -967,7 +967,7 @@ export function buildCityDistrict(
     colliders,
     buildings,
     {
-      id: "main-grocery",
+      id: "fresh-grocery",
       label: "Grocery",
       type: "grocery",
 
@@ -991,7 +991,7 @@ export function buildCityDistrict(
     colliders,
     buildings,
     {
-      id: "main-lounge",
+      id: "night-lounge",
       label: "Night Lounge",
       type: "nightclub",
 
@@ -1258,7 +1258,7 @@ export function buildCityDistrict(
     colliders,
     buildings,
     {
-      id: "riverwalk-grill",
+      id: "river-grill",
       label: "River Grill",
       type: "restaurant",
 
@@ -1282,7 +1282,7 @@ export function buildCityDistrict(
     colliders,
     buildings,
     {
-      id: "riverwalk-club",
+      id: "pulse-club",
       label: "Pulse Club",
       type: "nightclub",
 
