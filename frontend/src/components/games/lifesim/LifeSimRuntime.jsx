@@ -246,6 +246,11 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState(null);
 
+  const [
+    realmLifeBusinessCard,
+    setRealmLifeBusinessCard,
+  ] = useState(null);
+
   // REALMLIFE GRAPHICS + MOBILE UI STATE
   const [graphicsInfo, setGraphicsInfo] = useState({
     mode: "AUTO",
@@ -842,6 +847,15 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               || 10000
             );
 
+          setRealmLifeBusinessCard({
+            id: businessId,
+            label: business.label,
+            status: "available",
+            owner: null,
+            unlockFire,
+            isMine: false,
+          });
+
           setHud((h) => ({
             ...h,
             msg:
@@ -868,6 +882,15 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
           &&
           isMine
         ) {
+          setRealmLifeBusinessCard({
+            id: businessId,
+            label: business.label,
+            status: "owned",
+            owner: "You",
+            unlockFire: null,
+            isMine: true,
+          });
+
           setHud((h) => ({
             ...h,
             msg:
@@ -896,6 +919,15 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
             business.owner_username
               ? `@${business.owner_username}`
               : "Genesis City Resident";
+
+          setRealmLifeBusinessCard({
+            id: businessId,
+            label: business.label,
+            status: "owned",
+            owner,
+            unlockFire: null,
+            isMine: false,
+          });
 
           setHud((h) => ({
             ...h,
@@ -7644,6 +7676,135 @@ realmLifePresenceKickoff =
                 Decorative object
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {realmLifeBusinessCard && (
+        <div
+          className="absolute z-40 w-[300px] max-w-[calc(100vw-24px)] rounded-2xl p-4"
+          style={{
+            right: "12px",
+            top: "84px",
+            background:
+              "linear-gradient(180deg,rgba(5,17,29,.97),rgba(3,8,18,.97))",
+            border:
+              "1px solid rgba(46,230,255,.42)",
+            color: "#fff",
+            backdropFilter: "blur(16px)",
+            boxShadow:
+              "0 18px 50px rgba(0,0,0,.48)",
+          }}
+        >
+          <div
+            className="flex items-start justify-between gap-3"
+          >
+            <div>
+              <div
+                className="text-[9px] font-black tracking-[0.22em] uppercase"
+                style={{
+                  color: "#2ee6ff",
+                }}
+              >
+                Genesis City Business
+              </div>
+
+              <div
+                className="text-lg font-black mt-1"
+              >
+                {realmLifeBusinessCard.label}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                setRealmLifeBusinessCard(null)
+              }
+              className="w-8 h-8 rounded-lg text-sm font-black"
+              style={{
+                background:
+                  "rgba(255,255,255,.07)",
+                border:
+                  "1px solid rgba(255,255,255,.12)",
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div
+            className="mt-3 rounded-xl p-3"
+            style={{
+              background:
+                "rgba(46,230,255,.06)",
+              border:
+                "1px solid rgba(46,230,255,.15)",
+            }}
+          >
+            <div
+              className="text-[10px] font-black uppercase tracking-wider"
+              style={{
+                color:
+                  realmLifeBusinessCard.status ===
+                  "available"
+                    ? "#67f7b1"
+                    : "#c58cff",
+              }}
+            >
+              {realmLifeBusinessCard.status ===
+              "available"
+                ? "AVAILABLE"
+                : realmLifeBusinessCard.isMine
+                  ? "OWNED BY YOU"
+                  : "OWNED"}
+            </div>
+
+            {realmLifeBusinessCard.status ===
+              "available" && (
+              <div className="mt-2 text-sm font-bold">
+                🔥
+                {Number(
+                  realmLifeBusinessCard.unlockFire
+                  || 10000
+                ).toLocaleString()}{" "}
+                Fire Power Required
+              </div>
+            )}
+
+            {realmLifeBusinessCard.isMine && (
+              <div className="mt-2 text-sm font-bold">
+                +10🔥 per qualified real-life minute
+              </div>
+            )}
+
+            {realmLifeBusinessCard.status ===
+              "owned" &&
+              !realmLifeBusinessCard.isMine && (
+                <>
+                  <div
+                    className="mt-2 text-xs opacity-80"
+                  >
+                    Owner:{" "}
+                    {realmLifeBusinessCard.owner}
+                  </div>
+
+                  <div
+                    className="mt-2 text-sm font-black"
+                    style={{
+                      color: "#67f7b1",
+                    }}
+                  >
+                    ENTER / HANG OUT — FREE
+                  </div>
+                </>
+              )}
+          </div>
+
+          <div
+            className="mt-3 text-[10px] opacity-60"
+          >
+            Fire Power has no monetary value.
           </div>
         </div>
       )}
