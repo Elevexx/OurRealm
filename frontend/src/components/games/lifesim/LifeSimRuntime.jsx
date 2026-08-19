@@ -48,21 +48,6 @@ const clamp = (n, a = 0, b = 100) => Math.max(a, Math.min(b, n));
 
 // GENESIS CITY: legacy survival-needs metadata removed.
 
-const DEFAULT_NEIGHBOR_AVATAR = {
-  id: "av_ninja_f",
-  label: "Neighbor",
-  modelUrl: "/api/media/models/efbbeda362104c23a46577beb0e22541.glb",
-  animationUrls: {
-    idle: "/api/media/models/d421877571cfcff37bcffc54984d6dea.glb",
-    walk: "/api/media/models/a0bb8db3c1c4a0d9813943a0bfa48250.glb",
-    run: "/api/media/models/ea0e2fd670de9d59a4902c945c23dc77.glb",
-    jump: "/api/media/models/dda41f52680e2e7f408d0f2c8a56a592.glb",
-    fall: "/api/media/models/03ace7407091fba8f18dcf6b6e7f4907.glb",
-    land: "/api/media/models/535c4ed0efe3e38bfbbb709c62bc8e4f.glb",
-    greet: "/api/media/models/24b6c2f522d5de9db120440e5f900d04.glb",
-  },
-};
-
 const BUILD_CATALOG = {
   chair: {
     label: "Cozy Chair",
@@ -4464,35 +4449,6 @@ realmLifePresenceKickoff =
       });
 
     // --------------------------------------------------------
-    // AUTONOMOUS NPC NEIGHBOR
-    // --------------------------------------------------------
-
-    const neighbor = new THREE.Group();
-
-    const neighborPlaceholder =
-      makePerson(0xff8a5a, 0x2c1a14);
-
-    neighbor.add(neighborPlaceholder);
-
-    neighbor.position.set(HOME_X + 6.7, 0, HOME_Z + 6.1);
-
-    neighbor.userData.lifeObject = true;
-    neighbor.userData.id = "neighbor";
-    neighbor.userData.label = "Neighbor";
-    neighbor.userData.approach = [-1.1, 0];
-
-    // GENESIS CITY — REAL PEOPLE ONLY
-    //
-    // Autonomous Neighbor/Ninja is intentionally not attached
-    // to the RealmLife world or interaction system.
-    // Real multiplayer residents remain unchanged.
-    neighbor.visible = false;
-
-    let neighborAvatar = null;
-    let neighborPath = [];
-    let neighborMoveTarget = null;
-
-    // --------------------------------------------------------
     // RESTORE PLAYER-PLACED FURNITURE
     // --------------------------------------------------------
 
@@ -5135,8 +5091,6 @@ realmLifePresenceKickoff =
     const clock = new THREE.Clock();
     let hudAccumulator = 0;
     let autoSaveAccumulator = 0;
-    let neighborDecisionIn = 1.25;
-    let neighborHoldUntil = 0;
 
     const applyAction = async (actionId, objectId = null) => {
 
@@ -6321,11 +6275,6 @@ realmLifePresenceKickoff =
 
       residentAvatar?.dispose();
       residentAvatar = null;
-
-      neighborAvatar?.dispose();
-      neighborAvatar = null;
-      neighborMoveTarget = null;
-      neighborPath = [];
 
       clearTimeout(saveTimerRef.current);
 
