@@ -874,6 +874,18 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               `${business.label}: Owned by you · +10🔥 per qualified real-life minute`,
           }));
 
+          setSelected({
+            id: businessId,
+            label: business.label,
+            actions: [
+              {
+                id: "business:destroy",
+                label:
+                  "Release Business — 50% Owner Fire Power Refund",
+              },
+            ],
+          });
+
           return;
         }
 
@@ -914,6 +926,111 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
 
   const queueAction = (actionId) => {
+
+    if (
+      actionId === "business:destroy"
+      &&
+      selected?.id
+    ) {
+      const businessId =
+        selected.id;
+
+      const businessLabel =
+        selected.label
+        || "this business";
+
+      const confirmation =
+        window.prompt(
+          `Release ${businessLabel}? You will receive 50% of the Fire Power you personally burned into this business. Type DESTROY to confirm.`
+        );
+
+      if (
+        String(
+          confirmation
+          || ""
+        ).trim().toUpperCase()
+        !== "DESTROY"
+      ) {
+        return;
+      }
+
+      setSelected(null);
+
+      markRealmLifeActive();
+
+      const destroyBusiness =
+        async () => {
+          try {
+            const response =
+              await apiClient.post(
+                `/games/${game.id}/realmlife/businesses/${businessId}/destroy`,
+                {
+                  city_id:
+                    "city-001",
+
+                  confirmation:
+                    "DESTROY",
+                }
+              );
+
+            await refreshRealmLifeFire();
+
+            const refunds =
+              Array.isArray(
+                response.data
+                  ?.refunds
+              )
+                ? response.data.refunds
+                : [];
+
+            const restored =
+              refunds.reduce(
+                (sum, item) =>
+                  sum
+                  +
+                  Number(
+                    item?.restored
+                    || 0
+                  ),
+                0
+              );
+
+            setHud((h) => ({
+              ...h,
+              msg:
+                restored > 0
+                  ? `${businessLabel} released. 🔥${restored.toLocaleString()} Fire Power restored.`
+                  : `${businessLabel} released. Business is available again.`,
+            }));
+          } catch (err) {
+            const detail =
+              err?.response?.data
+                ?.detail;
+
+            setHud((h) => ({
+              ...h,
+              msg:
+                (
+                  typeof detail ===
+                  "string"
+                )
+                  ? detail
+                  : (
+                      detail?.message
+                      ||
+                      err?.message
+                      ||
+                      "Business release failed."
+                    ),
+            }));
+          }
+        };
+
+      destroyBusiness();
+
+      return;
+    }
+
 
     if (
       actionId === "business:claim"
