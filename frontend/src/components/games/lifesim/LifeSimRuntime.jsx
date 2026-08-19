@@ -1271,10 +1271,205 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     // playable neighborhood.
     sectorStreaming.suspend();
 
-    sectorStreaming.addSector(
-      "cityDistrict",
-      neighborhood.cityDistrict?.root
-    );
+    // ========================================================
+    // GENESIS CITY PERFORMANCE
+    //
+    // Downtown used to be ONE enormous streaming sector.
+    // Teleporting into it therefore made every building,
+    // storefront and AAA decoration visible on one frame.
+    //
+    // Split Downtown into spatial cells so nearby pieces reveal
+    // progressively while the player is already free to move.
+    // ========================================================
+
+    const addGenesisSpatialSectors = (
+      prefix,
+      parent,
+      {
+        cellSize = 32,
+        margin = 22,
+        exclude = [],
+      } = {}
+    ) => {
+
+      if (!parent?.isObject3D)
+        return 0;
+
+      const excluded =
+        new Set(
+          exclude.filter(Boolean)
+        );
+
+      const originalChildren =
+        [...parent.children].filter(
+          (child) =>
+            child?.isObject3D
+            &&
+            !excluded.has(child)
+            &&
+            !child.userData
+              ?.realmLifeSectorBucket
+        );
+
+      const cells =
+        new Map();
+
+      const bounds =
+        new THREE.Box3();
+
+      const center =
+        new THREE.Vector3();
+
+
+      originalChildren.forEach(
+        (child) => {
+
+          child.updateWorldMatrix(
+            true,
+            true
+          );
+
+          bounds.setFromObject(
+            child
+          );
+
+          // Lights and other objects without physical bounds are
+          // tiny enough to remain directly on the parent.
+          if (bounds.isEmpty())
+            return;
+
+          bounds.getCenter(
+            center
+          );
+
+          const localCenter =
+            parent.worldToLocal(
+              center.clone()
+            );
+
+          const gx =
+            Math.floor(
+              localCenter.x
+              / cellSize
+            );
+
+          const gz =
+            Math.floor(
+              localCenter.z
+              / cellSize
+            );
+
+          const key =
+            `${gx}:${gz}`;
+
+          let bucket =
+            cells.get(key);
+
+          if (!bucket) {
+
+            bucket =
+              new THREE.Group();
+
+            bucket.name =
+              `GenesisSector:${prefix}:${key}`;
+
+            bucket.userData
+              .realmLifeSectorBucket =
+                true;
+
+            parent.add(
+              bucket
+            );
+
+            cells.set(
+              key,
+              bucket
+            );
+          }
+
+          // Bucket is identity-transformed under the same parent,
+          // so the child's existing local transform is preserved.
+          bucket.add(
+            child
+          );
+        }
+      );
+
+
+      cells.forEach(
+        (bucket, key) => {
+
+          sectorStreaming.addSector(
+            `${prefix}:${key}`,
+            bucket,
+            {
+              margin,
+            }
+          );
+        }
+      );
+
+
+      console.info(
+        `[RealmLife Perf] ${prefix} split into ${cells.size} streaming cells`
+      );
+
+      return cells.size;
+    };
+
+
+    const genesisCityRoot =
+      neighborhood.cityDistrict?.root;
+
+
+    if (genesisCityRoot) {
+
+      // The AAA visual layer contains neon towers, signage,
+      // marina/street decoration, etc. Its children also need
+      // independent cells or it becomes another giant sector.
+      const genesisAAARoot =
+        genesisCityRoot.children.find(
+          (child) =>
+            child?.name ===
+            "RealmLifeAAAUpgradeV1"
+        );
+
+
+      addGenesisSpatialSectors(
+        "downtown",
+        genesisCityRoot,
+        {
+          cellSize: 30,
+          margin: 20,
+
+          exclude:
+            genesisAAARoot
+              ? [genesisAAARoot]
+              : [],
+        }
+      );
+
+
+      if (genesisAAARoot) {
+
+        addGenesisSpatialSectors(
+          "downtownAAA",
+          genesisAAARoot,
+          {
+            cellSize: 26,
+            margin: 18,
+          }
+        );
+      }
+
+    } else {
+
+      // Safety fallback only.
+      sectorStreaming.addSector(
+        "cityDistrict",
+        genesisCityRoot
+      );
+    }
 
     sectorStreaming.addSector(
       "communityCore",
@@ -3140,6 +3335,28 @@ realmLifePresenceKickoff =
           )
         );
 
+        if (realmLifePortalPerf) {
+          realmLifePortalPerf.positionedAt =
+            performance.now();
+
+          console.info(
+            `[RealmLife Travel Perf] POSITION SET: ${
+              (
+                realmLifePortalPerf.positionedAt
+                - realmLifePortalPerf.startedAt
+              ).toFixed(1)
+            }ms`
+          );
+        }
+
+        // GENESIS PORTAL STREAMING:
+        // Re-enter stagger mode at every instant portal arrival.
+        // This prevents a destination from dumping all nearby
+        // sectors onto a single GPU frame.
+        sectorStreaming.resume?.({
+          staggerMs: 4000,
+        });
+
 
         simRef.current
           .resident.x =
@@ -3310,6 +3527,8 @@ realmLifePresenceKickoff =
     );
 
 
+    let realmLifePortalPerf = null;
+
     instantRealmTravelRef.current =
       async (
         actionId,
@@ -3413,6 +3632,14 @@ realmLifePresenceKickoff =
             );
 
 
+          const portalPerfStart =
+            performance.now();
+
+          console.info(
+            "[RealmLife Travel Perf] REQUEST START:",
+            destinationId
+          );
+
           try {
             const response =
               await apiClient.post(
@@ -3428,6 +3655,15 @@ realmLifePresenceKickoff =
               );
 
 
+            console.info(
+              `[RealmLife Travel Perf] API RESPONSE: ${
+                (
+                  performance.now()
+                  - portalPerfStart
+                ).toFixed(1)
+              }ms`
+            );
+
             const spawn =
               response.data
                 ?.spawn;
@@ -3439,6 +3675,12 @@ realmLifePresenceKickoff =
               );
             }
 
+
+            realmLifePortalPerf = {
+              startedAt: portalPerfStart,
+              destinationId,
+              positionedAt: null,
+            };
 
             await teleportResidentWithFade(
               spawn,
@@ -6443,6 +6685,32 @@ realmLifePresenceKickoff =
 
       renderer.render(scene, camera);
 
+      if (
+        realmLifePortalPerf
+        ?.positionedAt
+      ) {
+        const portalFrameNow =
+          performance.now();
+
+        console.info(
+          `[RealmLife Travel Perf] DESTINATION FRAME: ${
+            (
+              portalFrameNow
+              - realmLifePortalPerf.positionedAt
+            ).toFixed(1)
+          }ms · TOTAL ${
+            (
+              portalFrameNow
+              - realmLifePortalPerf.startedAt
+            ).toFixed(1)
+          }ms · ${
+            realmLifePortalPerf.destinationId
+          }`
+        );
+
+        realmLifePortalPerf = null;
+      }
+
       if (!firstFrameLogged) {
         firstFrameLogged = true;
 
@@ -6493,7 +6761,10 @@ realmLifePresenceKickoff =
             neighborhood
               .housePrivacy
               ?.streamRemainingHomes?.({
-                batchSize: 6,
+                // GENESIS PERFORMANCE:
+                // Never construct multiple heavy residences on
+                // one idle frame.
+                batchSize: 1,
               })
             || null;
         }

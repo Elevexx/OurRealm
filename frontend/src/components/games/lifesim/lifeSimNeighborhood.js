@@ -3627,7 +3627,9 @@ function installRealmLifeResidentialPrivacy(
             window.requestIdleCallback(
               pump,
               {
-                timeout: 400,
+                // Prefer genuine browser idle time rather than
+                // forcing expensive geometry construction quickly.
+                timeout: 1500,
               }
             );
 
@@ -3638,7 +3640,7 @@ function installRealmLifeResidentialPrivacy(
           handle =
             window.setTimeout(
               () => pump(null),
-              25
+              90
             );
         }
       };

@@ -290,12 +290,13 @@ export default function RealmLifeLanding() {
         // model instantly, then swap in the 4K hero when ready.
         let tempGroup = null;
 
+        // GENESIS PERFORMANCE:
+        // Every appearance gets the lightweight gameplay model
+        // immediately while its selected high-quality model loads.
         const fastUrl =
-          appearance === 1
-            ? REALMLIFE_PLAYER_MODELS[
-                playerSlot
-              ]?.modelUrl
-            : null;
+          REALMLIFE_PLAYER_MODELS[
+            playerSlot
+          ]?.modelUrl || null;
 
         if (fastUrl) {
           new GLTFLoader()
