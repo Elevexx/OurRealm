@@ -7027,11 +7027,6 @@ realmLifePresenceKickoff =
       </div>
     </>
   );
-
-  // GENESIS CITY:
-  // Progression is never placed into a survival-needs warning state.
-  const needsCritical = false;
-
   const sendRealmLifeChat = () => {
     const text =
       chatDraft
@@ -7771,31 +7766,25 @@ realmLifePresenceKickoff =
         </>
       )}
 
-      {/* NEEDS PANEL — collapsed to a compact icon on mobile */}
+      {/* PROGRESSION PANEL — collapsed on mobile */}
       {isMobileUI && !needsOpen && (
         <button
           type="button"
-          data-testid="realmlife-needs-toggle"
+          data-testid="realmlife-progression-toggle"
           onClick={() => setNeedsOpen(true)}
           className="absolute left-3 z-30 w-[46px] h-[46px] rounded-full flex items-center justify-center text-lg font-black"
           style={{
             bottom:
               "max(150px, calc(env(safe-area-inset-bottom) + 150px))",
-            background: needsCritical
-              ? "rgba(255,45,85,.88)"
-              : "rgba(3,10,20,.82)",
-            border: needsCritical
-              ? "1px solid rgba(255,130,150,.9)"
-              : "1px solid rgba(46,230,255,.35)",
+            background: "rgba(3,10,20,.82)",
+            border: "1px solid rgba(46,230,255,.35)",
             color: "#fff",
             backdropFilter: "blur(10px)",
-            boxShadow: needsCritical
-              ? "0 0 18px rgba(255,45,85,.55)"
-              : "0 6px 18px rgba(0,0,0,.35)",
+            boxShadow: "0 6px 18px rgba(0,0,0,.35)",
           }}
-          title="Show your needs"
+          title="Show progression"
         >
-          ❤
+          ✦
         </button>
       )}
 
