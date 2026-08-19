@@ -1583,6 +1583,67 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
     const interactive = [];
 
+    // ========================================================
+    // GENESIS CITY STOREFRONT INTERACTION BRIDGE
+    //
+    // City buildings already expose:
+    // - buildingId
+    // - buildingLabel
+    // - buildingType
+    // - interactionReady
+    //
+    // Register their real THREE.Group roots with RealmLife's
+    // existing click/tap/mobile interaction system.
+    // ========================================================
+
+    const registeredCityBuildingIds =
+      new Set();
+
+    genesisCityRoot?.traverse?.(
+      (obj) => {
+        const buildingId =
+          obj?.userData?.buildingId;
+
+        if (
+          !buildingId
+          ||
+          !obj?.userData
+            ?.interactionReady
+          ||
+          registeredCityBuildingIds
+            .has(buildingId)
+        ) {
+          return;
+        }
+
+        obj.userData.lifeObject =
+          true;
+
+        obj.userData.id =
+          buildingId;
+
+        obj.userData.label =
+          obj.userData.buildingLabel
+          || buildingId;
+
+        // Business actions are intentionally added
+        // in the next patch after the API panel is wired.
+        obj.userData.actions =
+          obj.userData.actions || [];
+
+        interactive.push(obj);
+
+        objectMapRef.current.set(
+          buildingId,
+          obj
+        );
+
+        registeredCityBuildingIds.add(
+          buildingId
+        );
+      }
+    );
+
     // REALMLIFE V5F1 REGISTER WORLD INTERACTIVES
 
     [
