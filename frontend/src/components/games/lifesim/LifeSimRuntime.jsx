@@ -4501,30 +4501,6 @@ realmLifePresenceKickoff =
     let neighborPath = [];
     let neighborMoveTarget = null;
 
-    createLifeAvatar({
-      modelUrl:
-        DEFAULT_NEIGHBOR_AVATAR.modelUrl,
-      animationUrls:
-        DEFAULT_NEIGHBOR_AVATAR.animationUrls,
-      targetHeight: 1.78,
-    })
-      .then((ctrl) => {
-        if (disposed) {
-          ctrl.dispose();
-          return;
-        }
-
-        neighborAvatar = ctrl;
-        neighborPlaceholder.visible = false;
-        neighbor.add(ctrl.model);
-      })
-      .catch((err) => {
-        console.error(
-          "[RealmLife] Neighbor avatar failed to load",
-          err
-        );
-      });
-
     // --------------------------------------------------------
     // RESTORE PLAYER-PLACED FURNITURE
     // --------------------------------------------------------
