@@ -119,39 +119,11 @@ export default function RealmLifeProgressionPanel({
   }, []);
 
 
-  const needs =
-    hud?.needs || {};
-
-  const hunger =
-    clamp100(
-      needs.hunger
-    );
-
-  const energy =
-    clamp100(
-      needs.energy
-    );
-
-  const hygiene =
-    clamp100(
-      needs.hygiene
-    );
-
-  const fun =
-    clamp100(
-      needs.fun
-    );
-
-  const social =
-    clamp100(
-      needs.social
-    );
-
-  const relationship =
-    clamp100(
-      hud?.relationship
-    );
-
+  // GENESIS CITY PROGRESSION
+  //
+  // Public RealmLife traits are derived from persistent
+  // progression, customization, reputation, and leaderboard
+  // standing — never survival needs.
 
   const summary =
     progression
@@ -239,54 +211,79 @@ export default function RealmLifeProgressionPanel({
    * so existing furniture/actions/save continuity is preserved.
    */
 
+  // --------------------------------------------------------
+  // GENESIS CITY TRAITS
+  // --------------------------------------------------------
+
+  // COMFORT
+  // Rewards actually building/customizing your RealmLife home.
   const comfort =
     Math.round(
       clamp100(
-        (
-          hunger
-          +
-          energy
-          +
-          hygiene
+        35
+        +
+        Math.min(
+          40,
+          placedCount * 3
         )
-        / 3
+        +
+        Math.min(
+          25,
+          levelNumber * 2.5
+        )
       )
     );
 
 
+  // AMBITION
+  // Driven by persistent progression level + current progress.
   const ambition =
     Math.round(
       clamp100(
-        (
-          progressPercent
-          * 0.65
+        15
+        +
+        Math.min(
+          55,
+          levelNumber * 6
         )
         +
-        (
-          energy
-          * 0.20
-        )
-        +
-        (
-          fun
-          * 0.15
-        )
+        progressPercent * 0.30
       )
     );
+
+
+  // COMMUNITY
+  // Driven by reputation + real leaderboard standing.
+  const communityRankScore =
+    globalRank &&
+    totalRanked > 1
+      ? clamp100(
+          (
+            1 -
+            (
+              globalRank - 1
+            ) /
+            (
+              totalRanked - 1
+            )
+          ) * 100
+        )
+      : 0;
 
 
   const community =
     Math.round(
       clamp100(
-        (
-          social
-          * 0.65
+        10
+        +
+        Math.min(
+          60,
+          Math.log10(
+            reputation + 1
+          ) * 22
         )
         +
-        (
-          relationship
-          * 0.35
-        )
+        communityRankScore * 0.30
       )
     );
 
