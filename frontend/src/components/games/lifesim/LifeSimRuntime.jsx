@@ -7151,18 +7151,6 @@ realmLifePresenceKickoff =
           )}
 
           <button
-            onClick={persist}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold"
-            style={{
-              background: "rgba(3,10,20,.72)",
-              border: "1px solid rgba(255,255,255,.18)",
-              color: "#fff",
-            }}
-          >
-            💾 {saveStatus || "Save"}
-          </button>
-
-          <button
             onClick={toggleFullscreen}
             className="px-3 py-1.5 rounded-lg text-xs font-bold"
             style={{
