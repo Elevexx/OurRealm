@@ -1,0 +1,995 @@
+// REALMLIFE LANDING — player creation, customization, upgrades, entry.
+// RealmLife avatar identity is fully independent from Nexus.
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import apiClient from "@/api/client";
+import {
+  buildStarterModel,
+  TIER_ACCENTS,
+} from "@/components/games/lifesim/realmLifeStarterAvatar";
+import {
+  preloadRealmLifeModel,
+  REALMLIFE_PLAYER_MODELS,
+  getRealmLifeAppearanceModel,
+} from "@/components/games/lifesim/lifeSimAvatar";
+
+const GAME_ID = "realmlife-home-v1";
+
+// RealmLife 4K hero models by actual discrete appearance.
+const HERO_APPEARANCE_URLS = {
+  player_1: {
+    1: "/api/media/models/698bcea39a7e273b446da21a6580a30a.glb",
+    2: "/api/media/models/8c298548650e7157896cfdb452254cc9.glb",
+    3: "/api/media/models/299c448ae83122d3549c3492699c8521.glb",
+  },
+
+  player_2: {
+    1: "/api/media/models/8787f255e4c1d0db42460c66bdc1bafc.glb",
+    2: "/api/media/models/7f33f4911a278210ebfde44eeaf62a86.glb",
+    3: "/api/media/models/2820f03039de848e0d4e871989ecb712.glb",
+  },
+};
+
+const APPEARANCE_SWATCHES = {
+  player_1: [
+    "#E7A273",
+    "#A96441",
+    "#54291F",
+  ],
+
+  player_2: [
+    "#D89466",
+    "#9A5738",
+    "#4B241C",
+  ],
+};
+
+const SWATCHES = {
+  hair: ["#2c2118", "#0e0c0a", "#6b4423", "#b8860b", "#d8c6a0", "#8b1a1a", "#3556a8", "#9b59b6"],
+  eyes: ["#3b6fb0", "#2e7d4f", "#6b4423", "#1a1a1a", "#7c8ba1", "#8b5cf6"],
+  cloth: ["#f5f5f0", "#1a2436", "#7a5230", "#b03a2e", "#2e7d4f", "#eab308", "#22d3ee", "#8b5cf6", "#ec4899", "#22262e"],
+};
+
+const ACCESSORY_META = {
+  cap: { label: "Cap", icon: "🧢" },
+  sunglasses: { label: "Sunglasses", icon: "🕶" },
+  watch: { label: "Watch", icon: "⌚" },
+  bracelet: { label: "Bracelet", icon: "📿" },
+  jacket: { label: "Jacket", icon: "🧥" },
+  backpack: { label: "Backpack", icon: "🎒" },
+  premium_shoes: { label: "Premium Shoes", icon: "👟" },
+};
+
+const TABS = ["PLAYER", "APPEARANCE", "CLOTHING", "ACCESSORIES", "AVATARS"];
+
+export default function RealmLifeLanding() {
+  const nav = useNavigate();
+  const mountRef = useRef(null);
+  const modelRef = useRef(null);
+  const sceneRef = useRef(null);
+
+  const [state, setState] = useState(null);
+  const [style, setStyle] = useState("style_a");
+  const [custom, setCustom] = useState(null);
+  const [selected, setSelected] = useState("starter");
+
+  const isPlayerGlb =
+    selected === "player_1" || selected === "player_2";
+
+  useEffect(() => {
+    if (!isPlayerGlb) return;
+
+    preloadRealmLifeModel(
+      getRealmLifeAppearanceModel(
+        selected,
+        custom?.appearance || 1
+      )
+    );
+  }, [
+    selected,
+    isPlayerGlb,
+    custom?.appearance,
+  ]);
+  const [tab, setTab] = useState("PLAYER");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [previewReady, setPreviewReady] = useState(false);
+  const [heroLoaded, setHeroLoaded] = useState(null);
+  const heroCacheRef = useRef(new Map());
+  const mixerRef = useRef(null);
+
+  const isNew = !state?.player;
+  const catalog = state?.catalog;
+  const unlocks = useMemo(() => new Set(state?.unlocks || []), [state]);
+  const [pendingStarter, setPendingStarter] = useState(null);
+
+  const glbInfo = useMemo(() => {
+    if (!catalog) return null;
+    const all = [...(catalog.starters || []), ...(catalog.avatar_tiers || [])];
+    return all.find((a) => a.id === selected) || null;
+  }, [catalog, selected]);
+
+  useEffect(() => {
+    apiClient
+      .get(`/games/${GAME_ID}/realmlife/player`)
+      .then((r) => {
+        setState(r.data);
+        const p = r.data.player;
+        if (p) {
+          setStyle(p.style || "style_a");
+          setCustom(p.custom || {});
+          setSelected(p.selected_avatar || "starter");
+        } else {
+          setCustom({});
+          if (r.data.is_founder) setSelected("founder_stealth");
+        }
+      })
+      .catch(() => setMsg("Could not load your RealmLife player."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // ---- 3D preview ----
+  useEffect(() => {
+    if (loading) return undefined;
+    const mount = mountRef.current;
+    if (!mount) return undefined;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color("#0a1420");
+    sceneRef.current = scene;
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 40);
+    camera.position.set(0, 1.55, 3.9);
+    camera.lookAt(0, 0.9, 0);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    renderer.shadowMap.enabled = true;
+    mount.appendChild(renderer.domElement);
+
+    scene.add(new THREE.HemisphereLight(0xbfd8ff, 0x2a1f18, 1.05));
+    const key = new THREE.DirectionalLight(0xfff1dc, 2.2);
+    key.position.set(2.4, 4, 3);
+    key.castShadow = true;
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x22d3ee, 1.1);
+    rim.position.set(-3, 2, -2.5);
+    scene.add(rim);
+
+    const disc = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.05, 1.15, 0.09, 28),
+      new THREE.MeshStandardMaterial({ color: "#12283c", roughness: 0.6 }));
+    disc.position.y = -0.05;
+    disc.receiveShadow = true;
+    scene.add(disc);
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.12, 0.02, 8, 40),
+      new THREE.MeshStandardMaterial({
+        color: "#22d3ee", emissive: "#22d3ee", emissiveIntensity: 1.6 }));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.02;
+    scene.add(ring);
+
+    let raf = 0;
+    let yaw = 0;
+    let dragging = false;
+    let lastX = 0;
+    const onDown = (e) => { dragging = true; lastX = e.clientX; };
+    const onMove = (e) => {
+      if (!dragging) return;
+      yaw += (e.clientX - lastX) * 0.012;
+      lastX = e.clientX;
+    };
+    const onUp = () => { dragging = false; };
+    renderer.domElement.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+
+    const resize = () => {
+      const w = mount.clientWidth || 300;
+      const h = mount.clientHeight || 300;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(mount);
+
+    const clock = new THREE.Clock();
+    let lastT = 0;
+    const loop = () => {
+      const t = clock.getElapsedTime();
+      const dt = Math.min(0.1, t - lastT);
+      lastT = t;
+      if (mixerRef.current) mixerRef.current.update(dt);
+      if (modelRef.current) {
+        modelRef.current.rotation.y = dragging ? yaw : yaw + t * 0.35;
+        modelRef.current.position.y = Math.sin(t * 1.6) * 0.015;
+      }
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
+    setPreviewReady(true);
+
+    return () => {
+      setPreviewReady(false);
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      renderer.domElement.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      renderer.dispose();
+      mount.removeChild(renderer.domElement);
+    };
+  }, [loading]);
+
+  // rebuild preview model when customization changes
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene || !previewReady) return undefined;
+
+    if (modelRef.current) {
+      scene.remove(modelRef.current);
+      if (modelRef.current.userData.procedural) {
+        modelRef.current.traverse((o) => o.geometry?.dispose?.());
+      }
+      modelRef.current = null;
+    }
+    mixerRef.current = null;
+
+    // 360° spinning 4K hero preview for Player 1 / Player 2
+    if (isPlayerGlb) {
+      let cancelled = false;
+
+      const appearance =
+        Math.max(
+          1,
+          Math.min(
+            3,
+            Number(
+              custom?.appearance
+              || 1
+            ) || 1
+          )
+        );
+
+      const playerSlot =
+        selected;
+
+      const slot =
+        `${playerSlot}_appearance_${appearance}`;
+
+      const heroUrl =
+        HERO_APPEARANCE_URLS[
+          playerSlot
+        ]?.[appearance]
+        ||
+        HERO_APPEARANCE_URLS[
+          playerSlot
+        ]?.[1];
+
+      const cached =
+        heroCacheRef.current.get(
+          slot
+        );
+
+      const install = ({ group, mixer }) => {
+        if (cancelled || sceneRef.current !== scene) return;
+        scene.add(group);
+        modelRef.current = group;
+        mixerRef.current = mixer;
+        setHeroLoaded(playerSlot);
+      };
+
+      if (cached) {
+        install(cached);
+      } else {
+        // PROGRESSIVE HERO: show the lightweight 2.4MB gameplay
+        // model instantly, then swap in the 4K hero when ready.
+        let tempGroup = null;
+
+        const fastUrl =
+          appearance === 1
+            ? REALMLIFE_PLAYER_MODELS[
+                playerSlot
+              ]?.modelUrl
+            : null;
+
+        if (fastUrl) {
+          new GLTFLoader()
+            .loadAsync(`${process.env.REACT_APP_BACKEND_URL}${fastUrl}`)
+            .then((gltf) => {
+              if (cancelled || sceneRef.current !== scene || modelRef.current) return;
+              const m = gltf.scene;
+              const b = new THREE.Box3().setFromObject(m);
+              const sz = b.getSize(new THREE.Vector3());
+              m.scale.setScalar(1.7 / Math.max(sz.y, 0.001));
+              const b2 = new THREE.Box3().setFromObject(m);
+              const ctr = b2.getCenter(new THREE.Vector3());
+              m.position.x -= ctr.x;
+              m.position.z -= ctr.z;
+              m.position.y -= b2.min.y;
+              tempGroup = new THREE.Group();
+              tempGroup.add(m);
+              scene.add(tempGroup);
+              modelRef.current = tempGroup;
+              setHeroLoaded(playerSlot);
+})
+            .catch(() => {});
+        }
+
+        const installFinal = (payload) => {
+          if (cancelled || sceneRef.current !== scene) return;
+          if (tempGroup) {
+            scene.remove(tempGroup);
+            if (modelRef.current === tempGroup) modelRef.current = null;
+            tempGroup = null;
+          }
+          install(payload);
+        };
+
+        new GLTFLoader()
+          .loadAsync(`${process.env.REACT_APP_BACKEND_URL}${heroUrl}`)
+          .then((gltf) => {
+            const model = gltf.scene;
+            model.traverse((o) => {
+              if (o.isMesh || o.isSkinnedMesh) {
+                o.castShadow = true;
+                o.frustumCulled = false;
+              }
+            });
+            // --------------------------------------------------
+            // HERO PREVIEW STANDING POSE
+            //
+            // Player 1 / Player 2 currently contain Walking and
+            // Running but no dedicated Idle clip.
+            //
+            // Sample a natural Walking frame and HOLD that frame.
+            // This removes the exported T-pose without making the
+            // avatar walk in place during the 360 hero preview.
+            // --------------------------------------------------
+            let mixer = null;
+
+            const clips =
+              gltf.animations || [];
+
+            if (clips.length) {
+              mixer =
+                new THREE.AnimationMixer(
+                  model
+                );
+
+              const clip =
+                clips.find(
+                  (cl) =>
+                    /idle|stand|breath/i.test(
+                      cl.name || ""
+                    )
+                )
+                ||
+                clips.find(
+                  (cl) =>
+                    /walking|walk/i.test(
+                      cl.name || ""
+                    )
+                )
+                ||
+                clips.find(
+                  (cl) =>
+                    /running|run/i.test(
+                      cl.name || ""
+                    )
+                )
+                ||
+                clips[0];
+
+              const action =
+                mixer.clipAction(
+                  clip
+                );
+
+              action.reset();
+              action.enabled = true;
+
+              action.setEffectiveWeight(
+                1
+              );
+
+              action.play();
+
+              const duration =
+                Math.max(
+                  Number(
+                    clip.duration
+                  ) || 0,
+                  0.1
+                );
+
+              /*
+               * About 18% into Walking generally gives a
+               * balanced upright pose with arms and legs
+               * relaxed away from the T-pose.
+               */
+              const poseTime =
+                Math.min(
+                  duration - 0.01,
+                  Math.max(
+                    0.04,
+                    duration * 0.18
+                  )
+                );
+
+              mixer.setTime(
+                poseTime
+              );
+
+              /*
+               * Hold this exact pose while the GROUP performs
+               * the slow 360-degree hero rotation.
+               */
+              action.paused =
+                true;
+
+              mixer.update(
+                0
+              );
+
+              model.updateMatrixWorld(
+                true
+              );
+
+              model.traverse(
+                (obj) => {
+                  if (
+                    obj.isSkinnedMesh
+                    && obj.skeleton
+                  ) {
+                    obj.skeleton.update();
+                  }
+                }
+              );
+
+              console.info(
+                "[RealmLife Hero] standing pose",
+                slot,
+                clip.name,
+                poseTime
+              );
+            }
+            // center + scale to hero height
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            const scale = 1.7 / Math.max(size.y, 0.001);
+            const group = new THREE.Group();
+            group.add(model);
+            model.scale.setScalar(scale);
+            const box2 = new THREE.Box3().setFromObject(model);
+            const center = box2.getCenter(new THREE.Vector3());
+            model.position.x -= center.x;
+            model.position.z -= center.z;
+            model.position.y -= box2.min.y;
+            heroCacheRef.current.set(slot, { group, mixer });
+            installFinal({ group, mixer });
+          })
+          .catch(() => {});
+      }
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setHeroLoaded(null);
+
+    // procedural body only for the legacy "starter" selection —
+    // GLB avatars & Founder Stealth show their artwork instead.
+    if (selected !== "starter" || custom === null) return undefined;
+    const tier = selected.startsWith("rl_") ? selected : null;
+    const { root, height } = buildStarterModel({ style, custom, tier });
+    root.scale.setScalar(1.72 / height);
+    root.userData.procedural = true;
+    scene.add(root);
+    modelRef.current = root;
+  }, [style, custom, selected, previewReady]);
+
+  const setC = (key, value) => setCustom((c) => ({ ...c, [key]: value }));
+
+  const setAccessory = (id, patch) =>
+    setCustom((c) => ({
+      ...c,
+      accessories: {
+        ...(c.accessories || {}),
+        [id]: { equipped: false, color: "#22262e", ...(c.accessories || {})[id], ...patch },
+      },
+    }));
+
+  const savePlayer = async () => {
+    setBusy(true);
+    try {
+      const r = isNew
+        ? await apiClient.post(`/games/${GAME_ID}/realmlife/player`, { style, custom })
+        : await apiClient.put(`/games/${GAME_ID}/realmlife/player/customize`, { style, custom });
+      setState((s) => ({ ...s, player: r.data.player }));
+      if (isNew && pendingStarter) {
+        try {
+          await apiClient.post(`/games/${GAME_ID}/realmlife/player/select`, { avatar_id: pendingStarter });
+          setSelected(pendingStarter);
+        } catch { /* keep default */ }
+        setPendingStarter(null);
+      }
+      setMsg("Saved.");
+      return true;
+    } catch (e) {
+      setMsg(e?.response?.data?.detail || "Save failed.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const enterRealmLife = async () => {
+    if (custom !== null) {
+      const ok = await savePlayer();
+      if (!ok) return;
+    }
+    nav("/RealmLife");
+  };
+
+  const unlockItem = async (itemId) => {
+    setBusy(true);
+    try {
+      const r = await apiClient.post(`/games/${GAME_ID}/realmlife/player/unlock`, { item_id: itemId });
+      const s2 = await apiClient.get(`/games/${GAME_ID}/realmlife/player`);
+      setState(s2.data);
+      setMsg(r.data.burned ? `🔥${r.data.burned.toLocaleString()} Fire Power burned — unlocked!` : "Unlocked!");
+    } catch (e) {
+      setMsg(e?.response?.data?.detail || "Unlock failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const selectAvatar = async (avatarId) => {
+    if (isNew) {
+      setMsg("Save your player first.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiClient.post(`/games/${GAME_ID}/realmlife/player/select`, { avatar_id: avatarId });
+      setSelected(avatarId);
+      setMsg("Avatar selected.");
+    } catch (e) {
+      setMsg(e?.response?.data?.detail || "Selection failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const swatchRow = (label, value, colors, onPick, testid) => (
+    <div className="mb-3" key={testid}>
+      <div className="text-[10px] font-black opacity-70 mb-1">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {colors.map((col) => (
+          <button
+            key={col}
+            type="button"
+            data-testid={`${testid}-${col.replace("#", "")}`}
+            onClick={() => onPick(col)}
+            className="w-7 h-7 rounded-full"
+            style={{
+              background: col,
+              border: value === col ? "2px solid #22d3ee" : "2px solid rgba(255,255,255,.15)",
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "#060d16", color: "#9fdcef" }}>
+        <div className="text-sm font-black tracking-widest animate-pulse">LOADING REALMLIFE…</div>
+      </div>
+    );
+  }
+
+  const c = custom || {};
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col md:flex-row" style={{ background: "#060d16", color: "#eef7fb" }} data-testid="realmlife-landing">
+      {/* PREVIEW */}
+      <div className="relative flex-1 min-h-[42vh]">
+        <div ref={mountRef} className="absolute inset-0" data-testid="realmlife-avatar-preview" />
+        {!glbInfo?.thumb_url && selected === "founder_stealth" && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="text-center">
+              <div className="text-6xl mb-2">⚡</div>
+              <div className="font-black text-lg" style={{ color: "#ffcf99" }}>FOUNDER STEALTH</div>
+              <div className="text-[10px] opacity-60">Exclusive Founder body — equipped</div>
+            </div>
+          </div>
+        )}
+        {glbInfo?.thumb_url && heroLoaded !== selected && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <img
+              src={`${process.env.REACT_APP_BACKEND_URL}${glbInfo.thumb_url}`}
+              alt={glbInfo.name}
+              data-testid="realmlife-selected-glb-preview"
+              className="max-h-[70%] max-w-[70%] object-contain rounded-2xl"
+              style={{ filter: "drop-shadow(0 18px 40px rgba(0,0,0,.55))" }}
+            />
+          </div>
+        )}
+        <div className="absolute top-4 left-4 pointer-events-none">
+          <div className="text-2xl md:text-4xl font-black tracking-tight" style={{ color: "#ff7849" }}>
+            REALM<span style={{ color: "#22d3ee" }}>LIFE</span>
+          </div>
+          <div className="text-[10px] md:text-xs opacity-70 font-bold tracking-widest">LIVE. CONNECT. BELONG.</div>
+        </div>
+        <div className="absolute top-4 right-4 px-3 py-1.5 rounded-full text-xs font-black" style={{ background: "rgba(255,120,73,.14)", border: "1px solid rgba(255,120,73,.4)" }} data-testid="realmlife-fire-balance">
+          🔥 {Number(state?.fire_balance || 0).toLocaleString()}
+        </div>
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[10px] opacity-50">drag to rotate</div>
+      </div>
+
+      {/* PANEL */}
+      <div className="w-full md:w-[430px] md:max-h-none max-h-[58vh] overflow-y-auto p-4 md:p-5" style={{ background: "rgba(9,18,30,.96)", borderLeft: "1px solid rgba(34,211,238,.18)" }}>
+        <div className="flex gap-1 mb-4 flex-wrap">
+          {TABS.filter(
+            (t2) =>
+              !isPlayerGlb ||
+              !["CLOTHING", "ACCESSORIES"].includes(t2)
+          ).map((t2) => (
+            <button
+              key={t2}
+              type="button"
+              data-testid={`realmlife-tab-${t2.toLowerCase()}`}
+              onClick={() => setTab(t2)}
+              className="px-2.5 py-1.5 rounded-lg text-[10px] font-black"
+              style={{
+                background: tab === t2 ? "rgba(34,211,238,.22)" : "rgba(255,255,255,.05)",
+                border: tab === t2 ? "1px solid rgba(34,211,238,.55)" : "1px solid rgba(255,255,255,.1)",
+                color: "#fff",
+              }}
+            >
+              {t2}
+            </button>
+          ))}
+        </div>
+
+        {tab === "PLAYER" && catalog && (
+          <div>
+            <div className="text-[10px] font-black opacity-70 mb-2">CHOOSE YOUR STARTER — BOTH FREE</div>
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {(catalog.starters || []).map((s2) => (
+                <button
+                  key={s2.id}
+                  type="button"
+                  data-testid={`realmlife-starter-${s2.id}`}
+                  onClick={() => {
+                    setStyle(s2.id === "player_1" ? "style_a" : "style_b");
+                    if (isNew) {
+                      setSelected(s2.id);
+                      setPendingStarter(s2.id);
+                    } else {
+                      selectAvatar(s2.id);
+                    }
+                  }}
+                  className="rounded-xl p-2 text-left"
+                  style={{
+                    background: selected === s2.id ? "rgba(34,211,238,.16)" : "rgba(255,255,255,.05)",
+                    border: selected === s2.id ? "1px solid rgba(34,211,238,.6)" : "1px solid rgba(255,255,255,.12)",
+                  }}
+                >
+                  {s2.thumb_url && (
+                    <img src={`${process.env.REACT_APP_BACKEND_URL}${s2.thumb_url}`} alt={s2.name}
+                      className="w-full h-28 object-contain rounded-lg mb-1.5"
+                      style={{ background: "#0d1b2e" }} />
+                  )}
+                  <div className="font-black text-sm">{s2.name}</div>
+                  <div className="text-[10px] mt-0.5" style={{ color: "#22d3ee" }}>
+                    FREE {selected === s2.id && "· SELECTED"}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="text-[10px] opacity-60 mb-3">
+              Starter outfit: white shirt · brown bottoms · starter shoes. Colors customizable in the other tabs.
+            </div>
+          </div>
+        )}
+
+        {tab === "APPEARANCE" && catalog && (
+          <div>
+            {isPlayerGlb ? (
+              <div className="mb-3">
+                <div className="text-[10px] font-black opacity-70 mb-2">
+                  APPEARANCE
+                </div>
+
+                <div className="flex gap-3 items-center">
+                  {(
+                    APPEARANCE_SWATCHES[
+                      selected
+                    ]
+                    ||
+                    APPEARANCE_SWATCHES
+                      .player_1
+                  ).map(
+                    (
+                      color,
+                      index
+                    ) => {
+                      const value =
+                        index + 1;
+
+                      const active =
+                        Number(
+                          c.appearance
+                          || 1
+                        )
+                        === value;
+
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          data-testid={`realmlife-appearance-${value}`}
+                          aria-label={`Appearance ${value}`}
+                          title={`Appearance ${value}`}
+                          onClick={() =>
+                            setC(
+                              "appearance",
+                              value
+                            )
+                          }
+                          className="w-10 h-10 rounded-full transition-transform"
+                          style={{
+                            background:
+                              color,
+
+                            border:
+                              active
+                                ? "3px solid #22d3ee"
+                                : "2px solid rgba(255,255,255,.28)",
+
+                            boxShadow:
+                              active
+                                ? "0 0 0 2px rgba(34,211,238,.18), 0 0 14px rgba(34,211,238,.35)"
+                                : "none",
+
+                            transform:
+                              active
+                                ? "scale(1.08)"
+                                : "scale(1)",
+                          }}
+                        />
+                      );
+                    }
+                  )}
+                </div>
+              </div>
+            ) : (
+              swatchRow(
+                "SKIN TONE",
+                c.skin,
+                catalog.skin_tones,
+                (v) =>
+                  setC(
+                    "skin",
+                    v
+                  ),
+                "realmlife-skin"
+              )
+            )}
+            {isPlayerGlb ? (
+              <div className="text-[10px] opacity-60 mb-2" data-testid="realmlife-glb-appearance-note">
+                Choose one of three actual RealmLife model appearances.
+              </div>
+            ) : (
+            <>
+            <div className="mb-3">
+              <div className="text-[10px] font-black opacity-70 mb-1">HAIR STYLE</div>
+              <div className="flex flex-wrap gap-1.5">
+                {catalog.hair_styles.map((h) => (
+                  <button key={h} type="button" data-testid={`realmlife-hair-${h}`} onClick={() => setC("hair_style", h)}
+                    className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase"
+                    style={{
+                      background: c.hair_style === h ? "rgba(34,211,238,.2)" : "rgba(255,255,255,.06)",
+                      border: c.hair_style === h ? "1px solid rgba(34,211,238,.55)" : "1px solid rgba(255,255,255,.1)",
+                      color: "#fff",
+                    }}>
+                    {h}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {swatchRow("HAIR COLOR", c.hair_color, SWATCHES.hair, (v) => setC("hair_color", v), "realmlife-haircolor")}
+            {swatchRow("EYE COLOR", c.eye_color, SWATCHES.eyes, (v) => setC("eye_color", v), "realmlife-eyes")}
+            </>
+            )}
+          </div>
+        )}
+
+        {tab === "CLOTHING" && (
+          <div>
+            {swatchRow("SHIRT COLOR", c.shirt_color, SWATCHES.cloth, (v) => setC("shirt_color", v), "realmlife-shirt")}
+            <div className="mb-3">
+              <div className="text-[10px] font-black opacity-70 mb-1">BOTTOMS</div>
+              <div className="flex gap-1.5">
+                {["shorts", "pants"].map((b) => (
+                  <button key={b} type="button" data-testid={`realmlife-bottoms-${b}`} onClick={() => setC("bottoms", b)}
+                    className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase"
+                    style={{
+                      background: c.bottoms === b ? "rgba(34,211,238,.2)" : "rgba(255,255,255,.06)",
+                      border: c.bottoms === b ? "1px solid rgba(34,211,238,.55)" : "1px solid rgba(255,255,255,.1)",
+                      color: "#fff",
+                    }}>
+                    {b}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {swatchRow("BOTTOMS COLOR", c.bottoms_color, SWATCHES.cloth, (v) => setC("bottoms_color", v), "realmlife-bottomscolor")}
+            {swatchRow("SHOE COLOR", c.shoe_color, SWATCHES.cloth, (v) => setC("shoe_color", v), "realmlife-shoes")}
+          </div>
+        )}
+
+        {tab === "ACCESSORIES" && catalog && (
+          <div>
+            <div className="text-[10px] opacity-60 mb-2">
+              Unlock once with Fire Power — recolor forever, free.
+            </div>
+            {catalog.accessories.map((a) => {
+              const meta = ACCESSORY_META[a.id] || { label: a.id, icon: "✦" };
+              const owned = unlocks.has(a.id);
+              const cfg = (c.accessories || {})[a.id] || {};
+              return (
+                <div key={a.id} className="rounded-xl p-2.5 mb-2" style={{ background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.1)" }}>
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-black">{meta.icon} {meta.label}</div>
+                    {owned ? (
+                      <button type="button" data-testid={`realmlife-acc-equip-${a.id}`}
+                        onClick={() => setAccessory(a.id, { equipped: !cfg.equipped })}
+                        className="px-2.5 py-1 rounded-lg text-[10px] font-black"
+                        style={{
+                          background: cfg.equipped ? "rgba(34,211,238,.24)" : "rgba(255,255,255,.08)",
+                          border: "1px solid rgba(34,211,238,.4)", color: "#fff",
+                        }}>
+                        {cfg.equipped ? "EQUIPPED" : "EQUIP"}
+                      </button>
+                    ) : (
+                      <button type="button" data-testid={`realmlife-acc-unlock-${a.id}`}
+                        onClick={() => unlockItem(a.id)} disabled={busy}
+                        className="px-2.5 py-1 rounded-lg text-[10px] font-black"
+                        style={{ background: "rgba(255,120,73,.16)", border: "1px solid rgba(255,120,73,.45)", color: "#ffd9c8" }}>
+                        UNLOCK · 🔥{a.fire_power_required.toLocaleString()}
+                      </button>
+                    )}
+                  </div>
+                  {owned && cfg.equipped && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {SWATCHES.cloth.map((col) => (
+                        <button key={col} type="button" onClick={() => setAccessory(a.id, { color: col })}
+                          className="w-5 h-5 rounded-full"
+                          style={{ background: col, border: cfg.color === col ? "2px solid #22d3ee" : "1px solid rgba(255,255,255,.2)" }} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {tab === "AVATARS" && catalog && (
+          <div>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              {(catalog.starters || []).map((s2) => (
+                <button key={s2.id} type="button" data-testid={`realmlife-avatar-${s2.id}`}
+                  onClick={() => selectAvatar(s2.id)}
+                  className="rounded-xl p-2 text-left"
+                  style={{
+                    background: selected === s2.id ? "rgba(34,211,238,.16)" : "rgba(255,255,255,.05)",
+                    border: selected === s2.id ? "1px solid rgba(34,211,238,.6)" : "1px solid rgba(255,255,255,.12)",
+                  }}>
+                  {s2.thumb_url && (
+                    <img src={`${process.env.REACT_APP_BACKEND_URL}${s2.thumb_url}`} alt={s2.name}
+                      className="w-full h-24 object-contain rounded-lg mb-1" style={{ background: "#0d1b2e" }} />
+                  )}
+                  <div className="font-black text-xs">{s2.name}</div>
+                  <div className="text-[10px]" style={{ color: "#22d3ee" }}>
+                    FREE {selected === s2.id && "· EQUIPPED"}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {state?.is_founder && (
+              <button type="button" data-testid="realmlife-avatar-founder"
+                onClick={() => selectAvatar("founder_stealth")}
+                className="w-full rounded-xl p-3 mb-2 text-left"
+                style={{
+                  background: selected === "founder_stealth" ? "rgba(255,170,70,.18)" : "rgba(255,170,70,.07)",
+                  border: "1px solid rgba(255,170,70,.5)",
+                }}>
+                <div className="font-black text-sm" style={{ color: "#ffcf99" }}>
+                  ⚡ FOUNDER STEALTH {selected === "founder_stealth" && "· EQUIPPED"}
+                </div>
+                <div className="text-[10px] opacity-70">Exclusive Founder body — permanently yours</div>
+              </button>
+            )}
+
+            <div className="text-[10px] font-black opacity-70 mt-3 mb-1.5">
+              PREMIUM REALMLIFE AVATARS — UNLOCK • 🔥10,000 FIRE POWER EACH
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {catalog.avatar_tiers.map((t2) => {
+                const owned = unlocks.has(t2.id) || state?.is_founder;
+                return (
+                  <div key={t2.id} className="rounded-xl p-2"
+                    style={{
+                      background: "rgba(255,255,255,.045)",
+                      border: `1px solid ${selected === t2.id ? t2.accent : "rgba(255,255,255,.1)"}`,
+                    }}>
+                    {t2.thumb_url && (
+                      <img src={`${process.env.REACT_APP_BACKEND_URL}${t2.thumb_url}`} alt={t2.name}
+                        className="w-full h-24 object-contain rounded-lg mb-1" style={{ background: "#0d1b2e" }} />
+                    )}
+                    <div className="font-black text-[11px]" style={{ color: t2.accent }}>
+                      {t2.name.toUpperCase()}
+                    </div>
+                    {owned ? (
+                      <button type="button" data-testid={`realmlife-tier-select-${t2.id}`}
+                        onClick={() => selectAvatar(t2.id)} disabled={busy}
+                        className="mt-1 w-full px-2 py-1 rounded-lg text-[10px] font-black"
+                        style={{ background: "rgba(34,211,238,.2)", border: "1px solid rgba(34,211,238,.5)", color: "#fff" }}>
+                        {selected === t2.id ? "EQUIPPED" : unlocks.has(t2.id) ? "EQUIP · OWNED" : "EQUIP"}
+                      </button>
+                    ) : (
+                      <button type="button" data-testid={`realmlife-tier-unlock-${t2.id}`}
+                        onClick={() => unlockItem(t2.id)} disabled={busy}
+                        className="mt-1 w-full px-2 py-1 rounded-lg text-[10px] font-black"
+                        style={{ background: "rgba(255,120,73,.16)", border: "1px solid rgba(255,120,73,.45)", color: "#ffd9c8" }}>
+                        UNLOCK · 🔥{t2.fire_power_required.toLocaleString()}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {msg && (
+          <div className="text-[11px] mt-2 mb-1 font-bold" style={{ color: "#9fdcef" }} data-testid="realmlife-landing-msg">
+            {msg}
+          </div>
+        )}
+
+        <div className="flex gap-2 mt-4 sticky bottom-0 pb-1" style={{ background: "rgba(9,18,30,.96)" }}>
+          <button type="button" data-testid="realmlife-save-btn"
+            onClick={savePlayer} disabled={busy}
+            className="px-4 py-2.5 rounded-xl text-xs font-black"
+            style={{ background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.18)", color: "#fff" }}>
+            {isNew ? "CREATE PLAYER" : "SAVE"}
+          </button>
+          <button type="button" data-testid="realmlife-enter-btn"
+            onClick={enterRealmLife} disabled={busy}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-black tracking-wide"
+            style={{
+              background: "linear-gradient(90deg,#ff7849,#e8542f)",
+              border: "1px solid rgba(255,170,120,.5)",
+              color: "#fff",
+              boxShadow: "0 6px 24px rgba(255,120,73,.3)",
+            }}>
+            ▶ ENTER REALMLIFE
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

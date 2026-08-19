@@ -813,6 +813,23 @@ function addPark(
 //   remain FULL while private.
 // ============================================================
 
+// GENESIS CITY V1 — shared home neon trim materials.
+const GENESIS_HOME_NEON_CYAN =
+  new THREE.MeshStandardMaterial({
+    color: 0x2ee6ff,
+    emissive: 0x2ee6ff,
+    emissiveIntensity: 1.25,
+    roughness: 0.4,
+  });
+
+const GENESIS_HOME_NEON_VIOLET =
+  new THREE.MeshStandardMaterial({
+    color: 0x7a5cff,
+    emissive: 0x7a5cff,
+    emissiveIntensity: 1.1,
+    roughness: 0.4,
+  });
+
 function createSpanishResidentialPrivacyShell({
   x = 0,
   z = 0,
@@ -2623,6 +2640,31 @@ function createSpanishResidentialPrivacyShell({
       -d / 4
     );
     house.add(chimneyCap);
+  }
+
+  // GENESIS CITY V1 — home neon trim (shared emissive materials).
+  {
+    const trimMat = own
+      ? GENESIS_HOME_NEON_CYAN
+      : GENESIS_HOME_NEON_VIOLET;
+
+    const eave = new THREE.Mesh(
+      new THREE.BoxGeometry(w - 0.6, 0.08, 0.08),
+      trimMat
+    );
+    eave.position.set(0, wallHeight + 0.06, d / 2 + 0.16);
+    house.add(eave);
+
+    const doorGlow = new THREE.Mesh(
+      new THREE.BoxGeometry(0.07, 2.3, 0.07),
+      trimMat
+    );
+    doorGlow.position.set(-1.05, 1.15, d / 2 + 0.2);
+    house.add(doorGlow);
+
+    const doorGlowR = doorGlow.clone();
+    doorGlowR.position.x = 1.05;
+    house.add(doorGlowR);
   }
 
   return house;

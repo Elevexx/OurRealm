@@ -808,7 +808,7 @@ export function buildCityDistrict(
     z: 66,
     w: 2.1,
     d: 72,
-    color: 0xc7c5bd,
+    color: 0x252b34,
   });
 
   plane(city, {
@@ -817,7 +817,7 @@ export function buildCityDistrict(
     z: 66,
     w: 2.1,
     d: 72,
-    color: 0xc7c5bd,
+    color: 0x252b34,
   });
 
 
@@ -853,7 +853,7 @@ export function buildCityDistrict(
       w: 0.58,
       h: 0.025,
       d: 4,
-      color: 0xe7e7e1,
+      color: 0x9fb0bd,
       cast: false,
     });
   }
@@ -1713,21 +1713,52 @@ export function buildCityDistrict(
       }
     );
 
-    // Left illuminated mirror wall.
-    box(cityOutfitters, {
-      x: -4.65,
+    // Left interactive illuminated mirror wall.
+    const outfittersMirrorLeft =
+      new THREE.Group();
+
+    outfittersMirrorLeft.position.set(
+      -4.65,
+      0,
+      1.45
+    );
+
+    outfittersMirrorLeft.userData.genesisInteractiveId =
+      "city-outfitters-mirror-left";
+
+    outfittersMirrorLeft.userData.genesisInteractiveLabel =
+      "City Outfitters Mirror";
+
+    outfittersMirrorLeft.userData.genesisInteractiveActions =
+      [
+        {
+          id: "view_look",
+          label: "View Look",
+        },
+      ];
+
+    // Stand inside the showroom facing the left wall mirror.
+    outfittersMirrorLeft.userData.genesisInteractiveApproachLocal =
+      [1.0, 0];
+
+    cityOutfitters.add(
+      outfittersMirrorLeft
+    );
+
+    box(outfittersMirrorLeft, {
+      x: 0,
       y: 1.35,
-      z: 1.45,
+      z: 0,
       w: 0.10,
       h: 2.45,
       d: 2.55,
       color: DARK,
     });
 
-    box(cityOutfitters, {
-      x: -4.57,
+    box(outfittersMirrorLeft, {
+      x: 0.08,
       y: 1.35,
-      z: 1.45,
+      z: 0,
       w: 0.04,
       h: 2.15,
       d: 2.15,
@@ -1735,21 +1766,52 @@ export function buildCityDistrict(
       cast: false,
     });
 
-    // Right illuminated mirror wall.
-    box(cityOutfitters, {
-      x: 4.65,
+    // Right interactive illuminated mirror wall.
+    const outfittersMirrorRight =
+      new THREE.Group();
+
+    outfittersMirrorRight.position.set(
+      4.65,
+      0,
+      1.45
+    );
+
+    outfittersMirrorRight.userData.genesisInteractiveId =
+      "city-outfitters-mirror-right";
+
+    outfittersMirrorRight.userData.genesisInteractiveLabel =
+      "City Outfitters Mirror";
+
+    outfittersMirrorRight.userData.genesisInteractiveActions =
+      [
+        {
+          id: "view_look",
+          label: "View Look",
+        },
+      ];
+
+    // Stand inside the showroom facing the right wall mirror.
+    outfittersMirrorRight.userData.genesisInteractiveApproachLocal =
+      [-1.0, 0];
+
+    cityOutfitters.add(
+      outfittersMirrorRight
+    );
+
+    box(outfittersMirrorRight, {
+      x: 0,
       y: 1.35,
-      z: 1.45,
+      z: 0,
       w: 0.10,
       h: 2.45,
       d: 2.55,
       color: DARK,
     });
 
-    box(cityOutfitters, {
-      x: 4.57,
+    box(outfittersMirrorRight, {
+      x: -0.08,
       y: 1.35,
-      z: 1.45,
+      z: 0,
       w: 0.04,
       h: 2.15,
       d: 2.15,
@@ -1757,21 +1819,51 @@ export function buildCityDistrict(
       cast: false,
     });
 
-    // Central fashion showcase platform.
-    box(cityOutfitters, {
+    // Interactive central fashion showcase platform.
+    const outfittersShowcase =
+      new THREE.Group();
+
+    outfittersShowcase.position.set(
+      0,
+      0,
+      0.25
+    );
+
+    outfittersShowcase.userData.genesisInteractiveId =
+      "city-outfitters-showcase";
+
+    outfittersShowcase.userData.genesisInteractiveLabel =
+      "City Outfitters Showcase";
+
+    outfittersShowcase.userData.genesisInteractiveActions =
+      [
+        {
+          id: "explore_showcase",
+          label: "Explore Showcase",
+        },
+      ];
+
+    outfittersShowcase.userData.genesisInteractiveApproachLocal =
+      [0, -1.85];
+
+    cityOutfitters.add(
+      outfittersShowcase
+    );
+
+    box(outfittersShowcase, {
       x: 0,
       y: 0.14,
-      z: 0.25,
+      z: 0,
       w: 2.8,
       h: 0.28,
       d: 2.8,
       color: GRAPHITE,
     });
 
-    box(cityOutfitters, {
+    box(outfittersShowcase, {
       x: 0,
       y: 0.30,
-      z: 0.25,
+      z: 0,
       w: 2.45,
       h: 0.06,
       d: 2.45,
@@ -1819,6 +1911,23 @@ export function buildCityDistrict(
           0,
           rz
         );
+
+        rack.userData.genesisInteractiveId =
+          `city-outfitters-rack-${index}`;
+
+        rack.userData.genesisInteractiveLabel =
+          `City Outfitters Rack ${index + 1}`;
+
+        rack.userData.genesisInteractiveActions =
+          [
+            {
+              id: "browse_styles",
+              label: "Browse Styles",
+            },
+          ];
+
+        rack.userData.genesisInteractiveApproachLocal =
+          [0, -1.05];
 
         cityOutfitters.add(
           rack
@@ -1926,6 +2035,30 @@ export function buildCityDistrict(
       0,
       -3.25
     );
+
+    outfittersLounge.userData.genesisInteractiveId =
+      "city-outfitters-lounge";
+
+    outfittersLounge.userData.genesisInteractiveLabel =
+      "City Outfitters Lounge";
+
+    outfittersLounge.userData.genesisInteractiveActions =
+      [
+        {
+          id: "sit",
+          label: "Sit & Relax",
+        },
+      ];
+
+    outfittersLounge.userData.genesisInteractiveApproachLocal =
+      [0, 0];
+
+    outfittersLounge.userData.genesisInteractionAnchor =
+      {
+        x: 0,
+        y: 0,
+        z: 0,
+      };
 
     cityOutfitters.add(
       outfittersLounge
@@ -2095,7 +2228,7 @@ export function buildCityDistrict(
     z: 78,
     w: 27,
     d: 26,
-    color: 0xbab4a4,
+    color: 0x14181f,
   });
 
   plane(city, {
@@ -2104,7 +2237,7 @@ export function buildCityDistrict(
     z: 78,
     w: 5,
     d: 24,
-    color: 0xd0c6af,
+    color: 0x1c222c,
   });
 
   plane(city, {
@@ -2113,7 +2246,7 @@ export function buildCityDistrict(
     z: 78,
     w: 25,
     d: 4,
-    color: 0xd0c6af,
+    color: 0x1c222c,
   });
 
   addLabel(
@@ -2177,7 +2310,7 @@ export function buildCityDistrict(
     z: 98.5,
     w: 90,
     d: 4.5,
-    color: 0xc8bda8,
+    color: 0x181d26,
   });
 
 
@@ -2188,7 +2321,7 @@ export function buildCityDistrict(
     z: 113.5,
     w: 90,
     d: 4.5,
-    color: 0xc8bda8,
+    color: 0x181d26,
   });
 
 
@@ -2215,7 +2348,7 @@ export function buildCityDistrict(
     z: 106,
     w: 10,
     d: 13,
-    color: 0x737b82,
+    color: 0x2a2f38,
   });
 
 
@@ -2226,7 +2359,7 @@ export function buildCityDistrict(
     z: 106,
     w: 8,
     d: 13,
-    color: 0xa69c89,
+    color: 0x232833,
   });
 
 
@@ -2246,7 +2379,7 @@ export function buildCityDistrict(
     z: 123,
     w: 2.1,
     d: 22,
-    color: 0xc7c5bd,
+    color: 0x252b34,
   });
 
   plane(city, {
@@ -2255,7 +2388,7 @@ export function buildCityDistrict(
     z: 123,
     w: 2.1,
     d: 22,
-    color: 0xc7c5bd,
+    color: 0x252b34,
   });
 
 
@@ -2559,6 +2692,434 @@ export function buildCityDistrict(
   neighborhoodRoot.userData
     .realmLifeCity =
     registry;
+
+  // ==========================================================
+  // GENESIS CITY V1 — VENUE FURNISHING + NEON/CYBER ART PASS
+  // Dark premium cyan/purple/magenta neon target.
+  // ==========================================================
+
+  const NEON = {
+    cyan: 0x2ee6ff,
+    purple: 0xb14bff,
+    magenta: 0xff4fd8,
+    orange: 0xff7a3d,
+    mint: 0x39ffb4,
+    violet: 0x7a5cff,
+  };
+
+  const GRAPHITE = 0x121922;
+
+  const findBuilding = (id) =>
+    city.children.find(
+      (c) => c?.userData?.buildingId === id
+    );
+
+  const addNeonStrip = (group, cfg) =>
+    box(group, {
+      ...cfg,
+      cast: false,
+      mat: material(cfg.color, {
+        emissive: cfg.color,
+        emissiveIntensity: 1.35,
+        roughness: 0.4,
+      }),
+    });
+
+  const addSeat = (root, id, i, sx, sz, sign, neon) => {
+    const seat = new THREE.Group();
+    seat.position.set(sx, 0, sz);
+    seat.userData.genesisInteractiveId = `${id}-seat-${i}`;
+    seat.userData.genesisInteractiveLabel = `${sign} Seat`;
+    seat.userData.genesisInteractiveActions = [
+      { id: "sit", label: "Sit & Hang Out" },
+    ];
+    seat.userData.genesisInteractiveApproach = [0, 0];
+    seat.userData.genesisInteractionAnchor = { x: 0, y: 0, z: 0 };
+    root.add(seat);
+    box(seat, { y: 0.26, w: 0.62, h: 0.52, d: 0.62, color: GRAPHITE });
+    box(seat, { y: 0.72, z: -0.27, w: 0.62, h: 0.46, d: 0.08, color: 0x080d14 });
+    addNeonStrip(seat, { y: 0.54, z: 0.3, w: 0.58, h: 0.04, d: 0.04, color: neon });
+    return seat;
+  };
+
+  const furnishGenesisVenue = (cfg) => {
+    const root = findBuilding(cfg.id);
+    if (!root || root.userData.aaaInterior) return;
+
+    const rear = cfg.rear;
+
+    // Rear feature wall + neon header + sign.
+    box(root, { x: 0, y: 1.45, z: rear, w: cfg.wallW, h: 2.35, d: 0.12, color: GRAPHITE });
+    addNeonStrip(root, { x: 0, y: 2.52, z: rear - 0.09, w: cfg.wallW - 2, h: 0.08, d: 0.08, color: cfg.neon });
+    addLabel(root, cfg.sign, { x: 0, y: 2.03, z: rear - 0.16, scale: 4.4 });
+
+    // Signature interactive.
+    (cfg.items || []).forEach((item) => {
+      const g = new THREE.Group();
+      g.position.set(item.x, 0, item.z);
+      g.userData.genesisInteractiveId = `${cfg.id}-${item.key}`;
+      g.userData.genesisInteractiveLabel = item.label;
+      g.userData.genesisInteractiveActions = item.actions;
+      g.userData.genesisInteractiveApproachLocal = item.approach || [0, -1.0];
+      root.add(g);
+      (item.parts || []).forEach((p) =>
+        p.neon
+          ? addNeonStrip(g, { ...p, color: p.color ?? cfg.neon })
+          : box(g, p)
+      );
+    });
+
+    // Decor (non-interactive).
+    (cfg.decor || []).forEach((p) =>
+      p.neon
+        ? addNeonStrip(root, { ...p, color: p.color ?? cfg.neon })
+        : box(root, p)
+    );
+
+    // Social seating.
+    (cfg.seats || []).forEach(([sx, sz], i) =>
+      addSeat(root, cfg.id, i, sx, sz, cfg.sign, cfg.neon)
+    );
+
+    // Exterior door neon posts (front = local -z).
+    const front = -cfg.rear - 0.1;
+    [-1.7, 1.7].forEach((px) =>
+      addNeonStrip(root, { x: px, y: 1.3, z: front, w: 0.09, h: 2.6, d: 0.09, color: cfg.neon })
+    );
+
+    root.userData.aaaInterior = `${cfg.id}-v1`;
+  };
+
+  const counterItem = (key, label, actions, x = 0, z = 1.4) => ({
+    key,
+    label,
+    actions,
+    x,
+    z,
+    parts: [
+      { y: 0.55, w: 3.6, h: 1.1, d: 1.0, color: GRAPHITE },
+      { y: 1.14, w: 3.7, h: 0.06, d: 1.06, color: 0x080d14 },
+      { y: 0.62, z: -0.54, w: 3.4, h: 0.06, d: 0.05, neon: true },
+    ],
+  });
+
+  furnishGenesisVenue({
+    id: "plaza-restaurant",
+    sign: "PLAZA RESTAURANT",
+    neon: NEON.magenta,
+    rear: 4.6,
+    wallW: 9.2,
+    items: [
+      counterItem("chef-counter", "Chef's Counter", [
+        { id: "chef_special", label: "Chef's Tasting — FREE" },
+      ]),
+    ],
+    decor: [
+      { x: -3.4, y: 0.72, z: -1.5, w: 1.5, h: 0.12, d: 1.05, color: GRAPHITE },
+      { x: 3.4, y: 0.72, z: -1.5, w: 1.5, h: 0.12, d: 1.05, color: GRAPHITE },
+      { x: -3.4, y: 0.36, z: -1.5, w: 0.18, h: 0.72, d: 0.18, color: 0x080d14 },
+      { x: 3.4, y: 0.36, z: -1.5, w: 0.18, h: 0.72, d: 0.18, color: 0x080d14 },
+    ],
+    seats: [[-4.4, -1.5], [-2.4, -1.5], [2.4, -1.5], [4.4, -1.5]],
+  });
+
+  furnishGenesisVenue({
+    id: "fresh-grocery",
+    sign: "FRESH GROCERY",
+    neon: NEON.mint,
+    rear: 4.6,
+    wallW: 9.2,
+    items: [
+      {
+        key: "smart-shelves",
+        label: "Fresh Grocery Smart Shelves",
+        actions: [{ id: "browse_goods", label: "Browse Goods — FREE" }],
+        x: 0,
+        z: 2.6,
+        parts: [
+          { y: 0.85, w: 6.4, h: 1.7, d: 0.7, color: GRAPHITE },
+          { y: 1.74, w: 6.5, h: 0.06, d: 0.76, neon: true },
+          { y: 1.2, z: -0.38, w: 6.0, h: 0.5, d: 0.06, color: 0x0e2b22 },
+        ],
+      },
+    ],
+    decor: [
+      { x: -2.6, y: 0.6, z: -0.8, w: 3.2, h: 1.2, d: 0.85, color: GRAPHITE },
+      { x: 2.6, y: 0.6, z: -0.8, w: 3.2, h: 1.2, d: 0.85, color: GRAPHITE },
+      { x: -2.6, y: 1.24, z: -0.8, w: 3.3, h: 0.05, d: 0.9, neon: true },
+      { x: 2.6, y: 1.24, z: -0.8, w: 3.3, h: 0.05, d: 0.9, neon: true },
+    ],
+  });
+
+  furnishGenesisVenue({
+    id: "night-lounge",
+    sign: "NIGHT LOUNGE",
+    neon: NEON.purple,
+    rear: 4.6,
+    wallW: 9.2,
+    items: [
+      {
+        key: "dance-floor",
+        label: "Night Lounge Dance Floor",
+        actions: [{ id: "dance_floor", label: "Hit the Dance Floor — FREE" }],
+        x: 0,
+        z: 0.6,
+        approach: [0, -2.2],
+        parts: [
+          { y: 0.03, w: 4.6, h: 0.06, d: 4.0, color: 0x14101f },
+          { y: 0.07, w: 4.7, h: 0.03, d: 0.1, z: 2.0, neon: true },
+          { y: 0.07, w: 4.7, h: 0.03, d: 0.1, z: -2.0, neon: true },
+          { y: 0.07, w: 0.1, h: 0.03, d: 4.0, x: 2.3, neon: true, color: 0xff4fd8 },
+          { y: 0.07, w: 0.1, h: 0.03, d: 4.0, x: -2.3, neon: true, color: 0xff4fd8 },
+        ],
+      },
+    ],
+    decor: [
+      { x: -4.2, y: 0.55, z: 3.4, w: 2.6, h: 1.1, d: 0.9, color: GRAPHITE },
+      { x: -4.2, y: 1.14, z: 3.4, w: 2.7, h: 0.05, d: 0.95, neon: true, color: 0xff4fd8 },
+    ],
+    seats: [[-5.0, -1.6], [-5.0, 0.6], [5.0, -1.6], [5.0, 0.6]],
+  });
+
+  furnishGenesisVenue({
+    id: "river-grill",
+    sign: "RIVER GRILL",
+    neon: NEON.orange,
+    rear: 4.15,
+    wallW: 9.2,
+    items: [
+      counterItem("grill-counter", "River Grill Counter", [
+        { id: "waterside_dine", label: "Waterside Bites — FREE" },
+      ], 0, 1.6),
+    ],
+    decor: [
+      { x: -3.6, y: 0.72, z: -1.2, w: 1.5, h: 0.12, d: 1.0, color: GRAPHITE },
+      { x: 3.6, y: 0.72, z: -1.2, w: 1.5, h: 0.12, d: 1.0, color: GRAPHITE },
+    ],
+    seats: [[-4.8, -1.2], [-2.4, -1.2], [2.4, -1.2], [4.8, -1.2]],
+  });
+
+  furnishGenesisVenue({
+    id: "pulse-club",
+    sign: "CLUB 178",
+    neon: NEON.cyan,
+    rear: 4.15,
+    wallW: 9.2,
+    items: [
+      {
+        key: "dj-stage",
+        label: "Club 178 Main Floor",
+        actions: [{ id: "club_dance", label: "Dance — FREE" }],
+        x: 0,
+        z: 0.4,
+        approach: [0, -2.0],
+        parts: [
+          { y: 0.03, w: 5.0, h: 0.06, d: 3.6, color: 0x0c1420 },
+          { y: 0.5, z: 2.4, w: 3.2, h: 1.0, d: 1.0, color: GRAPHITE },
+          { y: 1.05, z: 2.4, w: 3.3, h: 0.06, d: 1.06, neon: true },
+          { y: 1.6, z: 2.9, w: 2.4, h: 0.9, d: 0.1, color: 0x06121e },
+          { y: 1.6, z: 2.84, w: 2.2, h: 0.7, d: 0.03, neon: true, color: 0xb14bff },
+        ],
+      },
+    ],
+    decor: [
+      { x: -5.2, y: 1.5, z: 0, w: 0.1, h: 3.0, d: 0.1, neon: true },
+      { x: 5.2, y: 1.5, z: 0, w: 0.1, h: 3.0, d: 0.1, neon: true, color: 0xff4fd8 },
+    ],
+    seats: [[-5.0, -2.6], [5.0, -2.6]],
+  });
+
+  furnishGenesisVenue({
+    id: "central-offices",
+    sign: "CENTRAL OFFICES",
+    neon: 0x4fd8ff,
+    rear: 5.6,
+    wallW: 11,
+    items: [
+      {
+        key: "creator-desks",
+        label: "Creator Workspace",
+        actions: [{ id: "creator_desk", label: "Work on Projects — FREE" }],
+        x: 0,
+        z: 2.6,
+        parts: [
+          { y: 0.72, w: 5.6, h: 0.1, d: 1.4, color: GRAPHITE },
+          { y: 1.2, z: -0.6, w: 5.2, h: 0.7, d: 0.06, color: 0x06121e },
+          { y: 1.2, z: -0.56, w: 5.0, h: 0.5, d: 0.02, neon: true },
+          { x: -2.4, y: 0.36, w: 0.16, h: 0.72, d: 1.2, color: 0x080d14 },
+          { x: 2.4, y: 0.36, w: 0.16, h: 0.72, d: 1.2, color: 0x080d14 },
+        ],
+      },
+    ],
+    decor: [
+      { x: -4.6, y: 0.55, z: -1.6, w: 2.4, h: 1.1, d: 0.9, color: GRAPHITE },
+      { x: -4.6, y: 1.14, z: -1.6, w: 2.5, h: 0.05, d: 0.95, neon: true },
+    ],
+    seats: [[4.4, -1.6], [4.4, 0.6]],
+  });
+
+  furnishGenesisVenue({
+    id: "river-hotel",
+    sign: "RIVER HOTEL",
+    neon: 0xd18cff,
+    rear: 5.6,
+    wallW: 7.4,
+    items: [
+      {
+        key: "reception",
+        label: "River Hotel Reception",
+        actions: [{ id: "lobby_lounge", label: "Check In & Relax — FREE" }],
+        x: 0,
+        z: 3.4,
+        parts: [
+          { y: 0.6, w: 3.4, h: 1.2, d: 0.9, color: GRAPHITE },
+          { y: 1.24, w: 3.5, h: 0.06, d: 0.96, color: 0x080d14 },
+          { y: 0.7, z: -0.5, w: 3.2, h: 0.06, d: 0.05, neon: true },
+        ],
+      },
+    ],
+    decor: [
+      { x: 0, y: 0.02, z: -0.6, w: 4.2, h: 0.05, d: 3.4, color: 0x1a1420 },
+    ],
+    seats: [[-2.6, -0.8], [2.6, -0.8], [0, -2.2]],
+  });
+
+  // --------------------------------------------------------
+  // CITY OUTFITTERS — FINAL 3: fitting pod, style hologram,
+  // exterior neon marquee.
+  // --------------------------------------------------------
+  {
+    const outfitters = findBuilding("city-outfitters");
+    if (outfitters) {
+      const MAGENTA = 0xff4fd8;
+
+      const pod = new THREE.Group();
+      pod.position.set(-4.6, 0, 3.4);
+      pod.userData.genesisInteractiveId = "city-outfitters-fitting-pod";
+      pod.userData.genesisInteractiveLabel = "Fitting Pod";
+      pod.userData.genesisInteractiveActions = [
+        { id: "view_look", label: "Try a Look — FREE" },
+      ];
+      pod.userData.genesisInteractiveApproachLocal = [0, -1.1];
+      outfitters.add(pod);
+      box(pod, { y: 1.25, w: 1.5, h: 2.5, d: 1.3, color: GRAPHITE });
+      addNeonStrip(pod, { y: 2.44, w: 1.56, h: 0.06, d: 1.36, color: MAGENTA });
+      box(pod, { y: 1.2, z: 0.66, w: 1.1, h: 2.0, d: 0.04, color: 0x0b1a26 });
+
+      const holo = new THREE.Group();
+      holo.position.set(4.6, 0, 3.6);
+      holo.userData.genesisInteractiveId = "city-outfitters-style-holo";
+      holo.userData.genesisInteractiveLabel = "Style Hologram";
+      holo.userData.genesisInteractiveActions = [
+        { id: "browse_styles", label: "Browse Styles — FREE" },
+      ];
+      holo.userData.genesisInteractiveApproachLocal = [0, -1.1];
+      outfitters.add(holo);
+      box(holo, { y: 0.24, w: 1.2, h: 0.48, d: 1.2, color: GRAPHITE });
+      addNeonStrip(holo, { y: 1.35, w: 0.55, h: 1.7, d: 0.55, color: 0x2ee6ff });
+
+      // Exterior neon marquee above the entrance.
+      addNeonStrip(outfitters, { y: 3.15, z: -4.7, w: 7.4, h: 0.12, d: 0.12, color: MAGENTA });
+      addLabel(outfitters, "CITY OUTFITTERS", { x: 0, y: 3.6, z: -4.72, scale: 5.2 });
+    }
+  }
+
+  // --------------------------------------------------------
+  // CITYWIDE NEON / CYBER ART PASS — street-level glow.
+  // --------------------------------------------------------
+  const addCityNeon = (cfg) =>
+    box(city, {
+      ...cfg,
+      cast: false,
+      mat: material(cfg.color, {
+        emissive: cfg.color,
+        emissiveIntensity: 1.3,
+        roughness: 0.4,
+      }),
+    });
+
+  // Main Street sidewalk edge glow.
+  addCityNeon({ x: MAIN_X - 5.15, y: 0.05, z: 65, w: 0.12, h: 0.05, d: 66, color: 0x2ee6ff });
+  addCityNeon({ x: MAIN_X + 5.15, y: 0.05, z: 65, w: 0.12, h: 0.05, d: 66, color: 0xb14bff });
+
+  // North continuation glow.
+  addCityNeon({ x: MAIN_X - 5.15, y: 0.05, z: 123, w: 0.12, h: 0.05, d: 22, color: 0x2ee6ff });
+  addCityNeon({ x: MAIN_X + 5.15, y: 0.05, z: 123, w: 0.12, h: 0.05, d: 22, color: 0xb14bff });
+
+  // Downtown plaza neon ring.
+  addCityNeon({ x: 22, y: 0.05, z: 66.4, w: 25, h: 0.05, d: 0.12, color: 0xff4fd8 });
+  addCityNeon({ x: 22, y: 0.05, z: 89.6, w: 25, h: 0.05, d: 0.12, color: 0x2ee6ff });
+  addCityNeon({ x: 10.4, y: 0.05, z: 78, w: 0.12, h: 0.05, d: 23, color: 0xb14bff });
+  addCityNeon({ x: 33.6, y: 0.05, z: 78, w: 0.12, h: 0.05, d: 23, color: 0xb14bff });
+
+  // Riverwalk promenade glow lines.
+  addCityNeon({ x: 0, y: 0.055, z: 100.6, w: 90, h: 0.05, d: 0.12, color: 0x2ee6ff });
+  addCityNeon({ x: 0, y: 0.055, z: 111.4, w: 90, h: 0.05, d: 0.12, color: 0x2ee6ff });
+
+  // --------------------------------------------------------
+  // PUBLIC HANGOUT ZONES
+  // --------------------------------------------------------
+
+  // Downtown Plaza fire ring hangout.
+  {
+    const fireRing = new THREE.Group();
+    fireRing.position.set(22, 0, 78);
+    fireRing.userData.genesisInteractiveId = "plaza-fire-ring";
+    fireRing.userData.genesisInteractiveLabel = "Plaza Fire Ring";
+    fireRing.userData.genesisInteractiveActions = [
+      { id: "plaza_hangout", label: "Gather at the Fire Ring — FREE" },
+    ];
+    fireRing.userData.genesisInteractiveApproachLocal = [0, -1.6];
+    city.add(fireRing);
+    box(fireRing, { y: 0.22, w: 1.7, h: 0.44, d: 1.7, color: GRAPHITE });
+    addNeonStrip(fireRing, { y: 0.5, w: 1.1, h: 0.16, d: 1.1, color: 0xff7a3d });
+
+    [[-2.6, 0], [2.6, 0], [0, -2.6], [0, 2.6]].forEach(([sx, sz], i) => {
+      const bench = new THREE.Group();
+      bench.position.set(22 + sx, 0, 78 + sz);
+      bench.userData.genesisInteractiveId = `plaza-bench-${i}`;
+      bench.userData.genesisInteractiveLabel = "Plaza Bench";
+      bench.userData.genesisInteractiveActions = [
+        { id: "sit", label: "Sit & Hang Out" },
+      ];
+      bench.userData.genesisInteractiveApproach = [0, 0];
+      bench.userData.genesisInteractionAnchor = { x: 0, y: 0, z: 0 };
+      city.add(bench);
+      box(bench, { y: 0.26, w: 1.5, h: 0.5, d: 0.6, color: GRAPHITE });
+      addNeonStrip(bench, { y: 0.06, w: 1.5, h: 0.05, d: 0.6, color: 0xb14bff });
+    });
+  }
+
+  // Riverwalk overlook hangout.
+  {
+    const overlook = new THREE.Group();
+    overlook.position.set(18, 0, 99.6);
+    overlook.userData.genesisInteractiveId = "river-overlook";
+    overlook.userData.genesisInteractiveLabel = "Riverwalk Overlook";
+    overlook.userData.genesisInteractiveActions = [
+      { id: "river_overlook", label: "Take in the River View — FREE" },
+    ];
+    overlook.userData.genesisInteractiveApproachLocal = [0, -1.2];
+    city.add(overlook);
+    addNeonStrip(overlook, { y: 1.0, w: 3.2, h: 0.07, d: 0.07, color: 0x2ee6ff });
+    box(overlook, { x: -1.55, y: 0.5, w: 0.09, h: 1.0, d: 0.09, color: GRAPHITE });
+    box(overlook, { x: 1.55, y: 0.5, w: 0.09, h: 1.0, d: 0.09, color: GRAPHITE });
+
+    [[-4.5, 0], [4.5, 0]].forEach(([sx], i) => {
+      const bench = new THREE.Group();
+      bench.position.set(18 + sx, 0, 99.4);
+      bench.userData.genesisInteractiveId = `river-bench-${i}`;
+      bench.userData.genesisInteractiveLabel = "Riverwalk Bench";
+      bench.userData.genesisInteractiveActions = [
+        { id: "sit", label: "Sit & Hang Out" },
+      ];
+      bench.userData.genesisInteractiveApproach = [0, 0];
+      bench.userData.genesisInteractionAnchor = { x: 0, y: 0, z: 0 };
+      city.add(bench);
+      box(bench, { y: 0.26, w: 1.5, h: 0.5, d: 0.6, color: GRAPHITE });
+      addNeonStrip(bench, { y: 0.06, w: 1.5, h: 0.05, d: 0.6, color: 0x2ee6ff });
+    });
+  }
 
   installRealmLifeAAAUpgrade(city);
 

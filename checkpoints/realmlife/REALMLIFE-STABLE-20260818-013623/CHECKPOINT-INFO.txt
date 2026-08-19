@@ -1,0 +1,27 @@
+RealmLife Stable Safety Checkpoint
+Created: Tue Aug 18 01:36:23 UTC 2026
+
+STATUS AT CHECKPOINT:
+
+- Player 1 Original / Medium / Dark appearances working
+- Player 2 Original / Medium / Dark appearances working
+- Full GLB model swaps working
+- Appearance selection saves and loads in gameplay
+- Old Player 1/2 skin shader removed
+- Founder Stealth avatar preserved
+
+- Property ownership system preserved
+- Stealth property remains private
+- Morpheus cannot enter Stealth property
+- Morpheus HOME resolves to Morpheus property
+- FULL / CUTAWAY property rendering preserved
+- Furniture/interactions preserved
+- Bed / shower / stove / TV systems preserved
+- House level/furniture/property work preserved
+
+KNOWN ITEM TO FIX AFTER CHECKPOINT:
+- Morpheus Bed > Sleep currently freezes briefly in walking pose
+  instead of performing the proper sleep/lie-down animation.
+
+NO DEPLOYMENT PERFORMED.
+NO REPUBLISH PERFORMED.

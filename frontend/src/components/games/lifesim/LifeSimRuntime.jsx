@@ -118,6 +118,80 @@ const ACTION_EFFECTS = {
     message: "Exploring Realm Market — FREE.",
   },
 
+  // GENESIS CITY — FREE CITY OUTFITTERS ACTIVITIES
+  browse_styles: {
+    label: "Browse Styles",
+    minutes: 0,
+    message: "Browsing City Outfitters styles — FREE.",
+  },
+
+  view_look: {
+    label: "View Look",
+    minutes: 0,
+    message: "Checking your look at City Outfitters — FREE.",
+  },
+
+  explore_showcase: {
+    label: "Explore Showcase",
+    minutes: 0,
+    message: "Exploring the City Outfitters showcase — FREE.",
+  },
+
+  // GENESIS CITY V1 — FREE VENUE + HANGOUT ACTIVITIES
+  chef_special: {
+    label: "Chef's Tasting",
+    minutes: 0,
+    message: "Enjoying the Plaza Restaurant chef's tasting — FREE.",
+  },
+
+  browse_goods: {
+    label: "Browse Goods",
+    minutes: 0,
+    message: "Browsing Fresh Grocery smart shelves — FREE.",
+  },
+
+  dance_floor: {
+    label: "Hit the Dance Floor",
+    minutes: 0,
+    message: "Dancing at the Night Lounge — FREE.",
+  },
+
+  waterside_dine: {
+    label: "Waterside Bites",
+    minutes: 0,
+    message: "Grabbing waterside bites at River Grill — FREE.",
+  },
+
+  club_dance: {
+    label: "Dance",
+    minutes: 0,
+    message: "Dancing at Club 178 — FREE.",
+  },
+
+  creator_desk: {
+    label: "Work on Projects",
+    minutes: 0,
+    message: "Working on creator projects at Central Offices — FREE.",
+  },
+
+  lobby_lounge: {
+    label: "Check In & Relax",
+    minutes: 0,
+    message: "Relaxing in the River Hotel lobby — FREE.",
+  },
+
+  plaza_hangout: {
+    label: "Gather at the Fire Ring",
+    minutes: 0,
+    message: "Hanging out at the Downtown Plaza fire ring — FREE.",
+  },
+
+  river_overlook: {
+    label: "Take in the River View",
+    minutes: 0,
+    message: "Enjoying the Riverwalk view — FREE.",
+  },
+
   read: {
     label: "Read",
     minutes: 45,

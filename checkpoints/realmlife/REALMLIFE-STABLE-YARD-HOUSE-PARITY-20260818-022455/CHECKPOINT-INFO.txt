@@ -1,0 +1,39 @@
+RealmLife Stable Checkpoint
+Created: Tue Aug 18 02:24:55 UTC 2026
+
+VERIFIED WORKING:
+
+AVATARS
+- Player 1 Original / Medium / Dark
+- Player 2 Original / Medium / Dark
+- Full GLB appearance switching
+- Appearance saving/loading
+- Gameplay appearance persistence
+- Founder Stealth avatar preserved
+
+PROPERTY / HOUSING
+- Per-user HOME works
+- Morpheus HOME resolves to Morpheus property
+- Morpheus cannot enter Stealth private property
+- FULL / CUTAWAY working
+- Furniture/interactions working
+- Shower/stove/TV/stat interactions working
+- Property privacy preserved
+
+NEIGHBORHOOD
+- Extra normal-city brown backyard fences removed
+- Extra normal-city yard extensions removed
+- Extra normal-city backyard bushes removed
+- Stealth private property fence/gate preserved
+
+HOUSE PARITY
+- Canonical 3-level premium Spanish exterior enabled
+- Stealth 3-level house looks correct to other users
+- Any completed 3-level residence uses same premium treatment
+- 1/2-level progression preserved
+
+KNOWN ISSUE NOT FIXED YET
+- Player 1/2 Bed > Sleep does not perform proper lie-down pose/animation
+
+NO DEPLOYMENT PERFORMED.
+NO REPUBLISH PERFORMED.

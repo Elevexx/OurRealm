@@ -1,0 +1,56 @@
+OurRealm history cleanup safety record
+Tue Aug 18 08:06:47 UTC 2026
+
+HEAD:
+53d1b71b509920dc6a1a532f763c36ead1422983
+
+BRANCHES/TAGS:
+a6d5227af541321bb2a2267cb8525f1d21aa5cbc refs/heads/backup-before-security-20260818
+53d1b71b509920dc6a1a532f763c36ead1422983 refs/heads/main
+71afd5ce7f754e010fe52c021d5ea54f00b8d945 refs/tags/phase-1-2-media-rights-verified
+
+STATUS:
+?? artifacts/nexus/avatar_f.log
+?? artifacts/nexus/avatar_f2.log
+?? artifacts/nexus/avatars6.log
+?? artifacts/nexus/batch2.log
+?? artifacts/nexus/canary.log
+?? artifacts/nexus/citizen.log
+?? artifacts/nexus/citizen2.log
+?? artifacts/nexus/citizen_v2.log
+?? artifacts/nexus/city_batch.log
+?? artifacts/nexus/cz2fin.log
+?? artifacts/nexus/load_sim.log
+?? artifacts/nexus/mobile_opt.log
+?? artifacts/nexus/navs.log
+?? artifacts/realmlife_aaa/batch1.log
+?? artifacts/realmlife_aaa/batch1_stdout.log
+?? artifacts/realmlife_aaa/hero_retry.log
+?? artifacts/realmlife_aaa/optimize.log
+?? artifacts/realmlife_avatars/
+?? artifacts/wkq/batch.log
+?? artifacts/wkq/batch_arcane.log
+?? artifacts/wkq/batch_hero.log
+?? artifacts/wkq/maeve_finish.log
+?? artifacts/wkq/maeve_rig.log
+?? artifacts/wkq/meshy_batch.log
+?? artifacts/wkq/optimize.log
+?? artifacts/wkq/wire_walls.log
+?? backups/history-cleanup-20260818/
+?? checkpoints/realmlife/BEFORE-3-MODEL-APPEARANCE-20260818-002832/
+?? checkpoints/realmlife/BEFORE-APPEARANCE-FINISH-20260818-004520/
+?? checkpoints/realmlife/BEFORE-APPEARANCE-FINISH-20260818-004837/
+?? checkpoints/realmlife/BEFORE-CHAT-IOS-FIX-20260818-024553/
+?? checkpoints/realmlife/BEFORE-PRESENCE-AVATAR-PROJECTION-20260818-033216/
+?? checkpoints/realmlife/BEFORE-PROGRESSION-HUD-20260818-040214/
+?? checkpoints/realmlife/BEFORE-PROGRESSION-HUD-20260818-043243/
+?? checkpoints/realmlife/BEFORE-PROGRESSION-HUD-20260818-043731/
+?? checkpoints/realmlife/BEFORE-REAL-APPEARANCE-SWAP-20260818-003742/
+?? checkpoints/realmlife/BEFORE-REMOTE-AVATAR-CHAT-20260818-031918/
+?? checkpoints/realmlife/BEFORE-YARD-HOUSE-PARITY-20260818-015657/
+?? checkpoints/realmlife/BEFORE-YARD-PARITY-20260818-020433/
+?? checkpoints/realmlife/REALMLIFE-STABLE-20260818-013623/
+?? checkpoints/realmlife/REALMLIFE-STABLE-MULTIPLAYER-CHAT-20260818-035114/
+?? checkpoints/realmlife/REALMLIFE-STABLE-YARD-HOUSE-PARITY-20260818-022455/
+?? checkpoints/realmlife/RealmLifeProgressionPanel.before-line725-20260818-045309.jsx
+?? checkpoints/realmlife/RealmLifeProgressionPanel.before-syntax-fix-20260818-044736.jsx
