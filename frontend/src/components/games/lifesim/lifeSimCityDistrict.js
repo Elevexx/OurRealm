@@ -976,21 +976,51 @@ export function buildCityDistrict(
       cast: false,
     });
 
-    // Smart checkout display.
-    box(mainMarket, {
-      x: 1.45,
+    // Interactive smart market kiosk.
+    const marketKiosk =
+      new THREE.Group();
+
+    marketKiosk.position.set(
+      1.45,
+      0,
+      1.42
+    );
+
+    marketKiosk.userData.genesisInteractiveId =
+      "realm-market-kiosk";
+
+    marketKiosk.userData.genesisInteractiveLabel =
+      "Realm Market Smart Kiosk";
+
+    marketKiosk.userData.genesisInteractiveActions =
+      [
+        {
+          id: "explore_market",
+          label: "Explore Market",
+        },
+      ];
+
+    marketKiosk.userData.genesisInteractiveApproachLocal =
+      [0, -0.9];
+
+    mainMarket.add(
+      marketKiosk
+    );
+
+    box(marketKiosk, {
+      x: 0,
       y: 1.05,
-      z: 1.42,
+      z: 0,
       w: 0.72,
       h: 0.62,
       d: 0.12,
       color: DARK,
     });
 
-    box(mainMarket, {
-      x: 1.45,
+    box(marketKiosk, {
+      x: 0,
       y: 1.05,
-      z: 1.34,
+      z: -0.08,
       w: 0.58,
       h: 0.46,
       d: 0.04,
@@ -1016,6 +1046,23 @@ export function buildCityDistrict(
           0,
           sz
         );
+
+        shelf.userData.genesisInteractiveId =
+          `realm-market-shelf-${index}`;
+
+        shelf.userData.genesisInteractiveLabel =
+          `Realm Market Display ${index + 1}`;
+
+        shelf.userData.genesisInteractiveActions =
+          [
+            {
+              id: "browse_market",
+              label: "Browse Display",
+            },
+          ];
+
+        shelf.userData.genesisInteractiveApproachLocal =
+          [0, -1.05];
 
         mainMarket.add(
           shelf
@@ -1079,21 +1126,51 @@ export function buildCityDistrict(
       }
     );
 
-    // Central holographic product pedestal.
-    box(mainMarket, {
+    // Interactive central holographic product pedestal.
+    const marketHologram =
+      new THREE.Group();
+
+    marketHologram.position.set(
+      0,
+      0,
+      -1.55
+    );
+
+    marketHologram.userData.genesisInteractiveId =
+      "realm-market-hologram";
+
+    marketHologram.userData.genesisInteractiveLabel =
+      "Realm Market Hologram";
+
+    marketHologram.userData.genesisInteractiveActions =
+      [
+        {
+          id: "view_market_hologram",
+          label: "View Hologram",
+        },
+      ];
+
+    marketHologram.userData.genesisInteractiveApproachLocal =
+      [0, -1.25];
+
+    mainMarket.add(
+      marketHologram
+    );
+
+    box(marketHologram, {
       x: 0,
       y: 0.22,
-      z: -1.55,
+      z: 0,
       w: 1.55,
       h: 0.44,
       d: 1.55,
       color: GRAPHITE,
     });
 
-    box(mainMarket, {
+    box(marketHologram, {
       x: 0,
       y: 0.49,
-      z: -1.55,
+      z: 0,
       w: 1.18,
       h: 0.08,
       d: 1.18,
@@ -1101,10 +1178,10 @@ export function buildCityDistrict(
       cast: false,
     });
 
-    box(mainMarket, {
+    box(marketHologram, {
       x: 0,
       y: 1.12,
-      z: -1.55,
+      z: 0,
       w: 0.48,
       h: 1.15,
       d: 0.48,

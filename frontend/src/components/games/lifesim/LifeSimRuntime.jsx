@@ -98,6 +98,26 @@ const ACTION_EFFECTS = {
     minutes: 10,
     message: "A little greenery helps.",
   },
+
+  // GENESIS CITY — FREE MARKET ACTIVITIES
+  browse_market: {
+    label: "Browse Display",
+    minutes: 0,
+    message: "Browsing the Realm Market display — FREE.",
+  },
+
+  view_market_hologram: {
+    label: "View Hologram",
+    minutes: 0,
+    message: "Exploring the Realm Market holographic showcase — FREE.",
+  },
+
+  explore_market: {
+    label: "Explore Market",
+    minutes: 0,
+    message: "Exploring Realm Market — FREE.",
+  },
+
   read: {
     label: "Read",
     minutes: 45,
@@ -1244,23 +1264,50 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
     const ap = obj.userData.approach || [0, 1.2];
 
-    // Nested Genesis City furniture may live inside rotated
-    // building groups. Always route using true world position.
-    const interactionWorldPosition =
-      new THREE.Vector3();
+    // Genesis City nested objects may define their approach
+    // point in LOCAL space so rotated storefronts stay correct.
+    const localApproach =
+      obj.userData.approachLocal;
 
-    obj.getWorldPosition(
-      interactionWorldPosition
-    );
+    let destination;
 
-    const destination = {
-      x:
-        interactionWorldPosition.x
-        + ap[0],
-      z:
-        interactionWorldPosition.z
-        + ap[1],
-    };
+    if (
+      Array.isArray(localApproach)
+      &&
+      localApproach.length >= 2
+    ) {
+      const interactionPoint =
+        new THREE.Vector3(
+          Number(localApproach[0] || 0),
+          0,
+          Number(localApproach[1] || 0)
+        );
+
+      obj.localToWorld(
+        interactionPoint
+      );
+
+      destination = {
+        x: interactionPoint.x,
+        z: interactionPoint.z,
+      };
+    } else {
+      const interactionWorldPosition =
+        new THREE.Vector3();
+
+      obj.getWorldPosition(
+        interactionWorldPosition
+      );
+
+      destination = {
+        x:
+          interactionWorldPosition.x
+          + ap[0],
+        z:
+          interactionWorldPosition.z
+          + ap[1],
+      };
+    }
 
     const finder = findPathRef.current;
 
@@ -2150,6 +2197,11 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
             .genesisInteractiveApproach
           || [0, 0];
 
+        const interactionApproachLocal =
+          obj.userData
+            .genesisInteractiveApproachLocal
+          || null;
+
         const interactionAnchor =
           obj.userData
             .genesisInteractionAnchor
@@ -2169,6 +2221,9 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
         obj.userData.approach =
           interactionApproach;
+
+        obj.userData.approachLocal =
+          interactionApproachLocal;
 
         obj.userData.interactionAnchor =
           interactionAnchor;
@@ -6017,12 +6072,22 @@ realmLifePresenceKickoff =
             : null;
 
         if (target) {
+          // Nested Genesis City interactions may live inside
+          // rotated storefront groups. Face the true world
+          // position rather than the object's local position.
+          const targetFacingPosition =
+            new THREE.Vector3();
+
+          target.getWorldPosition(
+            targetFacingPosition
+          );
+
           const dx =
-            target.position.x -
+            targetFacingPosition.x -
             resident.position.x;
 
           const dz =
-            target.position.z -
+            targetFacingPosition.z -
             resident.position.z;
 
           if (Math.hypot(dx, dz) > 0.01) {
