@@ -103,12 +103,6 @@ const ACTION_EFFECTS = {
     minutes: 45,
     message: "A little screen time.",
   },
-  talk: {
-    label: "Talk",
-    minutes: 30,
-    relationship: 8,
-    message: "Good conversation with your neighbor.",
-  },
   sit: {
     label: "Sit & Relax",
     minutes: 25,
@@ -4485,9 +4479,6 @@ realmLifePresenceKickoff =
     neighbor.userData.lifeObject = true;
     neighbor.userData.id = "neighbor";
     neighbor.userData.label = "Neighbor";
-    neighbor.userData.actions = [
-      { id: "talk", label: "Talk" },
-    ];
     neighbor.userData.approach = [-1.1, 0];
 
     // GENESIS CITY — REAL PEOPLE ONLY
