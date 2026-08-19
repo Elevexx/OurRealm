@@ -260,7 +260,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
   const findPathRef = useRef(null);
   const pendingActionRef = useRef(null);
   const dirtyRef = useRef(false);
-  const speedRef = useRef(1);
   const buildItemRef = useRef(null);
   const saveTimerRef = useRef(null);
 
@@ -772,7 +771,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     }, [
       setRealmLifeCameraMode,
     ]);
-  const [speed, setSpeedState] = useState(1);
   const [buildItem, setBuildItemState] = useState(null);
   const [saveStatus, setSaveStatus] = useState("");
   const [hud, setHud] = useState(() => {
@@ -785,11 +783,6 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       msg: "Welcome home.",
     };
   });
-
-  const setSpeed = (n) => {
-    speedRef.current = n;
-    setSpeedState(n);
-  };
 
   const chooseBuildItem = (id) => {
     buildItemRef.current = id;
@@ -7160,24 +7153,6 @@ realmLifePresenceKickoff =
             </button>
           )}
 
-          {[0, 1, 2, 3].map((n) => (
-            <button
-              key={n}
-              onClick={() => setSpeed(n)}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-black"
-              style={{
-                background:
-                  speed === n
-                    ? "rgba(46,230,255,.28)"
-                    : "rgba(3,10,20,.72)",
-                border: "1px solid rgba(46,230,255,.28)",
-                color: "#eaffff",
-              }}
-            >
-              {n === 0 ? "Ⅱ" : `${n}×`}
-            </button>
-          ))}
-
           <button
             onClick={persist}
             className="px-3 py-1.5 rounded-lg text-xs font-bold"
@@ -7405,32 +7380,6 @@ realmLifePresenceKickoff =
             </div>
 
             {renderGraphicsButtons("realmlife-drawer")}
-
-            <div className="text-[10px] font-black opacity-70 mt-3 mb-1">
-              GAME SPEED
-            </div>
-
-            <div className="flex gap-1">
-              {[0, 1, 2, 3].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  data-testid={`realmlife-drawer-speed-${n}`}
-                  onClick={() => setSpeed(n)}
-                  className="flex-1 px-2 py-1.5 rounded-lg text-[11px] font-black"
-                  style={{
-                    background:
-                      speed === n
-                        ? "rgba(46,230,255,.28)"
-                        : "rgba(255,255,255,.07)",
-                    border: "1px solid rgba(46,230,255,.28)",
-                    color: "#eaffff",
-                  }}
-                >
-                  {n === 0 ? "Ⅱ" : `${n}×`}
-                </button>
-              ))}
-            </div>
 
             <div className="space-y-1.5 mt-3">
               <button
