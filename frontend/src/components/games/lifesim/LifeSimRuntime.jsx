@@ -46,13 +46,7 @@ import {
 
 const clamp = (n, a = 0, b = 100) => Math.max(a, Math.min(b, n));
 
-const NEED_META = [
-  ["hunger", "Hunger", "🍔", "#ffb347"],
-  ["energy", "Energy", "⚡", "#72d5ff"],
-  ["hygiene", "Hygiene", "🚿", "#61e6d6"],
-  ["fun", "Fun", "🎮", "#c58cff"],
-  ["social", "Social", "💬", "#ff83ba"],
-];
+// GENESIS CITY: legacy survival-needs metadata removed.
 
 const DEFAULT_NEIGHBOR_AVATAR = {
   id: "av_ninja_f",
@@ -97,76 +91,64 @@ const ACTION_EFFECTS = {
   sleep: {
     label: "Sleep",
     minutes: 180,
-    needs: { energy: 42, hunger: -8, hygiene: -4 },
     message: "You feel rested.",
   },
   shower: {
     label: "Take Shower",
     minutes: 35,
-    needs: { hygiene: 48 },
     message: "Fresh and clean.",
   },
   toilet: {
     label: "Use Toilet",
     minutes: 15,
-    needs: { hygiene: 5 },
     message: "Much better.",
   },
   snack: {
     label: "Grab Snack",
     minutes: 20,
     fire_cost: 5,
-    needs: { hunger: 22 },
     message: "Quick snack finished.",
   },
   cook: {
     label: "Cook Meal",
     minutes: 50,
     fire_cost: 10,
-    needs: { hunger: 38, fun: 4 },
     message: "Home-cooked meal complete.",
   },
   relax: {
     label: "Relax",
     minutes: 40,
-    needs: { fun: 18, energy: 5 },
     message: "That was relaxing.",
   },
   tv: {
     label: "Watch TV",
     minutes: 50,
-    needs: { fun: 28, social: 2 },
     message: "Caught up on your favorite show.",
   },
   computer: {
     label: "Use Computer",
     minutes: 45,
-    needs: { fun: 23 },
     message: "A little screen time.",
   },
   talk: {
     label: "Talk",
     minutes: 30,
-    needs: { social: 32, fun: 6 },
     relationship: 8,
     message: "Good conversation with your neighbor.",
   },
   sit: {
     label: "Sit & Relax",
     minutes: 25,
-    needs: { fun: 8, energy: 4 },
     message: "A comfortable break.",
   },
   admire: {
     label: "Admire Plant",
     minutes: 10,
-    needs: { fun: 5 },
     message: "A little greenery helps.",
   },
   read: {
     label: "Read",
     minutes: 45,
-    needs: { fun: 16 },
     message: "You enjoyed a good book.",
   },
 };
@@ -179,13 +161,6 @@ function freshSave() {
     money: 750,
     relationship: 10,
     resident: { name: "Avery", x: 0, z: 5 },
-    needs: {
-      hunger: 82,
-      energy: 88,
-      hygiene: 90,
-      fun: 76,
-      social: 70,
-    },
     placed: [],
     nextPlacedId: 1,
   };
@@ -195,11 +170,15 @@ function normalizeSave(raw) {
   const f = freshSave();
   if (!raw || typeof raw !== "object") return f;
 
+  // GENESIS CITY:
+  // Strip legacy survival needs from old RealmLife saves.
+  const clean = { ...raw };
+  delete clean.needs;
+
   return {
     ...f,
-    ...raw,
+    ...clean,
     resident: { ...f.resident, ...(raw.resident || {}) },
-    needs: { ...f.needs, ...(raw.needs || {}) },
     placed: Array.isArray(raw.placed) ? raw.placed : [],
     nextPlacedId: Math.max(1, Number(raw.nextPlacedId || 1)),
   };
