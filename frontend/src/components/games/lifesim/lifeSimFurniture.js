@@ -95,67 +95,6 @@ export function buildFurnitureMesh(type, colorHex) {
     const stand = box(0.9, 0.32, 0.4, mat("#20242c", 0.5));
     stand.position.y = 0.16;
     g.add(stand, panel, screen);
-  } else if (t === "fridge") {
-    const bodyM = box(1.2, 2.2, 1.1, main);
-    bodyM.position.y = 1.1;
-    const handle = box(0.06, 0.9, 0.06, mat("#7d858a", 0.4));
-    handle.position.set(0.45, 1.35, 0.56);
-    g.add(bodyM, handle);
-  } else if (t === "stove") {
-    const bodyM = box(1.5, 1.05, 1.05, main);
-    bodyM.position.y = 0.52;
-    const top = box(1.5, 0.05, 1.05, mat("#15181c", 0.4));
-    top.position.y = 1.06;
-    for (const [bx, bz] of [[-0.4, -0.25], [0.4, -0.25], [-0.4, 0.25], [0.4, 0.25]]) {
-      const burner = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.14, 0.14, 0.03, 12),
-        mat("#2a2f36", 0.5)
-      );
-      burner.position.set(bx, 1.1, bz);
-      g.add(burner);
-    }
-    g.add(bodyM, top);
-  } else if (t === "shower") {
-    const tray = box(1.55, 0.14, 1.55, mat("#e8ecec", 0.6));
-    tray.position.y = 0.07;
-    const backWall = box(1.55, 2.15, 0.08, mat("#7ad4e5", 0.3));
-    backWall.position.set(0, 1.07, -0.73);
-    const glass = new THREE.Mesh(
-      new THREE.BoxGeometry(1.45, 1.95, 0.05),
-      new THREE.MeshStandardMaterial({
-        color: 0xbfeaf5, transparent: true, opacity: 0.32,
-        roughness: 0.12, metalness: 0.1,
-      })
-    );
-    glass.position.set(0, 1.05, 0.74);
-    const head = box(0.24, 0.06, 0.24, mat("#9aa4a8", 0.3));
-    head.position.set(0, 2.02, -0.55);
-    g.add(tray, backWall, glass, head);
-  } else if (t === "toilet") {
-    const base = box(0.62, 0.42, 0.68, mat("#f2f2eb", 0.55));
-    base.position.set(0, 0.21, 0.1);
-    const tank = box(0.62, 0.62, 0.26, mat("#f2f2eb", 0.55));
-    tank.position.set(0, 0.62, -0.32);
-    g.add(base, tank);
-  } else if (t === "bathroom_sink") {
-    const pedestal = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.14, 0.2, 0.72, 10),
-      mat("#eef0ec", 0.55)
-    );
-    pedestal.position.y = 0.36;
-    const basin = box(0.85, 0.2, 0.62, mat("#eef0ec", 0.5));
-    basin.position.y = 0.83;
-    const faucet = box(0.07, 0.22, 0.07, mat("#9aa4a8", 0.3));
-    faucet.position.set(0, 1.0, -0.2);
-    g.add(pedestal, basin, faucet);
-  } else if (t === "kitchen_sink") {
-    const cab = box(1.2, 0.85, 0.85, mat("#8d7454", 0.7));
-    cab.position.y = 0.42;
-    const top = box(1.24, 0.08, 0.9, mat("#c9cdcf", 0.35));
-    top.position.y = 0.9;
-    const faucet = box(0.07, 0.3, 0.07, mat("#9aa4a8", 0.3));
-    faucet.position.set(0, 1.05, -0.28);
-    g.add(cab, top, faucet);
   } else if (t === "dining_table") {
     const top = box(1.8, 0.1, 1.05, main);
     top.position.y = 0.78;
