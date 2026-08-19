@@ -794,16 +794,13 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     if (!game?.id) return;
     clearTimeout(saveTimerRef.current);
     try {
-      setSaveStatus("Saving…");
       await apiClient.put(`/games/${game.id}/state`, {
         title: game.title,
         state: simRef.current,
       });
       dirtyRef.current = false;
-      setSaveStatus("Saved");
-      saveTimerRef.current = setTimeout(() => setSaveStatus(""), 1200);
     } catch {
-      setSaveStatus("Save failed");
+      dirtyRef.current = true;
     }
   }, [game?.id, game?.title]);
 
