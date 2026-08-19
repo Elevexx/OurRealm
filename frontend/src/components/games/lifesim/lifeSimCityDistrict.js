@@ -882,7 +882,7 @@ export function buildCityDistrict(
     buildings,
     {
       id: "main-market",
-      label: "Market",
+      label: "Realm Market",
       type: "market",
 
       x: -28.5,
@@ -893,11 +893,305 @@ export function buildCityDistrict(
 
       facing: "east",
 
-      color: 0xd8c49f,
-      floorColor: 0xbda47f,
-      accent: 0xd47c3e,
+      color: 0x101820,
+      floorColor: 0x161d26,
+      accent: 0xff8a3d,
     }
   );
+
+  // ========================================================
+  // GENESIS CITY — REALM MARKET AAA DEFAULT INTERIOR
+  //
+  // Free social storefront / browsing space.
+  // No survival shopping, money system or visitor fees.
+  // ========================================================
+
+  const mainMarket =
+    city.children.find(
+      (child) =>
+        child?.userData?.buildingId ===
+        "main-market"
+    );
+
+  if (mainMarket) {
+    const CYAN = 0x2ee6ff;
+    const ORANGE = 0xff8a3d;
+    const GRAPHITE = 0x121922;
+    const DARK = 0x080d14;
+    const SOFT = 0xdce8ee;
+
+    // Premium rear feature wall.
+    box(mainMarket, {
+      x: 0,
+      y: 1.45,
+      z: 4.68,
+      w: 9.2,
+      h: 2.35,
+      d: 0.12,
+      color: GRAPHITE,
+    });
+
+    // Rear neon header.
+    box(mainMarket, {
+      x: 0,
+      y: 2.52,
+      z: 4.59,
+      w: 7.2,
+      h: 0.08,
+      d: 0.08,
+      color: ORANGE,
+      cast: false,
+    });
+
+    addLabel(
+      mainMarket,
+      "REALM MARKET",
+      {
+        x: 0,
+        y: 2.03,
+        z: 4.54,
+        scale: 4.8,
+      }
+    );
+
+    // Upgrade the existing prototype checkout counter.
+    box(mainMarket, {
+      x: 0,
+      y: 0.63,
+      z: 1.45,
+      w: 4.9,
+      h: 0.18,
+      d: 1.08,
+      color: GRAPHITE,
+    });
+
+    box(mainMarket, {
+      x: 0,
+      y: 0.73,
+      z: 0.90,
+      w: 4.65,
+      h: 0.07,
+      d: 0.05,
+      color: ORANGE,
+      cast: false,
+    });
+
+    // Smart checkout display.
+    box(mainMarket, {
+      x: 1.45,
+      y: 1.05,
+      z: 1.42,
+      w: 0.72,
+      h: 0.62,
+      d: 0.12,
+      color: DARK,
+    });
+
+    box(mainMarket, {
+      x: 1.45,
+      y: 1.05,
+      z: 1.34,
+      w: 0.58,
+      h: 0.46,
+      d: 0.04,
+      color: CYAN,
+      cast: false,
+    });
+
+    // Four premium display shelves.
+    const marketShelves = [
+      [-4.15, -1.15],
+      [-4.15, 2.05],
+      [4.15, -1.15],
+      [4.15, 2.05],
+    ];
+
+    marketShelves.forEach(
+      ([sx, sz], index) => {
+        const shelf =
+          new THREE.Group();
+
+        shelf.position.set(
+          sx,
+          0,
+          sz
+        );
+
+        mainMarket.add(
+          shelf
+        );
+
+        // Main shelf body.
+        box(shelf, {
+          x: 0,
+          y: 0.92,
+          z: 0,
+          w: 2.35,
+          h: 1.82,
+          d: 0.68,
+          color: GRAPHITE,
+        });
+
+        // Three display tiers.
+        [0.38, 0.92, 1.46].forEach(
+          (yy, tierIndex) => {
+            box(shelf, {
+              x: 0,
+              y: yy,
+              z: -0.37,
+              w: 2.18,
+              h: 0.07,
+              d: 0.10,
+              color:
+                (
+                  index + tierIndex
+                ) % 2 === 0
+                  ? CYAN
+                  : ORANGE,
+              cast: false,
+            });
+          }
+        );
+
+        // Product/display blocks.
+        [-0.72, 0, 0.72].forEach(
+          (px, productIndex) => {
+            box(shelf, {
+              x: px,
+              y:
+                0.66
+                +
+                (
+                  productIndex
+                  % 2
+                ) * 0.52,
+              z: -0.45,
+              w: 0.34,
+              h: 0.42,
+              d: 0.22,
+              color:
+                productIndex === 1
+                  ? SOFT
+                  : ORANGE,
+            });
+          }
+        );
+      }
+    );
+
+    // Central holographic product pedestal.
+    box(mainMarket, {
+      x: 0,
+      y: 0.22,
+      z: -1.55,
+      w: 1.55,
+      h: 0.44,
+      d: 1.55,
+      color: GRAPHITE,
+    });
+
+    box(mainMarket, {
+      x: 0,
+      y: 0.49,
+      z: -1.55,
+      w: 1.18,
+      h: 0.08,
+      d: 1.18,
+      color: CYAN,
+      cast: false,
+    });
+
+    box(mainMarket, {
+      x: 0,
+      y: 1.12,
+      z: -1.55,
+      w: 0.48,
+      h: 1.15,
+      d: 0.48,
+      color: ORANGE,
+      cast: false,
+    });
+
+    // Interactive social bench.
+    const marketLounge =
+      new THREE.Group();
+
+    marketLounge.position.set(
+      -5.15,
+      0,
+      -3.25
+    );
+
+    marketLounge.userData.genesisInteractiveId =
+      "realm-market-lounge";
+
+    marketLounge.userData.genesisInteractiveLabel =
+      "Realm Market Lounge";
+
+    marketLounge.userData.genesisInteractiveActions =
+      [
+        {
+          id: "sit",
+          label: "Sit & Relax",
+        },
+      ];
+
+    marketLounge.userData.genesisInteractiveApproach =
+      [0, 0];
+
+    marketLounge.userData.genesisInteractionAnchor =
+      {
+        x: 0,
+        y: 0,
+        z: 0,
+      };
+
+    mainMarket.add(
+      marketLounge
+    );
+
+    box(marketLounge, {
+      x: 0,
+      y: 0.42,
+      z: 0,
+      w: 0.95,
+      h: 0.62,
+      d: 2.45,
+      color: 0x202936,
+    });
+
+    box(marketLounge, {
+      x: -0.39,
+      y: 0.86,
+      z: 0,
+      w: 0.16,
+      h: 0.86,
+      d: 2.45,
+      color: CYAN,
+    });
+
+    // Ceiling neon rails.
+    [-3.3, 0, 3.3].forEach(
+      (railX, index) => {
+        box(mainMarket, {
+          x: railX,
+          y: 2.82,
+          z: 0,
+          w: 0.09,
+          h: 0.05,
+          d: 7.3,
+          color:
+            index === 1
+              ? ORANGE
+              : CYAN,
+          cast: false,
+        });
+      }
+    );
+
+    mainMarket.userData.aaaInterior =
+      "realm-market-v1";
+  }
 
 
   addOpenBuilding(
