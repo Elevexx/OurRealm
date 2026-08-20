@@ -346,6 +346,16 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
     setRealmLifeBusinessCard,
   ] = useState(null);
 
+  const [
+    realmLifeBusinessBusy,
+    setRealmLifeBusinessBusy,
+  ] = useState(false);
+
+  const [
+    realmLifeBusinessError,
+    setRealmLifeBusinessError,
+  ] = useState("");
+
   // REALMLIFE GRAPHICS + MOBILE UI STATE
   const [graphicsInfo, setGraphicsInfo] = useState({
     mode: "AUTO",
@@ -897,6 +907,9 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
         return;
       }
 
+      setRealmLifeBusinessBusy(true);
+      setRealmLifeBusinessError("");
+
       try {
         const response =
           await apiClient.get(
@@ -1015,15 +1028,23 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
             `${business.label}: Ownership update in progress.`,
         }));
       } catch (err) {
+        const businessError =
+          err?.response?.data?.detail
+          ||
+          err?.message
+          ||
+          "Business status unavailable.";
+
+        setRealmLifeBusinessError(
+          String(businessError)
+        );
+
         setHud((h) => ({
           ...h,
-          msg:
-            err?.response?.data?.detail
-            ||
-            err?.message
-            ||
-            "Business status unavailable.",
+          msg: businessError,
         }));
+      } finally {
+        setRealmLifeBusinessBusy(false);
       }
     };
 
@@ -1063,6 +1084,9 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       setSelected(null);
 
       markRealmLifeActive();
+
+      setRealmLifeBusinessBusy(true);
+      setRealmLifeBusinessError("");
 
       const destroyBusiness =
         async () => {
@@ -1117,26 +1141,35 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               err?.response?.data
                 ?.detail;
 
+            const businessError =
+              (
+                typeof detail ===
+                "string"
+              )
+                ? detail
+                : (
+                    detail?.message
+                    ||
+                    err?.message
+                    ||
+                    "Business release failed."
+                  );
+
+            setRealmLifeBusinessError(
+              String(businessError)
+            );
+
             setHud((h) => ({
               ...h,
-              msg:
-                (
-                  typeof detail ===
-                  "string"
-                )
-                  ? detail
-                  : (
-                      detail?.message
-                      ||
-                      err?.message
-                      ||
-                      "Business release failed."
-                    ),
+              msg: businessError,
             }));
           }
         };
 
-      destroyBusiness();
+      destroyBusiness()
+        .finally(() =>
+          setRealmLifeBusinessBusy(false)
+        );
 
       return;
     }
@@ -1166,6 +1199,9 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       setSelected(null);
 
       markRealmLifeActive();
+
+      setRealmLifeBusinessBusy(true);
+      setRealmLifeBusinessError("");
 
       const claimBusiness =
         async () => {
@@ -1224,26 +1260,35 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
               err?.response?.data
                 ?.detail;
 
+            const businessError =
+              (
+                typeof detail ===
+                "string"
+              )
+                ? detail
+                : (
+                    detail?.message
+                    ||
+                    err?.message
+                    ||
+                    "Business claim failed."
+                  );
+
+            setRealmLifeBusinessError(
+              String(businessError)
+            );
+
             setHud((h) => ({
               ...h,
-              msg:
-                (
-                  typeof detail ===
-                  "string"
-                )
-                  ? detail
-                  : (
-                      detail?.message
-                      ||
-                      err?.message
-                      ||
-                      "Business claim failed."
-                    ),
+              msg: businessError,
             }));
           }
         };
 
-      claimBusiness();
+      claimBusiness()
+        .finally(() =>
+          setRealmLifeBusinessBusy(false)
+        );
 
       return;
     }
@@ -2855,12 +2900,17 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
     registerObject({
       id: "computer",
-      label: "Computer",
+      label: "Creator Console",
       x: 0.2,
       z: -4.5,
       size: [1.5, 1.25, 0.75],
       color: 0x375d6c,
-      actions: [{ id: "computer", label: "Use Computer" }],
+      actions: [
+        {
+          id: "computer",
+          label: "Create / Work on Projects",
+        },
+      ],
       approach: [0, 1.2],
     });
 
@@ -2881,6 +2931,170 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
       rug.position.set(HOME_X + 4.6, 0.02, HOME_Z + 1.6);
       scene.add(rug);
       groundDecorMeshes.push(rug);
+
+      // ------------------------------------------------------
+      // GENESIS CITY V1 — CREATOR HOME / SOCIAL HANGOUT
+      //
+      // Lightweight decorative identity pass. These pieces are
+      // intentionally non-colliding so the existing furniture,
+      // navigation and player-created layouts remain authoritative.
+      // ------------------------------------------------------
+
+      const creatorPanelMaterial =
+        new THREE.MeshStandardMaterial({
+          color: 0x081828,
+          emissive: 0x0a7ea0,
+          emissiveIntensity: 0.55,
+          roughness: 0.34,
+          metalness: 0.28,
+        });
+
+      const creatorPanel =
+        new THREE.Mesh(
+          new THREE.BoxGeometry(
+            4.4,
+            1.65,
+            0.09
+          ),
+          creatorPanelMaterial
+        );
+
+      creatorPanel.position.set(
+        HOME_X + 4.5,
+        1.55,
+        HOME_Z - 6.55
+      );
+
+      scene.add(
+        creatorPanel
+      );
+
+      groundDecorMeshes.push(
+        creatorPanel
+      );
+
+
+      const creatorScreenMaterial =
+        new THREE.MeshStandardMaterial({
+          color: 0x08111d,
+          emissive: 0x2ee6ff,
+          emissiveIntensity: 1.15,
+          roughness: 0.24,
+          metalness: 0.18,
+        });
+
+      const creatorScreen =
+        new THREE.Mesh(
+          new THREE.PlaneGeometry(
+            3.55,
+            1.05
+          ),
+          creatorScreenMaterial
+        );
+
+      creatorScreen.position.set(
+        HOME_X + 4.5,
+        1.57,
+        HOME_Z - 6.49
+      );
+
+      scene.add(
+        creatorScreen
+      );
+
+      groundDecorMeshes.push(
+        creatorScreen
+      );
+
+
+      const socialGlowMaterial =
+        new THREE.MeshStandardMaterial({
+          color: 0x28113b,
+          emissive: 0xc53cff,
+          emissiveIntensity: 1.1,
+          roughness: 0.32,
+        });
+
+
+      // Thin neon lounge accents — visual only.
+      for (
+        const [x, z, width]
+        of [
+          [4.5, -6.42, 4.8],
+          [4.5, 5.95, 4.8],
+        ]
+      ) {
+        const socialGlow =
+          new THREE.Mesh(
+            new THREE.BoxGeometry(
+              width,
+              0.055,
+              0.07
+            ),
+            socialGlowMaterial
+          );
+
+        socialGlow.position.set(
+          HOME_X + x,
+          2.28,
+          HOME_Z + z
+        );
+
+        scene.add(
+          socialGlow
+        );
+
+        groundDecorMeshes.push(
+          socialGlow
+        );
+      }
+
+
+      const loungeLight =
+        new THREE.PointLight(
+          0xc75cff,
+          0.55,
+          8,
+          2
+        );
+
+      loungeLight.position.set(
+        HOME_X + 4.5,
+        2.3,
+        HOME_Z + 1.4
+      );
+
+      scene.add(
+        loungeLight
+      );
+
+      groundDecorMeshes.push(
+        loungeLight
+      );
+
+
+      const creatorLight =
+        new THREE.PointLight(
+          0x2ee6ff,
+          0.5,
+          7,
+          2
+        );
+
+      creatorLight.position.set(
+        HOME_X + 1.0,
+        2.25,
+        HOME_Z - 4.4
+      );
+
+      scene.add(
+        creatorLight
+      );
+
+      groundDecorMeshes.push(
+        creatorLight
+      );
+
 
       const potM = new THREE.MeshStandardMaterial({
         color: 0xa5593c,
@@ -6103,8 +6317,8 @@ realmLifePresenceKickoff =
           ...h,
           msg:
             lv === "ground"
-              ? "🏠 GROUND level."
-              : `🏠 ${LEVEL_LABELS[lv]} — finished flex space. Use 🛠 EDIT to furnish it.`,
+              ? "🏠 CREATOR HOME · Social Lounge — use 🛠 EDIT to personalize your hangout."
+              : `🏠 ${LEVEL_LABELS[lv]} · Creator Flex Space — build a studio, lounge, gallery, game room or social space.`,
         }));
         markRealmLifeActive();
         scheduleSave();
@@ -8125,6 +8339,36 @@ realmLifePresenceKickoff =
                   : "OWNED"}
             </div>
 
+            {realmLifeBusinessBusy && (
+              <div
+                className="mt-2 rounded-lg px-2.5 py-2 text-[10px] font-black tracking-wider"
+                style={{
+                  color: "#2ee6ff",
+                  background:
+                    "rgba(46,230,255,.08)",
+                  border:
+                    "1px solid rgba(46,230,255,.18)",
+                }}
+              >
+                SYNCING BUSINESS STATUS...
+              </div>
+            )}
+
+            {realmLifeBusinessError && (
+              <div
+                className="mt-2 rounded-lg px-2.5 py-2 text-[10px] font-bold"
+                style={{
+                  color: "#ff9a9a",
+                  background:
+                    "rgba(255,70,70,.08)",
+                  border:
+                    "1px solid rgba(255,70,70,.22)",
+                }}
+              >
+                {realmLifeBusinessError}
+              </div>
+            )}
+
             {realmLifeBusinessCard.status ===
               "available" && (
               <div className="mt-2 text-sm font-bold">
@@ -8141,6 +8385,7 @@ realmLifePresenceKickoff =
               "available" && (
               <button
                 type="button"
+                disabled={realmLifeBusinessBusy}
                 onClick={() =>
                   queueAction(
                     "business:claim",
@@ -8159,24 +8404,100 @@ realmLifePresenceKickoff =
                   border:
                     "1px solid rgba(46,230,255,.38)",
                   color: "#fff",
+                  opacity:
+                    realmLifeBusinessBusy
+                      ? 0.55
+                      : 1,
+                  cursor:
+                    realmLifeBusinessBusy
+                      ? "wait"
+                      : "pointer",
                 }}
               >
-                CLAIM BUSINESS — 🔥
-                {Number(
-                  realmLifeBusinessCard.unlockFire
-                  || 10000
-                ).toLocaleString()}
+                {realmLifeBusinessBusy
+                  ? "WORKING..."
+                  : (
+                    <>
+                      CLAIM BUSINESS — 🔥
+                      {Number(
+                        realmLifeBusinessCard.unlockFire
+                        || 10000
+                      ).toLocaleString()}
+                    </>
+                  )}
               </button>
             )}
 
             {realmLifeBusinessCard.isMine && (
               <>
-                <div className="mt-2 text-sm font-bold">
-                  +10🔥 per qualified real-life minute
+                <div
+                  className="mt-3 rounded-xl p-3"
+                  style={{
+                    background:
+                      "rgba(197,140,255,.07)",
+                    border:
+                      "1px solid rgba(197,140,255,.18)",
+                  }}
+                >
+                  <div
+                    className="text-[10px] font-black tracking-[0.16em] uppercase"
+                    style={{
+                      color: "#c58cff",
+                    }}
+                  >
+                    Business Management
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between text-[11px]">
+                    <span className="opacity-65">
+                      Owner Control
+                    </span>
+                    <span
+                      className="font-black"
+                      style={{
+                        color: "#67f7b1",
+                      }}
+                    >
+                      ACTIVE
+                    </span>
+                  </div>
+
+                  <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                    <span className="opacity-65">
+                      Public Access
+                    </span>
+                    <span
+                      className="font-black"
+                      style={{
+                        color: "#67f7b1",
+                      }}
+                    >
+                      OPEN
+                    </span>
+                  </div>
+
+                  <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                    <span className="opacity-65">
+                      Owner Earning
+                    </span>
+                    <span className="font-black">
+                      +10🔥 / MIN
+                    </span>
+                  </div>
+
+                  <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                    <span className="opacity-65">
+                      Ownership
+                    </span>
+                    <span className="font-black">
+                      PERSISTENT
+                    </span>
+                  </div>
                 </div>
 
                 <button
                   type="button"
+                  disabled={realmLifeBusinessBusy}
                   onClick={() =>
                     queueAction(
                       "business:destroy",
@@ -8195,9 +8516,19 @@ realmLifePresenceKickoff =
                     border:
                       "1px solid rgba(197,140,255,.32)",
                     color: "#fff",
+                    opacity:
+                      realmLifeBusinessBusy
+                        ? 0.55
+                        : 1,
+                    cursor:
+                      realmLifeBusinessBusy
+                        ? "wait"
+                        : "pointer",
                   }}
                 >
-                  RELEASE BUSINESS
+                  {realmLifeBusinessBusy
+                    ? "WORKING..."
+                    : "RELEASE BUSINESS"}
                 </button>
 
                 <div
@@ -8230,6 +8561,32 @@ realmLifePresenceKickoff =
                 </>
               )}
           </div>
+
+          <button
+            type="button"
+            disabled={realmLifeBusinessBusy}
+            onClick={() =>
+              viewRealmLifeBusiness(
+                realmLifeBusinessCard.id
+              )
+            }
+            className="w-full mt-3 px-3 py-2 rounded-xl text-[10px] font-black tracking-wider"
+            style={{
+              background:
+                "rgba(255,255,255,.045)",
+              border:
+                "1px solid rgba(255,255,255,.11)",
+              color: "#fff",
+              opacity:
+                realmLifeBusinessBusy
+                  ? 0.5
+                  : 0.8,
+            }}
+          >
+            {realmLifeBusinessBusy
+              ? "REFRESHING..."
+              : "↻ REFRESH BUSINESS STATUS"}
+          </button>
 
           <div
             className="mt-3 text-[10px] opacity-60"

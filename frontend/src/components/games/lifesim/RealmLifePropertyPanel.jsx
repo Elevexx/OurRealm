@@ -126,7 +126,13 @@ export default function RealmLifePropertyPanel({
             <div
               className="text-lg font-black"
             >
-              🏠 Property & Household
+              🏠 Creator Home
+            </div>
+
+            <div
+              className="text-[10px] mt-0.5 opacity-65 font-bold"
+            >
+              SOCIAL HANGOUT · CREATOR SPACE · YOUR REALM
             </div>
           </div>
 
@@ -165,15 +171,51 @@ export default function RealmLifePropertyPanel({
             <div
               className="text-sm font-black"
             >
-              🔒 Private Property
+              🏡 Your Creator Home
             </div>
 
             <div
               className="mt-1 text-xs opacity-75"
             >
-              Your house and yard are private by default.
-              Household members have permanent access.
-              Approved guests keep temporary access until they leave.
+              Your home is your customizable creator space,
+              private lounge and social hangout.
+              It stays private by default.
+              Household members have permanent access,
+              and approved guests keep temporary access until they leave.
+            </div>
+
+            <div
+              className="grid grid-cols-3 gap-2 mt-3"
+            >
+              {[
+                ["🎨", "CREATE"],
+                ["🛋", "HANG OUT"],
+                ["🛠", "CUSTOMIZE"],
+              ].map(([icon, label]) => (
+                <div
+                  key={label}
+                  className="rounded-lg px-2 py-2 text-center"
+                  style={{
+                    background:
+                      "rgba(197,140,255,.07)",
+                    border:
+                      "1px solid rgba(197,140,255,.16)",
+                  }}
+                >
+                  <div className="text-base">
+                    {icon}
+                  </div>
+
+                  <div
+                    className="text-[9px] font-black tracking-wider mt-0.5"
+                    style={{
+                      color: "#d5b3ff",
+                    }}
+                  >
+                    {label}
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div
@@ -221,8 +263,12 @@ export default function RealmLifePropertyPanel({
             data-testid="realmlife-house-levels-section"
             className="mb-4"
           >
-            <div className="text-xs font-black text-cyan-300 mb-2">
-              HOUSE LEVELS
+            <div className="text-xs font-black text-cyan-300 mb-1">
+              CREATOR HOME LEVELS
+            </div>
+
+            <div className="text-[10px] opacity-60 mb-2">
+              Expand upward or downward, then use 🛠 EDIT to turn each level into your own studio, lounge, gallery, game room or hangout.
             </div>
 
             {(() => {
