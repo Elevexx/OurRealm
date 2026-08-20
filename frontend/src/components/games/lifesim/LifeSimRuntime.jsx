@@ -324,6 +324,7 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
   const mountRef = useRef(null);
 
   const simRef = useRef(normalizeSave(progress?.saved_state));
+
   const venueAudioRef = useRef(null);
 
   // ==========================================================

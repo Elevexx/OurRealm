@@ -739,8 +739,27 @@ export default function RealmLifeDJMixer({
     };
 
 
-    return () => {
+    // IMPORTANT:
+    // Closing the DJ Studio is UI-only.
+    //
+    // DO NOT pause decks, clear replay timers or destroy the
+    // WebAudio graph when `open` becomes false.
+    //
+    // Playback continues throughout RealmLife using the exact
+    // mixer settings already selected.
 
+  }, [open]);
+
+
+  // ==========================================================
+  // REALMLIFE DJ TRUE UNMOUNT CLEANUP
+  //
+  // Closing the mixer panel does NOT run this.
+  // Leaving/unmounting RealmLife does.
+  // ==========================================================
+
+  useEffect(() => {
+    return () => {
       replayTimersRef.current
         .forEach(
           (timer) =>
@@ -749,30 +768,40 @@ export default function RealmLifeDJMixer({
             )
         );
 
-
       replayTimersRef.current =
         [];
 
+      try {
+        audioARef.current
+          ?.pause();
+      } catch (_) {}
 
-      // React Strict Mode may immediately run this effect again.
-      // Pause playback, but preserve the AudioContext and the
-      // MediaElementSourceNode bindings.
-      //
-      // createMediaElementSource() CANNOT bind these same
-      // <audio> elements again later.
-      audioAElement.pause();
-      audioBElement.pause();
+      try {
+        audioBRef.current
+          ?.pause();
+      } catch (_) {}
 
+      const ctx =
+        audioContextRef.current;
 
-      // Intentionally DO NOT:
-      //   ctx.close()
-      //   nodesRef.current = null
-      //
-      // The graph remains reusable when the DJ popup reopens.
+      if (
+        ctx
+        &&
+        ctx.state !==
+          "closed"
+      ) {
+        try {
+          ctx.close();
+        } catch (_) {}
+      }
 
+      nodesRef.current =
+        null;
+
+      audioContextRef.current =
+        null;
     };
-
-  }, [open]);
+  }, []);
 
 
   // ==========================================================
@@ -2118,8 +2147,8 @@ export default function RealmLifeDJMixer({
             <button
               type="button"
               onClick={() => {
-                clearReplay();
-
+                // Hide the control surface only.
+                // Active decks / saved mix replay continue.
                 setOpen(
                   false
                 );

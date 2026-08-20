@@ -36,6 +36,20 @@ STATIC_PORTALS = {
         },
     },
 
+    "jungle-festival": {
+        "id": "jungle-festival",
+        "label": "Jungle Festival Portal",
+        "kind": "public",
+        "locked": False,
+        "sector": "jungle-festival",
+        "spawn": {
+            "x": -32.0,
+            "y": 0.0,
+            "z": 164.0,
+            "floor": "WORLD",
+        },
+    },
+
     "founder-bunker": {
         "id": "founder-bunker",
         "label": "Founder Private Portal",

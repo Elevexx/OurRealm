@@ -1083,6 +1083,12 @@ export function buildRealmLifePortalWorld(
           label:
             "Downtown Riverwalk",
         },
+        {
+          id:
+            "portal:jungle-festival",
+          label:
+            "Jungle Festival",
+        },
       ],
     });
 
@@ -1111,12 +1117,63 @@ export function buildRealmLifePortalWorld(
           label:
             "Community Central",
         },
+        {
+          id:
+            "portal:jungle-festival",
+          label:
+            "Jungle Festival",
+        },
       ],
     });
 
   root.add(
     downtown
   );
+
+  // ----------------------------------------------------------
+  // JUNGLE FESTIVAL PORTAL
+  //
+  // Located in a dedicated rainforest clearing outside all
+  // three fenced stage lawns.
+  // ----------------------------------------------------------
+
+  const jungle =
+    portal({
+      id:
+        "jungle-festival",
+
+      label:
+        "JUNGLE FESTIVAL PORTAL",
+
+      x:
+        -32,
+
+      z:
+        160,
+
+      color:
+        0x10e670,
+
+      fallbackActions: [
+        {
+          id:
+            "portal:community-central",
+          label:
+            "Community Central",
+        },
+        {
+          id:
+            "portal:downtown-riverwalk",
+          label:
+            "Downtown Riverwalk",
+        },
+      ],
+    });
+
+  root.add(
+    jungle
+  );
+
 
   // ----------------------------------------------------------
   // HIGHSPEED TRAIN STATION — CONSTRUCTION FOUNDATION
@@ -1211,6 +1268,7 @@ export function buildRealmLifePortalWorld(
     interactives: [
       community,
       downtown,
+      jungle,
     ],
   };
 }
@@ -2386,6 +2444,12 @@ export function buildRealmLifeFounderEstate(
             "portal:downtown-riverwalk",
           label:
             "Downtown Riverwalk",
+        },
+        {
+          id:
+            "portal:jungle-festival",
+          label:
+            "Jungle Festival",
         },
       ],
     });

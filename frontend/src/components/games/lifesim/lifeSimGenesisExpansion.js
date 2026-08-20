@@ -1,6 +1,94 @@
 import * as THREE from "three";
 
 
+const realmLifeFestivalStageAudioRoots =
+  new Map();
+
+
+/*
+ * Resolve an avatar's ABSOLUTE WORLD POSITION against the
+ * ACTUAL rendered festival stage roots.
+ *
+ * Stage coordinates such as -60/0/+60 and z=200 are LOCAL
+ * Genesis City coordinates, not guaranteed world coordinates.
+ *
+ * worldToLocal() makes this remain correct even when the
+ * entire city/festival is translated or rotated.
+ */
+export function getRealmLifeFestivalStageAudioZoneAt(
+  worldX,
+  worldZ
+) {
+  const point =
+    new THREE.Vector3(
+      Number(worldX),
+      0,
+      Number(worldZ)
+    );
+
+
+  for (
+    const [
+      id,
+      stageRoot,
+    ]
+    of realmLifeFestivalStageAudioRoots
+  ) {
+    if (
+      !stageRoot
+      ||
+      !stageRoot.parent
+    ) {
+      continue;
+    }
+
+
+    stageRoot.updateWorldMatrix(
+      true,
+      false
+    );
+
+
+    const local =
+      point.clone();
+
+    stageRoot.worldToLocal(
+      local
+    );
+
+
+    // Current fenced lawn:
+    // 42 wide x 44 deep.
+    //
+    // Slight inset keeps activation inside the physical fence.
+    if (
+      Math.abs(
+        local.x
+      ) <= 20.8
+      &&
+      Math.abs(
+        local.z
+      ) <= 21.8
+    ) {
+      return {
+        id,
+        kind:
+          "stage",
+
+        localX:
+          local.x,
+
+        localZ:
+          local.z,
+      };
+    }
+  }
+
+
+  return null;
+}
+
+
 function mat(color, extra = {}) {
   return new THREE.MeshStandardMaterial({
     color,
@@ -317,6 +405,135 @@ function addFence(
 }
 
 
+function addFestivalFenceColliders(
+  colliders,
+  centerX,
+  centerZ,
+  width,
+  depth
+) {
+  if (
+    !Array.isArray(
+      colliders
+    )
+  ) {
+    return;
+  }
+
+
+  const entranceWidth =
+    8;
+
+  const sideWidth =
+    (
+      width -
+      entranceWidth
+    ) / 2;
+
+
+  // Collision is deliberately slightly thicker than the
+  // decorative 0.15 fence mesh so the avatar cannot clip
+  // through it at run speed.
+  const thickness =
+    0.42;
+
+  const pad =
+    0.08;
+
+
+  const add =
+    (
+      x,
+      z,
+      w,
+      d
+    ) => {
+      colliders.push({
+        x,
+        z,
+
+        hw:
+          w / 2 +
+          pad,
+
+        hd:
+          d / 2 +
+          pad,
+
+        festivalFence:
+          true,
+      });
+    };
+
+
+  // BACK
+  add(
+    centerX,
+    centerZ +
+      depth / 2,
+
+    width,
+    thickness
+  );
+
+
+  // LEFT SIDE
+  add(
+    centerX -
+      width / 2,
+
+    centerZ,
+
+    thickness,
+    depth
+  );
+
+
+  // RIGHT SIDE
+  add(
+    centerX +
+      width / 2,
+
+    centerZ,
+
+    thickness,
+    depth
+  );
+
+
+  // FRONT LEFT
+  add(
+    centerX -
+      (
+        entranceWidth / 2 +
+        sideWidth / 2
+      ),
+
+    centerZ -
+      depth / 2,
+
+    sideWidth,
+    thickness
+  );
+
+
+  // FRONT RIGHT
+  add(
+    centerX +
+      (
+        entranceWidth / 2 +
+        sideWidth / 2
+      ),
+
+    centerZ -
+      depth / 2,
+
+    sideWidth,
+    thickness
+  );
+}
+
+
 function addFestivalJungle(
   festival
 ) {
@@ -438,6 +655,15 @@ function addFestivalJungle(
 
 
   const amenityClearings = [
+    // Jungle Festival Portal clearing.
+    // Keeps rainforest trunks away from the portal/spawn,
+    // without touching any of the three fenced stage lawns.
+    {
+      x: -32,
+      z: 160,
+      w: 18,
+      d: 18,
+    },
     {
       x: -116,
       z: 170,
@@ -2920,24 +3146,38 @@ function addFestivalStage(
     },
   ];
 
-  root.userData.genesisInteractiveApproach =
+  root.userData.genesisInteractiveApproachLocal =
     [
       0,
-      -22,
+      -19.5,
     ];
 
 
   festival.add(root);
 
 
+  // Persistent audio must track the REAL rendered Three.js
+  // stage rather than assuming the stage's local coordinates
+  // are also global RealmLife coordinates.
+  realmLifeFestivalStageAudioRoots.set(
+    id,
+    root
+  );
+
+
   const lawnW = 42;
   const lawnD = 44;
 
 
-  // Giant lawn
+  // Stage lawn.
+  //
+  // IMPORTANT:
+  // This stays centered on the stage root so the visible yard,
+  // click/tap interaction area and audio zone all describe the
+  // same physical fenced lawn.
   plane(root, {
-    x: 240,
-    z: 340,
+    x: 0,
+    z: 0,
     w: lawnW,
     d: lawnD,
     color: 0x214f2f,
@@ -2981,6 +3221,23 @@ function addFestivalStage(
     lawnW,
     lawnD,
     color
+  );
+
+
+  // REAL PHYSICAL FENCE:
+  // blocks walking, running, joystick, click-to-walk and
+  // jumping-through because RealmLife collision is X/Z based.
+  //
+  // Only the visible 8-unit front entrance remains open.
+  addFestivalFenceColliders(
+    festival.userData
+      .realmLifeColliders,
+
+    x,
+    z,
+
+    lawnW,
+    lawnD
   );
 
 
@@ -3114,7 +3371,11 @@ function addFestivalStage(
  */
 export function installRealmLifeGenesisExpansion({
   root,
+  colliders = [],
 }) {
+  realmLifeFestivalStageAudioRoots.clear();
+
+
   if (!root) {
     return {
       root: null,
@@ -3128,6 +3389,11 @@ export function installRealmLifeGenesisExpansion({
 
   festival.name =
     "RealmLifeJungleFestivalVisualTest";
+
+  // Same authoritative collider array used by keyboard,
+  // joystick and click-to-walk movement in LifeSimRuntime.
+  festival.userData.realmLifeColliders =
+    colliders;
 
   root.add(
     festival

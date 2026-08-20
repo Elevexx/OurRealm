@@ -1,5 +1,9 @@
 import apiClient from "@/api/client";
 
+import {
+  getRealmLifeFestivalStageAudioZoneAt,
+} from "./lifeSimGenesisExpansion";
+
 
 const AUDIO_ZONES = [
   {
@@ -16,10 +20,10 @@ const AUDIO_ZONES = [
       200,
 
     halfW:
-      20.6,
+      20.8,
 
     halfD:
-      21.6,
+      21.8,
   },
 
   {
@@ -36,10 +40,10 @@ const AUDIO_ZONES = [
       200,
 
     halfW:
-      20.6,
+      20.8,
 
     halfD:
-      21.6,
+      21.8,
   },
 
   {
@@ -56,10 +60,10 @@ const AUDIO_ZONES = [
       200,
 
     halfW:
-      20.6,
+      20.8,
 
     halfD:
-      21.6,
+      21.8,
   },
 
 
@@ -111,28 +115,19 @@ function zoneAtPosition(
   x,
   z
 ) {
-  const stages =
-    AUDIO_ZONES.filter(
-      (zone) =>
-        zone.kind ===
-        "stage"
+  // Festival stages are children of the Genesis City scene.
+  // Their -60/0/+60, z=200 positions are LOCAL coordinates.
+  //
+  // Resolve against the actual rendered stage objects so
+  // world translation/rotation can never break stage audio.
+  const actualStage =
+    getRealmLifeFestivalStageAudioZoneAt(
+      x,
+      z
     );
 
-  for (
-    const zone
-    of stages
-  ) {
-    if (
-      Math.abs(
-        x - zone.x
-      ) <= zone.halfW
-      &&
-      Math.abs(
-        z - zone.z
-      ) <= zone.halfD
-    ) {
-      return zone;
-    }
+  if (actualStage) {
+    return actualStage;
   }
 
 
@@ -305,6 +300,12 @@ export function createFestivalStageAudio({
   let policyBusy =
     false;
 
+  let lastDiagnosticZone =
+    "__initial__";
+
+  let lastDiagnosticAt =
+    0;
+
 
   const suppressDefault =
     (
@@ -382,14 +383,30 @@ export function createFestivalStageAudio({
 
         autoplayBlocked =
           false;
+
+        console.info(
+          "[RealmLife Festival Audio] PLAYING",
+          {
+            venue:
+              activeVenueId,
+
+            currentTime:
+              audio.currentTime,
+
+            volume:
+              audio.volume,
+
+            muted:
+              audio.muted,
+          }
+        );
       } catch (err) {
         autoplayBlocked =
           true;
 
-        console.debug(
-          "[RealmLife Music] waiting for browser audio unlock",
-          err?.message
-          || err
+        console.error(
+          "[RealmLife Festival Audio] PLAY BLOCKED",
+          err
         );
       }
     };
@@ -454,6 +471,15 @@ export function createFestivalStageAudio({
         ++requestVersion;
 
       try {
+        console.info(
+          "[RealmLife Festival Audio] LOAD",
+          {
+            venueId,
+            soundId,
+            offset,
+          }
+        );
+
         const response =
           await apiClient.get(
             `/games/${gameId}/realmlife/stages/${venueId}/audio/${soundId}`,
@@ -664,6 +690,57 @@ export function createFestivalStageAudio({
         );
 
 
+      // TEMP HIGH-SIGNAL FESTIVAL AUDIO DIAGNOSTIC.
+      // This lets us distinguish:
+      //   position/zone problem
+      // from
+      //   backend/audio playback problem.
+      const diagnosticNow =
+        Date.now();
+
+      if (
+        zone?.id !==
+          lastDiagnosticZone
+        ||
+        (
+          zone?.kind === "stage"
+          &&
+          diagnosticNow -
+            lastDiagnosticAt >
+            3000
+        )
+      ) {
+        lastDiagnosticZone =
+          zone?.id || null;
+
+        lastDiagnosticAt =
+          diagnosticNow;
+
+        console.info(
+          "[RealmLife Festival Audio] POSITION",
+          {
+            x:
+              Number(
+                x.toFixed(2)
+              ),
+
+            z:
+              Number(
+                z.toFixed(2)
+              ),
+
+            zone:
+              zone?.id
+              || "OUTSIDE",
+
+            kind:
+              zone?.kind
+              || null,
+          }
+        );
+      }
+
+
       // Outside custom Sound zones.
       // The persistent SERVER timeline continues.
       if (!zone) {
@@ -699,6 +776,35 @@ export function createFestivalStageAudio({
 
         const track =
           state.current_track;
+
+
+        if (
+          zone.kind ===
+            "stage"
+        ) {
+          console.info(
+            "[RealmLife Festival Audio] STATE",
+            {
+              stage:
+                zone.id,
+
+              status:
+                state.status,
+
+              trackId:
+                track?.id
+                || null,
+
+              title:
+                track?.title
+                || null,
+
+              offset:
+                state
+                  .current_offset_seconds,
+            }
+          );
+        }
 
 
         if (
