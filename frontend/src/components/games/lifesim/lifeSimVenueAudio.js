@@ -26,6 +26,10 @@ export function createVenueAudio(venueDefs) {
     gainNode: null,
     nextBeat: 0,
     step: 0,
+
+    // Persistent Sound/playlist broadcast can temporarily
+    // suppress this venue's procedural DEFAULT soundtrack.
+    suppressed: false,
   }));
 
   const kick = (out, t, punch) => {
@@ -132,14 +136,57 @@ export function createVenueAudio(venueDefs) {
       if (!ctx || disposed) return;
       venues.forEach((v) => {
         const d = Math.hypot(px - v.x, pz - v.z);
-        const target =
+        const spatialTarget =
           d <= FADE_NEAR
             ? 1
             : d >= FADE_FAR
             ? 0
             : 1 - (d - FADE_NEAR) / (FADE_FAR - FADE_NEAR);
-        v.gainNode.gain.setTargetAtTime(target * target, ctx.currentTime, 0.4);
+
+        const target =
+          v.suppressed
+            ? 0
+            : spatialTarget;
+
+        v.gainNode.gain.setTargetAtTime(
+          target * target,
+          ctx.currentTime,
+          0.4
+        );
       });
+    },
+
+    setSuppressed(
+      venueId,
+      suppressed
+    ) {
+      const venue =
+        venues.find(
+          (item) =>
+            item.id ===
+            venueId
+        );
+
+      if (!venue)
+        return;
+
+      venue.suppressed =
+        Boolean(
+          suppressed
+        );
+
+      if (
+        venue.gainNode
+        &&
+        ctx
+      ) {
+        venue.gainNode.gain
+          .setTargetAtTime(
+            0,
+            ctx.currentTime,
+            0.18
+          );
+      }
     },
 
     dispose() {

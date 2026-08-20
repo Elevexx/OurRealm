@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { installRealmLifeAAAUpgrade } from "./lifeSimAAAUpgrade";
+import { installRealmLifeGenesisExpansion } from "./lifeSimGenesisExpansion";
 
 
 function material(color, extra = {}) {
@@ -3120,6 +3121,30 @@ export function buildCityDistrict(
       addNeonStrip(bench, { y: 0.06, w: 1.5, h: 0.05, d: 0.6, color: 0x2ee6ff });
     });
   }
+
+  // ========================================================
+  // GENESIS CITY NORTH EXPANSION
+  // Additive only — current city + homes remain authoritative.
+  // ========================================================
+
+  const genesisExpansion =
+    installRealmLifeGenesisExpansion({
+      root: city,
+      colliders,
+    });
+
+  if (
+    Array.isArray(
+      genesisExpansion?.pois
+    )
+  ) {
+    registry.pois.push(
+      ...genesisExpansion.pois
+    );
+  }
+
+  city.userData.realmLifeGenesisExpansion =
+    genesisExpansion;
 
   installRealmLifeAAAUpgrade(city);
 

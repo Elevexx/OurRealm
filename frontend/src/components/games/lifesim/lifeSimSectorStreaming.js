@@ -11,6 +11,13 @@ export function createSectorStreaming() {
   // home/player frame has rendered successfully.
   let suspended = false;
 
+  // Full-map RealmLife WORLD view.
+  let overviewMode = false;
+
+  // Founder WORLD map performance throttle.
+  let overviewRevealIndex = 0;
+  let lastOverviewReveal = 0;
+
   // After startup unlock, force even overlapping/inside sectors
   // to reveal gradually instead of all compiling on one frame.
   let startupStaggerUntil = 0;
@@ -44,6 +51,44 @@ export function createSectorStreaming() {
 
   function update(pos, drawDistance, now = performance.now()) {
     if (suspended) return;
+
+    if (overviewMode) {
+      // Reveal distant districts gradually so opening WORLD
+      // never compiles the entire RealmLife scene on one frame.
+      if (
+        sectors.length &&
+        now - lastOverviewReveal >= 260
+      ) {
+        for (
+          let tries = 0;
+          tries < sectors.length;
+          tries += 1
+        ) {
+          const index =
+            overviewRevealIndex %
+            sectors.length;
+
+          overviewRevealIndex =
+            (
+              overviewRevealIndex +
+              1
+            ) %
+            sectors.length;
+
+          const sector =
+            sectors[index];
+
+          if (!sector.visible) {
+            sector.visible = true;
+            sector.object.visible = true;
+            lastOverviewReveal = now;
+            break;
+          }
+        }
+      }
+
+      return;
+    }
 
     const startupStagger =
       now < startupStaggerUntil;
@@ -111,6 +156,70 @@ export function createSectorStreaming() {
     lastReveal = now;
   }
 
+  function setOverviewMode(enabled) {
+    const next =
+      enabled === true;
+
+    // LifeSimRuntime calls this every frame.
+    // Only reset the reveal scheduler when the MODE changes.
+    if (
+      next ===
+      overviewMode
+    ) {
+      return;
+    }
+
+    overviewMode =
+      next;
+
+    if (overviewMode) {
+      overviewRevealIndex = 0;
+      lastOverviewReveal =
+        performance.now();
+    }
+  }
+
+
+  function getBounds() {
+    if (!sectors.length)
+      return null;
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+
+    for (const sector of sectors) {
+      minX = Math.min(
+        minX,
+        sector.minX
+      );
+
+      maxX = Math.max(
+        maxX,
+        sector.maxX
+      );
+
+      minZ = Math.min(
+        minZ,
+        sector.minZ
+      );
+
+      maxZ = Math.max(
+        maxZ,
+        sector.maxZ
+      );
+    }
+
+    return {
+      minX,
+      maxX,
+      minZ,
+      maxZ,
+    };
+  }
+
+
   function stats() {
     return sectors.map((s) => ({
       name: s.name,
@@ -124,5 +233,7 @@ export function createSectorStreaming() {
     stats,
     suspend,
     resume,
+    setOverviewMode,
+    getBounds,
   };
 }

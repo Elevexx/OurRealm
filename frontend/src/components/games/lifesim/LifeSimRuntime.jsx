@@ -17,6 +17,7 @@ import { createRealmLifeGraphics, GRAPHICS_MODES, createAdaptiveDPR } from "./li
 import { createHomeBeacons } from "./lifeSimHomeBeacons";
 import { buildGuestResidence } from "./lifeSimGuestInterior";
 import { createVenueAudio } from "./lifeSimVenueAudio";
+import { createFestivalStageAudio } from "./lifeSimFestivalStageAudio";
 import {
   createBlueprintLayer,
   builtLevelKeys,
@@ -37,6 +38,7 @@ import RealmLifePropertyPanel from "./RealmLifePropertyPanel";
 import { useRealmLifeEnvironment } from "./useRealmLifeEnvironment";
 import RealmLifeFounderAdmin from "./RealmLifeFounderAdmin";
 import RealmLifeDJMixer from "./RealmLifeDJMixer";
+import RealmLifeFestivalStagePanel from "./RealmLifeFestivalStagePanel";
 import { createRealmLifeEnvironment } from "./lifeSimEnvironment";
 import {
   initRealmLifeAAAAssets,
@@ -322,6 +324,64 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
   const mountRef = useRef(null);
 
   const simRef = useRef(normalizeSave(progress?.saved_state));
+  const venueAudioRef = useRef(null);
+
+  // ==========================================================
+  // REALMLIFE FESTIVAL PERSISTENT STAGE AUDIO
+  //
+  // Server owns the timeline.
+  // Browser only plays it while the avatar is inside a
+  // specific fenced stage lawn.
+  // ==========================================================
+
+  useEffect(() => {
+    if (!game?.id) {
+      return undefined;
+    }
+
+    const controller =
+      createFestivalStageAudio({
+        gameId:
+          game.id,
+
+        onDefaultVenueSuppression:
+          (
+            venueId,
+            suppressed
+          ) => {
+            venueAudioRef
+              .current
+              ?.setSuppressed?.(
+                venueId,
+                suppressed
+              );
+          },
+
+        getPlayerPosition:
+          () => ({
+            x:
+              Number(
+                simRef.current
+                  ?.resident?.x
+                || 0
+              ),
+
+            z:
+              Number(
+                simRef.current
+                  ?.resident?.z
+                || 0
+              ),
+          }),
+      });
+
+    return () => {
+      controller.dispose();
+    };
+  }, [
+    game?.id,
+  ]);
+
   const objectMapRef = useRef(new Map());
 
   const instantRealmTravelRef =
@@ -340,6 +400,11 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState(null);
+
+  const [
+    festivalStagePanel,
+    setFestivalStagePanel,
+  ] = useState(null);
 
   const [
     realmLifeBusinessCard,
@@ -642,6 +707,10 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
   const cameraModeRef =
     useRef("world");
 
+  // Remembers whether @stealth entered WORLD from POV or Birds Eye.
+  const founderWorldReturnModeRef =
+    useRef("world");
+
 
   // ----------------------------------------------------------
   // REALMLIFE HOUSE VIEW STATE V5G1B2
@@ -806,20 +875,37 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
   const setRealmLifeCameraMode =
     useCallback(
       (mode) => {
-        const next =
+
+        const requested =
           mode === "first"
             ? "first"
-            : "world";
+            : mode === "overview"
+              ? "overview"
+              : "world";
+
+        // Full WORLD overview is Founder-only.
+        // Normal users can only enter POV or Birds Eye.
+        const next =
+          requested === "overview" &&
+          !realmEnvironment.isFounder
+            ? "world"
+            : requested;
 
         cameraModeRef.current =
           next;
 
-        setCameraMode(next);
+        setCameraMode(
+          next
+        );
 
         markRealmLifeActive();
       },
-      [markRealmLifeActive]
+      [
+        markRealmLifeActive,
+        realmEnvironment.isFounder,
+      ]
     );
+
 
   const goRealmLifeHome =
     useCallback(
@@ -852,15 +938,71 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
 
   const toggleRealmLifeCamera =
     useCallback(() => {
-      setRealmLifeCameraMode(
-        cameraModeRef.current ===
-          "first"
+
+      const current =
+        cameraModeRef.current;
+
+      // WORLD overview never participates in the normal
+      // POV / Birds Eye toggle.
+      const next =
+        current === "first"
           ? "world"
-          : "first"
+          : "first";
+
+      setRealmLifeCameraMode(
+        next
       );
+
     }, [
       setRealmLifeCameraMode,
     ]);
+
+
+  // ----------------------------------------------------------
+  // @STEALTH FOUNDER WORLD MAP
+  //
+  // Separate from normal player camera controls.
+  // ----------------------------------------------------------
+
+  const toggleFounderWorldOverview =
+    useCallback(() => {
+
+      if (
+        !realmEnvironment.isFounder
+      ) {
+        return;
+      }
+
+      const current =
+        cameraModeRef.current;
+
+      if (
+        current === "overview"
+      ) {
+        setRealmLifeCameraMode(
+          founderWorldReturnModeRef.current ===
+            "first"
+            ? "first"
+            : "world"
+        );
+
+        return;
+      }
+
+      founderWorldReturnModeRef.current =
+        current === "first"
+          ? "first"
+          : "world";
+
+      setRealmLifeCameraMode(
+        "overview"
+      );
+
+    }, [
+      realmEnvironment.isFounder,
+      setRealmLifeCameraMode,
+    ]);
+
   const [buildItem, setBuildItemState] = useState(null);
   const [hud, setHud] = useState(() => {
     const s = simRef.current;
@@ -2227,12 +2369,38 @@ export default function LifeSimRuntime({ game, progress, onExit }) {
             obj.userData.buildingLabel
             || buildingId;
 
+          const isRealmLifeMusicVenue =
+            (
+              buildingId ===
+                "night-lounge"
+              ||
+              buildingId ===
+                "pulse-club"
+            );
+
           storefrontSign.userData.actions =
             [
               {
-                id: "business:view",
-                label: "View Business",
+                id:
+                  "business:view",
+
+                label:
+                  "View Business",
               },
+
+              ...(
+                isRealmLifeMusicVenue
+                  ? [
+                      {
+                        id:
+                          "festival:stage-control",
+
+                        label:
+                          "🎵 Music Control",
+                      },
+                    ]
+                  : []
+              ),
             ];
 
           interactive.push(
@@ -5769,6 +5937,13 @@ realmLifePresenceKickoff =
       markRealmLifeActive();
 
       if (
+        cameraModeRef.current ===
+        "overview"
+      ) {
+        return;
+      }
+
+      if (
         cameraModeRef.current !==
         "first"
       ) {
@@ -5920,6 +6095,13 @@ realmLifePresenceKickoff =
     };
 
 
+    // Founder WORLD map zoom.
+    //
+    // 1.00 = full-map framing.
+    // Smaller = zoom toward the resident.
+    // Larger = slight additional overview.
+    let realmWorldZoom = 1.0;
+
     const onWheel = (e) => {
       markRealmLifeActive();
 
@@ -5931,6 +6113,34 @@ realmLifePresenceKickoff =
         return;
       }
 
+      if (
+        cameraModeRef.current ===
+        "overview"
+      ) {
+        // Smooth exponential zoom.
+        //
+        // MIN 0.38:
+        // close enough to inspect the player's current district
+        // without dropping to street-camera distances.
+        //
+        // MAX 1.18:
+        // keeps far clipping / GPU workload reasonable.
+        realmWorldZoom =
+          THREE.MathUtils.clamp(
+            realmWorldZoom *
+              Math.exp(
+                e.deltaY *
+                0.00115
+              ),
+            0.38,
+            1.18
+          );
+
+        e.preventDefault();
+        return;
+      }
+
+      // Existing Birds Eye zoom remains unchanged.
       camDistance =
         THREE.MathUtils.clamp(
           camDistance +
@@ -5941,6 +6151,7 @@ realmLifePresenceKickoff =
 
       e.preventDefault();
     };
+
 
     const onKeyDown = (e) => {
 
@@ -6637,6 +6848,10 @@ realmLifePresenceKickoff =
       { id: "night-lounge", x: 0.5, z: 446, style: "lounge" },
       { id: "pulse-club", x: 33, z: 451, style: "club" },
     ]);
+
+    venueAudioRef.current =
+      venueAudio;
+
     let venueAudioClock = 0;
     const unlockVenueAudio = () => venueAudio.unlock();
     window.addEventListener("pointerdown", unlockVenueAudio);
@@ -6685,6 +6900,10 @@ realmLifePresenceKickoff =
       const firstPersonMovement =
         cameraModeRef.current ===
         "first";
+
+      const worldOverviewActive =
+        cameraModeRef.current ===
+        "overview";
 
       const camForward =
         firstPersonMovement
@@ -6738,7 +6957,11 @@ realmLifePresenceKickoff =
         mz = THREE.MathUtils.clamp(mz + realmJoy.y, -1, 1);
       }
 
-      if ((mx || mz) && !residentInteractionBusy) {
+      if (
+        (mx || mz) &&
+        !residentInteractionBusy &&
+        !worldOverviewActive
+      ) {
         moveTargetRef.current = null;
         pathRef.current = [];
         pendingActionRef.current = null;
@@ -6788,7 +7011,8 @@ realmLifePresenceKickoff =
 
       if (
         moveTargetRef.current &&
-        !residentInteractionBusy
+        !residentInteractionBusy &&
+        !worldOverviewActive
       ) {
         residentMoving = true;
         residentRunning = false;
@@ -6855,6 +7079,11 @@ realmLifePresenceKickoff =
       // ------------------------------------------------------
 
       realmGraphics.frame(dt);
+
+      sectorStreaming.setOverviewMode?.(
+        cameraModeRef.current ===
+          "overview"
+      );
 
       sectorStreaming.update(
         resident.position,
@@ -6955,7 +7184,10 @@ realmLifePresenceKickoff =
         activeCameraMode ===
           "first"
           ? FIRST_PERSON_FOV
-          : WORLD_CAMERA_FOV;
+          : activeCameraMode ===
+              "overview"
+            ? 38
+            : WORLD_CAMERA_FOV;
 
       const nextFov =
         THREE.MathUtils.lerp(
@@ -7041,11 +7273,251 @@ realmLifePresenceKickoff =
 
 
       // ------------------------------------------------------
-      // EXISTING WORLD VIEW
+      // FULL WORLD MAP OVERVIEW
+      // ------------------------------------------------------
+
+      else if (
+        activeCameraMode ===
+        "overview"
+      ) {
+        resident.visible = true;
+
+        const streamed =
+          sectorStreaming
+            .getBounds?.();
+
+        const worldBounds =
+          neighborhood.bounds;
+
+
+        let minX =
+          Number(
+            worldBounds?.minX
+            ?? -200
+          );
+
+        let maxX =
+          Number(
+            worldBounds?.maxX
+            ?? 200
+          );
+
+        let minZ =
+          Number(
+            worldBounds?.minZ
+            ?? -200
+          );
+
+        let maxZ =
+          Number(
+            worldBounds?.maxZ
+            ?? 200
+          );
+
+
+        if (streamed) {
+          minX =
+            Math.min(
+              minX,
+              streamed.minX
+            );
+
+          maxX =
+            Math.max(
+              maxX,
+              streamed.maxX
+            );
+
+          minZ =
+            Math.min(
+              minZ,
+              streamed.minZ
+            );
+
+          maxZ =
+            Math.max(
+              maxZ,
+              streamed.maxZ
+            );
+        }
+
+
+        const mapCenterX =
+          (
+            minX +
+            maxX
+          ) / 2;
+
+        const mapCenterZ =
+          (
+            minZ +
+            maxZ
+          ) / 2;
+
+
+        const spanX =
+          Math.max(
+            120,
+            maxX -
+            minX +
+            80
+          );
+
+        const spanZ =
+          Math.max(
+            120,
+            maxZ -
+            minZ +
+            80
+          );
+
+
+        const halfFov =
+          THREE.MathUtils.degToRad(
+            38 / 2
+          );
+
+        const tanHalf =
+          Math.max(
+            0.15,
+            Math.tan(
+              halfFov
+            )
+          );
+
+
+        const baseHeight =
+          Math.max(
+            (
+              spanZ / 2
+            ) /
+            tanHalf,
+
+            (
+              spanX / 2
+            ) /
+            (
+              tanHalf *
+              Math.max(
+                0.65,
+                camera.aspect || 1
+              )
+            )
+          );
+
+
+        // At full-map zoom, center on the world.
+        //
+        // As @stealth zooms inward, smoothly move the
+        // camera focus toward his exact avatar position.
+        const inwardAmount =
+          THREE.MathUtils.clamp(
+            (
+              1 -
+              realmWorldZoom
+            ) /
+            0.62,
+            0,
+            1
+          );
+
+
+        const focusX =
+          THREE.MathUtils.lerp(
+            mapCenterX,
+            resident.position.x,
+            inwardAmount
+          );
+
+        const focusZ =
+          THREE.MathUtils.lerp(
+            mapCenterZ,
+            resident.position.z,
+            inwardAmount
+          );
+
+
+        const mapHeight =
+          THREE.MathUtils.clamp(
+            baseHeight *
+              realmWorldZoom *
+              1.06,
+            110,
+            1150
+          );
+
+
+        // Enough headroom for the map, but intentionally
+        // bounded so WORLD cannot create absurd clip ranges.
+        const requiredFar =
+          Math.min(
+            3500,
+            mapHeight +
+            1400
+          );
+
+        if (
+          Math.abs(
+            camera.far -
+            requiredFar
+          ) >
+          5
+        ) {
+          camera.far =
+            requiredFar;
+
+          camera
+            .updateProjectionMatrix();
+        }
+
+
+        camera.up.set(
+          0,
+          0,
+          -1
+        );
+
+
+        const desiredMapCamera =
+          new THREE.Vector3(
+            focusX,
+            mapHeight,
+            focusZ + 0.01
+          );
+
+
+        camera.position.lerp(
+          desiredMapCamera,
+          1 -
+            Math.exp(
+              -dt * 5
+            )
+        );
+
+
+        camera.lookAt(
+          new THREE.Vector3(
+            focusX,
+            0,
+            focusZ
+          )
+        );
+      }
+
+
+      // ------------------------------------------------------
+      // BIRDS EYE
+      // Existing elevated RealmLife camera.
       // ------------------------------------------------------
 
       else {
         resident.visible = true;
+
+        camera.up.set(
+          0,
+          1,
+          0
+        );
 
         const focus =
           new THREE.Vector3(
@@ -7263,6 +7735,9 @@ realmLifePresenceKickoff =
       cancelAnimationFrame(raf);
 
       venueAudio.dispose();
+
+      venueAudioRef.current =
+        null;
       window.removeEventListener("pointerdown", unlockVenueAudio);
       window.removeEventListener("keydown", unlockVenueAudio);
 
@@ -7442,6 +7917,17 @@ realmLifePresenceKickoff =
       joyKnobRef.current.style.transform = "translate(0px, 0px)";
     }
   };
+
+  const realmLifeCameraNextLabel =
+    cameraMode === "first"
+      ? "🦅 BIRDS EYE"
+      : "👁 POV";
+
+  const realmLifeCameraNextTitle =
+    cameraMode === "first"
+      ? "Switch to Birds Eye view"
+      : "Enter first-person POV";
+
 
   const drawerBtnStyle = {
     background: "rgba(255,255,255,.07)",
@@ -7650,7 +8136,7 @@ realmLifePresenceKickoff =
               }}
               title="Toggle camera view"
             >
-              {cameraMode === "first" ? "🌐 WORLD" : "👁 POV"}
+              {cameraMode === "first" ? "🦅 BIRDS EYE" : "👁 POV"}
             </button>
           )}
 
@@ -7743,18 +8229,50 @@ realmLifePresenceKickoff =
 
               color: "#fff",
             }}
-            title={
-              cameraMode ===
-                "first"
-                ? "Return to World View"
-                : "Enter First Person POV"
-            }
+            title={realmLifeCameraNextTitle}
           >
-            {cameraMode ===
-              "first"
-              ? "🌐 WORLD"
-              : "👁 POV"}
+            {cameraMode === "first" ? "🦅 BIRDS EYE" : "👁 POV"}
           </button>
+
+          {realmEnvironment.isFounder && (
+            <button
+              type="button"
+              data-testid="realmlife-founder-world-btn"
+              onClick={
+                toggleFounderWorldOverview
+              }
+              className="px-2.5 py-1.5 rounded-lg text-xs font-black"
+              style={{
+                background:
+                  cameraMode ===
+                    "overview"
+                    ? "rgba(46,230,255,.32)"
+                    : "rgba(3,10,20,.72)",
+
+                border:
+                  cameraMode ===
+                    "overview"
+                    ? "1px solid rgba(16,230,112,.68)"
+                    : "1px solid rgba(46,230,255,.38)",
+
+                color:
+                  "#fff",
+
+                boxShadow:
+                  cameraMode ===
+                    "overview"
+                    ? "0 0 14px rgba(16,230,112,.22)"
+                    : "none",
+              }}
+              title="Stealth Founder full RealmLife world overview"
+            >
+              {cameraMode ===
+                    "overview"
+                      ? "↩ RETURN"
+                      : "🌍 FOUNDER WORLD MAP"}
+            </button>
+          )}
+
 
           <button
             type="button"
@@ -8018,10 +8536,41 @@ realmLifePresenceKickoff =
                 className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
                 style={drawerBtnStyle}
               >
-                {cameraMode === "first"
-                  ? "🌐 WORLD VIEW"
-                  : "👁 FIRST PERSON POV"}
+                {cameraMode === "first" ? "🦅 BIRDS EYE" : "👁 POV"}
               </button>
+
+              {realmEnvironment.isFounder && (
+                <button
+                  type="button"
+                  data-testid="realmlife-drawer-founder-world"
+                  onClick={() => {
+                    toggleFounderWorldOverview();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg text-[11px] font-black text-left"
+                  style={{
+                    ...drawerBtnStyle,
+
+                    background:
+                      cameraMode ===
+                        "overview"
+                        ? "rgba(16,230,112,.20)"
+                        : "rgba(46,160,255,.15)",
+
+                    border:
+                      cameraMode ===
+                        "overview"
+                        ? "1px solid rgba(16,230,112,.50)"
+                        : "1px solid rgba(46,160,255,.38)",
+                  }}
+                >
+                  {cameraMode ===
+                    "overview"
+                      ? "↩ RETURN FROM WORLD"
+                      : "🌍 FOUNDER WORLD MAP"}
+                </button>
+              )}
+
 
               <button
                 type="button"
@@ -8221,6 +8770,25 @@ realmLifePresenceKickoff =
               <button
                 key={a.id}
                 onClick={() => {
+                  if (
+                    a.id ===
+                    "festival:stage-control"
+                  ) {
+                    setFestivalStagePanel({
+                      stageId:
+                        selected.id,
+
+                      label:
+                        selected.label,
+                    });
+
+                    setSelected(
+                      null
+                    );
+
+                    return;
+                  }
+
                   if (
                     a.id ===
                     "property_manage"
@@ -8595,6 +9163,37 @@ realmLifePresenceKickoff =
           </div>
         </div>
       )}
+
+      <RealmLifeFestivalStagePanel
+        open={
+          Boolean(
+            festivalStagePanel
+          )
+        }
+        onClose={() =>
+          setFestivalStagePanel(
+            null
+          )
+        }
+        gameId={
+          game.id
+        }
+        stageId={
+          festivalStagePanel
+            ?.stageId
+          || null
+        }
+        label={
+          festivalStagePanel
+            ?.label
+          || null
+        }
+        isFounder={
+          realmEnvironment
+            .isFounder ===
+          true
+        }
+      />
 
       <RealmLifeFirePanel
         open={firePanelOpen}

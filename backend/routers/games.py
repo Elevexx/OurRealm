@@ -2087,6 +2087,356 @@ async def realmlife_dj_playlist_create(
 
 
 
+
+# ============================================================
+# REALMLIFE FESTIVAL STAGE AUDIO
+# ============================================================
+
+@public.get(
+    "/{game_id}/realmlife/stages"
+)
+async def realmlife_stage_states(
+    game_id: str,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_stage_audio as rlsa
+    )
+
+    return await rlsa.list_states(
+        game_id
+    )
+
+
+@public.get(
+    "/{game_id}/realmlife/stages/library"
+)
+async def realmlife_stage_library(
+    game_id: str,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_stage_audio as rlsa
+    )
+
+    return await rlsa.founder_library(
+        current
+    )
+
+
+@public.get(
+    "/{game_id}/realmlife/stages/{stage_id}"
+)
+async def realmlife_stage_state(
+    game_id: str,
+    stage_id: str,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_stage_audio as rlsa
+    )
+
+    return await rlsa.state(
+        game_id,
+        stage_id,
+    )
+
+
+@public.put(
+    "/{game_id}/realmlife/stages/{stage_id}/source"
+)
+async def realmlife_stage_source(
+    game_id: str,
+    stage_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_stage_audio as rlsa
+    )
+
+    return await rlsa.set_source(
+        game_id,
+        stage_id,
+        current,
+        body,
+    )
+
+
+@public.post(
+    "/{game_id}/realmlife/stages/{stage_id}/control"
+)
+async def realmlife_stage_control(
+    game_id: str,
+    stage_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_stage_audio as rlsa
+    )
+
+    return await rlsa.control(
+        game_id,
+        stage_id,
+        current,
+        body,
+    )
+
+
+@public.put(
+    "/{game_id}/realmlife/stages/{stage_id}/schedule"
+)
+async def realmlife_stage_schedule(
+    game_id: str,
+    stage_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_stage_audio as rlsa
+    )
+
+    return await rlsa.schedule(
+        game_id,
+        stage_id,
+        current,
+        body,
+    )
+
+
+@public.put(
+    "/{game_id}/realmlife/stages/{stage_id}/access"
+)
+async def realmlife_stage_access(
+    game_id: str,
+    stage_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_stage_audio as rlsa
+    )
+
+    return await rlsa.set_access(
+        game_id,
+        stage_id,
+        current,
+        body,
+    )
+
+
+
+@public.get(
+    "/{game_id}/realmlife/stages/{stage_id}/permissions"
+)
+async def realmlife_stage_music_permissions(
+    game_id: str,
+    stage_id: str,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_stage_audio as rlsa
+    )
+
+    return await rlsa.music_permissions(
+        game_id,
+        stage_id,
+        current,
+    )
+
+
+@public.put(
+    "/{game_id}/realmlife/stages/{stage_id}/delegates"
+)
+async def realmlife_stage_add_delegate(
+    game_id: str,
+    stage_id: str,
+    body: dict,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_stage_audio as rlsa
+    )
+
+    return await rlsa.set_delegate(
+        game_id,
+        stage_id,
+        current,
+        body,
+    )
+
+
+@public.delete(
+    "/{game_id}/realmlife/stages/{stage_id}/delegates/{user_id}"
+)
+async def realmlife_stage_remove_delegate(
+    game_id: str,
+    stage_id: str,
+    user_id: str,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from services import (
+        realmlife_stage_audio as rlsa
+    )
+
+    return await rlsa.remove_delegate(
+        game_id,
+        stage_id,
+        user_id,
+        current,
+    )
+
+
+@public.get(
+    "/{game_id}/realmlife/stages/{stage_id}/audio/{sound_id}"
+)
+async def realmlife_stage_audio_bytes(
+    game_id: str,
+    stage_id: str,
+    sound_id: str,
+    current: CurrentUser,
+):
+    await _realmlife_access(
+        game_id,
+        current,
+    )
+
+    from fastapi.responses import Response
+    import httpx
+
+    from services import (
+        realmlife_stage_audio as rlsa,
+        realmlife_dj,
+    )
+
+    sound = await (
+        rlsa.currently_authorized_track(
+            game_id,
+            stage_id,
+            sound_id,
+        )
+    )
+
+    upstream_url = (
+        realmlife_dj
+        .dj_upstream_audio_url(
+            sound
+        )
+    )
+
+    try:
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=httpx.Timeout(
+                60.0,
+                connect=15.0,
+            ),
+        ) as client:
+            upstream = await client.get(
+                upstream_url,
+                headers={
+                    "Accept":
+                        "audio/*,*/*;q=0.8",
+                },
+            )
+
+        if upstream.status_code >= 400:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "OurRealm media storage "
+                    "did not return the Sound."
+                ),
+            )
+
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "RealmLife could not retrieve "
+                "this stage Sound."
+            ),
+        ) from exc
+
+    content_type = (
+        sound.get("mime")
+        or upstream.headers.get(
+            "content-type"
+        )
+        or "audio/mpeg"
+    )
+
+    return Response(
+        content=upstream.content,
+        media_type=content_type,
+        headers={
+            "Cache-Control":
+                "private, max-age=300",
+
+            "Accept-Ranges":
+                "bytes",
+
+            "X-Content-Type-Options":
+                "nosniff",
+        },
+    )
+
+
+
 # ============================================================
 # REALMLIFE V6C1 BUSINESS + PERSONAL PORTAL ROUTES
 # ============================================================

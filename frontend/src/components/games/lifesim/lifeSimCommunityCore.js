@@ -1733,6 +1733,9 @@ function addMetroExpansion(
   }
 
 
+  // REALMLIFE TEMP DISABLED: WRONG NORTH RIVER
+  if (false) {
+
   // ==========================================================
   // EXPANDED RIVER + RIVERWALK
   //
@@ -1858,6 +1861,9 @@ function addMetroExpansion(
     }
   );
 
+
+
+  }
 
   // ==========================================================
   // COMMERCIAL / BUSINESS EXPANSION WINGS
@@ -2055,6 +2061,9 @@ function addMetroExpansion(
   }
 
 
+  // REALMLIFE TEMP DISABLED: WRONG NORTH CENTRAL STATION
+  if (false) {
+
   // ==========================================================
   // CENTRAL STATION FOUNDATION
   // ==========================================================
@@ -2193,6 +2202,9 @@ function addMetroExpansion(
     }
   );
 
+
+
+  }
 
   return metro;
 }
