@@ -7,15 +7,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import apiClient from "@/api/client";
 
-// Top-right Star Bar — exactly 4 icons (Feb 26, 2026 spec):
-// 1. ⭐ Featured · 2. 🌎 Discover · 3. 🔔 Notifications · 4. ✉️ Messages
-// Profile access remains via: bottom-nav avatar, user avatars across the
-// app, profile links, mentions, friends, realm members, etc.
+// Top-right Star Bar:
+// RealmLife · Featured · RCS · Discover · Games · Notifications · Messages.
+// RealmLife is a full branded button and remains first/visible on mobile.
+// Profile access remains available through the existing profile surfaces.
 const ITEMS = [
   { to: "/featured",      label: "Featured",      Icon: Star,         testid: "star-featured",      color: "#F4C84A" },
-  { to: "/responsibility-center", label: "Responsibility Center", Icon: ShieldCheck, rcLogo: true,
+  { to: "/responsibility-center", label: "RCS", Icon: ShieldCheck, rcLogo: true,
     testid: "star-responsibility-center", color: "var(--brand-green, #10E670)", matchPrefix: true,
-    tooltip: "Responsibility Center — Manage responsibilities, tasks, teams, families, schools, businesses and organizations." },
+    tooltip: "RCS — Responsibility Center. Manage responsibilities, tasks, teams, families, schools, businesses and organizations." },
   { to: "/discover",      label: "Discover",      Icon: Globe,        testid: "star-discover",      color: "var(--brand-blue)" },
   { to: "/games",         label: "Games",         Icon: Gamepad2,     testid: "star-games",         color: "#C26BFF", policy: "games_play",
     tooltip: "OurRealm Games — play ORAi-built games" },
@@ -110,6 +110,53 @@ export default function TopStarBar() {
           data-testid="star-bar"
           style={{ scrollSnapType: "x mandatory" }}
         >
+          {/* RealmLife — full branded button, always first in Star Bar */}
+          <button
+            type="button"
+            data-testid="star-realmlife"
+            data-active={location.pathname.startsWith("/RealmLife")}
+            onClick={() => navigate("/RealmLife")}
+            aria-label="RealmLife"
+            title="RealmLife"
+            className="shrink-0 flex items-center justify-center transition-transform active:scale-95"
+            style={{
+              minHeight: 36,
+              padding: "0.4rem 0.72rem",
+              borderRadius: 999,
+              background:
+                location.pathname.startsWith("/RealmLife")
+                  ? "color-mix(in srgb, var(--brand-blue, #2EA0FF) 16%, var(--bgc))"
+                  : "color-mix(in srgb, var(--bgc) 76%, transparent)",
+              border:
+                "1px solid color-mix(in srgb, var(--brand-blue, #2EA0FF) 42%, var(--border-col))",
+              boxShadow:
+                location.pathname.startsWith("/RealmLife")
+                  ? "0 0 16px color-mix(in srgb, var(--brand-green, #10E670) 24%, transparent)"
+                  : "none",
+              fontFamily: "var(--font-display)",
+              fontWeight: 900,
+              fontSize: "0.74rem",
+              letterSpacing: "0.01em",
+              whiteSpace: "nowrap",
+              scrollSnapAlign: "end",
+            }}
+          >
+            <span
+              style={{
+                color: "var(--brand-blue, #2EA0FF)",
+              }}
+            >
+              Realm
+            </span>
+            <span
+              style={{
+                color: "var(--brand-green, #10E670)",
+              }}
+            >
+              Life
+            </span>
+          </button>
+
           {ITEMS.map(({ to, label, Icon, testid, color, isNotif, matchPrefix, tooltip, rcLogo }) => {
             const pathOnly = to.split("?")[0];
             const active = matchPrefix ? location.pathname.startsWith(pathOnly) : location.pathname === pathOnly;

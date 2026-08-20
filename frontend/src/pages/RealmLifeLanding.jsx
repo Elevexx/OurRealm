@@ -658,8 +658,13 @@ export default function RealmLifeLanding() {
           </div>
         )}
         <div className="absolute top-4 left-4 pointer-events-none">
-          <div className="text-2xl md:text-4xl font-black tracking-tight" style={{ color: "#ff7849" }}>
-            REALM<span style={{ color: "#22d3ee" }}>LIFE</span>
+          <div className="text-2xl md:text-4xl font-black tracking-tight">
+            <span style={{ color: "var(--brand-blue, #2EA0FF)" }}>
+              REALM
+            </span>
+            <span style={{ color: "var(--brand-green, #10E670)" }}>
+              LIFE
+            </span>
           </div>
           <div className="text-[10px] md:text-xs opacity-70 font-bold tracking-widest">LIVE. CONNECT. BELONG.</div>
         </div>
@@ -1015,10 +1020,10 @@ export default function RealmLifeLanding() {
             onClick={enterRealmLife} disabled={busy}
             className="flex-1 px-4 py-2.5 rounded-xl text-sm font-black tracking-wide"
             style={{
-              background: "linear-gradient(90deg,#ff7849,#e8542f)",
-              border: "1px solid rgba(255,170,120,.5)",
+              background: "linear-gradient(90deg,var(--brand-blue, #2EA0FF),var(--brand-green, #10E670))",
+              border: "1px solid rgba(46,160,255,.5)",
               color: "#fff",
-              boxShadow: "0 6px 24px rgba(255,120,73,.3)",
+              boxShadow: "0 6px 24px rgba(16,230,112,.22)",
             }}>
             ▶ ENTER REALMLIFE
           </button>
