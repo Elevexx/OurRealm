@@ -17,6 +17,29 @@ import {
 
 const GAME_ID = "realmlife-home-v1";
 
+
+// Preview models are public on OurRealm media storage.
+// Going directly to media avoids the slower preview-backend
+// proxy while keeping all existing gameplay URLs untouched.
+const previewModelUrl = (url) => {
+  const value =
+    String(url || "");
+
+  const prefix =
+    "/api/media/models/";
+
+  if (value.startsWith(prefix)) {
+    return (
+      "https://media.ourrealm.social/models/"
+      + value.slice(prefix.length)
+    );
+  }
+
+  return (
+    `${process.env.REACT_APP_BACKEND_URL || ""}${value}`
+  );
+};
+
 // RealmLife 4K hero models by actual discrete appearance.
 const HERO_APPEARANCE_URLS = {
   player_1: {
@@ -79,14 +102,24 @@ export default function RealmLifeLanding() {
     selected === "player_1" || selected === "player_2";
 
   useEffect(() => {
-    if (!isPlayerGlb) return;
+    if (!isPlayerGlb)
+      return undefined;
 
-    preloadRealmLifeModel(
-      getRealmLifeAppearanceModel(
-        selected,
-        custom?.appearance || 1
-      )
-    );
+    const timer =
+      window.setTimeout(
+        () => {
+          preloadRealmLifeModel(
+            getRealmLifeAppearanceModel(
+              selected,
+              custom?.appearance || 1
+            )
+          );
+        },
+        6000
+      );
+
+    return () =>
+      window.clearTimeout(timer);
   }, [
     selected,
     isPlayerGlb,
@@ -300,7 +333,7 @@ export default function RealmLifeLanding() {
 
         if (fastUrl) {
           new GLTFLoader()
-            .loadAsync(`${process.env.REACT_APP_BACKEND_URL}${fastUrl}`)
+            .loadAsync(previewModelUrl(fastUrl))
             .then((gltf) => {
               if (cancelled || sceneRef.current !== scene || modelRef.current) return;
               const m = gltf.scene;
@@ -332,7 +365,7 @@ export default function RealmLifeLanding() {
         };
 
         new GLTFLoader()
-          .loadAsync(`${process.env.REACT_APP_BACKEND_URL}${heroUrl}`)
+          .loadAsync(previewModelUrl(heroUrl))
           .then((gltf) => {
             const model = gltf.scene;
             model.traverse((o) => {

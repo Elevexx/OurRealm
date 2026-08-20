@@ -819,6 +819,73 @@ export async function createLifeAvatar({
     cloned.name =
       name;
 
+    /*
+     * RealmLife chair motions were exported from different
+     * source positions. Their Hips tracks contain large X/Z
+     * translation, which makes the avatar slide away from the
+     * chair even though the interaction anchor is correct.
+     *
+     * Preserve Y so the hips still lower into / rise from the
+     * seated pose, but pin horizontal root motion to this
+     * avatar's actual Hips rest position.
+     */
+    if (
+      [
+        "sit_down",
+        "sit_idle",
+        "stand_up",
+      ].includes(name)
+    ) {
+      const hips =
+        model.getObjectByName(
+          "Hips"
+        );
+
+      const hipsX =
+        Number(
+          hips?.position?.x
+        ) || 0;
+
+      const hipsZ =
+        Number(
+          hips?.position?.z
+        ) || 0;
+
+      for (
+        const track
+        of (cloned.tracks || [])
+      ) {
+        const trackName =
+          String(
+            track?.name || ""
+          ).toLowerCase();
+
+        if (
+          trackName.includes("hips")
+          &&
+          trackName.endsWith(".position")
+          &&
+          track.values
+        ) {
+          for (
+            let i = 0;
+            i + 2 < track.values.length;
+            i += 3
+          ) {
+            track.values[i] =
+              hipsX;
+
+            // IMPORTANT:
+            // track.values[i + 1] is Y.
+            // Leave it untouched so sitting still lowers hips.
+
+            track.values[i + 2] =
+              hipsZ;
+          }
+        }
+      }
+    }
+
     clips.set(
       name,
       cloned

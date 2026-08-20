@@ -5086,13 +5086,30 @@ realmLifePresenceKickoff =
               optionModelUrl
             );
 
-            return createRealmLifeOptionAvatar({
+            return createLifeAvatar({
               modelUrl:
                 optionModelUrl,
 
+              animationUrls: {
+                sit_down:
+                  REALMLIFE_UNIVERSAL_MOTIONS.sit_down,
+
+                sit_idle:
+                  REALMLIFE_UNIVERSAL_MOTIONS.sit_idle,
+
+                stand_up:
+                  REALMLIFE_UNIVERSAL_MOTIONS.stand_up,
+              },
+
               targetHeight:
                 1.82,
-});
+
+              selfDriveMixer:
+                true,
+
+              animationRootName:
+                "Armature",
+            });
           }
 
 
@@ -6199,12 +6216,35 @@ realmLifePresenceKickoff =
             targetWorldPosition
           );
 
+          /*
+           * Interaction anchors are LOCAL to the furniture.
+           *
+           * Genesis storefronts / seats may be rotated in the
+           * world, so rotate the local chair offset by the
+           * target's true world quaternion before positioning
+           * the resident.
+           */
+          const targetWorldQuaternion =
+            new THREE.Quaternion();
+
+          target.getWorldQuaternion(
+            targetWorldQuaternion
+          );
+
+          const localAnchorOffset =
+            new THREE.Vector3(
+              Number(anchor.x || 0),
+              0,
+              Number(anchor.z || 0)
+            );
+
+          localAnchorOffset.applyQuaternion(
+            targetWorldQuaternion
+          );
+
           resident.position.x =
             targetWorldPosition.x
-            + Number(
-                anchor.x
-                || 0
-              );
+            + localAnchorOffset.x;
 
           resident.position.y =
             Number(
@@ -6214,21 +6254,35 @@ realmLifePresenceKickoff =
 
           resident.position.z =
             targetWorldPosition.z
-            + Number(
-                anchor.z
-                || 0
+            + localAnchorOffset.z;
+
+          /*
+           * Chair facing is also local to the seat.
+           * Add its local facing adjustment to the seat's
+           * actual world-facing rotation.
+           */
+          const targetWorldEuler =
+            new THREE.Euler()
+              .setFromQuaternion(
+                targetWorldQuaternion,
+                "YXZ"
               );
 
+          const anchorRotationY =
+            Number(
+              anchor.rotationY
+            );
+
           resident.rotation.y =
-            Number.isFinite(
-              Number(
-                anchor.rotationY
+            targetWorldEuler.y
+            +
+            (
+              Number.isFinite(
+                anchorRotationY
               )
-            )
-              ? Number(
-                  anchor.rotationY
-                )
-              : resident.rotation.y;
+                ? anchorRotationY
+                : 0
+            );
 
 
           simRef.current
@@ -7887,8 +7941,8 @@ realmLifePresenceKickoff =
         </>
       )}
 
-      {/* PROGRESSION PANEL — collapsed on mobile */}
-      {isMobileUI && !needsOpen && (
+      {/* PROGRESSION PANEL — collapsible everywhere */}
+      {!needsOpen && (
         <button
           type="button"
           data-testid="realmlife-progression-toggle"
@@ -7896,7 +7950,9 @@ realmLifePresenceKickoff =
           className="absolute left-3 z-30 w-[46px] h-[46px] rounded-full flex items-center justify-center text-lg font-black"
           style={{
             bottom:
-              "max(150px, calc(env(safe-area-inset-bottom) + 150px))",
+              isMobileUI
+                ? "max(150px, calc(env(safe-area-inset-bottom) + 150px))"
+                : 12,
             background: "rgba(3,10,20,.82)",
             border: "1px solid rgba(46,230,255,.35)",
             color: "#fff",
@@ -7909,7 +7965,7 @@ realmLifePresenceKickoff =
         </button>
       )}
 
-      {(!isMobileUI || needsOpen) && (
+      {needsOpen && (
         <RealmLifeProgressionPanel
           residentName={
             simRef.current.resident.name

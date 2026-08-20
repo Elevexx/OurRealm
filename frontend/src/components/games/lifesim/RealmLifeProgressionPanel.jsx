@@ -577,7 +577,7 @@ export default function RealmLifeProgressionPanel({
         </div>
 
 
-        {isMobileUI && (
+        {(
           <button
             type="button"
             onClick={onMinimize}
